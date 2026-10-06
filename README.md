@@ -2,8 +2,6 @@
 
 独立源码仓库、克隆后的构建步骤和本地研究资料依赖见 [REPOSITORY.md](REPOSITORY.md)。
 
-独立私有源码仓库的构建与本地输入边界见 [REPOSITORY.md](REPOSITORY.md)。
-
 阶段五客户端 **0.5.0** 已完成，支持 OPPO Enco X4 的电量、降噪、五种声音预设、十段 EQ、双连、游戏和空间模式，以及 Hi-Res 互斥控制。发布包包含 x86、x64、ARM64 自包含版本和自动选择架构的启动器，无须安装 .NET SDK。
 
 完整解压 `release/HeyMelody_Windows_0.5.0_AllArchitectures.zip`，双击 `Start-HeyMelody.cmd`；或直接运行 `release/HeyMelody_Windows_0.5.0/x64/HeyMelody.exe`。先在 Windows 中配对并连接耳机，再在客户端点击“连接耳机”。只读刷新不自动发送设置。
