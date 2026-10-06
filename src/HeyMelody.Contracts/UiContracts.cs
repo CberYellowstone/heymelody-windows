@@ -12,6 +12,14 @@ public sealed record UiBand(int FrequencyHz, int Gain);
 public sealed record UiEqEntry(int Id, string Name, int MinimumGain, int MaximumGain,
     bool Selected, IReadOnlyList<UiBand> Bands);
 
+public enum RefreshScope { Full, Identity, Features, Anc, Equalizer, Battery, Information }
+public enum ConnectionState { Unknown, Connected, Disconnected }
+public enum ApplyFailure
+{
+    None, Validation, StateUnavailable, PeerRejected, ReadbackMismatch,
+    ReadbackUnavailable, TransportUnknown, Disconnected, WorkerUnavailable, MutexConsentRequired
+}
+
 public sealed class UiSnapshot
 {
     public string Identity { get; set; } = "";
@@ -19,6 +27,7 @@ public sealed class UiSnapshot
     public string? ProductId { get; set; }
     public string? Failure { get; set; }
     public bool Connected { get; set; }
+    public ConnectionState ConnectionState { get; set; }
     public bool SupportedModel { get; set; }
     public int? LeftBattery { get; set; }
     public int? RightBattery { get; set; }
@@ -55,6 +64,13 @@ public sealed record UiAction(string Kind, int Value, UiEqEntry? EqualizerEntry 
     bool AllowMutexChange = false);
 public sealed class UiApplyResult
 {
+    public bool BackendReceiptReceived { get; set; }
+    public ConnectionState ConnectionState { get; set; }
+    public ApplyFailure FailureKind { get; set; }
+    public bool TargetSubmitted { get; set; }
+    public bool PrerequisiteSubmitted { get; set; }
+    public byte? AckStatus { get; set; }
+    public int? ObservedEqualizerId { get; set; }
     public bool Accepted { get; set; }
     public bool? ReadbackMatches { get; set; }
     public bool SubmissionAttempted { get; set; }
@@ -70,5 +86,7 @@ public interface IHeadsetService : IAsyncDisposable
     Task<UiSnapshot> ConnectAsync(string identity, CancellationToken cancellationToken);
     Task DisconnectAsync(CancellationToken cancellationToken);
     Task<UiSnapshot> RefreshAsync(CancellationToken cancellationToken);
+    Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken cancellationToken)
+        => RefreshAsync(cancellationToken);
     Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken cancellationToken);
 }

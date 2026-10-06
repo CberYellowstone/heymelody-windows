@@ -21,7 +21,9 @@ public sealed class UnsupportedPlatformService : IHeadsetService
     public Task DisconnectAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     public Task<UiSnapshot> RefreshAsync(CancellationToken cancellationToken) =>
         Task.FromResult(new UiSnapshot { Failure = Message });
+    public Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken cancellationToken) => RefreshAsync(cancellationToken);
     public Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken cancellationToken) =>
-        Task.FromResult(new UiApplyResult { Message = Message });
+        Task.FromResult(new UiApplyResult { BackendReceiptReceived = true, FailureKind = ApplyFailure.StateUnavailable,
+            ConnectionState = ConnectionState.Unknown, Message = Message });
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

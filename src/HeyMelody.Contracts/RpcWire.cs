@@ -10,6 +10,7 @@ public sealed class RpcRequest
     public long Id { get; set; }
     public string Operation { get; set; } = "";
     public string? Identity { get; set; }
+    public HeyMelodyWindows.App.RefreshScope? RefreshScope { get; set; }
     public JsonElement Action { get; set; }
 }
 

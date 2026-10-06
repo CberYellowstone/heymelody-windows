@@ -35,6 +35,8 @@ public sealed class ClientBridge : IHeadsetService
 
     public Task<UiSnapshot> RefreshAsync(CancellationToken cancellationToken) =>
         RequestAsync<UiSnapshot>("refresh", null, null, TimeSpan.FromSeconds(75), cancellationToken);
+    public Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken cancellationToken) =>
+        RequestAsync<UiSnapshot>("refresh", null, null, TimeSpan.FromSeconds(75), cancellationToken, scope);
 
     public async Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken cancellationToken)
     {
@@ -47,6 +49,9 @@ public sealed class ClientBridge : IHeadsetService
             // The worker can disappear after a setter has reached the peer. Never resend it.
             return new UiApplyResult
             {
+                BackendReceiptReceived = false,
+                FailureKind = ApplyFailure.WorkerUnavailable,
+                ConnectionState = ConnectionState.Unknown,
                 SubmissionAttempted = failure.RequestSubmitted,
                 AcknowledgementUnknown = failure.RequestSubmitted,
                 PartialEffects = failure.RequestSubmitted,
@@ -58,7 +63,7 @@ public sealed class ClientBridge : IHeadsetService
     }
 
     private async Task<T> RequestAsync<T>(string operation, string? identity, UiAction? action,
-        TimeSpan budget, CancellationToken token)
+        TimeSpan budget, CancellationToken token, RefreshScope? scope = null)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
         linked.CancelAfter(_testBudget ?? budget);
@@ -69,7 +74,7 @@ public sealed class ClientBridge : IHeadsetService
             ObjectDisposedException.ThrowIf(_disposed, this);
             StartWorker();
             long id = checked(++_nextId);
-            var request = JsonSerializer.Serialize(new { schemaVersion = 1, id, operation, identity, action }, Json);
+            var request = JsonSerializer.Serialize(new { schemaVersion = 1, id, operation, identity, action, refreshScope = scope }, Json);
             if (request.Length > MaximumRecord) throw new InvalidDataException();
             submitted = true;
             await _worker!.StandardInput.WriteLineAsync(request.AsMemory(), linked.Token);

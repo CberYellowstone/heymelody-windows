@@ -125,6 +125,39 @@ await Test("partial transport send is never replayed", async () =>
 {
     var f = new Fake { FailSetSend = true }; await using var c = new DailyClient(f);
     var r = await c.ApplyPresetAsync(7); Check(!r.Success && r.SubmissionAttempted && r.AckAccepted is null && f.Writes.Count == 1 && f.Opens == 2);
+    Check(r.FailureKind == DailyApplyFailure.Disconnected && r.After?.Connected == true);
+});
+await Test("SET EOF remains a disconnection after successful read-only reconnect", async () =>
+{
+    foreach (bool partialFrame in new[] { false, true })
+    {
+        var f = new Fake { SetReadEof = true, TruncatedSetFrame = partialFrame }; await using var c = new DailyClient(f);
+        var r = await c.ApplyPresetAsync(7);
+        Check(r.FailureKind == DailyApplyFailure.Disconnected && !r.Success && r.TargetSubmitted
+            && r.AckAccepted is null && r.ReadbackMatches == true && r.After?.Connected == true
+            && f.Writes.Count == 1 && f.Opens == 2);
+    }
+});
+await Test("SET IO and socket reset differ from timeout or malformed response", async () =>
+{
+    foreach (var (failure, expected) in new (Exception, DailyApplyFailure)[]
+    {
+        (new IOException(), DailyApplyFailure.Disconnected),
+        (new System.ComponentModel.Win32Exception(10054), DailyApplyFailure.Disconnected),
+        (new System.Net.Sockets.SocketException(10053), DailyApplyFailure.Disconnected),
+        (new System.ComponentModel.Win32Exception(10060), DailyApplyFailure.TransportUnknown),
+        (new TimeoutException(), DailyApplyFailure.TransportUnknown),
+        (new TaskCanceledException(), DailyApplyFailure.TransportUnknown),
+        (new FormatException(), DailyApplyFailure.TransportUnknown),
+        (new InvalidDataException(), DailyApplyFailure.TransportUnknown)
+    })
+    {
+        var f = new Fake { SetReadFailure = failure }; await using var c = new DailyClient(f);
+        var r = await c.ApplyPresetAsync(7);
+        Check(r.FailureKind == expected && !r.Success && r.AckAccepted is null
+            && r.ReadbackMatches == true && r.After?.Connected == true && f.Writes.Count == 1 && f.Opens == 2,
+            failure.GetType().Name);
+    }
 });
 await Test("empty ACK stays unknown even with matching readback", async () =>
 {
@@ -267,10 +300,110 @@ await Test("saved unselected custom EQ is reported as partial without guessing a
     var edit=Fake.Edit();edit.Bands[0]=new(31,2);var r=await c.SaveEqualizerAsync(edit);
     Check(!r.Success && !r.ReadbackVerified && r.AckAccepted==true && r.PartialEffects.Count==1 && f.Writes.Count==1);
 });
+await Test("scoped polling queries its section and retains other confirmed state", async () =>
+{
+    var f = new Fake(); await using var c = new DailyClient(f);
+    var before = await c.RefreshAsync(); f.Requests.Clear();
+    f.Preset = 7;
+    var battery = await c.RefreshAsync(DailyRefreshScope.Battery);
+    Check(f.Requests.Select(x => x.Command).SequenceEqual(new ushort[] { 0x0106 }));
+    Check(battery.PresetId == before.PresetId && battery.Anc?.Level == before.Anc?.Level && battery.Capabilities.GameMode);
+    f.Requests.Clear();
+    var eq = await c.RefreshAsync(DailyRefreshScope.Equalizer);
+    Check(eq.PresetId == 7 && f.Requests.Select(x => x.Command).SequenceEqual(new ushort[] { 0x010F, 0x0122 }));
+    Check(f.Writes.Count == 0);
+});
+await Test("a scoped read on a new session first verifies identity and commands", async () =>
+{
+    var f = new Fake(); await using var c = new DailyClient(f);
+    var s = await c.RefreshAsync(DailyRefreshScope.Anc);
+    Check(s.ProfileVerified && s.Capabilities.Anc && s.Battery is null && !s.Capabilities.CustomEqualizer);
+    Check(f.Requests.Select(x => x.Command).SequenceEqual(new ushort[] { 0x0103, 0x0100, 0x010C }));
+});
+await Test("returned mutable snapshots cannot corrupt the scoped cache", async () =>
+{
+    var f = new Fake(); await using var c = new DailyClient(f);
+    var s = await c.RefreshAsync();
+    s.RawFeatures[0x18] = 0; s.CustomEqualizers.Clear(); s.Anc!.Level = 3; s.Capabilities.Preset = false;
+    var after = await c.RefreshAsync(DailyRefreshScope.Battery);
+    Check(after.HiRes == true && after.CustomEqualizers.Count == 1 && after.Anc?.Level == f.AncLevel && after.Capabilities.Preset);
+});
+await Test("scoped refresh merges the most recent setter readback", async () =>
+{
+    var f = new Fake(); await using var c = new DailyClient(f);
+    await c.RefreshAsync(); Check((await c.ApplyPresetAsync(7)).Success);
+    var s = await c.RefreshAsync(DailyRefreshScope.Battery);
+    Check(s.PresetId == 7 && s.Capabilities.Preset);
+});
+await Test("malformed scoped state disables only the queried capability and recovers", async () =>
+{
+    var f = new Fake(); await using var c = new DailyClient(f);
+    await c.RefreshAsync(); f.ReadReplies[0x010C] = [0, 1];
+    var s = await c.RefreshAsync(DailyRefreshScope.Anc);
+    Check(s.Connected && s.Anc is null && !s.Capabilities.Anc && s.Capabilities.Preset && s.HiRes == true && s.Warnings.Count == 1);
+    f.ReadReplies.Clear(); s = await c.RefreshAsync(DailyRefreshScope.Anc);
+    Check(s.Capabilities.Anc && s.Warnings.Count == 0);
+});
+await Test("rejected scoped state stays unknown without invalidating unrelated controls", async () =>
+{
+    var f = new Fake(); await using var c = new DailyClient(f);
+    await c.RefreshAsync(); f.ReadReplies[0x0106] = [1];
+    var s = await c.RefreshAsync(DailyRefreshScope.Battery);
+    Check(s.Battery is null && !s.Capabilities.Battery && s.Capabilities.Anc && s.Capabilities.CustomEqualizer && s.Connected);
+});
+await Test("rotated scoped sessions retain state after fresh identity verification", async () =>
+{
+    var f = new Fake(); await using var c = new DailyClient(f); await c.RefreshAsync();
+    for (int n = 0; n < 250; n++)
+    {
+        var s = await c.RefreshAsync(DailyRefreshScope.Battery);
+        Check(s.ProfileVerified && s.Capabilities.Anc && s.CustomEqualizersRead && s.HiRes == true);
+    }
+    Check(f.Opens >= 2 && f.SequenceSets.All(x => x.Value.Distinct().Count() == x.Value.Count));
+});
+await Test("a changed scoped product invalidates cached capabilities", async () =>
+{
+    var f = new Fake(); await using var c = new DailyClient(f); await c.RefreshAsync(); f.UnsupportedProduct = true;
+    var s = await c.RefreshAsync(DailyRefreshScope.Identity);
+    Check(!s.ProfileVerified && !s.Capabilities.Preset && s.Anc is null && s.CustomEqualizers.Count == 0 && s.Error is not null);
+});
+await Test("missing readback differs from an observed mismatch in the apply receipt", async () =>
+{
+    var f = new Fake { ThrowReadsAfterWrite = true }; await using var c = new DailyClient(f);
+    var r = await c.ApplyPresetAsync(7);
+    Check(r.TargetSubmitted && !r.PrerequisiteSubmitted && r.AckStatus == 0 && r.ReadbackMatches is null &&
+        r.FailureKind == DailyApplyFailure.ReadbackUnavailable && f.Writes.Count == 1);
+});
+await Test("mutex prerequisite submission is distinct from target submission", async () =>
+{
+    var f = new Fake { SetterStatus = 1 }; await using var c = new DailyClient(f);
+    var r = await c.SetSpatialModeAsync(2, true);
+    Check(r.PrerequisiteSubmitted && !r.TargetSubmitted && r.AckStatus is null && r.ReadbackMatches is null &&
+        r.FailureKind == DailyApplyFailure.PeerRejected && f.Writes.Count == 1);
+});
+await Test("existing selected matching EQ saves no duplicate SET", async () =>
+{
+    var f = new Fake(); f.Entries[0].Selected = true; await using var c = new DailyClient(f);
+    var r = await c.SaveEqualizerAsync(Fake.Edit());
+    Check(r.Success && !r.TargetSubmitted && r.ReadbackMatches == true && r.ObservedEqualizerId == 40 && f.Writes.Count == 0);
+});
+await Test("created exact-match EQ exposes its observed ID even with unknown ACK", async () =>
+{
+    var f = new Fake { EmptySetAck = true }; await using var c = new DailyClient(f);
+    var edit = Fake.Edit(); edit.Id = 0; edit.Name = "New1";
+    var r = await c.SaveEqualizerAsync(edit);
+    Check(!r.Success && r.TargetSubmitted && !r.PrerequisiteSubmitted && r.AckAccepted is null &&
+        r.ReadbackMatches == true && r.ObservedEqualizerId == 51 && f.Writes.Count == 1);
+});
 Console.WriteLine($"Daily tests: {passed} passed; no native devices accessed.");
 
 sealed class Fake : IControlConnector
 {
+    public List<Packet> Requests = [];
+    public Dictionary<ushort, byte[]> ReadReplies = [];
+    public bool ThrowReadsAfterWrite;
+    public bool SetReadEof, TruncatedSetFrame;
+    public Exception? SetReadFailure;
     public static readonly ushort[] Frequencies = [31,62,125,250,500,1000,2000,4000,8000,16000];
     public Dictionary<byte,byte> Features = new() { [0x11]=0,[0x06]=0,[0x28]=0,[0x18]=1,[0x1B]=0 };
     public List<CustomEqualizer> Entries = [Entry()];
@@ -302,6 +435,7 @@ sealed class Fake : IControlConnector
     }
     private byte[] Response(Packet p)
     {
+        Requests.Add(p);
         if(p.Command>=0x0400)
         {
             Writes.Add(p);
@@ -321,6 +455,8 @@ sealed class Fake : IControlConnector
             }
             return EmptySetAck?[]:[SetterStatus];
         }
+        if (ThrowReadsAfterWrite && Writes.Count != 0) throw new IOException();
+        if (ReadReplies.TryGetValue(p.Command, out var overridden)) return overridden;
         return p.Command switch
         {
             0x0103 => UnsupportedProduct?[0,1,2,3]:[0,0x10,0xEC,6],
@@ -349,6 +485,7 @@ sealed class Fake : IControlConnector
     private sealed class Transport(Fake owner,int id):IControlTransport
     {
         private readonly Queue<byte[]> _received=new();
+        private Exception? _readFailure;
         public async Task SendAsync(ReadOnlyMemory<byte> bytes,CancellationToken token)
         {
             token.ThrowIfCancellationRequested();int concurrent=Interlocked.Increment(ref owner._activeSend);
@@ -357,13 +494,19 @@ sealed class Fake : IControlConnector
             {
                 await Task.Yield();var p=new PacketDecoder().Feed(bytes.Span).Single();
                 owner.SequenceSets[id].Add(p.Sequence);var response=owner.Response(p);
+                if (p.Command >= 0x0400)
+                {
+                    if (owner.SetReadFailure is { } failure) { _readFailure = failure; return; }
+                    if (owner.SetReadEof)
+                    { if (owner.TruncatedSetFrame) _received.Enqueue([0xAA]); return; }
+                }
                 if(owner.SendOldSequenceFirst)_received.Enqueue(PacketEncoder.Encode((ushort)(p.Command|0x8000),unchecked((byte)(p.Sequence-1)),[0]));
                 _received.Enqueue(PacketEncoder.Encode((ushort)(p.Command|0x8000),p.Sequence,response));
             }
             finally{Interlocked.Decrement(ref owner._activeSend);}
         }
         public Task<int> ReadAsync(Memory<byte> buffer,CancellationToken token)
-        {token.ThrowIfCancellationRequested();if(_received.Count==0)return Task.FromResult(0);var data=_received.Dequeue();data.CopyTo(buffer);return Task.FromResult(data.Length);}
+        {token.ThrowIfCancellationRequested();if(_readFailure is { } failure)throw failure;if(_received.Count==0)return Task.FromResult(0);var data=_received.Dequeue();data.CopyTo(buffer);return Task.FromResult(data.Length);}
         public ValueTask DisposeAsync()=>ValueTask.CompletedTask;
     }
 }

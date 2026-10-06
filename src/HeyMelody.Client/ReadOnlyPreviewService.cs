@@ -13,6 +13,7 @@ public sealed class ReadOnlyPreviewService(IHeadsetService inner) : IHeadsetServ
     public Task<UiSnapshot> ConnectAsync(string identity, CancellationToken token) => identity == _allowedIdentity ? inner.ConnectAsync(identity, token) : throw new InvalidOperationException();
     public Task DisconnectAsync(CancellationToken token) => inner.DisconnectAsync(token);
     public Task<UiSnapshot> RefreshAsync(CancellationToken token) => inner.RefreshAsync(token);
+    public Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken token) => inner.RefreshAsync(scope, token);
     public Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token) => throw new InvalidOperationException("Live preview forbids settings.");
     public ValueTask DisposeAsync() => inner.DisposeAsync();
 }

@@ -7,7 +7,8 @@ public sealed partial class DailyClient(IControlConnector connector) : IAsyncDis
     private readonly IControlConnector _connector = connector ?? throw new ArgumentNullException(nameof(connector));
     private readonly SemaphoreSlim _gate = new(1, 1);
     private bool _disposed;
-    public Task<DailySnapshot> RefreshAsync(CancellationToken token = default) => RefreshCoreAsync(token);
+    public Task<DailySnapshot> RefreshAsync(CancellationToken token = default) => RefreshCoreAsync(DailyRefreshScope.Full, token);
+    public Task<DailySnapshot> RefreshAsync(DailyRefreshScope scope, CancellationToken token = default) => RefreshCoreAsync(scope, token);
     public Task<DailyApplyResult> ApplyAncAsync(byte primary, byte level, CancellationToken token = default) =>
         ApplyCoreAsync("anc", primary, level, null, false, token);
     public Task<DailyApplyResult> ApplyPresetAsync(byte presetId, CancellationToken token = default) =>

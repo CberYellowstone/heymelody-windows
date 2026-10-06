@@ -13,6 +13,7 @@ public sealed class NativeHeadsetService : IHeadsetService
     private readonly Dictionary<string, BluetoothCandidate> _devices = [];
     private DailyClient? _client;
     private string? _selected;
+    private ulong? _selectedAddress;
     private string _selectedName = "";
     private DailySnapshot? _last;
     private int _getSubmissions, _setSubmissions, _otherSubmissions;
@@ -38,7 +39,7 @@ public sealed class NativeHeadsetService : IHeadsetService
     {
         if (!_devices.TryGetValue(identity, out var peer)) throw new InvalidOperationException("重新刷新设备列表后再连接。");
         await DisconnectAsync(token);
-        _selected = identity; _selectedName = peer.Name;
+        _selected = identity; _selectedName = peer.Name; _selectedAddress = peer.Address;
         _getSubmissions = _setSubmissions = _otherSubmissions = 0;
         _client = new DailyClient(new PeerConnector(peer.Address, RecordSubmission));
         return Map(await _client.RefreshAsync(token));
@@ -46,19 +47,24 @@ public sealed class NativeHeadsetService : IHeadsetService
 
     public async Task DisconnectAsync(CancellationToken token)
     {
-        var client = _client; _client = null; _selected = null; _selectedName = "";
+        var client = _client; _client = null; _selected = null; _selectedName = ""; _selectedAddress = null;
         if (client is not null) await client.DisposeAsync();
     }
 
     public async Task<UiSnapshot> RefreshAsync(CancellationToken token)
+        => await RefreshAsync(RefreshScope.Full, token);
+
+    public async Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken token)
     {
+        if (!Enum.IsDefined(scope)) throw new ArgumentOutOfRangeException(nameof(scope));
         if (_client is null) throw new InvalidOperationException("请先连接耳机。");
-        return Map(await _client.RefreshAsync(token));
+        return Map(await _client.RefreshAsync((DailyRefreshScope)scope, token));
     }
 
     public async Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token)
     {
-        if (_client is null) return new() { Message = "尚未连接耳机，未发送设置。" };
+        if (_client is null) return new() { BackendReceiptReceived = true, FailureKind = ApplyFailure.StateUnavailable,
+            ConnectionState = ConnectionState.Unknown, Message = "尚未连接耳机，未发送设置。" };
         DailyApplyResult result;
         switch (action.Kind)
         {
@@ -96,18 +102,41 @@ public sealed class NativeHeadsetService : IHeadsetService
                 result = await _client.SetHiResAsync(action.Value == 1, action.AllowMutexChange, token); break;
             default: return InvalidAction();
         }
+        UiSnapshot? after = result.After is null ? null : Map(result.After);
+        var connection = after?.ConnectionState ?? ConnectionEvidence(result.Before);
         return new UiApplyResult
         {
+            BackendReceiptReceived = true,
+            TargetSubmitted = result.TargetSubmitted,
+            PrerequisiteSubmitted = result.PrerequisiteSubmitted,
+            AckStatus = result.AckStatus,
+            ObservedEqualizerId = result.ObservedEqualizerId,
+            ConnectionState = connection,
+            FailureKind = connection == ConnectionState.Disconnected ? ApplyFailure.Disconnected : (ApplyFailure)result.FailureKind,
             Accepted = result.AckAccepted == true,
-            ReadbackMatches = result.ReadbackVerified ? true : result.SubmissionAttempted ? false : null,
+            ReadbackMatches = result.ReadbackMatches,
             SubmissionAttempted = result.SubmissionAttempted,
             AcknowledgementUnknown = result.SubmissionAttempted && result.AckAccepted is null,
             PartialEffects = !result.Success && result.PartialEffects.Count != 0,
-            Message = ResultMessage(result), After = result.After is null ? null : Map(result.After)
+            Message = ResultMessage(result), After = after
         };
     }
 
-    private static UiApplyResult InvalidAction() => new() { Message = "设置参数无效，未发送设置。" };
+    private UiApplyResult InvalidAction() => new() { BackendReceiptReceived = true,
+        FailureKind = ApplyFailure.Validation, ConnectionState = ConnectionEvidence(null), Message = "设置参数无效，未发送设置。" };
+
+    private ConnectionState ConnectionEvidence(DailySnapshot? snapshot)
+    {
+        if (snapshot is { Connected: true }) return ConnectionState.Connected;
+        if (_selectedAddress is not { } address) return ConnectionState.Unknown;
+        try
+        {
+            var peers = WindowsBluetooth.EnumeratePaired().Where(x => x.Address == address && x.Remembered).ToArray();
+            return peers.Length == 1 ? peers[0].Connected ? ConnectionState.Connected : ConnectionState.Disconnected
+                : ConnectionState.Unknown;
+        }
+        catch (Exception) { return ConnectionState.Unknown; }
+    }
 
     private static string ResultMessage(DailyApplyResult result)
     {
@@ -115,11 +144,14 @@ public sealed class NativeHeadsetService : IHeadsetService
             return result.SubmissionAttempted ? "设置已完成，耳机状态回读一致。" : "耳机已处于所选状态。";
         if (result.PartialEffects.Count != 0)
             return "部分操作已提交。请先查看当前状态，再决定下一步操作。";
+        if (result.FailureKind == DailyApplyFailure.Disconnected)
+            return "设置时耳机控制连接已中断，已尝试重新读取当前状态。";
         if (!result.SubmissionAttempted)
             return string.IsNullOrWhiteSpace(result.Message) ? "未发送设置。请确认耳机状态、能力与互斥选项后再操作。" : result.Message;
         if (result.AckAccepted == false) return "耳机拒绝了设置，已重新读取当前状态。";
         if (result.AckAccepted is null)
             return result.ReadbackVerified ? "响应未确认，状态回读已匹配。请勿重复发送。" : "响应未确认，设置可能已生效。请刷新状态后再操作。";
+        if (result.ReadbackMatches is null) return "耳机已接受请求，状态回读暂时不可用。";
         return "耳机已接受请求，当前状态尚未匹配。请刷新状态确认。";
     }
 
@@ -133,6 +165,7 @@ public sealed class NativeHeadsetService : IHeadsetService
             Identity = _selected ?? "", DeviceName = _selectedName,
             ProductId = snapshot.ProductId,
             Connected = snapshot.Connected, SupportedModel = snapshot.ProfileVerified,
+            ConnectionState = ConnectionEvidence(snapshot),
             Failure = snapshot.Error is null ? null : "未能完整读取耳机状态，请刷新或重新连接。",
             LeftBattery = snapshot.Battery?.Left?.Percent, RightBattery = snapshot.Battery?.Right?.Percent,
             CaseBattery = snapshot.Battery?.Case?.Percent, LeftCharging = snapshot.Battery?.Left?.Charging,

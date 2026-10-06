@@ -41,6 +41,7 @@ internal static class NativeSmoke
             applicationSetSubmissions = _state.Service.Submissions,
             serviceDisposals = _state.Service.Disposals, windowClosed = _state.Closed,
             settingsDialogCompleted = _state.SettingsDialogCompleted,
+            failureDialogsCompleted = _state.FailureDialogsCompleted,
             scope = "real Win32 FAAppWindow geometry, themes and lifecycle with an in-memory service; no DWM pixel or hardware assertions",
             states = _state.Receipts, failure = _state.Failure
         }));
@@ -53,6 +54,7 @@ internal static class NativeSmoke
         public int Checks { get; set; }
         public bool Closed { get; set; }
         public bool SettingsDialogCompleted { get; set; }
+        public bool FailureDialogsCompleted { get; set; }
         public string? Failure { get; set; }
         public List<object> Receipts { get; } = [];
         public TaskCompletionSource ClosedSignal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -124,10 +126,25 @@ internal static class NativeSmoke
                 });
             }
             Check(_state.Service.Submissions == 0, "Native smoke never submits settings.");
+            var dialogs = new WindowConfirmationService(window);
+            var retryTask = vm.Dialogs.RunAsync(token => dialogs.ConfirmRetryAsync("重试设置", "请核对后决定是否重试。", token));
+            var retryDialog = await FindDialogAsync(window, "重试设置");
+            Check(retryDialog.PrimaryButtonText == "确认" && retryDialog.CloseButtonText == "取消"
+                && retryDialog.DefaultButton == FAContentDialogButton.Close, "Native retry dialog defaults to cancel.");
+            dialogs.CancelActiveDialog();
+            Check(!await retryTask, "Dismissed native retry does not grant retry consent.");
+            var alertTask = vm.Dialogs.RunAsync(token => dialogs.AlertAsync("设置未完成", "请检查当前状态。", token));
+            var alertDialog = await FindDialogAsync(window, "设置未完成");
+            Check(alertDialog.CloseButtonText == "确定" && string.IsNullOrEmpty(alertDialog.PrimaryButtonText)
+                && string.IsNullOrEmpty(alertDialog.SecondaryButtonText), "Native failure alert only acknowledges the failure.");
             settingsTask = page.OpenSettingsDialogAsync();
-            await Task.Delay(100);
-            Check(!settingsTask.IsCompleted && window.GetVisualDescendants().OfType<FAContentDialog>()
-                .Any(dialog => Equals(dialog.Title, "应用设置")), "Settings dialog opens on the real owner.");
+            await Task.Delay(50);
+            Check(!settingsTask.IsCompleted && !window.GetVisualDescendants().OfType<FAContentDialog>()
+                .Any(dialog => Equals(dialog.Title, "应用设置")), "Settings waits behind the native failure dialog.");
+            dialogs.CancelActiveDialog(); await alertTask;
+            _state.FailureDialogsCompleted = true;
+            await FindDialogAsync(window, "应用设置");
+            Check(!settingsTask.IsCompleted, "Settings dialog opens after the failure dialog releases ownership.");
         }
         catch (Exception error) { _state.Failure = error.ToString(); }
         finally
@@ -163,6 +180,18 @@ internal static class NativeSmoke
     {
         if (!condition) throw new InvalidOperationException(message);
         _state.Checks++;
+    }
+
+    private static async Task<FAContentDialog> FindDialogAsync(Window window, string title)
+    {
+        for (int attempt = 0; attempt < 40; attempt++)
+        {
+            var dialog = window.GetVisualDescendants().OfType<FAContentDialog>()
+                .FirstOrDefault(candidate => Equals(candidate.Title, title));
+            if (dialog is not null) return dialog;
+            await Task.Delay(25);
+        }
+        throw new InvalidOperationException($"Native dialog did not open: {title}");
     }
 
     private sealed class SmokeService : IHeadsetService

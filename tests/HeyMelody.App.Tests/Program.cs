@@ -90,6 +90,10 @@ try
             window.MouseDown(point, MouseButton.Left); window.MouseUp(point, MouseButton.Left);
             Dispatcher.UIThread.RunJobs();
             Check(service.Submissions == 1 && service.LastAction?.Value == 0x0003, "Apply button submits exactly once");
+            Check(vm.LastApplyAttempts is [{ BackendReceiptReceived: true, ConnectionState: ConnectionState.Connected,
+                Accepted: true, AckStatus: 0, TargetSubmitted: true, ReadbackMatches: true }]
+                && !vm.StatusWarning && vm.Status == "设置已确认，回读与请求一致。",
+                "Bound Apply reaches confirmed success rather than incomplete-receipt recovery");
             await vm.RefreshStateCommand.ExecuteAsync(null);
             Dispatcher.UIThread.RunJobs();
             Check(service.Submissions == 1, "Refreshed bindings never SET");
@@ -105,7 +109,8 @@ try
         finally { window.Close(); }
         return true;
     }, CancellationToken.None).GetAwaiter().GetResult();
-    Check(passed == 21, "Every UI scenario and interaction case must finish");
+    passed += InteractionTests.Run(session);
+    Check(passed == 24, "Every UI scenario and interaction case must finish");
     var report = new { schemaVersion = 1, version = "0.6.0", passed, success = true, nativeBluetoothCalls = 0, screenshotScope = "headless Skia content; native titlebar not included", screenshots = receipts };
     using (var stream = new FileStream(Path.Combine(output, "validation.json"), FileMode.CreateNew)) JsonSerializer.Serialize(stream, report, new JsonSerializerOptions { WriteIndented = true });
     Console.WriteLine(JsonSerializer.Serialize(new { passed, success = true, nativeBluetoothCalls = 0, output }));
@@ -135,7 +140,13 @@ sealed class InputTestService : IHeadsetService
         LastAction = action; Submissions++;
         if (action.Kind == "Anc") _snapshot!.Anc = action.Value;
         else if (action.Kind == "DualConnection") _snapshot!.DualConnection = action.Value == 1;
-        return Task.FromResult(new UiApplyResult { Accepted = true, SubmissionAttempted = true, ReadbackMatches = true, After = _snapshot });
+        _snapshot!.ConnectionState = ConnectionState.Connected;
+        return Task.FromResult(new UiApplyResult
+        {
+            BackendReceiptReceived = true, ConnectionState = ConnectionState.Connected,
+            FailureKind = ApplyFailure.None, Accepted = true, AckStatus = 0,
+            SubmissionAttempted = true, TargetSubmitted = true, ReadbackMatches = true, After = _snapshot
+        });
     }
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

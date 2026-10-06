@@ -29,6 +29,19 @@ try
         await bridge.RefreshAsync(default); await bridge.DisconnectAsync(default);
         Check(!File.Exists(counter));
     });
+    await Test("every refresh scope crosses RPC and the legacy overload remains full", async () =>
+    {
+        string counter = Counter("scopes");
+        await using var bridge = Bridge("scopes", counter);
+        foreach (var scope in Enum.GetValues<RefreshScope>())
+        {
+            var snapshot = await bridge.RefreshAsync(scope, default);
+            Check(snapshot.Connected && snapshot.ConnectionState == ConnectionState.Connected);
+        }
+        await bridge.RefreshAsync(default);
+        Check(File.ReadAllLines(counter).SequenceEqual(Enum.GetValues<RefreshScope>()
+            .Select(scope => "explicit:" + scope).Append("legacy:Full")));
+    });
     foreach (string mode in new[] { "eof", "wrong-id", "error", "malformed" })
         await Test("lost " + mode + " receipt is not replayed", async () =>
         {
@@ -36,6 +49,8 @@ try
             await using var bridge = Bridge(mode, counter);
             var result = await bridge.ApplyAsync(new UiAction("GameMode", 0), default);
             Check(result.SubmissionAttempted && result.AcknowledgementUnknown && result.PartialEffects && result.After is null);
+            Check(!result.BackendReceiptReceived && result.FailureKind == ApplyFailure.WorkerUnavailable
+                && result.ConnectionState == ConnectionState.Unknown && result.ReadbackMatches is null);
             Check(File.ReadAllLines(counter).Length == 1);
         });
     await Test("worker timeout terminates an unresponsive process without replay", async () =>
@@ -46,6 +61,19 @@ try
         var result = await bridge.ApplyAsync(new UiAction("Spatial", 0), default);
         Check(timer.Elapsed < TimeSpan.FromSeconds(8));
         Check(result.SubmissionAttempted && result.AcknowledgementUnknown);
+        Check(!result.BackendReceiptReceived && result.FailureKind == ApplyFailure.WorkerUnavailable
+            && result.ConnectionState == ConnectionState.Unknown);
+        Check(File.ReadAllLines(counter).Length == 1);
+    });
+    await Test("missing backend receipt cannot become a complete result or trigger replay", async () =>
+    {
+        string counter = Counter("missing-receipt");
+        await using var bridge = Bridge("missing-receipt", counter);
+        var result = await bridge.ApplyAsync(new UiAction("GameMode", 0), default);
+        Check(!result.BackendReceiptReceived);
+        // Preserve the received fields as evidence; only a complete backend receipt can
+        // authorize confirmation or a retry in the operation coordinator.
+        Check(result.Accepted && result.ReadbackMatches == true && result.TargetSubmitted);
         Check(File.ReadAllLines(counter).Length == 1);
     });
     await Test("unknown peer ACK with verified readback survives the process boundary", async () =>
@@ -54,6 +82,23 @@ try
         await using var bridge = Bridge("unknown-ack", counter);
         var result = await bridge.ApplyAsync(new UiAction("GameMode", 0), default);
         Check(!result.Accepted && result.ReadbackMatches == true && result.AcknowledgementUnknown && result.After?.GameMode == false);
+        Check(result.BackendReceiptReceived && result.ConnectionState == ConnectionState.Connected
+            && result.FailureKind == ApplyFailure.TransportUnknown && result.TargetSubmitted
+            && !result.PrerequisiteSubmitted && result.AckStatus is null && !result.PartialEffects
+            && result.After?.Identity == "opaque-peer" && result.After.ConnectionState == ConnectionState.Connected);
+        Check(File.ReadAllLines(counter).Length == 1);
+    });
+    await Test("typed disconnection and partial prerequisite evidence survive RPC unchanged", async () =>
+    {
+        string counter = Counter("disconnected-receipt");
+        await using var bridge = Bridge("disconnected-receipt", counter);
+        var result = await bridge.ApplyAsync(new UiAction("Spatial", 1, AllowMutexChange: true), default);
+        Check(result.BackendReceiptReceived && result.ConnectionState == ConnectionState.Disconnected
+            && result.FailureKind == ApplyFailure.Disconnected && result.SubmissionAttempted
+            && result.TargetSubmitted && result.PrerequisiteSubmitted && result.AckStatus is null
+            && !result.Accepted && result.ReadbackMatches is null && result.AcknowledgementUnknown
+            && result.PartialEffects && result.ObservedEqualizerId is null
+            && result.After is { Connected: false, ConnectionState: ConnectionState.Disconnected, Identity: "opaque-peer" });
         Check(File.ReadAllLines(counter).Length == 1);
     });
     await VmTests.RunAsync(Test);
@@ -100,11 +145,37 @@ static async Task<int> FakeWorker(string mode, string counter)
             if (mode == "hang") { await Task.Delay(TimeSpan.FromSeconds(30)); return 0; }
             if (mode == "malformed") { Console.WriteLine("{}"); continue; }
         }
+        if (mode == "scopes" && request.Operation == "refresh")
+            await File.AppendAllTextAsync(counter, (request.RefreshScope.HasValue ? "explicit:" : "legacy:")
+                + (request.RefreshScope ?? RefreshScope.Full) + "\n");
+        var connected = new UiSnapshot { Identity = "opaque-peer", Connected = true,
+            ConnectionState = ConnectionState.Connected, SupportedModel = true, HiRes = true, GameMode = false };
         object data = request.Operation switch
         {
             "enumerate" => new List<UiDevice> { new("opaque-peer", "OPPO Enco X4", true) },
-            "connect" or "refresh" => new UiSnapshot { Connected = true, SupportedModel = true, HiRes = true },
-            "apply" => new UiApplyResult { SubmissionAttempted = true, AcknowledgementUnknown = true, ReadbackMatches = true, After = new UiSnapshot { GameMode = false } },
+            "connect" or "refresh" => connected,
+            "apply" when mode == "missing-receipt" => new { Accepted = true, ReadbackMatches = true,
+                TargetSubmitted = true, SubmissionAttempted = true, ConnectionState = ConnectionState.Connected, After = connected },
+            "apply" when mode == "disconnected-receipt" => new UiApplyResult
+            {
+                BackendReceiptReceived = true, ConnectionState = ConnectionState.Disconnected,
+                FailureKind = ApplyFailure.Disconnected, SubmissionAttempted = true,
+                TargetSubmitted = true, PrerequisiteSubmitted = true, PartialEffects = true,
+                AcknowledgementUnknown = true, Message = "The selected peer disconnected after a partial operation.",
+                After = new UiSnapshot { Identity = "opaque-peer", ConnectionState = ConnectionState.Disconnected }
+            },
+            "apply" when mode == "unknown-ack" => new UiApplyResult
+            {
+                BackendReceiptReceived = true, ConnectionState = ConnectionState.Connected,
+                FailureKind = ApplyFailure.TransportUnknown, SubmissionAttempted = true,
+                TargetSubmitted = true, AcknowledgementUnknown = true, ReadbackMatches = true, After = connected
+            },
+            "apply" => new UiApplyResult
+            {
+                BackendReceiptReceived = true, ConnectionState = ConnectionState.Connected,
+                TargetSubmitted = true, SubmissionAttempted = true, Accepted = true,
+                AckStatus = 0, ReadbackMatches = true, After = connected
+            },
             _ => true
         };
         var response = new RpcResponse

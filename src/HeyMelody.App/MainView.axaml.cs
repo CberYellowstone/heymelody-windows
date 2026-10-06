@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using FluentAvalonia.UI.Controls;
 using System.ComponentModel;
 
@@ -12,6 +13,7 @@ public partial class MainView : UserControl
     private MainViewModel? _observedViewModel;
     private FAContentDialog? _settingsDialog;
     private Task? _settingsOperation;
+    private CancellationTokenSource? _settingsCancellation;
     private bool _closingWindow;
     private MainViewModel? ViewModel => DataContext as MainViewModel;
     public MainView()
@@ -70,14 +72,14 @@ public partial class MainView : UserControl
 
     private async void Device_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_selectingDevice || ViewModel is not { } vm || Equals(DevicePicker.SelectedItem, vm.SelectedDevice)) return;
+        if (_selectingDevice || ViewModel is not { } vm || vm.UpdatingState || Equals(DevicePicker.SelectedItem, vm.SelectedDevice)) return;
         _selectingDevice = true;
         try { await vm.SelectDeviceAsync(DevicePicker.SelectedItem as UiDevice); DevicePicker.SelectedItem = vm.SelectedDevice; }
         finally { _selectingDevice = false; }
     }
     private async void EqEntry_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_selectingEq || ViewModel is not { } vm || Equals(EqEntryCombo.SelectedItem, vm.SelectedEqEntry)) return;
+        if (_selectingEq || ViewModel is not { } vm || vm.UpdatingState || Equals(EqEntryCombo.SelectedItem, vm.SelectedEqEntry)) return;
         _selectingEq = true;
         try { await vm.SelectEqEntryAsync(EqEntryCombo.SelectedItem as UiEqEntry); EqEntryCombo.SelectedItem = vm.SelectedEqEntry; }
         finally { _selectingEq = false; }
@@ -93,39 +95,50 @@ public partial class MainView : UserControl
 
     internal async Task OpenSettingsDialogAsync()
     {
-        if (_closingWindow || _settingsOperation is not null || ViewModel?.Busy == true) return;
-        _settingsOperation = ShowAppSettingsAsync();
+        if (_closingWindow || _settingsOperation is not null || ViewModel is not { Closing: false } vm) return;
+        using var cancellation = new CancellationTokenSource();
+        _settingsCancellation = cancellation;
+        _settingsOperation = vm.Dialogs.RunAsync(ShowAppSettingsAsync, cancellation.Token);
         try { await _settingsOperation; }
-        finally { _settingsOperation = null; }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested || vm.Closing) { }
+        finally { _settingsOperation = null; _settingsCancellation = null; }
     }
 
     public async Task DismissSettingsDialogAsync()
     {
         _closingWindow = true;
+        _settingsCancellation?.Cancel();
         _settingsDialog?.Hide();
-        if (_settingsOperation is { } task) await task;
+        if (_settingsOperation is { } task)
+        {
+            try { await task; }
+            catch (OperationCanceledException) { }
+        }
     }
     public void ResumeSettingsDialogs() => _closingWindow = false;
 
-    private async Task ShowAppSettingsAsync()
+    private async Task ShowAppSettingsAsync(CancellationToken token)
     {
-        if (TopLevel.GetTopLevel(this) is not { } owner) return;
+        if (_closingWindow || TopLevel.GetTopLevel(this) is not { } owner) return;
+        token.ThrowIfCancellationRequested();
         var preference = ThemePreferences.Load();
         var theme = new ComboBox { ItemsSource = new[] { "跟随系统", "浅色", "深色" }, SelectedIndex = preference switch { "light" => 1, "dark" => 2, _ => 0 }, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch };
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(new TextBlock { Text = "外观", FontWeight = Avalonia.Media.FontWeight.SemiBold }); content.Children.Add(theme);
-        content.Children.Add(new TextBlock { Text = "HeyMelody 0.6.0 · 社区客户端\n通过蓝牙管理已配对的 OPPO 耳机。", TextWrapping = Avalonia.Media.TextWrapping.Wrap });
+        content.Children.Add(new TextBlock { Text = $"HeyMelody {AppVersion.Display} · 社区客户端\n通过蓝牙管理已配对的 OPPO 耳机。", TextWrapping = Avalonia.Media.TextWrapping.Wrap });
         var dialog = new FAContentDialog { Title = "应用设置", Content = content, PrimaryButtonText = "保存", CloseButtonText = "取消", DefaultButton = FAContentDialogButton.Primary };
-        if (await ShowSettingsDialogAsync(dialog, owner) != FAContentDialogResult.Primary || _closingWindow) return;
+        if (await ShowSettingsDialogAsync(dialog, owner, token) != FAContentDialogResult.Primary || _closingWindow || token.IsCancellationRequested) return;
         var selected = theme.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" };
         if (Application.Current is App app) app.ApplyTheme(selected);
         if (!ThemePreferences.Save(selected))
-            await ShowSettingsDialogAsync(new FAContentDialog { Title = "外观已切换", Content = "无法保存主题偏好，下次启动将使用原来的设置。", CloseButtonText = "确定" }, owner);
+            await ShowSettingsDialogAsync(new FAContentDialog { Title = "外观已切换", Content = "无法保存主题偏好，下次启动将使用原来的设置。", CloseButtonText = "确定" }, owner, token);
     }
 
-    private async Task<FAContentDialogResult> ShowSettingsDialogAsync(FAContentDialog dialog, TopLevel owner)
+    private async Task<FAContentDialogResult> ShowSettingsDialogAsync(FAContentDialog dialog, TopLevel owner, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
         _settingsDialog = dialog;
+        using var registration = token.Register(() => Dispatcher.UIThread.Post(dialog.Hide));
         try { return await dialog.ShowAsync(owner); }
         finally { _settingsDialog = null; }
     }

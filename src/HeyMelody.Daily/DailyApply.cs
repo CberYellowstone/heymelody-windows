@@ -16,7 +16,7 @@ public sealed partial class DailyClient
             if (_disposed) return Reject(result, "客户端已关闭。");
             DailySnapshot before = await ReadFreshAsync(token); result.Before = before;
             if (!before.Connected || !before.ProfileVerified || before.Error is not null)
-                return Reject(result, "新鲜设备状态不可用，没有发送设置。");
+                return Reject(result, "新鲜设备状态不可用，没有发送设置。", DailyApplyFailure.StateUnavailable);
             var caps = before.Capabilities;
             ushort cmd; byte[] payload; Func<DailySnapshot, bool> target;
             switch (kind)
@@ -64,7 +64,7 @@ public sealed partial class DailyClient
                         if (before.HiRes is null) return Reject(result, "Hi-Res 状态未知，不能安全开启空间模式。");
                         if (before.HiRes == true)
                         {
-                            if (!allowMutexChange) return Reject(result, "开启空间模式需要先关闭 Hi-Res，请明确确认联动。");
+                            if (!allowMutexChange) return Reject(result, "开启空间模式需要先关闭 Hi-Res，请明确确认联动。", DailyApplyFailure.MutexConsentRequired);
                             if (!caps.HiRes) return Reject(result, "Hi-Res 无法设置，未发送空间模式。");
                             if (!await SetPrerequisiteAsync(0x0403, [0x18, 0], s => s.HiRes == false,
                                 "已关闭 Hi-Res", result, token)) return Finish(result);
@@ -84,7 +84,7 @@ public sealed partial class DailyClient
                         if (before.SpatialMode is null) return Reject(result, "空间模式状态未知，不能安全开启 Hi-Res。");
                         if (before.SpatialMode > 0)
                         {
-                            if (!allowMutexChange) return Reject(result, "开启 Hi-Res 需要先关闭空间模式，请明确确认联动。");
+                            if (!allowMutexChange) return Reject(result, "开启 Hi-Res 需要先关闭空间模式，请明确确认联动。", DailyApplyFailure.MutexConsentRequired);
                             if (!caps.SpatialMode) return Reject(result, "空间模式无法设置，未发送 Hi-Res。");
                             ushort prerequisite = caps.SpatialRoute == "modern" ? (ushort)0x0422 : (ushort)0x0403;
                             byte[] off = caps.SpatialRoute == "modern" ? [0] : [0x1B, 0];
@@ -101,7 +101,7 @@ public sealed partial class DailyClient
             DailySnapshot latest = result.After ?? before;
             if (target(latest))
             {
-                result.ReadbackVerified = true; result.Success = true; result.After = latest;
+                result.ReadbackMatches = true; result.Success = true; result.After = latest;
                 result.Message = "当前回读已经符合请求，没有重复发送设置。"; return result;
             }
             await SendAndObserveAsync(cmd, payload, target, result, token);
@@ -109,6 +109,7 @@ public sealed partial class DailyClient
         }
         catch (Exception)
         {
+            result.FailureKind = DailyApplyFailure.TransportUnknown;
             result.Error = token.IsCancellationRequested ? "操作已取消；已提交的设置不会自动重发。" :
                 "设置过程未完成；已提交的设置不会自动重发。";
             if (result.SubmissionAttempted) result.PartialEffects.Add("本次已提交设置，最终状态需要再次读取确认。");
@@ -117,26 +118,42 @@ public sealed partial class DailyClient
         finally { _gate.Release(); }
     }
     private async Task SendAndObserveAsync(ushort command, byte[] payload, Func<DailySnapshot, bool> target,
-        DailyApplyResult result, CancellationToken token)
+        DailyApplyResult result, CancellationToken token, bool prerequisite = false)
     {
         var reply = await _session!.RequestAsync(command, payload, token);
+        if (prerequisite) result.PrerequisiteSubmitted |= reply.Submitted;
+        else { result.TargetSubmitted |= reply.Submitted; result.AckStatus = reply.Status; }
         MergeAck(result, reply);
         // Reads may reconnect; a setter is never retried, including partial-send failures.
         if (_session is not { Usable: true }) await DropSessionAsync();
         result.After = await ReadFreshAsync(token);
         bool identityMatches = result.After.ProfileVerified && result.After.ProductId == result.Before!.ProductId;
-        result.ReadbackVerified = identityMatches && target(result.After);
+        result.ReadbackMatches = identityMatches && TargetKnown(command, payload, result.After)
+            ? target(result.After) : null;
         result.Success = result.AckAccepted == true && result.ReadbackVerified;
+        result.FailureKind = reply.ConnectionInterrupted ? DailyApplyFailure.Disconnected :
+            result.Success ? DailyApplyFailure.None : result.AckAccepted == false ? DailyApplyFailure.PeerRejected :
+            result.AckAccepted is null ? DailyApplyFailure.TransportUnknown :
+            result.ReadbackMatches is null ? DailyApplyFailure.ReadbackUnavailable : DailyApplyFailure.ReadbackMismatch;
     }
+    private static bool TargetKnown(ushort command, byte[] payload, DailySnapshot snapshot) => command switch
+    {
+        0x0404 => snapshot.Anc?.Primary is not null && snapshot.Anc.Level is not null,
+        0x0406 => snapshot.PresetId is not null,
+        0x0418 => snapshot.CustomEqualizersRead,
+        0x0422 => snapshot.SpatialMode is not null,
+        0x0403 => snapshot.RawFeatures.TryGetValue(payload[0], out byte value) && value <= 1,
+        _ => false
+    };
     private async Task<bool> SetPrerequisiteAsync(ushort command, byte[] payload, Func<DailySnapshot, bool> target,
         string description, DailyApplyResult result, CancellationToken token)
     {
-        await SendAndObserveAsync(command, payload, target, result, token);
+        await SendAndObserveAsync(command, payload, target, result, token, prerequisite: true);
         bool verified = result.AckAccepted == true && result.ReadbackVerified;
         // Record even an uncertain prerequisite conservatively; no compensating write or later setter follows it.
         result.PartialEffects.Add(verified ? description : description + "的请求已提交，结果未完整确认。");
-        if (!verified) { result.Success = false; result.ReadbackVerified = false; return false; }
-        result.Success = false; result.ReadbackVerified = false;
+        if (!verified) { result.Success = false; result.ReadbackMatches = null; return false; }
+        result.Success = false; result.ReadbackMatches = null;
         // Refresh may have changed capabilities. Never use stale route/command information for the final setter.
         if (result.After is not { Connected: true, ProfileVerified: true } ||
             result.After.ProductId != result.Before!.ProductId)
@@ -152,12 +169,14 @@ public sealed partial class DailyClient
         result.AckAccepted = first ? accepted : result.AckAccepted == false || accepted == false ? false :
             result.AckAccepted == true && accepted == true ? true : null;
     }
-    private static DailyApplyResult Reject(DailyApplyResult result, string text)
-    { result.Error = text; result.Message = text; return result; }
+    private static DailyApplyResult Reject(DailyApplyResult result, string text, DailyApplyFailure failure = DailyApplyFailure.Validation)
+    { result.Error = text; result.Message = text; result.FailureKind = failure; return result; }
     private static DailyApplyResult Finish(DailyApplyResult result)
     {
         if (result.Success) result.Message = "设备已确认设置，状态回读一致。";
         else if (result.Error is not null) result.Message = result.Error;
+        else if (result.FailureKind == DailyApplyFailure.Disconnected)
+            result.Message = "设置时控制连接已中断，已尝试重新读取当前状态；不会自动重发。";
         else if (result.AckAccepted == false) result.Message = "设备拒绝了设置；请查看重新读取的状态。";
         else if (result.SubmissionAttempted && result.AckAccepted is null)
             result.Message = result.ReadbackVerified ? "状态回读符合请求，但设置响应未完整确认；不会自动重发。" :
@@ -189,11 +208,25 @@ public sealed partial class DailyClient
         try { payload = DailyParsers.BuildEqualizer(edit, before.EqualizerFrequencies,
             preserveReportedName: existing is not null && existing.Name == edit.Name); }
         catch (Exception) { return Reject(result, "EQ 名称、十段频率或增益未通过校验。"); }
+        if (existing is { Selected: true } && existing.Name == edit.Name &&
+            existing.MinimumGain == edit.MinimumGain && existing.MaximumGain == edit.MaximumGain &&
+            existing.Bands.SequenceEqual(edit.Bands))
+        {
+            result.Success = true; result.ReadbackMatches = true; result.After = before;
+            result.ObservedEqualizerId = existing.Id;
+            result.Message = "当前 EQ 已符合请求，没有重复发送设置。";
+            return result;
+        }
         bool Match(CustomEqualizer x) => x.Name == edit.Name && x.MinimumGain == edit.MinimumGain &&
             x.MaximumGain == edit.MaximumGain && x.Bands.SequenceEqual(edit.Bands) &&
             (edit.Id != 0 ? x.Id == edit.Id : !before.CustomEqualizers.Any(old => old.Id == x.Id));
         await SendAndObserveAsync(0x0418, payload, s => s.CustomEqualizersRead &&
             s.CustomEqualizers.Count(x => Match(x) && x.Selected) == 1, result, token);
+        if (result.After is { CustomEqualizersRead: true } observed)
+        {
+            var matches = observed.CustomEqualizers.Where(Match).ToArray();
+            if (matches.Length == 1) result.ObservedEqualizerId = matches[0].Id;
+        }
         if (!result.Success)
         {
             if (result.After is { CustomEqualizersRead: true } after && after.CustomEqualizers.Count(Match) == 1)

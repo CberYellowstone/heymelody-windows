@@ -8,11 +8,13 @@ public sealed class PreviewService : IHeadsetService
     public Task<UiSnapshot> ConnectAsync(string identity, CancellationToken token) => Task.FromResult(Snapshot());
     public Task DisconnectAsync(CancellationToken token) => Task.CompletedTask;
     public Task<UiSnapshot> RefreshAsync(CancellationToken token) => Task.FromResult(Snapshot());
+    public Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken token) => RefreshAsync(token);
     public Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token) => throw new InvalidOperationException("Preview never sends settings.");
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     private static UiSnapshot Snapshot() => new()
     {
         Identity = Identity, DeviceName = "OPPO Enco X4", Connected = true, SupportedModel = true,
+        ConnectionState = ConnectionState.Connected,
         ProductId = "06EC10", Firmware = "116", LeftBattery = 92, RightBattery = 89, CaseBattery = 76,
         LeftCharging = false, RightCharging = false, CaseCharging = false,
         Anc = 0x0104, Equalizer = 0, Spatial = 0, HiRes = true, DualConnection = true, GameMode = false,

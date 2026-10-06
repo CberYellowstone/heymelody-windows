@@ -1,8 +1,8 @@
-# 阶段五日常控制层
+# 日常控制层（当前实现）
 
 实现位于 `src/HeyMelody.Daily/`，公开命名空间为 `HeyMelodyWindows.Daily`。库使用 .NET 10 BCL 和已有 Protocol、Devices、Control 接口，不增加第三方依赖、蓝牙扫描、通知注册、驱动安装或系统设置。项目为 AnyCPU，Windows 原生传输和三个架构的应用发布由宿主集成。
 
-`DailyClient(IControlConnector)` 的构造不连接设备。刷新和用户设置通过同一信号量串行执行，每个物理控制会话有独立的序号分配器和解码器。序号不会在一个连接内复用；余量不足时，下一轮读取先换连接。每次设置之前重新读取产品 ID、能力位图和相关状态，仅已核实的 06EC10 / OPPO Enco X4 配置允许设置。
+`DailyClient(IControlConnector)` 的构造不连接设备。刷新和用户设置通过同一信号量串行执行，每个物理控制会话有独立的序号分配器和解码器。序号不会在一个连接内复用；余量不足时，下一轮读取先换连接。每次设置之前进行完整 GET，重新读取产品 ID、能力位图和日常状态，仅已核实的 06EC10 / OPPO Enco X4 配置允许设置。当前 Avalonia 客户端的分区刷新和最多一次应用层重试见下文；阶段五原始验证记录仍保留在本文末尾。
 
 ## 公开接口
 
@@ -10,7 +10,8 @@
 
 | 方法 | 行为 |
 | --- | --- |
-| `RefreshAsync` | 仅 GET，生成新快照，失败字段不沿用旧值 |
+| `RefreshAsync(CancellationToken)` | 仅 GET，完整刷新；本轮未读到的字段保持未知 |
+| `RefreshAsync(DailyRefreshScope, CancellationToken)` | 仅 GET，刷新指定分区；在锁内合并最新缓存，保留未查询分区 |
 | `ApplyAncAsync(byte primary, byte level)` | 校验原始父子编号，发送所选叶子编号的位图 |
 | `ApplyPresetAsync(byte presetId)` | 按原始内置预设 ID 发送，保留非连续编号 |
 | `SelectCustomEqualizerAsync(byte id)` | 使用刚回读的完整条目发送 0418/action2 |
@@ -22,9 +23,37 @@
 
 空间和 Hi-Res 两个方法还有显式 `allowMutexChange` 重载。省略这个参数等于 false。新鲜状态显示开启目标需要先关闭互斥项时，默认不提交任何 SET。获得允许后，先提交关闭互斥项、匹配 ACK 并回读，再核对最新能力与状态，最后提交目标。前置操作没有完整确认就停止；不会进行补偿写入或自动重发。
 
-`DailyApplyResult.SubmissionAttempted` 表示本次任一 SET 曾进入传输提交步骤，含前置互斥操作和部分发送失败。`ResponseMatched` 表示全部已提交步骤的响应命令、响应位和序号匹配。`AckAccepted` 使用 nullable bool，空响应或响应未获得为 null，明确非零状态为 false。`ReadbackVerified` 只描述最终目标的回读。`Success` 要求所有已提交 ACK 为零且最终回读一致；当前状态已符合请求时，可以返回 Success=true、SubmissionAttempted=false。PartialEffects 包括确认完成的前置操作，也会明确记录已经提交但未完整确认的前置请求。
+`DailyApplyResult.SubmissionAttempted` 表示本次任一 SET 曾进入传输提交步骤，含前置互斥操作和部分发送失败；`TargetSubmitted` 和 `PrerequisiteSubmitted` 分别记录目标与前置步骤。它们都不证明设备已接收或设置已生效。`ResponseMatched` 表示全部已提交步骤的响应命令、响应位和序号匹配。`AckAccepted` 使用 nullable bool，空响应或响应未获得为 null，明确非零状态为 false；`AckStatus` 保留目标 SET 的状态字节，前置步骤不会冒充目标 ACK。
 
-每个请求使用四秒超时。GET 连接故障最多重新打开一次；新的会话重新验证身份。SET 的提交标记在调用传输之前建立，超时、取消、断开、空响应和发送异常之后均不重发。该超时不能保证同步 SDP 和异常内核传输在四秒内退出，宿主应保持 UI 响应并对工作进程设总预算。
+`ReadbackMatches` 为 true 表示最终目标匹配，为 false 表示已取得有效目标状态但不匹配，为 null 表示未取得可验证的目标回读。`ReadbackVerified` 等价于 `ReadbackMatches == true`。`Success` 要求所有已提交 ACK 为零且最终回读一致；当前状态已符合请求时，可以返回 Success=true、SubmissionAttempted=false。未知或拒绝的 ACK 不会因后来状态匹配而改成接受。PartialEffects 包括确认完成的前置操作，也会明确记录已经提交但未完整确认的前置请求。自定义 EQ 保存路径可通过 `ObservedEqualizerId` 返回唯一完整内容匹配的设备条目 ID，未知 ACK 或未选中时也可能观察到该 ID。
+
+每个协议请求使用四秒超时。一次读取遇到连接故障最多重新打开一次；新的会话重新验证身份。Daily 和 Host 的每次 Apply 都是单次尝试：目标 SET 最多提交一次，获得显式互斥同意时可先提交一个关闭另一项的 SET；两步之间核对回读，任一步不确定就停止。库不会因超时、取消、断开、空响应或发送异常重放 SET，客户端桥接层也不重放 IPC。四秒期限不能保证同步 SDP 和异常内核传输在四秒内退出，宿主仍在独立工作进程中处理原生调用并施加总预算。
+
+## 分区刷新、连接证据和客户端重试
+
+完整刷新与分区刷新均只发 GET。分区入口从持锁时的最新缓存复制快照，而不是保存轮询开始时的旧快照；因此用户写入完成后，后续分区读取保留写入回读更新的其他字段。返回快照与缓存不共享可变集合。分区内部先清除本次查询字段；普通分区的拒绝或解析失败使该字段未知、相关写入能力不可用，其他分区保留。身份查询或传输无法恢复时，整个可写快照失效。新传输即使只查电量，也先读取产品 ID 和能力；产品 ID 变化会清除旧缓存。
+
+| `DailyRefreshScope` | 查询覆盖 |
+| --- | --- |
+| `Identity` | 产品 ID 0103、能力位图 0100 |
+| `Features` | 功能列表 010D，以及可用时的现代空间 012A；否则依据实际 legacy 1B |
+| `Anc` | 当前降噪 010C |
+| `Equalizer` | 内置预设 010F、自定义列表 0122 |
+| `Battery` | 电量 0106 |
+| `Information` | 固件 0105、codec 0114 |
+| `Full` | 身份及以上全部日常状态；仍遵守设备报告的查询能力 |
+
+`DailySnapshot.Connected=false` 可能只是控制读取失败，不能直接解释为 Windows 已断开耳机。Host 的 `UiSnapshot.ConnectionState` 单独区分 Connected、Disconnected 和 Unknown：有效控制响应提供连接证据；读取失败时，Host 重新枚举所选精确地址并要求唯一且仍配对的条目，再使用其 Windows 连接状态。枚举失败、条目缺失或不能唯一匹配保持 Unknown。Product ID 标识型号；物理目标由当前 Host 中绑定精确地址的不透明身份确定，Host 重启后不会按相同名称转移待写入操作。
+
+一次 SET 请求遇到明确 EOF、传输 IOException（不含 InvalidDataException）或已识别的 Winsock 断开错误，会保留 `FailureKind=Disconnected`；即使之后只读重连成功、After 已显示 Connected，也不会丢失这次连接中断。超时、空 ACK、格式异常和未识别的错误仍为 TransportUnknown。目标 ACK 接受但缺失回读为 ReadbackUnavailable，有效回读不匹配为 ReadbackMismatch，明确拒绝为 PeerRejected。Host 返回完整类型结果时才有 `BackendReceiptReceived=true`；Bridge 未取得结果或收到的结果没有此标记时，客户端不能据此确认成功或自动重试。
+
+当前 Avalonia 客户端每八秒触发的轮询按 Identity、Features、Anc、Equalizer、Battery、Information 分区执行，重复轮询合并。生命周期操作与用户操作优先于下一个后台分区，不打断正在进行的 RPC 或互斥事务。后台读取不全局禁用控件；写入只占用相关组，其他组和 EQ 本地编辑仍可操作。
+
+重试由 `HeyMelody.Client/MainViewModel.Actions.cs` 管理，Daily/Host/Bridge 没有隐藏重试。Windows 显式提交的目标在点击时固定，后台仍依据每次最新 GET 校验能力、条目和互斥条件；手机在提交前改变旧值不会仅因值不同触发冲突提示。第一次失败后，只有收到完整结果、同一设备仍可验证、动作可以安全重复且没有部分互斥操作时，才在重新完整读取后自动再尝试一次。若最新状态已符合目标，只结束操作并保留原始 ACK 事实，不再发送。
+
+已知断连或无法确认结果/身份时第一次即提示失败，不再次写入。设备仍可验证连接、但动作不能安全自动重复时，显示重试/取消确认；确认后仍需完整读取并重新校验。新建 EQ 的未知结果需确认，先按原列表 ID 和完整内容核对新增条目；唯一匹配时复用实际 ID，歧义或名称冲突时不再创建。第二次尝试仍失败时提示后完整刷新，没有第三次尝试。取消重试会丢弃全部本地草稿和排队写入，再完整刷新设备信息。
+
+协议没有状态版本、修改来源或 compare-and-set。回读只能说明观察到的状态，不能证明是哪台手机或客户端修改；本地预检也不能消除预检与 SET 之间的竞争。
 
 ## 数据和协议依据
 
@@ -51,18 +80,22 @@
 
 既有 factory 名称允许包含空格和混合 UTF8，例如“哈曼特调 Sound by Harman”。选择使用完整回读名称；编辑未更名时也保留该名称，只校验 UTF8、无控制字符和编码长度不超过 255。新建和重命名使用当前客户端的字母/数字/中文输入策略，与参考桌面应用一致；这不代表耳机 wire 层只接受这些字符。
 
-保存后只读完整条目内容、真实回读 ID 和 Selected。action1/action2 是否已选用以实际回读为准，不根据 ACK 或列表索引推测。内容匹配但未选中时报告部分结果并停止，绝不追加 0406 或盲目补发另一条 SET。`EqualizerEdit.Activate=false` 明确拒绝提交，因为本轮没有已核实的仅保存而不选用命令。
+保存后只读完整条目内容、真实回读 ID 和 Selected。action1/action2 是否已选用以实际回读为准，不根据 ACK 或列表索引推测。内容匹配但未选中时，Daily 的本次尝试报告部分结果并停止，不追加 0406 或补发 SET；当前客户端可以按上述确认、核对流程进行唯一一次后续尝试。已有选中且完整内容相同的条目保存返回 no-op，不发送 SET。`EqualizerEdit.Activate=false` 明确拒绝提交，因为没有已核实的仅保存而不选用命令。
 
 此实现根据协议结构自行编写，没有复制参考桌面控制类或其依赖。研究参考保留在 `reference/`，未经修改。OTA、录音、翻译、健康、取消配对、连接其他手机和设备优先级管理不在这个库的操作入口内。
 
 ## 验证范围
 
-执行：
+从当前仓库根目录执行：
 
 ```powershell
-dotnet run --project HeyMelodyWindows/tests/HeyMelody.Daily.Tests/HeyMelody.Daily.Tests.csproj
-dotnet build HeyMelodyWindows/src/HeyMelody.Daily/HeyMelody.Daily.csproj -c Release
+dotnet run --project tests/HeyMelody.Daily.Tests/HeyMelody.Daily.Tests.csproj
+dotnet build src/HeyMelody.Daily/HeyMelody.Daily.csproj -c Release
 ```
+
+2026-10-06 本轮刷新改进后，Daily 的 52 组内存传输场景已经运行通过，Host 构建 0 warnings / 0 errors。新增覆盖分区请求范围、最新缓存合并、返回快照隔离、局部状态失效和恢复、换连接与产品变化、缺失回读与不匹配的区别、目标/前置提交标记、EQ no-op 和观察到的 ID，以及 SET EOF/IO/socket 断开在 GET 重连后仍保留失败分类、超时/格式异常保持未知。这些结果不包含新的真实设备 SET 或 ARM64 实机执行。应用层重试和排队取消另由 `tests/HeyMelody.Client.Tests/` 验证，不能用 Daily 测试替代。
+
+以下为阶段五原始验证记录，时间、场景数和真实设备样本没有更新为本轮结果：
 
 截至 2026-10-06 02:47 UTC，38 组离线场景全部通过，Release 构建 0 warnings / 0 errors。测试包括电量数量/重复/状态校验、ANC 原位图和智能档反例、EQ 完整截断扫描/UTF8/增益/重复 ID、独立十段和 factory 名称 wire golden、GET0122 空请求、现代/旧游戏与空间路由、双向互斥同意门、前置后能力变化、部分发送/空 ACK/明确拒绝不重发、实际分配 ID、保存但未选中、不支持的 save-only、序号耗尽和并发串行。
 

@@ -28,7 +28,7 @@ public static class Program
                     {
                         "enumerate" => await service.EnumerateAsync(budget.Token),
                         "connect" => await service.ConnectAsync(request.Identity ?? throw new InvalidDataException(), budget.Token),
-                        "refresh" => await service.RefreshAsync(budget.Token),
+                        "refresh" => await service.RefreshAsync(request.RefreshScope ?? RefreshScope.Full, budget.Token),
                         "diagnostics" => service.Diagnostics(),
                         "apply" => await service.ApplyAsync(request.Action.Deserialize<UiAction>(RpcWire.Json) ?? throw new InvalidDataException(), budget.Token),
                         "disconnect" => await Disconnect(),

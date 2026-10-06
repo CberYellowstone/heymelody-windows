@@ -1,5 +1,12 @@
 namespace HeyMelodyWindows.Daily;
 
+public enum DailyRefreshScope { Full, Identity, Features, Anc, Equalizer, Battery, Information }
+public enum DailyApplyFailure
+{
+    None, Validation, StateUnavailable, PeerRejected, ReadbackMismatch, ReadbackUnavailable,
+    TransportUnknown, Disconnected, WorkerUnavailable, MutexConsentRequired
+}
+
 public sealed record BatteryLevel(byte Raw, int? Percent, bool? Charging);
 public sealed class BatterySnapshot
 {
@@ -81,9 +88,15 @@ public sealed class DailySnapshot
 public sealed class DailyApplyResult
 {
     public bool SubmissionAttempted { get; set; }
+    public bool TargetSubmitted { get; set; }
+    public bool PrerequisiteSubmitted { get; set; }
     public bool ResponseMatched { get; set; }
     public bool? AckAccepted { get; set; }
-    public bool ReadbackVerified { get; set; }
+    public byte? AckStatus { get; set; }
+    public bool? ReadbackMatches { get; set; }
+    public bool ReadbackVerified => ReadbackMatches == true;
+    public DailyApplyFailure FailureKind { get; set; }
+    public byte? ObservedEqualizerId { get; set; }
     public bool Success { get; set; }
     public DailySnapshot? Before { get; set; }
     public DailySnapshot? After { get; set; }

@@ -10,7 +10,7 @@ internal static class VmTests
             await vm.InitializeAsync(); Check(!vm.HasVerifiedSnapshot && vm.HasDevices);
             await vm.ConnectCommand.ExecuteAsync(null);
             await vm.PollAsync(); await vm.PollAsync();
-            Check(vm.HasVerifiedSnapshot && service.Refreshes == 2 && service.Actions.Count == 0);
+            Check(vm.HasVerifiedSnapshot && service.Refreshes >= 2 && service.Actions.Count == 0);
             Check(vm.ProductId == "06EC10" && vm.LeftBatteryText == "90%");
         });
         await test("VM rejects a snapshot belonging to a different device", async () =>
@@ -89,14 +89,18 @@ internal static class VmTests
             Check(!vm.EqDirty && service.Actions.Count == 1);
             Check(service.Actions[0].EqualizerEntry is { Bands.Count: 10, Name: "我的调整" });
         });
-        await test("VM does not submit during an overlapping read", async () =>
+        await test("VM accepts a write during an overlapping read and serializes its submission", async () =>
         {
             var service = new FakeService { RefreshBlocked = new(TaskCreationOptions.RunContinuationsAsynchronously) };
             await using var vm = Create(service); await Connect(vm);
-            var read = vm.RefreshStateCommand.ExecuteAsync(null); Check(vm.Busy);
-            await vm.ToggleGameCommand.ExecuteAsync(true); await vm.PollAsync();
+            var read = vm.RefreshStateCommand.ExecuteAsync(null); Check(vm.IsRefreshing && !vm.Busy);
+            Check(vm.CanSetGameMode && vm.CanSetAnc && vm.CanEditEq);
+            var write = vm.ToggleGameCommand.ExecuteAsync(true);
+            await vm.PollAsync();
             Check(service.Actions.Count == 0 && service.Refreshes == 1);
-            service.RefreshBlocked.SetResult(Snapshot()); await read; Check(!vm.Busy && vm.HasVerifiedSnapshot);
+            service.RefreshBlocked.SetResult(Snapshot()); await read; await write;
+            Check(service.Actions.Count == 1 && service.Actions[0] is { Kind: "GameMode", Value: 1 });
+            Check(!vm.Busy && !vm.IsRefreshing && vm.HasVerifiedSnapshot);
         });
         await test("VM close cancellation preserves draft and accepted close disposes once", async () =>
         {
@@ -141,17 +145,17 @@ internal static class VmTests
             vm.Bands[0].Gain = 3; await vm.ConnectCommand.ExecuteAsync(null);
             Check(vm.HasVerifiedSnapshot && vm.EqDirty && service.Disconnects == 0);
         });
-        await test("VM close waits for the active mutex confirmation", async () =>
+        await test("VM close cancels the active mutex confirmation before confirming its draft", async () =>
         {
             var service = new FakeService(); var confirmations = new DeferredConfirmations();
             var vm = new MainViewModel(service, confirmations); await Connect(vm); vm.EqName = "未保存";
             vm.SelectedSpatial = vm.SpatialOptions.Last(); var apply = vm.ApplySpatialCommand.ExecuteAsync(null);
+            Check(confirmations.Calls == 1);
             var close = vm.RequestCloseAsync();
-            Check(confirmations.Calls == 1 && !close.IsCompleted);
-            confirmations.First.SetResult(false);
             await apply; Check(await close);
-            Check(confirmations.Calls == 2 && service.Actions.Count == 0 && service.Disposals == 1);
+            Check(confirmations.Calls == 2 && !confirmations.First.Task.IsCompleted && service.Actions.Count == 0 && service.Disposals == 1);
         });
+        await RefreshInteractionTests.RunAsync(test);
     }
 
     private static MainViewModel Create(FakeService service, Confirmations? confirmations = null) => new(service, confirmations ?? new(true));
@@ -159,7 +163,7 @@ internal static class VmTests
     private static void Check(bool value) { if (!value) throw new InvalidOperationException("VM assertion failed."); }
     private static UiSnapshot Snapshot(string identity = "device-a") => new()
     {
-        Identity = identity, ProductId = "06EC10", DeviceName = "OPPO Enco X4", Connected = true, SupportedModel = true,
+        Identity = identity, ProductId = "06EC10", DeviceName = "OPPO Enco X4", Connected = true, ConnectionState = ConnectionState.Connected, SupportedModel = true,
         LeftBattery = 90, Anc = 0x0104, Equalizer = 0, Spatial = 0, HiRes = true, DualConnection = true, GameMode = false,
         CanSetAnc = true, CanSetEqualizer = true, CanSetCustomEqualizer = true, CanSetSpatial = true,
         CanSetHiRes = true, CanSetDualConnection = true, CanSetGameMode = true, SpatialHiResMutex = true,
@@ -195,7 +199,29 @@ internal static class VmTests
         public Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken cancellationToken)
         {
             Actions.Add(action);
-            return Task.FromResult(Result?.Invoke(action) ?? new() { SubmissionAttempted = true, Accepted = true, ReadbackMatches = true, After = Snapshot(LastIdentity) });
+            if (Result is not null) return Task.FromResult(Result(action));
+            var after = Snapshot(LastIdentity);
+            int? observedId = null;
+            switch (action.Kind)
+            {
+                case "Anc": after.Anc = action.Value; break;
+                case "Equalizer": after.Equalizer = action.Value; break;
+                case "GameMode": after.GameMode = action.Value == 1; break;
+                case "DualConnection": after.DualConnection = action.Value == 1; break;
+                case "HiRes": after.HiRes = action.Value == 1; if (after.HiRes == true) after.Spatial = 0; break;
+                case "Spatial": after.Spatial = action.Value; if (action.Value != 0) after.HiRes = false; break;
+                case "CustomSelect": after.EqualizerEntries = after.EqualizerEntries.Select(existingEntry => existingEntry with { Selected = existingEntry.Id == action.Value }).ToArray(); break;
+                case "CustomEqualizer" when action.EqualizerEntry is { } entry:
+                    observedId = entry.Id == 0 ? 3 : entry.Id;
+                    after.EqualizerEntries = after.EqualizerEntries.Where(existing => existing.Id != observedId)
+                        .Append(entry with { Id = observedId.Value, Selected = true }).ToArray(); break;
+            }
+            return Task.FromResult(new UiApplyResult
+            {
+                BackendReceiptReceived = true, ConnectionState = ConnectionState.Connected,
+                TargetSubmitted = true, SubmissionAttempted = true, Accepted = true,
+                ReadbackMatches = true, ObservedEqualizerId = observedId, After = after
+            });
         }
         public ValueTask DisposeAsync() { Disposals++; return ValueTask.CompletedTask; }
     }
