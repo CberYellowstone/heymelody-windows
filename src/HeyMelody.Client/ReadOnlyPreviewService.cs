@@ -1,7 +1,7 @@
 namespace HeyMelodyWindows.App;
 
 // Live render is deliberately a GET-only service boundary, not a UI automation script.
-internal sealed class ReadOnlyPreviewService(IHeadsetService inner) : IHeadsetService
+public sealed class ReadOnlyPreviewService(IHeadsetService inner) : IHeadsetService
 {
     private string? _allowedIdentity;
     public async Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken token)

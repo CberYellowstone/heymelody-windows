@@ -56,6 +56,7 @@ try
         Check(!result.Accepted && result.ReadbackMatches == true && result.AcknowledgementUnknown && result.After?.GameMode == false);
         Check(File.ReadAllLines(counter).Length == 1);
     });
+    await VmTests.RunAsync(Test);
     Console.WriteLine(JsonSerializer.Serialize(new { passed, success = true, architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(), nativeBluetoothCalls = 0 }, RpcWire.Json));
     return 0;
 }

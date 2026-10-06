@@ -131,6 +131,7 @@ public sealed class NativeHeadsetService : IHeadsetService
         return new UiSnapshot
         {
             Identity = _selected ?? "", DeviceName = _selectedName,
+            ProductId = snapshot.ProductId,
             Connected = snapshot.Connected, SupportedModel = snapshot.ProfileVerified,
             Failure = snapshot.Error is null ? null : "未能完整读取耳机状态，请刷新或重新连接。",
             LeftBattery = snapshot.Battery?.Left?.Percent, RightBattery = snapshot.Battery?.Right?.Percent,

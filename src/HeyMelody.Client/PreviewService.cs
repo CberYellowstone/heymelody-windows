@@ -1,7 +1,7 @@
 namespace HeyMelodyWindows.App;
 
 // Only used by --ui-preview. No Windows/native/backend references and no Bluetooth calls.
-internal sealed class PreviewService : IHeadsetService
+public sealed class PreviewService : IHeadsetService
 {
     private const string Identity = "preview-device";
     public Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken token) => Task.FromResult<IReadOnlyList<UiDevice>>([new(Identity, "OPPO Enco X4", true)]);
@@ -13,7 +13,7 @@ internal sealed class PreviewService : IHeadsetService
     private static UiSnapshot Snapshot() => new()
     {
         Identity = Identity, DeviceName = "OPPO Enco X4", Connected = true, SupportedModel = true,
-        Firmware = "116", LeftBattery = 92, RightBattery = 89, CaseBattery = 76,
+        ProductId = "06EC10", Firmware = "116", LeftBattery = 92, RightBattery = 89, CaseBattery = 76,
         LeftCharging = false, RightCharging = false, CaseCharging = false,
         Anc = 0x0104, Equalizer = 0, Spatial = 0, HiRes = true, DualConnection = true, GameMode = false,
         CanSetAnc = true, CanSetEqualizer = true, CanSetCustomEqualizer = true,

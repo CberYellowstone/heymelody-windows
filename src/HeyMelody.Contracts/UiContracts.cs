@@ -16,6 +16,7 @@ public sealed class UiSnapshot
 {
     public string Identity { get; set; } = "";
     public string DeviceName { get; set; } = "";
+    public string? ProductId { get; set; }
     public string? Failure { get; set; }
     public bool Connected { get; set; }
     public bool SupportedModel { get; set; }

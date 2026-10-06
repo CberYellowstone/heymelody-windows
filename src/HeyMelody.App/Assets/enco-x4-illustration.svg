@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="460" viewBox="0 0 600 460">
+  <title>HeyMelody original earbud product illustration</title>
+  <desc>Original schematic artwork, not a manufacturer photograph. ProductArtwork.axaml renders the same vector design using Avalonia paths.</desc>
+  <defs>
+    <linearGradient id="shell" x2=".8" y2="1"><stop stop-color="#fff"/><stop offset=".38" stop-color="#f4f3ef"/><stop offset=".85" stop-color="#c4c7c8"/><stop offset="1" stop-color="#92989d"/></linearGradient>
+    <linearGradient id="lid" x2="0" y2="1"><stop stop-color="#fcfcfa"/><stop offset="1" stop-color="#dbdddc"/></linearGradient>
+    <linearGradient id="metal"><stop stop-color="#5b646a"/><stop offset=".25" stop-color="#e6e7e4"/><stop offset=".5" stop-color="#fff"/><stop offset=".83" stop-color="#b7bdbf"/><stop offset="1" stop-color="#6d777b"/></linearGradient>
+    <radialGradient id="bud" cx=".35" cy=".3" r=".85"><stop stop-color="#fff"/><stop offset=".45" stop-color="#ebece9"/><stop offset="1" stop-color="#969fa2"/></radialGradient>
+  </defs>
+  <ellipse cx="299" cy="410" rx="193" ry="12" fill="#000" opacity=".08"/>
+  <path d="M139 239C121 221 120 180 135 135C151 88 446 88 464 136C479 176 480 220 460 240Z" fill="url(#lid)" stroke="#c6cbcd" stroke-width="1.5"/>
+  <path d="M153 218C143 192 146 153 159 143C187 123 412 124 439 145C451 157 454 194 444 217Z" fill="#bfc4c4"/>
+  <path d="M168 212C155 170 215 145 257 156C281 163 278 205 276 213ZM324 213C321 176 330 159 351 156C396 151 445 175 432 212Z" fill="#858e91"/>
+  <path d="M137 230C162 198 438 198 464 230C478 248 463 270 434 276H168C138 270 123 247 137 230Z" fill="#6f7a80"/>
+  <path d="M160 235C187 213 412 213 441 236C451 246 435 256 417 260H182C163 257 148 247 160 235Z" fill="#e1e4e1"/>
+  <path d="M133 249C172 286 429 286 469 249L455 334C441 399 164 399 146 334Z" fill="url(#shell)" stroke="#b7bfc2" stroke-width="1.5"/>
+  <path d="M145 272C203 304 399 305 457 272" stroke="#fff" stroke-width="3" fill="none" opacity=".7"/>
+  <ellipse cx="300.5" cy="316.5" rx="3.5" ry="1.5" fill="#6c8581"/>
+  <g transform="rotate(-16 207 195)">
+    <path d="M195 168C194 155 209 148 221 157L225 253C225 269 194 269 194 253Z" fill="url(#metal)" stroke="#aab4b9"/>
+    <path d="M170 164C152 137 173 109 204 107C236 105 254 126 247 151C244 164 232 175 219 176C198 181 179 178 170 164Z" fill="url(#bud)" stroke="#b8bec0"/>
+    <ellipse cx="172" cy="144" rx="13" ry="17" fill="#444c50"/><ellipse cx="172" cy="144" rx="7" ry="12" fill="#1e272c"/>
+    <ellipse cx="209" cy="118.5" rx="7" ry="2.5" fill="#586167"/>
+  </g>
+  <g transform="rotate(16 394 195)">
+    <path d="M376 168C375 155 390 148 403 157L407 253C407 269 376 269 376 253Z" fill="url(#metal)" stroke="#aab4b9"/>
+    <path d="M353 151C345 126 364 105 396 107C427 109 448 137 430 164C420 178 402 181 381 176C368 175 356 164 353 151Z" fill="url(#bud)" stroke="#b8bec0"/>
+    <ellipse cx="430" cy="144" rx="13" ry="17" fill="#444c50"/><ellipse cx="430" cy="144" rx="7" ry="12" fill="#1e272c"/>
+    <ellipse cx="392" cy="118.5" rx="7" ry="2.5" fill="#586167"/>
+  </g>
+</svg>

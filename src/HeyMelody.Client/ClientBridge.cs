@@ -2,14 +2,14 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using HeyMelodyWindows.Host;
 
 namespace HeyMelodyWindows.App;
 
 /// <summary>Supervises a private stdio worker. Native SDP never runs on the UI thread.</summary>
 public sealed class ClientBridge : IHeadsetService
 {
-    private const int MaximumRecord = 524288;
+    private const int MaximumRecord = RpcWire.MaximumLineCharacters;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
     private Process? _worker;
@@ -18,11 +18,7 @@ public sealed class ClientBridge : IHeadsetService
     private bool _disposed;
     private readonly Func<ProcessStartInfo>? _workerFactory;
     private readonly TimeSpan? _testBudget;
-    private static readonly JsonSerializerOptions Json = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
+    private static readonly JsonSerializerOptions Json = RpcWire.Json;
 
     public ClientBridge() { }
     internal ClientBridge(Func<ProcessStartInfo> workerFactory, TimeSpan? testBudget = null)
@@ -78,9 +74,9 @@ public sealed class ClientBridge : IHeadsetService
             submitted = true;
             await _worker!.StandardInput.WriteLineAsync(request.AsMemory(), linked.Token);
             await _worker.StandardInput.FlushAsync(linked.Token);
-            string? record = await ReadRecordAsync(_worker.StandardOutput, linked.Token);
+            string? record = await RpcWire.ReadLineAsync(_worker.StandardOutput, linked.Token);
             if (record is null) throw new EndOfStreamException();
-            var response = JsonSerializer.Deserialize<WorkerResponse>(record, Json) ?? throw new InvalidDataException();
+            var response = JsonSerializer.Deserialize<RpcResponse>(record, Json) ?? throw new InvalidDataException();
             if (response.SchemaVersion != 1 || response.Id != id) throw new InvalidDataException();
             if (!response.Success)
                 throw new WorkerUnavailableException(submitted && operation == "apply", "蓝牙后台操作未完成，请重新连接耳机。", stopWorker: false);
@@ -136,20 +132,6 @@ public sealed class ClientBridge : IHeadsetService
         try { while (await reader.ReadAsync(buffer) != 0) { } } catch (Exception) { }
     }
 
-    private static async Task<string?> ReadRecordAsync(TextReader reader, CancellationToken token)
-    {
-        var record = new StringBuilder(); var character = new char[1];
-        while (true)
-        {
-            int count = await reader.ReadAsync(character.AsMemory(), token);
-            if (count == 0) return record.Length == 0 ? null : throw new InvalidDataException();
-            if (character[0] == '\n') return record.ToString();
-            if (character[0] == '\r') continue;
-            if (record.Length >= MaximumRecord) throw new InvalidDataException();
-            record.Append(character[0]);
-        }
-    }
-
     private void StopWorker()
     {
         var worker = _worker; _worker = null;
@@ -165,14 +147,6 @@ public sealed class ClientBridge : IHeadsetService
         await _gate.WaitAsync();
         try { if (!_disposed) { _disposed = true; StopWorker(); } }
         finally { _gate.Release(); }
-    }
-
-    private sealed class WorkerResponse
-    {
-        public int SchemaVersion { get; set; }
-        public long Id { get; set; }
-        public bool Success { get; set; }
-        public JsonElement? Data { get; set; }
     }
 
     private sealed class WorkerUnavailableException(bool submitted, string message, bool stopWorker = true) : IOException(message)

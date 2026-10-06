@@ -6,11 +6,11 @@
     <Nullable>enable</Nullable>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <AssemblyName>HeyMelody.Host</AssemblyName>
-    <Version>0.5.0</Version>
+    <Version>0.6.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../HeyMelody.Windows/HeyMelody.Windows.csproj" />
     <ProjectReference Include="../HeyMelody.Daily/HeyMelody.Daily.csproj" />
-    <Compile Include="../HeyMelody.App/UiContracts.cs" Link="UiContracts.cs" />
+    <ProjectReference Include="../HeyMelody.Contracts/HeyMelody.Contracts.csproj" />
   </ItemGroup>
 </Project>

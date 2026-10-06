@@ -2,18 +2,22 @@
 
 独立源码仓库、克隆后的构建步骤和本地研究资料依赖见 [REPOSITORY.md](REPOSITORY.md)。
 
-阶段五客户端 **0.5.0** 已完成，支持 OPPO Enco X4 的电量、降噪、五种声音预设、十段 EQ、双连、游戏和空间模式，以及 Hi-Res 互斥控制。发布包包含 x86、x64、ARM64 自包含版本和自动选择架构的启动器，无须安装 .NET SDK。
+当前 **0.6.0** 分支将界面由 WPF 迁移到 **Avalonia + FluentAvalonia**，参考 Surface App 的产品展示、右侧设备信息和设置、底部设备切换布局。支持 OPPO Enco X4 的电量、降噪、五种声音预设、十段 EQ、双连、游戏和空间模式，以及 Hi-Res 互斥控制。发布脚本保留 x86、x64、ARM64 自包含版本和自动选择架构的启动器，无须安装 .NET SDK。
 
-完整解压 `release/HeyMelody_Windows_0.5.0_AllArchitectures.zip`，双击 `Start-HeyMelody.cmd`；或直接运行 `release/HeyMelody_Windows_0.5.0/x64/HeyMelody.exe`。先在 Windows 中配对并连接耳机，再在客户端点击“连接耳机”。只读刷新不自动发送设置。
+执行 `Build-Client.ps1` 后完整解压 `release/HeyMelody_Windows_0.6.0_AllArchitectures.zip`，双击 `Start-HeyMelody.cmd`；或直接运行 `release/HeyMelody_Windows_0.6.0/x64/HeyMelody.exe`。先在 Windows 中配对并连接耳机，再在客户端选择并连接耳机。只读刷新不自动发送设置。
 
-x64 和 x86 发布程序已在本机执行蓝牙查询与真实界面预览。ARM64 已交叉构建并核对 PE 架构和图标，尚未在 ARM 电脑执行。设置路径已通过离线 golden、响应匹配和模拟回读测试，本轮没有在真实耳机发送 SET。记录见 `phase5-notes.md` 和 `artifacts/phase5-release-validation.json`。
+本轮仅迁移 **Windows 上现有 Enco X4 功能的界面**，实际蓝牙控制继续使用独立的 Windows 后台。其他型号、macOS/Linux 后台和 2.3 Mbps 无损链路的推进已暂缓；已完成的资料调研保留在 [docs/research](docs/research)，不构成本版本支持承诺。
 
-源码入口为 `src/HeyMelody.App`，蓝牙后台为 `src/HeyMelody.Host`，日常功能为 `src/HeyMelody.Daily`。使用 .NET SDK10 执行 `Build-Client.ps1` 可以构建三架构发布包。OTA、录音、翻译和健康功能留待后续阶段。
+源码入口为 `src/HeyMelody.App`，共享界面契约为 `src/HeyMelody.Contracts`，界面状态和进程通信为 `src/HeyMelody.Client`，蓝牙后台为 `src/HeyMelody.Host`，日常功能为 `src/HeyMelody.Daily`。使用 .NET SDK 10 构建；官方 NuGet 源已写入 `NuGet.Config`。常规离线测试不需要本地 APK 或旧证据 ZIP，完整步骤见 [REPOSITORY.md](REPOSITORY.md)。OTA、录音、翻译和健康功能留待后续阶段。
+
+新界面的布局、交互约束、主题与模拟/真实只读预览入口见 [gui-notes.md](gui-notes.md)。
+
+历史 0.5.0 的 x64/x86 蓝牙 GET 与真实界面预览证据保留在 `phase5-notes.md` 和本地 `artifacts/phase5-release-validation.json`，仅证明该旧版本。本分支不会自动沿用旧报告作为新发布包的硬件验证；交叉构建也不代表已在 ARM64 电脑执行。
 
 以下为保留的协议研究工具。只读 CLI 为 0.2.0/schema2，受控实验 CLI 为 0.3.0；运行这些源码工具需要 .NET SDK10，以及已配对、连接的 OPPO Enco X4。
 
 ```powershell
-cd D:\Code\LHDC_Driver\HeyMelodyWindows
+# 在本仓库根目录执行
 powershell.exe -NoProfile -File .\Run-ReadOnly.ps1 -List
 powershell.exe -NoProfile -File .\Run-ReadOnly.ps1
 ```
@@ -87,4 +91,3 @@ dotnet run --project .\tests\HeyMelody.Probe.Tests\HeyMelody.Probe.Tests.csproj
 协议测试覆盖可变长长度、分片、增量读取、序号、畸形数据和查询解析；会话测试覆盖只读允许列表、身份不符停止、错误序号、空回应、超时/断连后停止与不自动重发。ARM64 交叉构建仅证明编译通过，真实 ARM64 蓝牙执行另需验证。
 
 资料与定位见reference，未修改参考资料。阶段1实测见phase1-notes.md，阶段2见phase2-notes.md，阶段3/4见phase34-notes.md。历史schemaVersion1的阶段1证据保持原样。
-

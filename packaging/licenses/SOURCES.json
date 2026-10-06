@@ -1,0 +1,25 @@
+{
+  "retrievedAtUtc": "2026-10-06T11:56:40.9202536Z",
+  "files": [
+    {
+      "url": "https://raw.githubusercontent.com/AvaloniaUI/Avalonia/8eeda4f6f546165b3f72e63c9f42247abb306905/licence.md",
+      "name": "Avalonia-MIT.txt"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/amwx/FluentAvalonia/215ee0481e8b0e6d396cbe2a0f33dc791c5646ab/LICENSE",
+      "name": "FluentAvalonia-MIT.txt"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/kekekeks/MicroCom/76785efcafd91b5902fd19dd11145f6dd655b7b4/LICENSE",
+      "name": "MicroCom-MIT.txt"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/tmds/Tmds.DBus/b4a7fed0b878f74cb54f7cca84d2889af4e596ba/COPYING",
+      "name": "Tmds.DBus-MIT.txt"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/rsms/inter/master/LICENSE.txt",
+      "name": "Inter-OFL-1.1.txt"
+    }
+  ]
+}

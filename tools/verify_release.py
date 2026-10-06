@@ -1,4 +1,4 @@
-"""Bounded static release checks plus the exact saved read-only receipts."""
+"""Static Avalonia release checks; hardware evidence is explicit and hash-bound."""
 import argparse
 import datetime
 import hashlib
@@ -90,54 +90,90 @@ def verify_icon(executable, source):
     return dict(frames=count, rawFramePayloadsMatch=True, sourceSha256=sha(source))
 
 
-def verify(root, package):
-    expected = {"x64": (0x8664, True), "x86": (0x14c, True), "arm64": (0xaa64, False)}
+def checked_file(directory, relative):
+    path = (directory / relative).resolve()
+    assert path.is_relative_to(directory.resolve()) and path.is_file(), str(path)
+    return path
+
+
+def verify(root, package, evidence=None):
+    manifest = json.loads((package / "manifest.json").read_text("utf-8-sig"))
+    assert manifest["schemaVersion"] == 2 and manifest["version"]
+    declared = {build["architecture"]: build for build in manifest["builds"]}
+    expected = {"x64": 0x8664, "x86": 0x14c, "arm64": 0xaa64}
+    assert set(declared) == set(expected)
+    receipts = {}
+    if evidence is not None:
+        assert evidence["version"] == manifest["version"] and evidence["success"]
+        assert evidence["schemaVersion"] == 2, "Old release evidence cannot verify this build"
+        receipts = {build["architecture"]: build for build in evidence["builds"]}
+        assert set(receipts).issubset(expected)
     builds = []
-    for arch, (machine, executed) in expected.items():
+    for arch, machine in expected.items():
         folder = package / arch
         gui, host = folder / "HeyMelody.exe", folder / "backend" / "HeyMelody.Host.exe"
-        for path in [gui, host, folder / "coreclr.dll", host.parent / "coreclr.dll"]:
+        native = [folder / "libSkiaSharp.dll", folder / "libHarfBuzzSharp.dll", folder / "av_libglesv2.dll"]
+        for path in [gui, host, folder / "coreclr.dll", host.parent / "coreclr.dll", *native]:
             assert PE(path).machine == machine, str(path)
+        assert declared[arch]["rid"] == "win-" + arch and declared[arch]["selfContained"] is True
+        assert declared[arch]["guiSha256"] == sha(gui) and declared[arch]["hostSha256"] == sha(host)
+        assert declared[arch]["guiFramework"] == "net10.0" and declared[arch]["hostFramework"] == "net10.0-windows"
         for name, directory in [("HeyMelody", folder), ("HeyMelody.Host", host.parent)]:
             runtime = json.loads((directory / (name + ".runtimeconfig.json")).read_text("utf-8-sig"))["runtimeOptions"]
             assert runtime["tfm"] == "net10.0" and runtime.get("includedFrameworks")
+            assert {entry["name"] for entry in runtime["includedFrameworks"]} == {"Microsoft.NETCore.App"}
             dependencies = json.loads((directory / (name + ".deps.json")).read_text("utf-8-sig"))
             assert dependencies["runtimeTarget"]["name"].endswith("/win-" + arch)
             assert (directory / "LICENSE.txt").is_file() and (directory / "THIRD-PARTY-NOTICES.txt").is_file()
+            libraries = dependencies["libraries"]
+            if name == "HeyMelody":
+                assert any(key.startswith("Avalonia/") for key in libraries)
+                assert any(key.startswith("FluentAvaloniaUI/") for key in libraries)
+            else:
+                assert not any(key.startswith("Avalonia") for key in libraries), "Bluetooth host must not depend on the UI toolkit"
+        assert not (folder / "PresentationFramework.dll").exists()
+        assert not (folder / "LICENSE-WINDOWSDESKTOP.txt").exists()
+        notices = json.loads((folder / "PACKAGE-NOTICES.json").read_text("utf-8-sig"))
+        assert notices["schemaVersion"] == 1 and notices["packages"]
+        assert {"Avalonia", "FluentAvaloniaUI", "SkiaSharp", "HarfBuzzSharp"}.issubset(
+            {entry["package"] for entry in notices["packages"]})
+        for entry in notices["packages"]:
+            assert entry["version"] and checked_file(folder, entry["metadata"])
+            for notice in entry["files"]:
+                assert sha(checked_file(folder, notice["path"])) == notice["sha256"]
+        assert notices["supplementalNotices"]
+        for notice in notices["supplementalNotices"]:
+            assert sha(checked_file(folder, notice["path"])) == notice["sha256"]
         icon = verify_icon(gui, root / "src" / "HeyMelody.App" / "Assets" / "HeyMelody.ico")
-        receipt = None
+        receipt = receipts.get(arch, {})
+        if receipt:
+            assert receipt["guiSha256"] == sha(gui) and receipt["hostSha256"] == sha(host)
+        executed = receipt.get("readOnlyBluetoothExecutionVerified", False)
         if executed:
-            evidence = root / "artifacts" / ("phase5-release-readonly-" + arch + ".json")
-            receipt = json.loads(evidence.read_text("utf-8"))
-            assert receipt["success"] and receipt["diagnostics"]["productId"] == "06EC10"
-            assert receipt["diagnostics"]["applicationGetSubmissions"] == 20
-            assert receipt["diagnostics"]["applicationSetSubmissions"] == 0
-            assert receipt["diagnostics"]["applicationOtherSubmissions"] == 0
-            for state in receipt["snapshots"]:
-                assert state["hiRes"] is True and state["spatial"] == 0 and state["dualConnection"] is True
-            preview = root / "artifacts" / ("phase5-release-ui-" + arch + ".png")
-            png = preview.read_bytes()
-            assert png[:8] == b"\x89PNG\r\n\x1a\n" and struct.unpack_from(">II", png, 16) == (1280, 1440)
+            diagnostics = receipt["diagnostics"]
+            assert diagnostics["productId"] == "06EC10" and diagnostics["applicationGetSubmissions"] > 0
+            assert diagnostics["applicationSetSubmissions"] == 0 and diagnostics["applicationOtherSubmissions"] == 0
         builds.append(dict(architecture=arch, peMachine=hex(machine), selfContained=True,
                            guiSha256=sha(gui), hostSha256=sha(host), icon=icon,
-                           readOnlyBluetoothExecutionVerified=executed, liveGuiPreviewVerified=executed,
-                           realNativeArmHardwareVerified=False,
-                           readOnlyEvidenceSha256=sha(evidence) if executed else None))
-    return dict(schemaVersion=1, version="0.5.0", verifiedAtUtc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                           nativeRenderingAssets=[dict(name=path.name, sha256=sha(path)) for path in native],
+                           packageNoticesVerified=True, readOnlyBluetoothExecutionVerified=executed,
+                           liveGuiPreviewVerified=receipt.get("liveGuiPreviewVerified", False),
+                           realNativeArmHardwareVerified=arch == "arm64" and receipt.get("nativeHardwareVerified", False)))
+    return dict(schemaVersion=2, version=manifest["version"], verifiedAtUtc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 success=True, builds=builds, supportedModel="OPPO Enco X4 / 06EC10",
-                tests=dict(dailyOfflineScenarios=38, clientProcessScenariosX64=10, clientProcessScenariosX86=10,
-                           protocolResourceAssertions=12),
-                liveSettingCommandsSubmitted=0, settingPathsVerified="offline golden and simulated workflow",
-                nativeArm64ExecutionVerified=False)
+                validationScope="static packaging with explicit execution receipts" if evidence else "static packaging only; no hardware execution verified",
+                nativeArm64ExecutionVerified=any(build["realNativeArmHardwareVerified"] for build in builds))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--package", type=pathlib.Path, required=True)
     parser.add_argument("--output", type=pathlib.Path, required=True)
+    parser.add_argument("--evidence", type=pathlib.Path, help="Optional schema-2 receipt for this version and exact GUI/host hashes")
     args = parser.parse_args()
     root = pathlib.Path(__file__).resolve().parents[1]
-    report = verify(root, args.package.resolve())
+    evidence = json.loads(args.evidence.read_text("utf-8-sig")) if args.evidence else None
+    report = verify(root, args.package.resolve(), evidence)
     with args.output.open("x", encoding="utf-8") as stream:
         json.dump(report, stream, indent=2, ensure_ascii=False)
         stream.write("\n")

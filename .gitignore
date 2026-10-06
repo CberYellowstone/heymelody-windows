@@ -2,6 +2,7 @@
 **/obj/
 .vs/
 .idea/
+.venv/
 __pycache__/
 *.py[cod]
 *.user
@@ -10,6 +11,7 @@ __pycache__/
 
 # Local research inputs and generated/device evidence stay on this machine.
 /reference/
+/research/
 /release/
 /artifacts/
 *.pcap
@@ -19,6 +21,8 @@ __pycache__/
 *.reg
 *.zip
 *.msi
+*.msix
+*.msixbundle
 
 .env
 .env.*
