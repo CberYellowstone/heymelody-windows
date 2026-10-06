@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>0.3.0</Version>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../HeyMelody.Control/HeyMelody.Control.csproj" />
+    <ProjectReference Include="../HeyMelody.Audio/HeyMelody.Audio.csproj" />
+    <ProjectReference Include="../HeyMelody.Windows/HeyMelody.Windows.csproj" />
+  </ItemGroup>
+</Project>
+

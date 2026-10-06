@@ -1,0 +1,317 @@
+{
+  "id": "06EC10",
+  "name": "OPPO Enco X4",
+  "children": [
+    {
+      "name": "OPPO Enco Bohr"
+    }
+  ],
+  "brand": "oppo",
+  "type": "T1",
+  "supportSpp": true,
+  "uuid": "0000079A-D102-11E1-9B23-00025B00A5A5",
+  "rssi": {
+    "firstRssi": 43,
+    "secondRssi": 43,
+    "leftOffset": 0,
+    "rightOffset": 0,
+    "flattenOffset": 2
+  },
+  "minVersion": 16010000,
+  "function": {
+    "heyTranslate": 1,
+    "heyTranslateUuid": "0000079F-D102-11E1-9B24-00025B00A5A5",
+    "autoFirmwareUpdate": 1,
+    "bassEngineSupport": 1,
+    "batteryInfo": 1,
+    "carouselDress": 1,
+    "cleanGuide": 1,
+    "collectLogs": 1,
+    "controlAutoVolumeSupport": 1,
+    "controlGuideSupport": 1,
+    "customDress": 1,
+    "customEqFrequency": [
+      31,
+      62,
+      125,
+      250,
+      500,
+      1000,
+      2000,
+      4000,
+      8000,
+      16000
+    ],
+    "customEqUiVersion": 2,
+    "customEqualizer": 1,
+    "dialogTags": [
+      2
+    ],
+    "dolbyMark": 1,
+    "earScan": 1,
+    "earphoneIdentity": 1,
+    "equalizer": 4,
+    "fastDiscovery": 1,
+    "feedback": 1,
+    "firmwareFileCheckFlags": 7,
+    "fitDetection": 1,
+    "functionIntroductionGuide": 1,
+    "gameMode": 1,
+    "gameSoundMutexes": [
+      1,
+      3
+    ],
+    "gmnVoiceAssist": 1,
+    "headsetFeedback": 1,
+    "headSetSoundRecord": 1,
+    "hearingEnhancement": 1,
+    "hearingJudgeDb": 1,
+    "highToneQuality": 1,
+    "heyFindDevice": 1,
+    "headMotion": 1,
+    "hideFromUIList": 1,
+    "incomingCallControl": 0,
+    "multiDevicesConnect": 2,
+    "mutexFunctions": [
+      "speechPerception:voiceCommand"
+    ],
+    "promptVolume": 1,
+    "related": 1,
+    "sendHostCapabilities": 1,
+    "shareCustomEq": 1,
+    "sleepDetection": 1,
+    "spatialDescriptionType": 1,
+    "spatialHiResMutex": 1,
+    "spatialTypes": [
+      0,
+      1,
+      2
+    ],
+    "speechPerception": 1,
+    "spineHealth": 2,
+    "strongNoiseReductionRealTime": 1,
+    "supportPinch": 1,
+    "swiftPair": 1,
+    "tutorialGuide": 1,
+    "utcTimeZone": 1,
+    "voiceCommand": 2,
+    "voiceCommandItems": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      11,
+      12,
+      9,
+      10
+    ],
+    "wearDetection": 2,
+    "whiteNoise": 1,
+    "zenMode": 3,
+    "gameSoundList": [
+      {
+        "type": 3,
+        "packageNameList": [
+          "com.tencent.tmgp.pubgmhd",
+          "com.netease.hyxd.nearme.gamecenter",
+          "com.crisisfire.android.nearme.gamecenter",
+          "com.netease.cfxf.nearme.gamecenter",
+          "com.tencent.tmgp.cf",
+          "com.tencent.tmgp.cod",
+          "com.netease.lztg.nearme.gamecenter",
+          "com.yingxiong.heroo.nearme.gamecenter",
+          "com.tencent.ig",
+          "com.tencent.tmgp.codev",
+          "com.tencent.tmgp.dfm",
+          "com.dts.freefireth",
+          "com.activision.callofduty.shooter"
+        ]
+      },
+      {
+        "type": 0
+      }
+    ],
+    "control": [
+      {
+        "ear": 2,
+        "support": 16777732,
+        "showEar": 0,
+        "action": 16
+      },
+      {
+        "ear": 2,
+        "support": 8805,
+        "showEar": 0,
+        "action": 17
+      },
+      {
+        "ear": 2,
+        "support": 33628769,
+        "showEar": 0,
+        "action": 18
+      },
+      {
+        "ear": 2,
+        "support": 3584,
+        "showEar": 0,
+        "action": 5
+      },
+      {
+        "ear": 2,
+        "showEar": 0,
+        "action": 20,
+        "entryStrModify": [
+          {
+            "categoryVersion": 2
+          }
+        ]
+      }
+    ],
+    "callControl": [
+      {
+        "ear": 2,
+        "support": 524800,
+        "showEar": 0,
+        "defaultFunction": 524288,
+        "action": 32
+      },
+      {
+        "ear": 2,
+        "support": 262656,
+        "showEar": 0,
+        "defaultFunction": 262144,
+        "action": 33,
+        "entryStrModify": [
+          {
+            "targetFunction": 262144,
+            "titleVersion": 2
+          }
+        ]
+      },
+      {
+        "ear": 2,
+        "support": 131584,
+        "showEar": 0,
+        "action": 34
+      }
+    ],
+    "longPressType": 8833,
+    "noiseReductionUIVersion": 2,
+    "noiseReductionMode": [
+      {
+        "protocolIndex": 1,
+        "modeType": 5,
+        "childrenMode": [
+          {
+            "protocolIndex": 7,
+            "modeType": 7
+          },
+          {
+            "protocolIndex": 4,
+            "modeType": 4
+          },
+          {
+            "protocolIndex": 5,
+            "modeType": 8
+          },
+          {
+            "protocolIndex": 6,
+            "modeType": 3
+          }
+        ]
+      },
+      {
+        "protocolIndex": 11,
+        "modeType": 10,
+        "childrenMode": [
+          {
+            "protocolIndex": 12,
+            "modeType": 11
+          },
+          {
+            "protocolIndex": 13,
+            "modeType": 12
+          },
+          {
+            "protocolIndex": 14,
+            "modeType": 13
+          }
+        ]
+      },
+      {
+        "protocolIndex": 0,
+        "modeType": 1,
+        "childrenMode": [
+          {
+            "protocolIndex": 3,
+            "modeType": 1
+          }
+        ]
+      },
+      {
+        "protocolIndex": 2,
+        "modeType": 2,
+        "childrenMode": [
+          {
+            "protocolIndex": 8,
+            "modeType": 2
+          }
+        ]
+      }
+    ],
+    "equalizerMode": [
+      {
+        "protocolIndex": 0,
+        "modeType": 42,
+        "tag": 3,
+        "summaryId": 11
+      },
+      {
+        "protocolIndex": 7,
+        "modeType": 43,
+        "tag": 3,
+        "summaryId": 12
+      },
+      {
+        "protocolIndex": 2,
+        "modeType": 28,
+        "tag": 3,
+        "summaryId": 3
+      },
+      {
+        "protocolIndex": 1,
+        "modeType": 46,
+        "tag": 3,
+        "summaryId": 2
+      },
+      {
+        "protocolIndex": 3,
+        "modeType": 29,
+        "tag": 3,
+        "summaryId": 4
+      }
+    ],
+    "multiConnectFunctions": [
+      {
+        "functionType": "displayPairedDevice",
+        "minFirmVersion": 0
+      },
+      {
+        "functionType": "connectDisconnectDevice",
+        "minFirmVersion": 0
+      },
+      {
+        "functionType": "unpairDevice",
+        "minFirmVersion": 0
+      },
+      {
+        "functionType": "setPriorityDevice",
+        "minFirmVersion": 0
+      }
+    ]
+  }
+}

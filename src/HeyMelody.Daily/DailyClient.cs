@@ -1,0 +1,37 @@
+using HeyMelodyWindows.Control;
+namespace HeyMelodyWindows.Daily;
+
+/// <summary>Daily OPPO controls are serialized; constructing a client never opens or writes a device.</summary>
+public sealed partial class DailyClient(IControlConnector connector) : IAsyncDisposable
+{
+    private readonly IControlConnector _connector = connector ?? throw new ArgumentNullException(nameof(connector));
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private bool _disposed;
+    public Task<DailySnapshot> RefreshAsync(CancellationToken token = default) => RefreshCoreAsync(token);
+    public Task<DailyApplyResult> ApplyAncAsync(byte primary, byte level, CancellationToken token = default) =>
+        ApplyCoreAsync("anc", primary, level, null, false, token);
+    public Task<DailyApplyResult> ApplyPresetAsync(byte presetId, CancellationToken token = default) =>
+        ApplyCoreAsync("preset", presetId, 0, null, false, token);
+    public Task<DailyApplyResult> SelectCustomEqualizerAsync(byte id, CancellationToken token = default) =>
+        ApplyCoreAsync("custom-select", id, 0, null, false, token);
+    public Task<DailyApplyResult> SaveEqualizerAsync(EqualizerEdit edit, CancellationToken token = default) =>
+        ApplyCoreAsync("custom-save", 0, 0, edit, false, token);
+    public Task<DailyApplyResult> SetDualConnectionAsync(bool value, CancellationToken token = default) =>
+        ApplyCoreAsync("dual", value ? (byte)1 : (byte)0, 0, null, false, token);
+    public Task<DailyApplyResult> SetGameModeAsync(bool value, CancellationToken token = default) =>
+        ApplyCoreAsync("game", value ? (byte)1 : (byte)0, 0, null, false, token);
+    public Task<DailyApplyResult> SetSpatialModeAsync(byte mode, CancellationToken token = default) =>
+        SetSpatialModeAsync(mode, false, token);
+    public Task<DailyApplyResult> SetSpatialModeAsync(byte mode, bool allowMutexChange, CancellationToken token = default) =>
+        ApplyCoreAsync("spatial", mode, 0, null, allowMutexChange, token);
+    public Task<DailyApplyResult> SetHiResAsync(bool value, CancellationToken token = default) =>
+        SetHiResAsync(value, false, token);
+    public Task<DailyApplyResult> SetHiResAsync(bool value, bool allowMutexChange, CancellationToken token = default) =>
+        ApplyCoreAsync("hires", value ? (byte)1 : (byte)0, 0, null, allowMutexChange, token);
+    public async ValueTask DisposeAsync()
+    {
+        await _gate.WaitAsync();
+        try { _disposed = true; await DropSessionAsync(); }
+        finally { _gate.Release(); }
+    }
+}

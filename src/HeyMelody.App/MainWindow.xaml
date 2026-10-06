@@ -1,0 +1,65 @@
+<Window x:Class="HeyMelodyWindows.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="HeyMelody for Windows" Icon="Assets/HeyMelody.ico" Style="{StaticResource {x:Type Window}}" Width="1260" Height="940" MinWidth="1040" MinHeight="720" WindowStartupLocation="CenterScreen">
+ <Grid Background="{StaticResource Mist}" TextElement.Foreground="{StaticResource Ink}">
+  <Grid.RowDefinitions><RowDefinition Height="82"/><RowDefinition Height="*"/><RowDefinition Height="46"/></Grid.RowDefinitions>
+  <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="26,16">
+   <DockPanel>
+    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="WINDOWS" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,18,0"/><Button x:Name="RefreshDevicesButton" Content="刷新设备" Click="RefreshDevices_Click"/></StackPanel>
+    <Image Source="Assets/HeyMelody.png" Width="38" Height="38" Margin="0,0,13,0" DockPanel.Dock="Left" VerticalAlignment="Center"/><StackPanel><TextBlock Text="HeyMelody" FontSize="26" FontWeight="SemiBold"/><TextBlock Text="耳边的声音，由你来定。" Style="{StaticResource MutedText}"/></StackPanel>
+   </DockPanel>
+  </Border>
+  <Grid Grid.Row="1">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="246"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+   <Border Background="#EAF2F5" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0" Padding="20,26">
+    <DockPanel>
+     <StackPanel DockPanel.Dock="Bottom"><TextBlock Text="社区客户端" Foreground="{StaticResource Muted}" FontSize="12"/><TextBlock Text="通过蓝牙管理已配对的耳机。" Style="{StaticResource MutedText}" Margin="0,5,0,0"/></StackPanel>
+     <StackPanel><TextBlock Text="我的耳机" FontSize="18" FontWeight="SemiBold" Margin="4,0,0,6"/><TextBlock Text="先在 Windows 设置中完成配对" Style="{StaticResource MutedText}" Margin="4,0,0,18"/>
+      <ListBox x:Name="DeviceList" BorderThickness="0" Background="Transparent" SelectionChanged="DeviceList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+       <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="14"/><Setter Property="Margin" Value="0,0,0,9"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="DeviceChrome" Padding="{TemplateBinding Padding}" CornerRadius="12" Background="Transparent" BorderThickness="1" BorderBrush="Transparent"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsSelected" Value="True"><Setter TargetName="DeviceChrome" Property="Background" Value="White"/><Setter TargetName="DeviceChrome" Property="BorderBrush" Value="#C7DDE2"/></Trigger><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="DeviceChrome" Property="Background" Value="#F7FBFC"/></Trigger><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="DeviceChrome" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+       <ListBox.ItemTemplate><DataTemplate><StackPanel><TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap"/><TextBlock Text="已配对" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,6,0,0"/></StackPanel></DataTemplate></ListBox.ItemTemplate>
+      </ListBox>
+      <TextBlock x:Name="NoDevicesText" Text="未找到已配对耳机。&#x0a;完成配对后点击刷新设备。" Style="{StaticResource MutedText}" Margin="4,10,0,0" Visibility="Collapsed"/>
+     </StackPanel>
+    </DockPanel>
+   </Border>
+   <ScrollViewer x:Name="MainScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="28,26,28,10" CanContentScroll="False">
+    <StackPanel>
+     <Grid Margin="0,0,0,18"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock x:Name="DeviceTitle" Text="选择一副耳机" FontSize="29" FontWeight="SemiBold"/><TextBlock x:Name="DeviceSubtitle" Text="连接后查看电量与声音设置" Style="{StaticResource MutedText}" Margin="0,5,0,0"/></StackPanel><StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><Button x:Name="StateRefreshButton" Content="刷新状态" Click="RefreshCurrent_Click" Margin="0,0,10,0"/><Button x:Name="ConnectButton" Content="连接耳机" Style="{StaticResource PrimaryButton}" Click="Connect_Click" MinWidth="112"/></StackPanel></Grid>
+     <Border Style="{StaticResource Card}" Background="#E2EFF1" BorderBrush="#C9DEE3" Padding="24,19">
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="145"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+       <Viewbox Width="114" Height="94" HorizontalAlignment="Left"><Canvas Width="126" Height="100"><Path Data="M 40 17 C 19 12 12 23 17 37 C 21 46 32 47 35 43 L 35 81 Q 35 88 43 88 Q 51 88 51 81 L 51 36 C 53 24 49 20 40 17 Z" Fill="White" Stroke="#477B86" StrokeThickness="4"/><Path Data="M 86 17 C 107 12 114 23 109 37 C 105 46 94 47 91 43 L 91 81 Q 91 88 83 88 Q 75 88 75 81 L 75 36 C 73 24 77 20 86 17 Z" Fill="White" Stroke="#477B86" StrokeThickness="4"/><Ellipse Canvas.Left="23" Canvas.Top="26" Width="9" Height="13" Fill="#126C75"/><Ellipse Canvas.Left="94" Canvas.Top="26" Width="9" Height="13" Fill="#126C75"/><Path Data="M 43 55 L 43 72 M 83 55 L 83 72" Stroke="#88AEB7" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Canvas></Viewbox>
+       <Grid Grid.Column="1"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+        <StackPanel><TextBlock Text="左耳" Foreground="{StaticResource Muted}"/><TextBlock x:Name="LeftBatteryText" Text="—" FontSize="30" FontWeight="SemiBold" Margin="0,5,0,3"/><TextBlock x:Name="LeftChargeText" Text="尚未读取" Style="{StaticResource MutedText}"/></StackPanel>
+        <StackPanel Grid.Column="1"><TextBlock Text="右耳" Foreground="{StaticResource Muted}"/><TextBlock x:Name="RightBatteryText" Text="—" FontSize="30" FontWeight="SemiBold" Margin="0,5,0,3"/><TextBlock x:Name="RightChargeText" Text="尚未读取" Style="{StaticResource MutedText}"/></StackPanel>
+        <StackPanel Grid.Column="2"><TextBlock Text="充电盒" Foreground="{StaticResource Muted}"/><TextBlock x:Name="CaseBatteryText" Text="—" FontSize="30" FontWeight="SemiBold" Margin="0,5,0,3"/><TextBlock x:Name="CaseChargeText" Text="尚未读取" Style="{StaticResource MutedText}"/></StackPanel>
+       </Grid>
+      </Grid>
+     </Border>
+     <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="18"/><ColumnDefinition/></Grid.ColumnDefinitions>
+      <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="降噪" Style="{StaticResource Heading}"/><TextBlock Text="安静、通透，或保留身边的声音" Style="{StaticResource MutedText}" Margin="0,0,0,17"/><DockPanel><Button x:Name="AncApplyButton" DockPanel.Dock="Right" Content="应用" Margin="10,0,0,0" Click="AncApply_Click"/><ComboBox x:Name="AncCombo" SelectedValuePath="Key" AutomationProperties.Name="降噪档位"/></DockPanel></StackPanel></Border>
+      <Border Grid.Column="2" Style="{StaticResource Card}"><StackPanel><TextBlock Text="声音预设" Style="{StaticResource Heading}"/><TextBlock Text="使用耳机支持的原始预设" Style="{StaticResource MutedText}" Margin="0,0,0,17"/><DockPanel><Button x:Name="PresetApplyButton" DockPanel.Dock="Right" Content="应用" Margin="10,0,0,0" Click="PresetApply_Click"/><ComboBox x:Name="PresetCombo" SelectedValuePath="Key" AutomationProperties.Name="声音预设"/></DockPanel></StackPanel></Border>
+     </Grid>
+     <Border Style="{StaticResource Card}"><StackPanel>
+      <DockPanel><StackPanel DockPanel.Dock="Left"><TextBlock Text="十段均衡器" Style="{StaticResource Heading}"/><TextBlock x:Name="EqHint" Text="调节各频段，然后将整组设置写入耳机。" Style="{StaticResource MutedText}"/></StackPanel><TextBlock x:Name="EqDirtyText" Text="" Foreground="{StaticResource Accent}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12"/></DockPanel>
+      <Grid Margin="0,18,0,9"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="190"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><ComboBox x:Name="EqEntryCombo" SelectedValuePath="Id" SelectionChanged="EqEntry_SelectionChanged" AutomationProperties.Name="自定义均衡器"/><TextBox Grid.Column="1" x:Name="EqNameBox" Margin="10,0,0,0" Padding="10" VerticalContentAlignment="Center" TextChanged="EqName_TextChanged" AutomationProperties.Name="均衡器名称"/><Button Grid.Column="2" x:Name="NewEqButton" Content="新建" Margin="10,0,0,0" Click="NewEq_Click"/></Grid>
+      <Grid x:Name="BandsGrid" Margin="0,8,0,8" Height="164"/>
+      <DockPanel Margin="0,8,0,0"><StackPanel DockPanel.Dock="Right" Orientation="Horizontal"><Button x:Name="UseEqButton" Content="启用此 EQ" Click="UseEq_Click" Margin="0,0,10,0"/><Button x:Name="ResetEqButton" Content="恢复当前" Click="ResetEq_Click" Margin="0,0,10,0"/><Button x:Name="EqApplyButton" Content="保存均衡器" Click="EqApply_Click" Style="{StaticResource PrimaryButton}"/></StackPanel><TextBlock Text="低频                         中频                         高频" Style="{StaticResource MutedText}" VerticalAlignment="Center"/></DockPanel>
+     </StackPanel></Border>
+     <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="连接与体验" Style="{StaticResource Heading}"/>
+      <Grid Margin="0,12,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="30"/><ColumnDefinition/></Grid.ColumnDefinitions>
+       <StackPanel><DockPanel><CheckBox x:Name="DualSwitch" DockPanel.Dock="Right" Style="{StaticResource Switch}" Click="DualSwitch_Click" AutomationProperties.Name="双设备连接"/><StackPanel><TextBlock Text="双设备连接" FontWeight="SemiBold"/><TextBlock x:Name="DualStateText" Text="未确认" Style="{StaticResource MutedText}" Margin="0,5,0,0"/></StackPanel></DockPanel><TextBlock Text="同时连接手机与电脑，切换更方便。" Style="{StaticResource MutedText}" Margin="0,10,0,0"/></StackPanel>
+       <StackPanel Grid.Column="2"><DockPanel><CheckBox x:Name="GameSwitch" DockPanel.Dock="Right" Style="{StaticResource Switch}" Click="GameSwitch_Click" AutomationProperties.Name="游戏模式"/><StackPanel><TextBlock Text="游戏模式" FontWeight="SemiBold"/><TextBlock x:Name="GameStateText" Text="未确认" Style="{StaticResource MutedText}" Margin="0,5,0,0"/></StackPanel></DockPanel><TextBlock Text="优先降低播放延迟。" Style="{StaticResource MutedText}" Margin="0,10,0,0"/></StackPanel>
+      </Grid>
+      <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Margin="0,20,0,18"/>
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="30"/><ColumnDefinition/></Grid.ColumnDefinitions>
+       <StackPanel><TextBlock Text="空间音频" FontWeight="SemiBold"/><DockPanel Margin="0,10,0,0"><Button x:Name="SpatialApplyButton" DockPanel.Dock="Right" Content="应用" Margin="10,0,0,0" Click="SpatialApply_Click"/><ComboBox x:Name="SpatialCombo" SelectedValuePath="Key" AutomationProperties.Name="空间音频模式"/></DockPanel></StackPanel>
+       <StackPanel Grid.Column="2"><DockPanel><CheckBox x:Name="HiResSwitch" DockPanel.Dock="Right" Style="{StaticResource Switch}" Click="HiResSwitch_Click" AutomationProperties.Name="Hi-Res 高清音频"/><StackPanel><TextBlock Text="Hi-Res 高清音频" FontWeight="SemiBold"/><TextBlock x:Name="HiResStateText" Text="未确认" Style="{StaticResource MutedText}" Margin="0,5,0,0"/></StackPanel></DockPanel><TextBlock Text="耳机与播放端共同支持时使用高清音频。" Style="{StaticResource MutedText}" Margin="0,10,0,0"/></StackPanel>
+      </Grid>
+      <TextBlock x:Name="MutexText" Text="空间音频与 Hi-Res 在此耳机上不能同时开启，切换前会请你确认。" Style="{StaticResource MutedText}" Margin="0,18,0,0"/>
+     </StackPanel></Border>
+     <Expander x:Name="LogsExpander" Header="操作记录" Foreground="{StaticResource Ink}" Margin="0,0,0,15"><Border Style="{StaticResource Card}" Padding="18" Margin="0,10,0,0"><TextBox x:Name="LogBox" Text="暂无操作记录。" IsReadOnly="True" BorderThickness="0" Background="Transparent" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MaxHeight="170" FontSize="12" Foreground="{StaticResource Muted}"/></Border></Expander>
+    </StackPanel>
+   </ScrollViewer>
+  </Grid>
+  <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="24,0"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="#80A4AE" VerticalAlignment="Center" Margin="0,0,10,0"/><TextBlock x:Name="StatusText" Grid.Column="1" Text="准备就绪" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/><TextBlock Grid.Column="2" Text="0.5.0 · 社区版" Foreground="{StaticResource Muted}" FontSize="12" VerticalAlignment="Center" Margin="20,0,0,0"/></Grid></Border>
+ </Grid>
+</Window>

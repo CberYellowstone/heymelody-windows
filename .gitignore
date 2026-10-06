@@ -1,0 +1,25 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+__pycache__/
+*.py[cod]
+*.user
+*.suo
+*.pdb
+
+# Local research inputs and generated/device evidence stay on this machine.
+/reference/
+/release/
+/artifacts/
+*.pcap
+*.pcapng
+*.apk
+*.opk
+*.reg
+*.zip
+*.msi
+
+.env
+.env.*
+!.env.example

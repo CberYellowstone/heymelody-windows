@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../HeyMelody.Protocol/HeyMelody.Protocol.csproj" /><EmbeddedResource Include="Assets/oppo-enco-x4.json" LogicalName="HeyMelodyWindows.Devices.Assets.oppo-enco-x4.json" /></ItemGroup>
+</Project>

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/HeyMelody.App/UiContracts.cs" Link="UiContracts.cs" />
+    <Compile Include="../../src/HeyMelody.App/ClientBridge.cs" Link="ClientBridge.cs" />
+    <Compile Include="../../src/HeyMelody.Host/RpcWire.cs" Link="RpcWire.cs" />
+  </ItemGroup>
+</Project>
