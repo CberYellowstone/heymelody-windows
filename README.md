@@ -2,11 +2,13 @@
 
 独立源码仓库、克隆后的构建步骤和本地研究资料依赖见 [REPOSITORY.md](REPOSITORY.md)。
 
-当前版本为 **0.7.0**，使用 **Avalonia + FluentAvalonia**，保留现有界面设计。独立后台负责蓝牙通信和任务栏托盘；主界面及设备管理器通过当前用户、当前登录会话的双向命名管道订阅设备状态。后台自动监听白名单中已由 Windows 连接的受支持耳机，以 RFCOMM 通知和 OPPO BLE 广播更新电量、设置及开盖观测。
+当前版本为 **0.7.1**，使用 **Avalonia + FluentAvalonia**。独立工作区验证的 Enco Free4 三维模型与交互已迁入 `arch/modular-devices`，主界面左侧支持拖动、松手惯性和 20°/秒水平自转。设备控制仍沿用 0.7.0 的 X4 架构，Free4 此次只用于外观展示。独立后台负责蓝牙通信和任务栏托盘；主界面及设备管理器通过当前用户、当前登录会话的双向命名管道订阅设备状态。后台自动监听白名单中已由 Windows 连接的受支持耳机，以 RFCOMM 通知和 OPPO BLE 广播更新电量、设置及开盖观测。
 
 OPPO Enco X4 支持电量、降噪、五种声音预设、十段 EQ、双连、游戏和空间模式、Hi-Res 互斥控制。状态通知与用户设置共用每台设备的持续接收通道；手动刷新和设置验证仍执行读取。更新期间可以继续选择设置和编辑 EQ，只限制正在提交的功能组再次提交。展示型号的名称提示不替代蓝牙控制所需的 Product ID 验证。
 
-执行 `Build-Client.ps1` 后，完整解压 `release/HeyMelody_Windows_0.7.0_AllArchitectures.zip`，双击 `Start-HeyMelody.cmd`，或运行对应架构目录中的 `HeyMelody.exe`。x86、x64、ARM64 均自带 .NET 运行时。先在 Windows 中配对并连接耳机，再通过设备管理器保存白名单。关闭主界面后后台继续运行；右键托盘选择“打开主界面”或“退出”。直接运行 `backend/HeyMelody.Host.exe` 只启动后台。本版本不添加登录自启，尚未实现独立开盖弹窗。
+执行 `Build-Client.ps1 -Version 0.7.1 -Architectures x64` 后，完整解压 `release/HeyMelody_Windows_0.7.1_x64.zip`，双击 `Start-3D-Demo.cmd` 体验 Free4 模型；正常客户端入口为 `Start-HeyMelody.cmd` 或架构目录中的 `HeyMelody.exe`。本次 x64 包自带 .NET 运行时。正常使用时先在 Windows 中配对并连接耳机，再通过设备管理器保存白名单。关闭主界面后后台继续运行；右键托盘选择“打开主界面”或“退出”。直接运行 `backend/HeyMelody.Host.exe` 只启动后台。本版本不添加登录自启，尚未实现独立开盖弹窗。
+
+在仓库根目录运行 `Run-3D-Demo.ps1` 或双击 `Run-3D-Demo.cmd` 可构建并打开开发版模型演示，无需连接耳机；构建需要 .NET 10 SDK。模型来源、适配方法和迁移前体验包验证见 [Free4 记录](docs/research/enco-free4-0.7.1.md)。
 
 界面接收后台推送，保留手动刷新及设置前后读取确认。界面中的连接/断开用于恢复或暂停所选耳机的控制监听；暂停持续到手动恢复或后台重启，BLE 观测继续。设备设置必须经过型号、能力、后台实例和连接代次校验；回执丢失不会自动重发。详细规则见 [界面说明](docs/gui-notes.md) 和 [后台架构说明](docs/backend-architecture.md)。
 

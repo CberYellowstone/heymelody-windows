@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([switch]$ModelDemo)
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
 using System;
@@ -21,4 +21,8 @@ public static class HeyMelodyArchitecture {
 $architecture = [HeyMelodyArchitecture]::Read()
 $executable = Join-Path $PSScriptRoot ($architecture + '\HeyMelody.exe')
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw 'Client files are incomplete. Extract the complete archive first.' }
-Start-Process -FilePath $executable -WorkingDirectory (Split-Path -Parent $executable) -WindowStyle Normal
+if ($ModelDemo) {
+    Start-Process -FilePath $executable -ArgumentList '--3d-demo' -WorkingDirectory (Split-Path -Parent $executable) -WindowStyle Normal
+} else {
+    Start-Process -FilePath $executable -WorkingDirectory (Split-Path -Parent $executable) -WindowStyle Normal
+}

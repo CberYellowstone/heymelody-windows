@@ -124,7 +124,7 @@ try
     Check(passed == (OperatingSystem.IsWindows() ? 47 : 44), "Every UI scenario and interaction case must finish");
     var report = new { schemaVersion = 1, version = AppVersion.Display, passed, success = true, nativeBluetoothCalls = 0,
         verificationScope = "source/mock checks; not a packaged executable or hardware execution receipt",
-        screenshotScope = "headless Skia content; native titlebar not included", screenshots = receipts };
+        screenshotScope = "headless Skia layout/content only; native titlebar and real 3D renderer pixels are not verified", screenshots = receipts };
     using (var stream = new FileStream(Path.Combine(output, "validation.json"), FileMode.CreateNew)) JsonSerializer.Serialize(stream, report, new JsonSerializerOptions { WriteIndented = true });
     Console.WriteLine(JsonSerializer.Serialize(new { passed, success = true, nativeBluetoothCalls = 0, output }));
     return 0;

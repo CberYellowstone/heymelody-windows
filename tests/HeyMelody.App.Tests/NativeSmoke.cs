@@ -129,8 +129,8 @@ internal static class NativeSmoke
                 Check(page.IsCompact == (page.Bounds.Width < 1080), "Native responsive breakpoint.");
                 var hero = page.FindControl<ProductArtwork>("HeroArt") ?? throw new InvalidOperationException("Product artwork missing.");
                 Check(Equals(hero.Visual, DeviceVisuals.X4Product)
-                    && hero.GetVisualDescendants().OfType<Image>().SingleOrDefault() is { Source: not null },
-                    "Connected X4 uses the embedded product PNG in the native window.");
+                    && hero.GetVisualDescendants().OfType<EncoFree4ModelView>().SingleOrDefault() is not null,
+                    "Connected X4 selects the experimental Free4 model control; this smoke check makes no 3D pixel assertion.");
                 var picker = page.FindControl<ListBox>("DevicePicker") ?? throw new InvalidOperationException("Picker missing.");
                 var pickerOrigin = picker.TranslatePoint(default, page) ?? throw new InvalidOperationException("Picker is detached.");
                 Check(picker.IsVisible && picker.Bounds.Height > 0 && pickerOrigin.Y >= 0

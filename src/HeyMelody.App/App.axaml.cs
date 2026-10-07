@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
@@ -14,7 +15,16 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             ApplyTheme(ThemePreferences.Load());
-            desktop.MainWindow = new MainWindow();
+            if (Program.IsModelDemo)
+            {
+                var window = new MainWindow(new PreviewService(), preview: true)
+                {
+                    Title = "HeyMelody 0.7.1 · Enco Free4 三维模型验证"
+                };
+                window.FindControl<MainView>("Page")?.SetModelDemo();
+                desktop.MainWindow = window;
+            }
+            else desktop.MainWindow = new MainWindow();
             desktop.Exit += (_, _) => DeviceVisuals.DisposeResources();
         }
         base.OnFrameworkInitializationCompleted();

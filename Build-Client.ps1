@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.7.0',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.7.1',
+    [ValidateNotNullOrEmpty()][ValidateSet('x64', 'x86', 'arm64')][string[]]$Architectures = @('x64', 'x86', 'arm64'),
     [switch]$SkipTests,
     [switch]$FinalizeOnly,
     [string]$ValidationPath
@@ -9,7 +10,9 @@ $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $releaseRoot = Join-Path $root 'release'
 $stage = Join-Path $releaseRoot ('HeyMelody_Windows_' + $Version)
-$archive = Join-Path $releaseRoot ('HeyMelody_Windows_' + $Version + '_AllArchitectures.zip')
+$targetArchitectures = @($Architectures | Select-Object -Unique)
+$architectureSuffix = if ($targetArchitectures.Count -eq 3) { 'AllArchitectures' } else { $targetArchitectures -join '-' }
+$archive = Join-Path $releaseRoot ('HeyMelody_Windows_' + $Version + '_' + $architectureSuffix + '.zip')
 if ($ValidationPath) {
     $validation = Get-Content -LiteralPath $ValidationPath -Raw | ConvertFrom-Json
     if ($validation.schemaVersion -ne 2 -or $validation.version -ne $Version -or -not $validation.success) { throw 'Validation must be a successful schema-2 receipt for this exact release version.' }
@@ -18,9 +21,15 @@ if ((Test-Path -LiteralPath $archive) -or ((Test-Path -LiteralPath $stage) -and 
     throw 'This version already has an output directory or archive. Use a new version or review the existing output.'
 }
 if ($FinalizeOnly -and -not (Test-Path -LiteralPath $stage -PathType Container)) { throw 'There is no published directory to finalize.' }
+$repositoryPackageCache = Join-Path $root 'artifacts/nuget-cache'
+$restoreProperties = @('-p:RestorePackagesPath=' + $repositoryPackageCache)
+$existingPackageCache = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.nuget/packages'
+if (Test-Path -LiteralPath $existingPackageCache -PathType Container) {
+    $restoreProperties += '-p:RestoreFallbackFolders=' + $existingPackageCache
+}
 if (-not $SkipTests -and -not $FinalizeOnly) {
     foreach ($project in @('HeyMelody.Protocol.Tests', 'HeyMelody.Devices.Tests', 'HeyMelody.Control.Tests', 'HeyMelody.Daily.Tests', 'HeyMelody.Probe.Tests', 'HeyMelody.Host.Tests', 'HeyMelody.Client.Tests', 'HeyMelody.App.Tests', 'HeyMelody.DeviceManager.Tests')) {
-        & dotnet run --project (Join-Path $root ('tests/' + $project + '/' + $project + '.csproj')) -c Release
+        & dotnet run --project (Join-Path $root ('tests/' + $project + '/' + $project + '.csproj')) -c Release '-p:CopyDebugSymbolFilesFromPackages=false' @restoreProperties
         if ($LASTEXITCODE -ne 0) { throw ('Tests failed: ' + $project) }
     }
 }
@@ -31,6 +40,26 @@ $builds = @()
 $packageCacheLine = & dotnet nuget locals global-packages --list
 if ($LASTEXITCODE -ne 0 -or $packageCacheLine -notmatch '^global-packages:\s*(.+?)\s*$') { throw 'NuGet package-cache path is unavailable.' }
 $packageCache = $Matches[1]
+$publishProperties = @('-p:CopyDebugSymbolFilesFromPackages=false',
+    '-p:CreateHardLinksForCopyLocalIfPossible=true',
+    '-p:CreateHardLinksForCopyFilesToOutputDirectoryIfPossible=true',
+    '-p:CreateHardLinksForPublishFilesIfPossible=true',
+    '-p:CreateHardLinksForAdditionalFilesIfPossible=true')
+$publishProperties += $restoreProperties
+
+function Resolve-PackageDirectory([object]$Assets, [string]$PackagePath) {
+    # A package may have been resolved from either the repository cache or a fallback.
+    foreach ($folder in @($Assets.packageFolders.PSObject.Properties.Name) + @($packageCache)) {
+        if ([string]::IsNullOrWhiteSpace($folder)) { continue }
+        $packageRoot = [IO.Path]::GetFullPath($folder).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+        $candidate = [IO.Path]::GetFullPath((Join-Path $folder $PackagePath))
+        if (-not $candidate.StartsWith($packageRoot, [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Resolved package path escaped its package cache.'
+        }
+        if (Test-Path -LiteralPath $candidate -PathType Container) { return $candidate }
+    }
+    throw ('Resolved package is unavailable in its declared caches: ' + $PackagePath)
+}
 
 function Export-PackageNotices([string]$AssetsPath, [string]$Destination) {
     $assets = Get-Content -LiteralPath $AssetsPath -Raw | ConvertFrom-Json
@@ -39,7 +68,7 @@ function Export-PackageNotices([string]$AssetsPath, [string]$Destination) {
         $library = $entry.Value
         if ($library.type -ne 'package' -or $entry.Name -like 'Microsoft.NETCore.App.Runtime.*') { continue }
         $parts = $entry.Name.Split('/')
-        $packageDirectory = Join-Path $packageCache $library.path
+        $packageDirectory = Resolve-PackageDirectory $assets $library.path
         $metadataPath = Get-ChildItem -LiteralPath $packageDirectory -Filter '*.nuspec' -File | Select-Object -First 1
         if (-not $metadataPath) { throw ('Missing package metadata: ' + $entry.Name) }
         [xml]$metadataDocument = Get-Content -LiteralPath $metadataPath.FullName -Raw
@@ -84,25 +113,35 @@ function Export-PackageNotices([string]$AssetsPath, [string]$Destination) {
     [ordered]@{ schemaVersion = 1; source = 'resolved NuGet project.assets.json'; packages = @($notices); supplementalNotices = @($supplemental) } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $Destination 'PACKAGE-NOTICES.json') -Encoding UTF8
 }
 
-foreach ($architecture in @('x64', 'x86', 'arm64')) {
+foreach ($architecture in $targetArchitectures) {
     $rid = 'win-' + $architecture
     $app = Join-Path $stage $architecture
     $hostOutput = Join-Path $app 'backend'
     if (-not $FinalizeOnly) {
         Write-Host ('Publishing ' + $rid)
-        & dotnet publish (Join-Path $root 'src/HeyMelody.App/HeyMelody.App.csproj') -c Release -r $rid --self-contained true -o $app '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) --nologo
+        & dotnet publish (Join-Path $root 'src/HeyMelody.App/HeyMelody.App.csproj') -c Release -r $rid --self-contained true -o $app '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) @publishProperties --nologo
         if ($LASTEXITCODE -ne 0) { throw ('GUI publish failed: ' + $rid) }
-        & dotnet publish (Join-Path $root 'src/HeyMelody.DeviceManager/HeyMelody.DeviceManager.csproj') -c Release -r $rid --self-contained true -o $app '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) --nologo
+        & dotnet publish (Join-Path $root 'src/HeyMelody.DeviceManager/HeyMelody.DeviceManager.csproj') -c Release -r $rid --self-contained true -o $app '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) @publishProperties --nologo
         if ($LASTEXITCODE -ne 0) { throw ('Device manager publish failed: ' + $rid) }
-        & dotnet publish (Join-Path $root 'src/HeyMelody.Host/HeyMelody.Host.csproj') -c Release -r $rid --self-contained true -o $hostOutput '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) --nologo
+        & dotnet publish (Join-Path $root 'src/HeyMelody.Host/HeyMelody.Host.csproj') -c Release -r $rid --self-contained true -o $hostOutput '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) @publishProperties --nologo
         if ($LASTEXITCODE -ne 0) { throw ('Host publish failed: ' + $rid) }
     }
+    # Native NuGet runtime assets can include PDBs despite the managed-symbol option.
+    # They are unnecessary for execution and need not inflate the portable package.
+    foreach ($debugSymbol in Get-ChildItem -LiteralPath $app -Filter '*.pdb' -File -Recurse) {
+        Remove-Item -LiteralPath $debugSymbol.FullName -Force
+    }
     $runtimeConfig = Get-Content -LiteralPath (Join-Path $app 'HeyMelody.runtimeconfig.json') -Raw | ConvertFrom-Json
-    foreach ($runtimeEntry in @(@{ directory = $app; name = 'HeyMelody' }, @{ directory = $app; name = 'HeyMelody.DeviceManager' }, @{ directory = $hostOutput; name = 'HeyMelody.Host' })) {
+    foreach ($runtimeEntry in @(
+        @{ directory = $app; name = 'HeyMelody'; assets = 'src/HeyMelody.App/obj/project.assets.json' },
+        @{ directory = $app; name = 'HeyMelody.DeviceManager'; assets = 'src/HeyMelody.DeviceManager/obj/project.assets.json' },
+        @{ directory = $hostOutput; name = 'HeyMelody.Host'; assets = 'src/HeyMelody.Host/obj/project.assets.json' }
+    )) {
         $runtimeDirectory = $runtimeEntry.directory
         $publishedRuntime = Get-Content -LiteralPath (Join-Path $runtimeDirectory ($runtimeEntry.name + '.runtimeconfig.json')) -Raw | ConvertFrom-Json
         $runtimeVersion = @($publishedRuntime.runtimeOptions.includedFrameworks | Where-Object { $_.name -eq 'Microsoft.NETCore.App' })[0].version
-        $corePackage = Join-Path $packageCache ('microsoft.netcore.app.runtime.' + $rid + '/' + $runtimeVersion)
+        $runtimeAssets = Get-Content -LiteralPath (Join-Path $root $runtimeEntry.assets) -Raw | ConvertFrom-Json
+        $corePackage = Resolve-PackageDirectory $runtimeAssets ('microsoft.netcore.app.runtime.' + $rid + '/' + $runtimeVersion)
         Copy-Item -LiteralPath (Join-Path $corePackage 'LICENSE.TXT') -Destination (Join-Path $runtimeDirectory 'LICENSE.txt')
         Copy-Item -LiteralPath (Join-Path $corePackage 'THIRD-PARTY-NOTICES.TXT') -Destination (Join-Path $runtimeDirectory 'THIRD-PARTY-NOTICES.txt')
     }
@@ -132,6 +171,7 @@ foreach ($architecture in @('x64', 'x86', 'arm64')) {
 }
 Copy-Item -LiteralPath (Join-Path $root 'packaging/Start-HeyMelody.ps1') -Destination (Join-Path $stage 'Start-HeyMelody.ps1')
 Copy-Item -LiteralPath (Join-Path $root 'packaging/Start-HeyMelody.cmd') -Destination (Join-Path $stage 'Start-HeyMelody.cmd')
+Copy-Item -LiteralPath (Join-Path $root 'packaging/Start-3D-Demo.cmd') -Destination (Join-Path $stage 'Start-3D-Demo.cmd')
 Copy-Item -LiteralPath (Join-Path $root 'packaging/README.md') -Destination (Join-Path $stage 'README.md')
 Copy-Item -LiteralPath (Join-Path $root 'packaging/README.md') -Destination (Join-Path $stage 'README-使用说明.md')
 Copy-Item -LiteralPath (Join-Path $root 'packaging/SOURCE-NOTES.md') -Destination (Join-Path $stage 'SOURCE-NOTES.md')

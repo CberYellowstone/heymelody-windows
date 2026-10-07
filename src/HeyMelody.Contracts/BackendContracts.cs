@@ -47,7 +47,7 @@ public sealed class BackendEvent
 public sealed class BackendSubscription
 {
     public string BackendInstanceId { get; set; } = "";
-    public string Version { get; set; } = "0.7.0";
+    public string Version { get; set; } = "0.7.1";
     public UiDeviceCatalog Catalog { get; set; } = new([]);
     public IReadOnlyList<UiDevice> Devices { get; set; } = [];
     public IReadOnlyList<UiSnapshot> Snapshots { get; set; } = [];

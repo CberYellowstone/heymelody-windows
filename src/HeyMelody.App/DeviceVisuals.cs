@@ -14,14 +14,15 @@ namespace HeyMelodyWindows.App;
 
 /// <summary>A bitmap resource description; loading is deferred until it is displayed.</summary>
 public sealed record BitmapVisual(Uri Source);
+public sealed record EncoFree4ModelVisual;
 public sealed record GenericProductVisual;
 public sealed record GenericDeviceIconVisual;
 
 /// <summary>Built-in presentation data and its default template, independent of device identification.</summary>
 public static class DeviceVisuals
 {
-    public static BitmapVisual X4Product { get; } = new(new Uri(
-        "avares://HeyMelody/Assets/Devices/EncoX4/x4-pods-with-earphones.png"));
+    // This experimental build keeps the X4 business model and validates the Free4 artwork.
+    public static EncoFree4ModelVisual X4Product { get; } = new();
     public static BitmapVisual X4Icon { get; } = new(new Uri(
         "avares://HeyMelody/Assets/Devices/EncoX4/x4-both-earphones.png"));
     public static GenericProductVisual GenericProduct { get; } = new();
@@ -55,11 +56,12 @@ public static class DeviceVisuals
 
     private sealed class DeviceVisualTemplate : IDataTemplate
     {
-        public bool Match(object? data) => data is BitmapVisual or GenericProductVisual or GenericDeviceIconVisual;
+        public bool Match(object? data) => data is BitmapVisual or EncoFree4ModelVisual or GenericProductVisual or GenericDeviceIconVisual;
 
         public Control? Build(object? data) => data switch
         {
             BitmapVisual image => new Image { Source = GetBitmap(image.Source), Stretch = Stretch.Uniform },
+            EncoFree4ModelVisual => new EncoFree4ModelView(),
             GenericProductVisual => CreateGenericProduct(),
             GenericDeviceIconVisual => CreateGenericIcon(),
             _ => null

@@ -96,11 +96,14 @@ def checked_file(directory, relative):
     return path
 
 
-def verify(root, package, evidence=None):
+def verify(root, package, evidence=None, architectures=("x64", "x86", "arm64")):
     manifest = json.loads((package / "manifest.json").read_text("utf-8-sig"))
     assert manifest["schemaVersion"] == 2 and manifest["version"]
     declared = {build["architecture"]: build for build in manifest["builds"]}
-    expected = {"x64": 0x8664, "x86": 0x14c, "arm64": 0xaa64}
+    machines = {"x64": 0x8664, "x86": 0x14c, "arm64": 0xaa64}
+    requested = set(architectures)
+    assert requested and requested.issubset(machines), "Invalid requested architectures"
+    expected = {arch: machine for arch, machine in machines.items() if arch in requested}
     assert set(declared) == set(expected)
     receipts = {}
     if evidence is not None:
@@ -112,14 +115,19 @@ def verify(root, package, evidence=None):
     for arch, machine in expected.items():
         folder = package / arch
         gui, host = folder / "HeyMelody.exe", folder / "backend" / "HeyMelody.Host.exe"
+        manager = checked_file(folder, "HeyMelody.DeviceManager.exe")
+        gui_assembly = checked_file(folder, "HeyMelody.dll")
         native = [directory / filename for directory in (folder, host.parent)
                   for filename in ("libSkiaSharp.dll", "libHarfBuzzSharp.dll", "av_libglesv2.dll")]
-        for path in [gui, host, folder / "coreclr.dll", host.parent / "coreclr.dll", *native]:
+        for path in [gui, manager, host, folder / "coreclr.dll", host.parent / "coreclr.dll", *native]:
             assert PE(path).machine == machine, str(path)
         assert declared[arch]["rid"] == "win-" + arch and declared[arch]["selfContained"] is True
         assert declared[arch]["guiSha256"] == sha(gui) and declared[arch]["hostSha256"] == sha(host)
+        assert declared[arch]["deviceManagerSha256"] == sha(manager)
         assert declared[arch]["guiFramework"] == "net10.0" and declared[arch]["hostFramework"] == "net10.0-windows10.0.19041.0"
-        for name, directory in [("HeyMelody", folder), ("HeyMelody.Host", host.parent)]:
+        assert declared[arch]["deviceManagerFramework"] == "net10.0"
+        gui_dependencies = None
+        for name, directory in [("HeyMelody", folder), ("HeyMelody.DeviceManager", folder), ("HeyMelody.Host", host.parent)]:
             runtime = json.loads((directory / (name + ".runtimeconfig.json")).read_text("utf-8-sig"))["runtimeOptions"]
             assert runtime["tfm"] == "net10.0" and runtime.get("includedFrameworks")
             assert {entry["name"] for entry in runtime["includedFrameworks"]} == {"Microsoft.NETCore.App"}
@@ -129,6 +137,16 @@ def verify(root, package, evidence=None):
             libraries = dependencies["libraries"]
             assert any(key.startswith("Avalonia/") for key in libraries)
             assert any(key.startswith("FluentAvaloniaUI/") for key in libraries)
+            if name == "HeyMelody":
+                gui_dependencies = dependencies
+        renderer_packages = [key.split("/", 1) for key in gui_dependencies["libraries"]
+                             if key.split("/", 1)[0].casefold() == "ava3dcontrol"]
+        assert len(renderer_packages) <= 1, "Ambiguous Ava3DControl dependency versions"
+        renderer = None
+        if renderer_packages:
+            renderer_path = checked_file(folder, "Ava3D.dll")
+            renderer = dict(package=renderer_packages[0][0], declaredVersion=renderer_packages[0][1],
+                            assembly=renderer_path.name, sha256=sha(renderer_path))
         assert not (folder / "PresentationFramework.dll").exists()
         assert not (folder / "LICENSE-WINDOWSDESKTOP.txt").exists()
         for directory in (folder, host.parent):
@@ -153,7 +171,9 @@ def verify(root, package, evidence=None):
             assert diagnostics["productId"] == "06EC10" and diagnostics["applicationGetSubmissions"] > 0
             assert diagnostics["applicationSetSubmissions"] == 0 and diagnostics["applicationOtherSubmissions"] == 0
         builds.append(dict(architecture=arch, peMachine=hex(machine), selfContained=True,
-                           guiSha256=sha(gui), hostSha256=sha(host), icon=icon,
+                           guiSha256=sha(gui), guiAssemblySha256=sha(gui_assembly),
+                           deviceManagerSha256=sha(manager), hostSha256=sha(host), icon=icon,
+                           modelRenderer=renderer,
                            nativeRenderingAssets=[dict(name=path.name, sha256=sha(path)) for path in native],
                            packageNoticesVerified=True, readOnlyBluetoothExecutionVerified=executed,
                            liveGuiPreviewVerified=receipt.get("liveGuiPreviewVerified", False),
@@ -169,10 +189,13 @@ if __name__ == "__main__":
     parser.add_argument("--package", type=pathlib.Path, required=True)
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--evidence", type=pathlib.Path, help="Optional schema-2 receipt for this version and exact GUI/host hashes")
+    parser.add_argument("--architectures", nargs="+", choices=("x64", "x86", "arm64"),
+                        default=("x64", "x86", "arm64"),
+                        help="Architectures the package must contain; defaults to all three")
     args = parser.parse_args()
     root = pathlib.Path(__file__).resolve().parents[1]
     evidence = json.loads(args.evidence.read_text("utf-8-sig")) if args.evidence else None
-    report = verify(root, args.package.resolve(), evidence)
+    report = verify(root, args.package.resolve(), evidence, args.architectures)
     with args.output.open("x", encoding="utf-8") as stream:
         json.dump(report, stream, indent=2, ensure_ascii=False)
         stream.write("\n")

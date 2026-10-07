@@ -12,10 +12,10 @@ internal static class DeviceVisualTests
 {
     public static int Run(HeadlessUnitTestSession session)
     {
-        Run("unconnected X4 aliases use embedded artwork without enabling settings", NameFallbackAsync);
+        Run("unconnected X4 aliases select the experimental Free4 model without enabling settings", NameFallbackAsync);
         Run("actual product IDs override names and stay with their device across session changes", ProductIdentityAsync);
         Run("removed devices and replacement data contexts discard temporary product knowledge", CacheLifetimeAsync);
-        Run("visual hosts support independent interactive templates and share decoded images", TemplateAndResourceAsync);
+        Run("visual hosts create independent model controls and share decoded bitmap images", TemplateAndResourceAsync);
         Run("visual updates preserve device containers and manual scrolling without extra device work", VisualUpdateLayoutAsync);
         return 5;
 
@@ -192,8 +192,11 @@ internal static class DeviceVisualTests
 
     private static Task TemplateAndResourceAsync()
     {
-        var hero = new ProductArtwork { Visual = DeviceVisuals.X4Product, Width = 240, Height = 180 };
-        var anotherHero = new ProductArtwork { Visual = new BitmapVisual(DeviceVisuals.X4Product.Source), Width = 240, Height = 180 };
+        // Keep bitmap-cache coverage separate from the experimental 3D template. Headless
+        // checks can inspect control structure, but cannot establish actual model rendering.
+        var bitmapVisual = DeviceVisuals.X4Icon;
+        var hero = new ProductArtwork { Visual = bitmapVisual, Width = 240, Height = 180 };
+        var anotherHero = new ProductArtwork { Visual = new BitmapVisual(bitmapVisual.Source), Width = 240, Height = 180 };
         var icon = new DeviceIconView { Visual = DeviceVisuals.X4Icon, Width = 28, Height = 28 };
         var window = CreateWindow(new StackPanel { Spacing = 8, Children = { hero, anotherHero, icon } });
         try
@@ -207,8 +210,8 @@ internal static class DeviceVisualTests
             var source = firstImage.Source;
             hero.Visual = DeviceVisuals.GenericProduct; Dispatcher.UIThread.RunJobs();
             Check(!hero.GetVisualDescendants().OfType<Image>().Any(), "Switching to a generic visual replaces the image presentation.");
-            hero.Visual = DeviceVisuals.X4Product; Dispatcher.UIThread.RunJobs();
-            Check(ReferenceEquals(source, ImageFor(hero).Source), "Switching back to X4 reuses its existing decoded image.");
+            hero.Visual = bitmapVisual; Dispatcher.UIThread.RunJobs();
+            Check(ReferenceEquals(source, ImageFor(hero).Source), "Switching back to the bitmap reuses its existing decoded image.");
             var clicks = 0;
             var content = new object();
             var template = new FuncDataTemplate<object>((value, _) =>
@@ -228,10 +231,21 @@ internal static class DeviceVisualTests
             Click(window, heroButton); Click(window, iconButton);
             Check(clicks == 2, "Both large and small visual hosts deliver pointer input to custom interactive content.");
             hero.VisualTemplate = DeviceVisuals.DefaultTemplate; icon.VisualTemplate = DeviceVisuals.DefaultTemplate;
-            hero.Visual = DeviceVisuals.X4Product; icon.Visual = DeviceVisuals.X4Icon;
+            hero.Visual = bitmapVisual; icon.Visual = DeviceVisuals.X4Icon;
             Dispatcher.UIThread.RunJobs();
             Check(ReferenceEquals(source, ImageFor(hero).Source) && ImageFor(icon).Source is not null,
                 "The PNG presentation can be restored after using a custom template.");
+            hero.Visual = DeviceVisuals.X4Product;
+            anotherHero.Visual = new EncoFree4ModelVisual();
+            Dispatcher.UIThread.RunJobs();
+            var firstModel = ModelFor(hero);
+            var secondModel = ModelFor(anotherHero);
+            Check(!ReferenceEquals(firstModel, secondModel) && !ReferenceEquals(firstModel.Viewport, secondModel.Viewport)
+                && firstModel.IsHitTestVisible && secondModel.IsHitTestVisible,
+                "Each model host owns a separate interactive Free4 viewport; this assertion does not verify rendered pixels.");
+            Check(!hero.GetVisualDescendants().OfType<Image>().Any()
+                && ReferenceEquals(source, ImageFor(icon).Source),
+                "The model replaces the hero bitmap while the device icon retains its shared decoded image.");
         }
         finally { window.Close(); }
         return Task.CompletedTask;
@@ -261,11 +275,10 @@ internal static class DeviceVisualTests
             await Task.Delay(30); Dispatcher.UIThread.RunJobs();
             Check(ReferenceEquals(first, Card(picker, 0)) && first.Bounds.Size == cardSize
                 && Math.Abs(scroll.Offset.X - offset) <= 1,
-                "Updating the large image and card icon preserves the list containers, card dimensions and manual scroll position.");
-            Check(DeviceVisuals.X4Product.Source.Scheme == "avares" && DeviceVisuals.X4Icon.Source.Scheme == "avares"
-                && DeviceVisuals.X4Product.Source.AbsolutePath == "/Assets/Devices/EncoX4/x4-pods-with-earphones.png"
+                "Updating the model host and card icon preserves the list containers, card dimensions and manual scroll position.");
+            Check(view.FindControl<ProductArtwork>("HeroArt")!.Visual is EncoFree4ModelVisual && DeviceVisuals.X4Icon.Source.Scheme == "avares"
                 && DeviceVisuals.X4Icon.Source.AbsolutePath == "/Assets/Devices/EncoX4/x4-both-earphones.png",
-                "Both PNG descriptors resolve embedded project assets rather than the research directory.");
+                "The experimental product uses the Free4 model descriptor and the card icon keeps its embedded X4 PNG.");
             DeviceBarTests.CheckBottomBar(view, window);
             Check(service.Enumerations == 1 && service.Connections == 1 && service.Disconnections == 0
                 && service.Reads == 0 && service.Submissions == 0,
@@ -279,8 +292,10 @@ internal static class DeviceVisualTests
         var hero = view.FindControl<ProductArtwork>("HeroArt")!;
         Check(Equals(hero.Visual, x4 ? DeviceVisuals.X4Product : DeviceVisuals.GenericProduct),
             "Selected device artwork follows its own product knowledge and exact name fallback.");
-        if (x4) Check(ImageFor(hero).Source is not null, "X4 product artwork decodes its embedded PNG.");
-        else Check(!hero.GetVisualDescendants().OfType<Image>().Any(), "Generic product artwork contains no X4 PNG.");
+        if (x4) Check(ModelFor(hero).IsHitTestVisible,
+            "X4 appearance selects the experimental Free4 model control; headless checks do not verify 3D rendering.");
+        else Check(!hero.GetVisualDescendants().OfType<EncoFree4ModelView>().Any()
+            && !hero.GetVisualDescendants().OfType<Image>().Any(), "Generic product artwork contains no model viewport or X4 PNG.");
     }
 
     private static void CheckIcon(ListBox picker, int index, bool x4)
@@ -293,6 +308,7 @@ internal static class DeviceVisualTests
     }
 
     private static Image ImageFor(Control host) => host.GetVisualDescendants().OfType<Image>().Single();
+    private static EncoFree4ModelView ModelFor(Control host) => host.GetVisualDescendants().OfType<EncoFree4ModelView>().Single();
     private static ListBoxItem Card(ListBox picker, int index) => picker.ContainerFromIndex(index) as ListBoxItem
         ?? throw new InvalidOperationException("Device visual card was not realized.");
     private static Window CreateWindow(Control view) => new()

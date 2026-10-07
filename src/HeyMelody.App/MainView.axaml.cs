@@ -18,6 +18,7 @@ public partial class MainView : UserControl
     private CancellationTokenSource? _bluetoothSettingsCancellation;
     private bool _openingBluetoothSettings;
     private bool _closingWindow;
+    private bool _modelDemo;
     internal ILauncher? LauncherOverride { get; set; }
     internal Func<Task>? ManageDevicesRequested { get; set; }
     private bool _manageDevicesRequested;
@@ -51,6 +52,15 @@ public partial class MainView : UserControl
     }
 
     public void SetPlatformNotice(bool visible) => PlatformNotice.IsOpen = PlatformNotice.IsVisible = visible;
+    internal void SetModelDemo()
+    {
+        _modelDemo = true;
+        AddDeviceHost.IsEnabled = false;
+        PlatformNotice.Title = "Enco Free4 三维模型验证";
+        PlatformNotice.Message = "拖动模型旋转，松手后观察惯性与阻尼；空闲时自动旋转。右侧为 X4 模拟数据，设定不会写入真实耳机。";
+        PlatformNotice.IsOpen = PlatformNotice.IsVisible = true;
+        HeroCaption.Text = "Enco Free4 外观 · X4 模拟控制界面";
+    }
     public bool IsCompact { get; private set; }
     public void ExpandAllSettings()
     { EqualizerPanel.IsExpanded = ExperiencePanel.IsExpanded = DeviceInfoPanel.IsExpanded = true; }
@@ -115,7 +125,7 @@ public partial class MainView : UserControl
 
     internal async Task OpenBluetoothSettingsAsync()
     {
-        if (!OperatingSystem.IsWindows() || _closingWindow || _openingBluetoothSettings
+        if (_modelDemo || !OperatingSystem.IsWindows() || _closingWindow || _openingBluetoothSettings
             || ViewModel is not { Closing: false } vm || TopLevel.GetTopLevel(this) is not { } owner) return;
         using var cancellation = new CancellationTokenSource();
         _bluetoothSettingsCancellation = cancellation;
@@ -144,7 +154,7 @@ public partial class MainView : UserControl
         {
             _bluetoothSettingsCancellation = null;
             _openingBluetoothSettings = false;
-            AddDeviceHost.IsEnabled = OperatingSystem.IsWindows() && !_closingWindow;
+            AddDeviceHost.IsEnabled = !_modelDemo && OperatingSystem.IsWindows() && !_closingWindow;
         }
     }
 
@@ -179,7 +189,7 @@ public partial class MainView : UserControl
     public void ResumeSettingsDialogs()
     {
         _closingWindow = false;
-        AddDeviceHost.IsEnabled = OperatingSystem.IsWindows() && !_openingBluetoothSettings;
+        AddDeviceHost.IsEnabled = !_modelDemo && OperatingSystem.IsWindows() && !_openingBluetoothSettings;
     }
 
     private async Task ShowAppSettingsAsync(CancellationToken token)

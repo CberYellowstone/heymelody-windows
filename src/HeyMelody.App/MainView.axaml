@@ -74,7 +74,7 @@
                               VerticalAlignment="Center" HorizontalAlignment="Stretch" />
         <StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="0,0,0,32" Spacing="6">
           <TextBlock Text="{Binding Title}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" />
-          <TextBlock Text="产品示意图" Classes="caption" HorizontalAlignment="Center" />
+          <TextBlock x:Name="HeroCaption" Text="Enco Free4 三维模型" Classes="caption" HorizontalAlignment="Center" />
         </StackPanel>
       </Grid>
       <ScrollViewer x:Name="ControlScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto"
