@@ -19,6 +19,7 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
     private string _selectedName = "";
     private DailySnapshot? _last;
     private int _getSubmissions, _setSubmissions, _otherSubmissions;
+    public event Action<UiSnapshot>? SnapshotChanged;
 
     public NativeHeadsetService() : this(WindowsBluetooth.EnumeratePaired, DeviceWhitelistStore.CreateDefault()) { }
 
@@ -100,10 +101,27 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
         return Map(await _client.RefreshAsync(token));
     }
 
+    // This entry point is exclusively for a supervisor-owned, single-peer worker.
+    // The address arrives through its private redirected stdin, never a command line.
+    internal async Task<UiSnapshot> InitializePeerAsync(string identity, string name, ulong address, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(identity) || address is 0 or > 0xFFFFFFFFFFFFUL)
+            throw new InvalidDataException();
+        await DisconnectAsync(token);
+        _selected = identity; _selectedName = name; _selectedAddress = address;
+        _client = new DailyClient(new PeerConnector(address, RecordSubmission));
+        _client.SnapshotChanged += OnDailySnapshot;
+        var snapshot = Map(await _client.RefreshAsync(token));
+        if (snapshot.ControlReady) await _client.StartMonitoringAsync(token);
+        return snapshot;
+    }
+
+    private void OnDailySnapshot(DailySnapshot snapshot) => SnapshotChanged?.Invoke(Map(snapshot));
+
     public async Task DisconnectAsync(CancellationToken token)
     {
         var client = _client; _client = null; _selected = null; _selectedName = ""; _selectedAddress = null;
-        if (client is not null) await client.DisposeAsync();
+        if (client is not null) { client.SnapshotChanged -= OnDailySnapshot; await client.DisposeAsync(); }
     }
 
     public async Task<UiSnapshot> RefreshAsync(CancellationToken token)
@@ -218,6 +236,18 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
         return new UiSnapshot
         {
             Identity = _selected ?? "", DeviceName = _selectedName,
+            Revision = snapshot.Revision,
+            ControlReady = valid,
+            CaseLid = snapshot.CaseOpen is { } open ? open ? CaseLidState.Open : CaseLidState.Closed : CaseLidState.Unknown,
+            LeftPlacement = Placement(snapshot.LeftInCase, snapshot.LeftInEar),
+            RightPlacement = Placement(snapshot.RightInCase, snapshot.RightInEar),
+            ObservationSource = "spp", ObservationTime = snapshot.ObservedAtUtc, ObservationFresh = snapshot.Connected,
+            CaseObservationTime = snapshot.CaseObservedAtUtc,
+            LeftPlacementObservationTime = snapshot.LeftPlacementObservedAtUtc,
+            RightPlacementObservationTime = snapshot.RightPlacementObservedAtUtc,
+            LeftBatteryObservationTime = snapshot.LeftBatteryObservedAtUtc,
+            RightBatteryObservationTime = snapshot.RightBatteryObservedAtUtc,
+            CaseBatteryObservationTime = snapshot.CaseBatteryObservedAtUtc,
             ProductId = snapshot.ProductId,
             Connected = snapshot.Connected, SupportedModel = snapshot.ProfileVerified,
             ConnectionState = ConnectionEvidence(snapshot),
@@ -248,6 +278,9 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
             Warnings = snapshot.Warnings.Count == 0 ? [] : ["部分耳机状态暂时不可用，相关设置已禁用。"]
         };
     }
+
+    private static EarbudPlacement Placement(bool? inCase, bool? inEar) => inEar == true ? EarbudPlacement.InEar
+        : inCase == true ? EarbudPlacement.InCase : inCase == false ? EarbudPlacement.OutOfCase : EarbudPlacement.Unknown;
 
     public ValueTask DisposeAsync() => new(DisconnectAsync(CancellationToken.None));
 

@@ -75,7 +75,7 @@ internal sealed class DeviceManagerProcess : IDeviceManagerProcess
         catch (IOException) { }
     }
 
-    private static async Task StopAsync(Process process)
+    internal static async Task StopAsync(Process process)
     {
         if (process.HasExited) return;
         try
@@ -85,8 +85,8 @@ internal sealed class DeviceManagerProcess : IDeviceManagerProcess
                 try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2)); return; }
                 catch (TimeoutException) { }
             }
-            // The editor's only owned child is its private stdio Bluetooth worker.
-            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            // A reconnect may have launched the shared Host from the editor; only the editor is owned here.
+            if (!process.HasExited) process.Kill();
             await process.WaitForExitAsync();
         }
         catch (InvalidOperationException) { }

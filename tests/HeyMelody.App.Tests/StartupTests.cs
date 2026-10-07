@@ -17,7 +17,8 @@ internal static class StartupTests
         Run("unpairing after a save keeps startup in management until an effective list exists", SavedUnpairedAsync);
         Run("an enumeration failure propagates without launching the manager", EnumerationFailureAsync);
         Run("manager failures propagate rather than impersonating a saved or cancelled selection", ManagerFailureAsync);
-        return 6;
+        Run("forced manager shutdown preserves its separately running backend child", ProcessLifetimeTests.RunAsync);
+        return 7;
 
         void Run(string name, Func<Task> test)
         {

@@ -6,7 +6,8 @@ public sealed partial class MainViewModel
     public IReadOnlyList<UiApplyResult> LastApplyAttempts => _lastApplyAttempts;
 
     private sealed class PendingAction(UiAction action, string group, string identity, long epoch,
-        long version, long draftIdentity, IReadOnlyList<int> previousIds, CancellationToken token)
+        long version, long draftIdentity, IReadOnlyList<int> previousIds, CancellationToken token,
+        string backendInstanceId, long deviceGeneration)
     {
         public UiAction Action { get; } = action;
         public string Group { get; } = group;
@@ -16,6 +17,8 @@ public sealed partial class MainViewModel
         public long DraftIdentity { get; } = draftIdentity;
         public IReadOnlyList<int> PreviousIds { get; } = previousIds;
         public CancellationToken Token { get; } = token;
+        public string BackendInstanceId { get; } = backendInstanceId;
+        public long DeviceGeneration { get; } = deviceGeneration;
         public string Stage { get; set; } = "等待应用";
         public List<UiApplyResult> Attempts { get; } = [];
     }
@@ -34,7 +37,8 @@ public sealed partial class MainViewModel
         ? intent.Action.Value == 1 : null;
     private string? PendingState(string group) => _pending.TryGetValue(group, out var intent) ? intent.Stage : null;
     private bool Current(PendingAction intent) => !Closing && !_lifetime.IsCancellationRequested
-        && intent.Epoch == _sessionEpoch && intent.Identity == _sessionIdentity && intent.Identity == SelectedDevice?.Identity;
+        && intent.Epoch == _sessionEpoch && intent.Identity == _sessionIdentity && intent.Identity == SelectedDevice?.Identity
+        && CurrentBackendTarget(intent);
 
     private async Task ApplyAsync(UiAction supplied)
     {
@@ -44,11 +48,12 @@ public sealed partial class MainViewModel
         var action = supplied.EqualizerEntry is not { } entry ? supplied
             : supplied with { EqualizerEntry = entry with { Bands = entry.Bands.ToArray() } };
         var intent = new PendingAction(action, GroupFor(action.Kind), _sessionIdentity!, _sessionEpoch,
-            VersionFor(action.Kind), _draftIdentity, _snapshot!.EqualizerEntries.Select(x => x.Id).ToArray(), _sessionWork.Token);
+            VersionFor(action.Kind), _draftIdentity, _snapshot!.EqualizerEntries.Select(x => x.Id).ToArray(), _sessionWork.Token,
+            _snapshot.BackendInstanceId, _snapshot.DeviceGeneration);
         _pending.Add(intent.Group, intent);
-        if (action.Kind == "Anc") _pendingAnc = true;
-        if (action.Kind == "Equalizer") _pendingPreset = true;
-        if (action.Kind == "Spatial") _pendingSpatial = true;
+        if (action.Kind == "Anc") { _pendingAnc = true; _pendingAncKey = SelectedAnc?.Key ?? action.Value; }
+        if (action.Kind == "Equalizer") { _pendingPreset = true; _pendingPresetKey = SelectedPreset?.Key ?? action.Value; }
+        if (action.Kind == "Spatial") { _pendingSpatial = true; _pendingSpatialKey = SelectedSpatial?.Key ?? action.Value; }
         NotifyState();
         try { await _operations.RunAsync(() => ExecuteIntentAsync(intent), OperationCoordinator.User, intent.Token); }
         catch (OperationCanceledException) { }
@@ -174,7 +179,12 @@ public sealed partial class MainViewModel
         SetStatus(intent.Attempts.Count == 0 ? "正在应用设置并回读…" : "正在再次写入并回读…");
         NotifyState();
         UiApplyResult result;
-        try { result = await _service.ApplyAsync(action, _lifetime.Token); }
+        try
+        {
+            result = EventService is { } events
+                ? await events.ApplyAsync(intent.Identity, intent.DeviceGeneration, action, _lifetime.Token)
+                : await _service.ApplyAsync(action, _lifetime.Token);
+        }
         catch (OperationCanceledException) when (Closing) { throw; }
         catch { result = new() { FailureKind = ApplyFailure.WorkerUnavailable, ConnectionState = ConnectionState.Unknown,
                 Message = "后台未返回完整设置结果，设置可能已生效。" }; }
@@ -184,7 +194,18 @@ public sealed partial class MainViewModel
         {
             if (snapshot.Identity != intent.Identity)
             { result.ConnectionState = ConnectionState.Unknown; result.FailureKind = ApplyFailure.WorkerUnavailable; InvalidateSnapshot(); }
-            else { RebaseDraft(intent, snapshot, result.ObservedEqualizerId); DisplaySnapshot(snapshot); }
+            else if (EventService is not null && (snapshot.BackendInstanceId != intent.BackendInstanceId
+                || snapshot.DeviceGeneration != intent.DeviceGeneration))
+            {
+                result.ConnectionState = ConnectionState.Unknown;
+                result.FailureKind = ApplyFailure.WorkerUnavailable;
+                result.Message = "设置回读所属的控制会话已经变化，请核实当前状态。";
+            }
+            else
+            {
+                DisplaySnapshot(snapshot);
+                if (_snapshot is { } current) RebaseDraft(intent, current, result.ObservedEqualizerId);
+            }
         }
         if (!string.IsNullOrWhiteSpace(result.Message)) Log(result.Message);
         return result;
@@ -198,7 +219,7 @@ public sealed partial class MainViewModel
         if (!confirmed || !HasVerifiedSnapshot || result.After is not { } after || !GoalMatches(intent, intent.Action, after)) return false;
         SettleDraft(intent);
         _actionWarnings.Remove(intent.Group);
-        DisplaySnapshot(after);
+        DisplaySnapshot(_snapshot ?? after);
         SetStatus(result.SubmissionAttempted ? "设置已确认，回读与请求一致。" : "耳机已处于所选设置。");
         Log(_status); return true;
     }
@@ -207,9 +228,9 @@ public sealed partial class MainViewModel
     {
         if (VersionFor(intent.Action.Kind) == intent.Version)
         {
-            if (intent.Action.Kind == "Anc") _pendingAnc = false;
-            if (intent.Action.Kind == "Equalizer") _pendingPreset = false;
-            if (intent.Action.Kind == "Spatial") _pendingSpatial = false;
+            if (intent.Action.Kind == "Anc") { _pendingAnc = false; _pendingAncKey = null; }
+            if (intent.Action.Kind == "Equalizer") { _pendingPreset = false; _pendingPresetKey = null; }
+            if (intent.Action.Kind == "Spatial") { _pendingSpatial = false; _pendingSpatialKey = null; }
             if (intent.Action.Kind == "CustomEqualizer" && intent.DraftIdentity == _draftIdentity) SetEqDirty(false);
         }
     }
@@ -253,9 +274,10 @@ public sealed partial class MainViewModel
     {
         try
         {
-            var snapshot = await _service.RefreshAsync(RefreshScope.Full, _lifetime.Token);
+            var snapshot = await ReadSelectedAsync(RefreshScope.Full, _lifetime.Token);
             if (epoch != _sessionEpoch || Closing) return null;
-            AdoptRead(snapshot); return snapshot;
+            AdoptRead(snapshot);
+            return EventService is not null ? _snapshot : snapshot;
         }
         catch (OperationCanceledException) when (Closing) { return null; }
         catch

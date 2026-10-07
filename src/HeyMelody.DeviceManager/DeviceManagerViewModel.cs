@@ -23,7 +23,8 @@ public sealed class DeviceManagerViewModel : ObservableObject, IAsyncDisposable
     private readonly IDeviceManagementService _service;
     private readonly CancellationTokenSource _lifetime = new();
     private Task? _operation, _dispose;
-    private bool _busy, _closing, _hasLoaded;
+    private bool _busy, _closing, _hasLoaded, _subscribed, _exitPending;
+    private UiDeviceCatalog? _pendingCatalog;
     private string _error = "";
     public DeviceManagerViewModel(IDeviceManagementService service)
     {
@@ -39,8 +40,8 @@ public sealed class DeviceManagerViewModel : ObservableObject, IAsyncDisposable
     public event Action? ExitRequested;
     public bool Busy => _busy;
     public bool Closing => _closing;
-    public bool CanRefresh => !_busy && !_closing;
-    public bool CanCommit => SelectedCount > 0 && !_busy && !_closing;
+    public bool CanRefresh => !_busy && !_closing && !_exitPending;
+    public bool CanCommit => SelectedCount > 0 && !_busy && !_closing && !_exitPending;
     public int SelectedCount => Devices.Count(row => row.IsChecked);
     public string SelectionText => $"已选择 {SelectedCount} 台设备";
     public bool HasDevices => Devices.Count > 0;
@@ -53,19 +54,14 @@ public sealed class DeviceManagerViewModel : ObservableObject, IAsyncDisposable
     {
         try
         {
+            if (!_subscribed && _service is IHeadsetEventService events)
+            {
+                await events.SubscribeAsync("manager", token);
+                _subscribed = true;
+            }
             var catalog = await _service.EnumerateCandidatesAsync(token);
             token.ThrowIfCancellationRequested();
-            var previous = Devices.ToDictionary(row => row.Identity, row => row.IsChecked, StringComparer.Ordinal);
-            foreach (var row in Devices) row.PropertyChanged -= SelectionChanged;
-            Devices.Clear();
-            foreach (var candidate in catalog.Candidates)
-            {
-                var row = new DeviceCandidateRow(candidate,
-                    _hasLoaded && previous.TryGetValue(candidate.Identity, out var selected) ? selected : candidate.Enabled);
-                row.PropertyChanged += SelectionChanged;
-                Devices.Add(row);
-            }
-            _hasLoaded = true; ExitCode = 1; _error = catalog.SelectionWarning ?? "";
+            DisplayCatalog(catalog, resetExitCode: true);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception) { _error = "无法读取已配对设备，请确认蓝牙已开启后重试。"; }
@@ -92,6 +88,50 @@ public sealed class DeviceManagerViewModel : ObservableObject, IAsyncDisposable
     public void ReportLaunchFailure()
     { _error = "无法打开蓝牙设置，请在 Windows 设置中打开蓝牙与设备。"; NotifyState(); }
 
+    public void AdoptBackendEvent(BackendEvent notification)
+    {
+        if (_closing) return;
+        if (notification.Kind == "catalog" && notification.Catalog is { } catalog)
+        {
+            if (_busy || !_hasLoaded) _pendingCatalog = catalog;
+            else { DisplayCatalog(catalog, preserveError: true); NotifyState(); }
+        }
+        else if (notification.Kind == "unavailable")
+        {
+            _subscribed = false;
+            _error = string.IsNullOrWhiteSpace(notification.Message)
+                ? "蓝牙后台连接已中断，请刷新设备列表后重试。" : notification.Message;
+            NotifyState();
+        }
+    }
+
+    public async Task PrepareBackendExitAsync()
+    {
+        _exitPending = true;
+        NotifyState();
+        if (_operation is { } operation) await operation;
+    }
+
+    public void CancelBackendExit()
+    { if (!_closing) { _exitPending = false; NotifyState(); } }
+
+    private void DisplayCatalog(UiDeviceCatalog catalog, bool resetExitCode = false, bool preserveError = false)
+    {
+        var previous = Devices.ToDictionary(row => row.Identity, row => row.IsChecked, StringComparer.Ordinal);
+        foreach (var row in Devices) row.PropertyChanged -= SelectionChanged;
+        Devices.Clear();
+        foreach (var candidate in catalog.Candidates)
+        {
+            var row = new DeviceCandidateRow(candidate,
+                _hasLoaded && previous.TryGetValue(candidate.Identity, out var selected) ? selected : candidate.Enabled);
+            row.PropertyChanged += SelectionChanged;
+            Devices.Add(row);
+        }
+        _hasLoaded = true;
+        if (resetExitCode) ExitCode = 1;
+        _error = catalog.SelectionWarning ?? (preserveError ? _error : "");
+    }
+
     private Task RunAsync(Func<CancellationToken, Task> work)
     {
         if (!CanRefresh) return Task.CompletedTask;
@@ -101,7 +141,16 @@ public sealed class DeviceManagerViewModel : ObservableObject, IAsyncDisposable
     private async Task RunCoreAsync(Func<CancellationToken, Task> work)
     {
         try { await work(_lifetime.Token); }
-        finally { _busy = false; NotifyState(); }
+        finally
+        {
+            _busy = false;
+            if (!_closing && ExitCode != 0 && _pendingCatalog is { } catalog)
+            {
+                _pendingCatalog = null;
+                DisplayCatalog(catalog, preserveError: true);
+            }
+            NotifyState();
+        }
     }
     private void SelectionChanged(object? sender, PropertyChangedEventArgs change)
     { if (change.PropertyName == nameof(DeviceCandidateRow.IsChecked)) NotifyState(); }

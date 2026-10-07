@@ -12,6 +12,7 @@ unsafe class Program
             ["SOCKADDR_BTH.Size"] = 30, ["SOCKADDR_BTH.Address"] = 2,
             ["SOCKADDR_BTH.ServiceId"] = 10, ["SOCKADDR_BTH.Port"] = 26,
             ["fd_set.Size"] = wide ? 520 : 260, ["fd_set.Sockets"] = wide ? 8 : 4,
+            ["WSANETWORKEVENTS.Size"] = 44, ["WSANETWORKEVENTS.Errors"] = 4,
             ["WSAQUERYSETW.Size"] = wide ? 120 : 60, ["WSAQUERYSETW.Version"] = wide ? 24 : 12,
             ["WSAQUERYSETW.Context"] = wide ? 56 : 28, ["WSAQUERYSETW.Addresses"] = wide ? 96 : 48,
             ["WSAQUERYSETW.Blob"] = wide ? 112 : 56, ["SOCKET_ADDRESS.Size"] = wide ? 16 : 8,

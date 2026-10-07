@@ -3,6 +3,8 @@ using HeyMelodyWindows.App;
 using HeyMelodyWindows.Host;
 using HeyMelodyWindows.Windows;
 
+if (args is ["--fake-peer"]) return await BackendTests.FakePeerMainAsync();
+
 int passed = 0;
 string scratch = Path.Combine(Path.GetTempPath(), "HeyMelody-HostTests-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(scratch);
@@ -167,6 +169,7 @@ try
         await Throws<OperationCanceledException>(() => service.SaveWhitelistAsync(["token"], cancellation.Token));
         Check(store.Load().Count == 0);
     });
+    await BackendTests.RunAsync(Test, scratch);
     Console.WriteLine(JsonSerializer.Serialize(new { passed, success = true, nativeBluetoothCalls = 0 }));
     return 0;
 }

@@ -13,14 +13,23 @@ public sealed partial class DailyClient
 
     private async Task DropSessionAsync()
     {
-        if (_session is not null) await _session.DisposeAsync();
-        _session = null; _commands = null; _profile = null;
+        DailySession? previous;
+        lock (_stateGate)
+        {
+            previous = _session; _session = null; _commands = null; _profile = null;
+            _registeredSession = null; _monitoringWarning = null; _changes.Clear(); _invalidated.Clear();
+        }
+        if (previous is not null) await previous.DisposeAsync();
     }
     private async Task EnsureSessionAsync(CancellationToken token)
     {
         if (_session is { Usable: true, Remaining: >= 32 }) return;
         await DropSessionAsync();
-        _session = new(await _connector.OpenAsync(token));
+        var session = new DailySession(await _connector.OpenAsync(token));
+        lock (_stateGate) _session = session;
+        session.Notification += packet => OnNotification(session, packet);
+        session.Ended += failure => OnSessionEnded(session, failure);
+        session.StartReader();
     }
     private async Task<DailySnapshot> RefreshCoreAsync(DailyRefreshScope scope, CancellationToken token)
     {
@@ -41,10 +50,13 @@ public sealed partial class DailyClient
             {
                 token.ThrowIfCancellationRequested();
                 await EnsureSessionAsync(token);
+                long startingVersion = NotificationVersion;
+                var readVersions = new Dictionary<string, long>();
                 // New transports require identity/capability verification. Returned results do
                 // not share mutable state with either the cache or previously returned results.
                 bool initialize = _commands is null || _latest is not { Connected: true };
-                var s = scope == DailyRefreshScope.Full || _latest is not { Connected: true }
+                DailySnapshot s;
+                lock (_stateGate) s = scope == DailyRefreshScope.Full || _latest is not { Connected: true }
                     ? new DailySnapshot() : Clone(_latest);
                 s.Connected = true; if (s.ProfileVerified) s.Error = null; s.Warnings = [];
                 if (scope == DailyRefreshScope.Full || _latest is not { Connected: true }) _readWarnings.Clear();
@@ -56,14 +68,29 @@ public sealed partial class DailyClient
                     {
                         foreach (var section in new[] { DailyRefreshScope.Information, DailyRefreshScope.Features,
                             DailyRefreshScope.Battery, DailyRefreshScope.Anc, DailyRefreshScope.Equalizer })
-                            await ReadSectionAsync(s, section, token);
+                            await ReadSectionAsync(s, section, token, readVersions);
                     }
-                    else await ReadSectionAsync(s, scope, token);
+                    else await ReadSectionAsync(s, scope, token, readVersions);
                 }
-                ResolveCapabilities(s);
+                await RegisterMonitoringAsync(token);
                 s.Warnings = _readWarnings.Values.SelectMany(x => x).Distinct().ToList();
-                s.ObservedAtUtc = DateTimeOffset.UtcNow;
-                _latest = Clone(s);
+                if (_monitoringWarning is not null) s.Warnings.Add(_monitoringWarning);
+                lock (_stateGate)
+                {
+                    if (_session is not { Usable: true }) throw new IOException("Session ended during refresh.");
+                    foreach (var change in _changes)
+                    {
+                        string group = change.Key.StartsWith("battery:") ? "battery:" :
+                            change.Key.StartsWith("feature:") ? "feature:" :
+                            change.Key.StartsWith("placement:") ? "placement:" : change.Key;
+                        long readVersion = readVersions.GetValueOrDefault(group, startingVersion);
+                        if (change.Value.Version > readVersion) change.Value.Apply(s);
+                    }
+                    ResolveCapabilities(s);
+                    s.ObservedAtUtc = DateTimeOffset.UtcNow; s.Revision = ++_revision;
+                    _latest = Clone(s);
+                }
+                Publish(s);
                 return s;
             }
             catch (Exception) when (!token.IsCancellationRequested)
@@ -74,9 +101,14 @@ public sealed partial class DailyClient
             catch (Exception) { await DropSessionAsync(); break; }
         }
         _readWarnings.Clear();
-        _latest = new() { ObservedAtUtc = DateTimeOffset.UtcNow,
-            Error = "设备状态读取失败，请确认耳机连接后刷新。", Connected = false };
-        return Clone(_latest);
+        DailySnapshot failed;
+        lock (_stateGate)
+        {
+            _latest = new() { ObservedAtUtc = DateTimeOffset.UtcNow, Revision = ++_revision,
+                Error = "设备状态读取失败，请确认耳机连接后刷新。", Connected = false };
+            failed = Clone(_latest);
+        }
+        Publish(failed); return failed;
     }
     private async Task<byte[]?> GetAsync(ushort command, byte[] payload, DailySnapshot s, CancellationToken token)
     {
@@ -99,6 +131,7 @@ public sealed partial class DailyClient
         {
             s = new() { Connected = true };
             _readWarnings.Clear();
+            lock (_stateGate) _changes.Clear();
         }
         s.ProductId = productId;
         _profile = DeviceModelResolver.FindByProductId(productId);
@@ -123,12 +156,14 @@ public sealed partial class DailyClient
         _readWarnings[DailyRefreshScope.Identity] = s.Warnings.ToList();
         return s;
     }
-    private async Task ReadSectionAsync(DailySnapshot s, DailyRefreshScope scope, CancellationToken token)
+    private async Task ReadSectionAsync(DailySnapshot s, DailyRefreshScope scope, CancellationToken token,
+        Dictionary<string, long> readVersions)
     {
         s.Warnings = [];
         async Task Parse(ushort command, byte[] request, Action<byte[]> parse)
         {
             if (!_commands!.Supports(command)) return;
+            readVersions[ReadGroup(command)] = NotificationVersion;
             byte[]? payload = await GetAsync(command, request, s, token);
             if (payload is null) return;
             try { parse(payload); }
@@ -150,10 +185,16 @@ public sealed partial class DailyClient
                     if (!reply.Success) throw new FormatException();
                     s.CodecRaw = (byte)reply.Data["codecRaw"]!;
                 });
+                await Parse(0x0107, [], data => {
+                    if (data.Length < 1 || data[0] != 0) throw new FormatException();
+                    DateTimeOffset observed = DateTimeOffset.UtcNow;
+                    foreach (var pair in NotificationParsers.ParseComponentPairs(data.AsSpan(1)))
+                        ApplyPlacement(s, pair.Key, pair.Value, observed);
+                });
                 break;
             case DailyRefreshScope.Features:
                 s.RawFeatures = []; s.SpatialMode = null;
-                // Refresh never generates notifications or setters.
+                // State reads never generate setters; subscriptions are a separate explicit opt-in.
                 await Parse(0x010D, [5, 0x11, 0x06, 0x28, 0x18, 0x1B], data => s.RawFeatures = DailyParsers.ParseFeatures(data));
                 bool legacy = s.RawFeatures.TryGetValue(0x1B, out byte legacySpatial) && legacySpatial <= 1;
                 if (_commands!.Supports(0x012A) && (_commands.Supports(0x0422) || !legacy))
@@ -162,7 +203,14 @@ public sealed partial class DailyClient
                 break;
             case DailyRefreshScope.Battery:
                 s.Battery = null;
-                await Parse(0x0106, [], data => s.Battery = DailyParsers.ParseBattery(data));
+                s.LeftBatteryObservedAtUtc = s.RightBatteryObservedAtUtc = s.CaseBatteryObservedAtUtc = null;
+                await Parse(0x0106, [], data => {
+                    s.Battery = DailyParsers.ParseBattery(data);
+                    DateTimeOffset observed = DateTimeOffset.UtcNow;
+                    if (s.Battery.Left is not null) s.LeftBatteryObservedAtUtc = observed;
+                    if (s.Battery.Right is not null) s.RightBatteryObservedAtUtc = observed;
+                    if (s.Battery.Case is not null) s.CaseBatteryObservedAtUtc = observed;
+                });
                 break;
             case DailyRefreshScope.Anc:
                 s.Anc = null;
@@ -182,6 +230,7 @@ public sealed partial class DailyClient
         bool? Feature(byte id) => s.RawFeatures.TryGetValue(id, out byte value) ? value switch { 0 => false, 1 => true, _ => null } : null;
         bool legacy = s.RawFeatures.TryGetValue(0x1B, out byte value) && value <= 1;
         bool modern = _commands.Supports(0x012A) && (_commands.Supports(0x0422) || !legacy);
+        if (!modern) s.SpatialMode = legacy ? value : null;
         var resolved = CapabilityResolver.Resolve(_profile, _commands, s.RawFeatures);
         s.DualConnection = Feature(0x11); s.HiRes = Feature(0x18);
         s.GameMode = resolved.GameMode.FeatureId.HasValue ? Feature(resolved.GameMode.FeatureId.Value) : null;
@@ -203,7 +252,13 @@ public sealed partial class DailyClient
     }
     private static DailySnapshot Clone(DailySnapshot s) => new()
     {
-        ObservedAtUtc = s.ObservedAtUtc, Connected = s.Connected, ProfileVerified = s.ProfileVerified,
+        Revision = s.Revision, ObservedAtUtc = s.ObservedAtUtc, Connected = s.Connected, ProfileVerified = s.ProfileVerified,
+        CaseOpen = s.CaseOpen, LeftInCase = s.LeftInCase, RightInCase = s.RightInCase,
+        LeftInEar = s.LeftInEar, RightInEar = s.RightInEar, RawStatusComponents = new(s.RawStatusComponents),
+        CaseObservedAtUtc = s.CaseObservedAtUtc, LeftPlacementObservedAtUtc = s.LeftPlacementObservedAtUtc,
+        RightPlacementObservedAtUtc = s.RightPlacementObservedAtUtc,
+        LeftBatteryObservedAtUtc = s.LeftBatteryObservedAtUtc, RightBatteryObservedAtUtc = s.RightBatteryObservedAtUtc,
+        CaseBatteryObservedAtUtc = s.CaseBatteryObservedAtUtc,
         ProductId = s.ProductId, DeviceName = s.DeviceName, FirmwareVersion = s.FirmwareVersion, CodecRaw = s.CodecRaw,
         Battery = s.Battery is null ? null : new() { Left = s.Battery.Left, Right = s.Battery.Right,
             Case = s.Battery.Case, RawComponents = new(s.Battery.RawComponents) },

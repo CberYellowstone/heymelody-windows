@@ -10,10 +10,15 @@ public sealed class ReadOnlyPreviewService(IHeadsetService inner) : IHeadsetServ
         if (devices.Length != 1) throw new InvalidOperationException("Live render requires exactly one connected X4.");
         _allowedIdentity = devices[0].Identity; return devices;
     }
-    public Task<UiSnapshot> ConnectAsync(string identity, CancellationToken token) => identity == _allowedIdentity ? inner.ConnectAsync(identity, token) : throw new InvalidOperationException();
-    public Task DisconnectAsync(CancellationToken token) => inner.DisconnectAsync(token);
-    public Task<UiSnapshot> RefreshAsync(CancellationToken token) => inner.RefreshAsync(token);
-    public Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken token) => inner.RefreshAsync(scope, token);
+    public Task<UiSnapshot> ConnectAsync(string identity, CancellationToken token) => identity == _allowedIdentity
+        ? inner is IHeadsetEventService events ? events.SelectAsync(identity, token) : inner.ConnectAsync(identity, token)
+        : throw new InvalidOperationException();
+    public Task DisconnectAsync(CancellationToken token) => inner is IHeadsetEventService
+        ? Task.CompletedTask : inner.DisconnectAsync(token);
+    public Task<UiSnapshot> RefreshAsync(CancellationToken token) => RefreshAsync(RefreshScope.Full, token);
+    public Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken token) => inner is IHeadsetEventService events
+        ? events.RefreshAsync(_allowedIdentity ?? throw new InvalidOperationException(), scope, token)
+        : inner.RefreshAsync(scope, token);
     public Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token) => throw new InvalidOperationException("Live preview forbids settings.");
     public ValueTask DisposeAsync() => inner.DisposeAsync();
 }

@@ -191,4 +191,4 @@ evidence JSON 同时保存所读 DEX 的 SHA-256，反汇编包含方法描述�
 
 第一批候选选择现代 UUID A 的 X3/X3s/Free4，它们都有预设 EQ、自定义 EQ、高品质模式与双连声明，但配置未必包含 X4 的十段频率；第二批可选 Air4 Pro/Air3 Pro，它们以 EQ 版本 2、不同自定义能力检验 UI 是否真正由能力驱动。每批先离线 replay、身份/能力/状态 GET，再在有实机与明确验证范围时开放每项 SET。
 
-本文是静态互操作研究，不复制厂商 Android 实现到应用；原件和完整逆向输出仅保留本地。已有协议事实及实机边界继续参阅 [phase5-protocol-evidence.md](../../phase5-protocol-evidence.md)。
+本文是静态互操作研究，不复制厂商 Android 实现到应用；原件和完整逆向输出仅保留本地。已有协议事实及实机边界继续参阅 [phase5-protocol-evidence.md](../history/phase5-protocol-evidence.md)。

@@ -12,7 +12,8 @@ public partial class MainWindow : FAAppWindow
     private readonly TrackedDeviceManager? _manager;
     private readonly CancellationTokenSource _managerLifetime = new();
     private readonly WindowConfirmationService _confirmations;
-    private readonly DispatcherTimer _poll = new() { Interval = TimeSpan.FromSeconds(8) };
+    private readonly IHeadsetEventService? _events;
+    private Task? _exitVote;
     private bool _closing, _closed, _opened, _managing;
 
     public MainWindow() : this(HeadsetServiceFactory.Create(), false,
@@ -24,6 +25,7 @@ public partial class MainWindow : FAAppWindow
     {
         InitializeComponent();
         _service = service;
+        _events = service as IHeadsetEventService;
         _manager = manager is null ? null : new TrackedDeviceManager(manager);
         _confirmations = new WindowConfirmationService(this);
         _viewModel = new MainViewModel(service, _confirmations, preview);
@@ -32,9 +34,10 @@ public partial class MainWindow : FAAppWindow
         Page.ManageDevicesRequested = manager is not null ? ManageDevicesAsync : null;
         Page.IsEnabled = manager is null;
         StartupOverlay.IsVisible = manager is not null;
-        _poll.Tick += async (_, _) => await _viewModel.PollAsync();
         Opened += async (_, _) => await InitializeOnceAsync();
         Closing += OnClosing;
+        if (_events is not null) _events.EventReceived += OnBackendEvent;
+        Closed += (_, _) => { if (_events is not null) _events.EventReceived -= OnBackendEvent; };
     }
 
     private async Task InitializeOnceAsync()
@@ -43,6 +46,7 @@ public partial class MainWindow : FAAppWindow
         _opened = true;
         try
         {
+            await _viewModel.AttachBackendAsync();
             if (_manager is null) await _viewModel.InitializeAsync();
             else
             {
@@ -50,9 +54,71 @@ public partial class MainWindow : FAAppWindow
                 if (devices is null) { if (!_closing) Close(); return; }
                 await _viewModel.InitializeAsync(devices);
             }
-            if (!_closing) { StartupOverlay.IsVisible = false; Page.IsEnabled = true; _poll.Start(); }
+            if (!_closing) { StartupOverlay.IsVisible = false; Page.IsEnabled = true; }
         }
         catch (OperationCanceledException) when (_managerLifetime.IsCancellationRequested) { }
+        catch (Exception error)
+        {
+            if (!_closing) await _viewModel.Dialogs.RunAsync(token => _confirmations.AlertAsync(
+                "无法连接蓝牙后台", error is InvalidDataException && error.Message.Contains("版本", StringComparison.Ordinal)
+                    ? "蓝牙后台版本不一致，请完整更新客户端后重新启动后台。"
+                    : "蓝牙后台未能启动或连接。请确认已完整解压客户端，再重新打开主界面。", token), _managerLifetime.Token);
+            if (!_closing) Close();
+        }
+    }
+
+    private void OnBackendEvent(BackendEvent notification) => Dispatcher.UIThread.Post(async () =>
+    {
+        if (_closed) return;
+        try
+        {
+            _viewModel.AdoptBackendEvent(notification);
+            switch (notification.Kind)
+            {
+                case "activate": ActivateMainUi(); break;
+                case "requestExit" when notification.ExitRequestId is { } requestId && _events is not null:
+                    if (_exitVote is null)
+                    {
+                        _exitVote = VoteForBackendExitAsync(requestId);
+                        try { await _exitVote; }
+                        finally { _exitVote = null; }
+                    }
+                    break;
+                case "exitCancelled":
+                    if (!_closing) Page.ResumeSettingsDialogs();
+                    break;
+                case "stopping": Close(); break;
+            }
+        }
+        catch (OperationCanceledException) when (_closing) { }
+        catch (Exception)
+        {
+            if (!_closing)
+            {
+                _viewModel.CancelBackendExit();
+                Page.ResumeSettingsDialogs();
+            }
+        }
+    });
+
+    internal void ActivateMainUi()
+    {
+        if (_closing || _closed) return;
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Show();
+        Activate();
+    }
+
+    private async Task VoteForBackendExitAsync(string requestId)
+    {
+        ActivateMainUi();
+        _viewModel.SuspendActionsForClose();
+        _confirmations.CancelActiveDialog();
+        await Page.DismissSettingsDialogAsync();
+        var approved = await _viewModel.ConfirmBackendExitAsync();
+        try { await _events!.AcknowledgeExitAsync(requestId, approved, _managerLifetime.Token); }
+        catch { _viewModel.CancelBackendExit(); Page.ResumeSettingsDialogs(); throw; }
+        if (!approved) Page.ResumeSettingsDialogs();
     }
 
     private async Task<IReadOnlyList<UiDevice>?> ResolveDevicesAsync()
@@ -147,7 +213,6 @@ public partial class MainWindow : FAAppWindow
             try { await operation; }
             catch (Exception) { }
         }
-        _poll.Stop();
         await _viewModel.DisposeAsync();
         _closed = true;
         Dispatcher.UIThread.Post(Close);

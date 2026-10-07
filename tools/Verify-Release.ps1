@@ -6,7 +6,7 @@ Version is a stable semantic version (major.minor.patch), matching the managed
 entry assembly version major.minor.patch.0. The staging directory and ZIP must
 already exist under release/. This script does not build or execute the apps.
 .EXAMPLE
-pwsh -File tools/Verify-Release.ps1 -Version 0.6.5 -VerifyDeviceArtwork
+pwsh -File tools/Verify-Release.ps1 -Version 0.7.0 -VerifyDeviceArtwork
 #>
 [CmdletBinding()]
 param(
@@ -143,11 +143,11 @@ foreach ($architecture in @('x64', 'x86', 'arm64')) {
     $build = $build[0]
     Require (-not $build.hardwareExecutionVerified) ('Unexpected hardware execution claim: ' + $architecture)
     Require ($build.gui -eq ($architecture + '/HeyMelody.exe') -and $build.deviceManager -eq ($architecture + '/HeyMelody.DeviceManager.exe') -and $build.host -eq ($architecture + '/backend/HeyMelody.Host.exe')) ('Unexpected entrypoint manifest paths: ' + $architecture)
-    Require ($build.guiFramework -eq 'net10.0' -and $build.deviceManagerFramework -eq 'net10.0' -and $build.hostFramework -eq 'net10.0-windows') ('Unexpected target frameworks: ' + $architecture)
+    Require ($build.guiFramework -eq 'net10.0' -and $build.deviceManagerFramework -eq 'net10.0' -and $build.hostFramework -eq 'net10.0-windows10.0.19041.0') ('Unexpected target frameworks: ' + $architecture)
     $executables = @(
         @{ role = 'gui'; relativePath = $build.gui; expectedHash = $build.guiSha256; subsystem = 2; assembly = 'HeyMelody' },
         @{ role = 'deviceManager'; relativePath = $build.deviceManager; expectedHash = $build.deviceManagerSha256; subsystem = 2; assembly = 'HeyMelody.DeviceManager' },
-        @{ role = 'host'; relativePath = $build.host; expectedHash = $build.hostSha256; subsystem = 3; assembly = 'HeyMelody.Host' }
+        @{ role = 'host'; relativePath = $build.host; expectedHash = $build.hostSha256; subsystem = 2; assembly = 'HeyMelody.Host' }
     )
     $executableChecks = @()
     $managedChecks = @()
@@ -200,6 +200,15 @@ foreach ($architecture in @('x64', 'x86', 'arm64')) {
     $notice = Read-Json (Join-Path $appDirectory 'PACKAGE-NOTICES.json')
     Require ($notice.schemaVersion -eq 1) ('Unexpected notice schema: ' + $architecture)
     Check-Notice $appDirectory $notice
+    $hostNotice = Read-Json (Join-Path $hostDirectory 'PACKAGE-NOTICES.json')
+    Require ($hostNotice.schemaVersion -eq 1) ('Unexpected backend notice schema: ' + $architecture)
+    Check-Notice $hostDirectory $hostNotice
+    Add-CriticalFile (Checked-File $hostDirectory 'PACKAGE-NOTICES.json')
+    $hostDeps = Read-Json (Join-Path $hostDirectory 'HeyMelody.Host.deps.json')
+    foreach ($library in $hostDeps.libraries.PSObject.Properties | Where-Object { $_.Value.type -eq 'package' -and $_.Name -notlike 'Microsoft.NETCore.App.Runtime.*' }) {
+        $parts = $library.Name.Split('/')
+        Require (@($hostNotice.packages | Where-Object { $_.package -eq $parts[0] -and $_.version -eq $parts[1] }).Count -eq 1) ('Backend package notice missing: ' + $library.Name)
+    }
     [void]$criticalPaths.Add($architecture + '/PACKAGE-NOTICES.json')
     $managerPackages = @()
     foreach ($library in $managerDeps.libraries.PSObject.Properties | Where-Object { $_.Value.type -eq 'package' }) {
@@ -218,9 +227,11 @@ foreach ($architecture in @('x64', 'x86', 'arm64')) {
     }
     foreach ($desktopAssembly in @('PresentationCore.dll', 'PresentationFramework.dll', 'System.Windows.Forms.dll', 'wpfgfx_cor3.dll')) {
         Require (-not (Test-Path -LiteralPath (Join-Path $appDirectory $desktopAssembly))) ('Unexpected WindowsDesktop assembly: ' + $desktopAssembly)
+        Require (-not (Test-Path -LiteralPath (Join-Path $hostDirectory $desktopAssembly))) ('Unexpected backend WindowsDesktop assembly: ' + $desktopAssembly)
     }
     foreach ($requiredPackage in @('Avalonia', 'FluentAvaloniaUI', 'SkiaSharp.NativeAssets.Win32')) {
         Require (@($notice.packages | Where-Object { $_.package -eq $requiredPackage }).Count -eq 1) ('Required GUI package missing: ' + $requiredPackage)
+        Require (@($hostNotice.packages | Where-Object { $_.package -eq $requiredPackage }).Count -eq 1) ('Required backend package missing: ' + $requiredPackage)
     }
     foreach ($directory in @($appDirectory, $hostDirectory)) {
         foreach ($licenseName in @('LICENSE.txt', 'THIRD-PARTY-NOTICES.txt')) {
@@ -239,7 +250,7 @@ foreach ($architecture in @('x64', 'x86', 'arm64')) {
         [void]$criticalPaths.Add($relative)
         $nativeChecks += [ordered]@{ path = $relative; machine = $pe.machine; sha256 = (Hash-File $path) }
     }
-    foreach ($relative in @(($architecture + '/coreclr.dll'), ($architecture + '/libSkiaSharp.dll'), ($architecture + '/libHarfBuzzSharp.dll'), ($architecture + '/av_libglesv2.dll'), ($architecture + '/backend/coreclr.dll'))) {
+    foreach ($relative in @(($architecture + '/coreclr.dll'), ($architecture + '/libSkiaSharp.dll'), ($architecture + '/libHarfBuzzSharp.dll'), ($architecture + '/av_libglesv2.dll'), ($architecture + '/backend/coreclr.dll'), ($architecture + '/backend/libSkiaSharp.dll'), ($architecture + '/backend/libHarfBuzzSharp.dll'), ($architecture + '/backend/av_libglesv2.dll'))) {
         Require (@($nativeChecks | Where-Object { $_.path -eq $relative }).Count -eq 1) ('Required native runtime/graphics DLL missing: ' + $relative)
     }
     foreach ($packageFile in @('PACKAGE-NOTICES.json', 'HeyMelody.runtimeconfig.json', 'HeyMelody.DeviceManager.runtimeconfig.json', 'HeyMelody.deps.json', 'HeyMelody.DeviceManager.deps.json')) {

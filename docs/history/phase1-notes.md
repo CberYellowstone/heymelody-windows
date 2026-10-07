@@ -1,5 +1,7 @@
 # 阶段 1 完成记录
 
+历史记录：下文仅对应 2026-10-06 的 0.1.0 只读 CLI，不证明当前托盘后台或发布包。当前入口见 [仓库说明](../../REPOSITORY.md)。文中的源码、研究输入和 artifacts 路径均相对于仓库根目录。
+
 2026-10-06 完成 Enco X4 的 Windows 只读控制会话 CLI、协议库和 RFCOMM 传输库。源码位于 `src/`；运行入口 `Run-ReadOnly.ps1`。本阶段不实现 GUI、耳机设置或驱动配置。
 
 ## 本机查询
@@ -48,4 +50,3 @@
 - 本机真实 RFCOMM 查询八项成功，见上述 UTC 时间及 JSON。最终新增的报告范围 metadata、二进制版本 fixture 和空 ACK 禁用边界经离线回归；没有为这些变化重复实机查询。
 
 查验源码和 reference 时参考了本地 Android 17.6.5 的 Packet、PacketFactory、TLVDataProcessor、OPOv1Wrapper、PollCommandManager 及 SDK 26100 的 Windows 蓝牙结构定义。没有改动 reference，也没有读取或写入设备许可证。
-

@@ -6,7 +6,8 @@ public sealed partial class DailyClient(IControlConnector connector) : IAsyncDis
 {
     private readonly IControlConnector _connector = connector ?? throw new ArgumentNullException(nameof(connector));
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private bool _disposed;
+    private volatile bool _disposed;
+    private int _disposeStarted;
     public Task<DailySnapshot> RefreshAsync(CancellationToken token = default) => RefreshCoreAsync(DailyRefreshScope.Full, token);
     public Task<DailySnapshot> RefreshAsync(DailyRefreshScope scope, CancellationToken token = default) => RefreshCoreAsync(scope, token);
     public Task<DailyApplyResult> ApplyAncAsync(byte primary, byte level, CancellationToken token = default) =>
@@ -31,8 +32,12 @@ public sealed partial class DailyClient(IControlConnector connector) : IAsyncDis
         ApplyCoreAsync("hires", value ? (byte)1 : (byte)0, 0, null, allowMutexChange, token);
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeStarted, 1) != 0) return;
+        _monitorLifetime.Cancel();
         await _gate.WaitAsync();
         try { _disposed = true; await DropSessionAsync(); }
         finally { _gate.Release(); }
+        await _notificationRefresh;
+        _monitorLifetime.Dispose();
     }
 }

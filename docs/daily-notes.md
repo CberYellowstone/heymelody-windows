@@ -1,8 +1,8 @@
-# 日常控制层（当前实现）
+# 日常控制层（0.7.0 当前实现）
 
-实现位于 `src/HeyMelody.Daily/`，公开命名空间为 `HeyMelodyWindows.Daily`。库使用 .NET 10 BCL 和已有 Protocol、Devices、Control 接口，不增加第三方依赖、蓝牙扫描、通知注册、驱动安装或系统设置。项目为 AnyCPU，Windows 原生传输和三个架构的应用发布由宿主集成。
+实现位于 `src/HeyMelody.Daily/`，公开命名空间为 `HeyMelodyWindows.Daily`。库使用 .NET 10 BCL 和已有 Protocol、Devices、Control 接口，不增加第三方依赖、蓝牙扫描、驱动安装或系统设置；显式监听入口会按设备能力注册已核实通知。项目为 AnyCPU，Windows 原生传输和三个架构的应用发布由宿主集成。
 
-`DailyClient(IControlConnector)` 的构造不连接设备。刷新和用户设置通过同一信号量串行执行，每个物理控制会话有独立的序号分配器和解码器。序号不会在一个连接内复用；余量不足时，下一轮读取先换连接。每次设置之前进行完整 GET，重新读取产品 ID、能力位图和日常状态，仅已核实的 06EC10 / OPPO Enco X4 配置允许设置。当前 Avalonia 客户端的分区刷新和最多一次应用层重试见下文；阶段五原始验证记录仍保留在本文末尾。
+`DailyClient(IControlConnector)` 的构造不连接设备。刷新和用户设置通过同一信号量串行执行，每个物理控制会话有独立的序号分配器和解码器。序号不会在一个连接内复用；余量不足时，下一轮读取先换连接。每次设置之前进行完整 GET，重新读取产品 ID、能力位图和日常状态，仅已核实的 06EC10 / OPPO Enco X4 配置允许设置。当前 Avalonia 客户端的推送同步、手动读取和最多一次应用层重试见下文；阶段五原始验证记录仍保留在本文末尾。
 
 ## 公开接口
 
@@ -10,8 +10,10 @@
 
 | 方法 | 行为 |
 | --- | --- |
-| `RefreshAsync(CancellationToken)` | 仅 GET，完整刷新；本轮未读到的字段保持未知 |
-| `RefreshAsync(DailyRefreshScope, CancellationToken)` | 仅 GET，刷新指定分区；在锁内合并最新缓存，保留未查询分区 |
+| `RefreshAsync(CancellationToken)` | 完整 GET 刷新；已开启监听时，换连接也会重新注册通知 |
+| `RefreshAsync(DailyRefreshScope, CancellationToken)` | 指定分区 GET；在锁内合并缓存与较新的通知，保留未查询分区 |
+| `StartMonitoringAsync(CancellationToken)` | 显式开启通知监听；先确认产品与能力，0200 查询后用 0205 或逐项 0201 注册 |
+| `SnapshotChanged` / `DailySnapshot.Revision` | 发布分离的缓存快照及单调版本；通知接收独立于命令锁 |
 | `ApplyAncAsync(byte primary, byte level)` | 校验原始父子编号，发送所选叶子编号的位图 |
 | `ApplyPresetAsync(byte presetId)` | 按原始内置预设 ID 发送，保留非连续编号 |
 | `SelectCustomEqualizerAsync(byte id)` | 使用刚回读的完整条目发送 0418/action2 |
@@ -31,7 +33,7 @@
 
 ## 分区刷新、连接证据和客户端重试
 
-完整刷新与分区刷新均只发 GET。分区入口从持锁时的最新缓存复制快照，而不是保存轮询开始时的旧快照；因此用户写入完成后，后续分区读取保留写入回读更新的其他字段。返回快照与缓存不共享可变集合。分区内部先清除本次查询字段；普通分区的拒绝或解析失败使该字段未知、相关写入能力不可用，其他分区保留。身份查询或传输无法恢复时，整个可写快照失效。新传输即使只查电量，也先读取产品 ID 和能力；产品 ID 变化会清除旧缓存。
+未开启监听时，完整刷新与分区刷新只发 GET；开启监听后，新传输还会执行能力允许的通知重注册，不发送设置。分区入口从持锁时的最新缓存复制快照，而不是保存轮询开始时的旧快照；因此用户写入完成后，后续分区读取保留写入回读更新的其他字段。返回快照与缓存不共享可变集合。普通设置查询先清除本次字段，拒绝或解析失败使该字段未知、相关写入能力不可用，其他分区保留。0107 盒盖/放置按返回组件合并；未返回或读取失败的组件保留原值及旧观测时间，不伪装成新观测。身份查询或传输无法恢复时，整个可写快照失效。新传输即使只查电量，也先读取产品 ID 和能力；产品 ID 变化会清除旧缓存。
 
 | `DailyRefreshScope` | 查询覆盖 |
 | --- | --- |
@@ -40,14 +42,14 @@
 | `Anc` | 当前降噪 010C |
 | `Equalizer` | 内置预设 010F、自定义列表 0122 |
 | `Battery` | 电量 0106 |
-| `Information` | 固件 0105、codec 0114 |
+| `Information` | 固件 0105、codec 0114，以及能力允许时的放置/盒盖 0107 |
 | `Full` | 身份及以上全部日常状态；仍遵守设备报告的查询能力 |
 
-`DailySnapshot.Connected=false` 可能只是控制读取失败，不能直接解释为 Windows 已断开耳机。Host 的 `UiSnapshot.ConnectionState` 单独区分 Connected、Disconnected 和 Unknown：有效控制响应提供连接证据；读取失败时，Host 重新枚举所选精确地址并要求唯一且仍配对的条目，再使用其 Windows 连接状态。枚举失败、条目缺失或不能唯一匹配保持 Unknown。Product ID 标识型号；物理目标由当前 Host 中绑定精确地址的不透明身份确定，Host 重启后不会按相同名称转移待写入操作。
+`DailySnapshot.Connected=false` 可能只是控制读取失败，不能直接解释为 Windows 已断开耳机。原生 worker 内部的 NativeHeadsetService 映射仍会在读取失败时枚举精确地址，缺失或不唯一的结果保持 Unknown。0.7.0 对外由 BackendSupervisor 合并 OS 目录、radio 和挂起状态，发布 Connected、Disconnected 或 Unknown 的 Windows ConnectionState；ControlReady 独立表示控制连接、型号和能力是否可验证。Product ID 标识型号，物理目标由当前 Host 的不透明身份与精确地址绑定；重启后不会按相同名称转移待写入操作。
 
 一次 SET 请求遇到明确 EOF、传输 IOException（不含 InvalidDataException）或已识别的 Winsock 断开错误，会保留 `FailureKind=Disconnected`；即使之后只读重连成功、After 已显示 Connected，也不会丢失这次连接中断。超时、空 ACK、格式异常和未识别的错误仍为 TransportUnknown。目标 ACK 接受但缺失回读为 ReadbackUnavailable，有效回读不匹配为 ReadbackMismatch，明确拒绝为 PeerRejected。Host 返回完整类型结果时才有 `BackendReceiptReceived=true`；Bridge 未取得结果或收到的结果没有此标记时，客户端不能据此确认成功或自动重试。
 
-当前 Avalonia 客户端每八秒触发的轮询按 Identity、Features、Anc、Equalizer、Battery、Information 分区执行，重复轮询合并。生命周期操作与用户操作优先于下一个后台分区，不打断正在进行的 RPC 或互斥事务。后台读取不全局禁用控件；写入只占用相关组，其他组和 EQ 本地编辑仍可操作。
+0.7.0 生产界面不再每八秒轮询。Host 启动持续接收并注册通知，手机或耳机状态变更直接更新缓存；仅含部分信息的通知合并为对应 scope 的补充读取，排在正在执行的设置事务之后。初始化、重新连接、手动刷新和设置前后验证仍读取耳机；生产界面的手动刷新是一个 Full 请求。旧非事件服务的分段调度仅作为测试兼容路径保留。
 
 重试由 `HeyMelody.Client/MainViewModel.Actions.cs` 管理，Daily/Host/Bridge 没有隐藏重试。Windows 显式提交的目标在点击时固定，后台仍依据每次最新 GET 校验能力、条目和互斥条件；手机在提交前改变旧值不会仅因值不同触发冲突提示。第一次失败后，只有收到完整结果、同一设备仍可验证、动作可以安全重复且没有部分互斥操作时，才在重新完整读取后自动再尝试一次。若最新状态已符合目标，只结束操作并保留原始 ACK 事实，不再发送。
 
@@ -68,7 +70,7 @@
 | 空间 | 012A / empty，或 feature 1B | 0422 / 0,1,2；legacy 只允许 0,1 |
 | Hi-Res | feature 18 | 0403 / 18 + 0或1 |
 
-功能列表查询明确请求 11、06、28、18、1B 五个编号，不注册通知，也不会根据静态功能标志自动发送设置。返回的未知布尔值保留原字节，状态为 null。现代游戏编号 28 只在响应确实出现时选用；出现但值未知时不会退回旧编号制造可用状态。
+功能列表 010D 查询明确请求 11、06、28、18、1B 五个编号，查询本身不注册通知；显式 StartMonitoringAsync 单独注册已核实通知，也不会根据静态功能标志自动发送设置。返回的未知布尔值保留原字节，状态为 null。现代游戏编号 28 只在响应确实出现时选用；出现但值未知时不会退回旧编号制造可用状态。
 
 电量直接依据 APK `BatteryInfo.java:104-108` 和 `commands/e.smali:1828-1975` 的 component/raw 布局，低七位为等级，高位为充电。没有 count=4 特殊布局、无数量猜测或桌面兼容 fallback。缺失组件保持 null，所有组件编号和 raw 存在 RawComponents。等级 0 和大于 100 的值不显示成已知百分比。官方列表 UI `com/heytap/headset/component/mydevicelist/a.java:379-395` 仅显示大于零的值；`repository/earphone/Q.java:350-351` 在三组件全零时返回 null。因此这里保留 Raw=0 并显示未知，不推断物理不在位或精确耗尽。
 
@@ -93,7 +95,9 @@ dotnet run --project tests/HeyMelody.Daily.Tests/HeyMelody.Daily.Tests.csproj
 dotnet build src/HeyMelody.Daily/HeyMelody.Daily.csproj -c Release
 ```
 
-2026-10-06 本轮刷新改进后，Daily 的 52 组内存传输场景已经运行通过，Host 构建 0 warnings / 0 errors。新增覆盖分区请求范围、最新缓存合并、返回快照隔离、局部状态失效和恢复、换连接与产品变化、缺失回读与不匹配的区别、目标/前置提交标记、EQ no-op 和观察到的 ID，以及 SET EOF/IO/socket 断开在 GET 重连后仍保留失败分类、超时/格式异常保持未知。这些结果不包含新的真实设备 SET 或 ARM64 实机执行。应用层重试和排队取消另由 `tests/HeyMelody.Client.Tests/` 验证，不能用 Daily 测试替代。
+历史 0.6.x：2026-10-06 刷新改进后，Daily 的 52 组内存传输场景已经运行通过，Host 构建 0 warnings / 0 errors。新增覆盖分区请求范围、最新缓存合并、返回快照隔离、局部状态失效和恢复、换连接与产品变化、缺失回读与不匹配的区别、目标/前置提交标记、EQ no-op 和观察到的 ID，以及 SET EOF/IO/socket 断开在 GET 重连后仍保留失败分类、超时/格式异常保持未知。这些结果不包含新的真实设备 SET 或 ARM64 实机执行。应用层重试和排队取消另由 `tests/HeyMelody.Client.Tests/` 验证，不能用 Daily 测试替代。
+
+0.7.0 Daily 的 62 组内存传输测试通过，新增通知注册、响应同批通知保留、乱序 GET/推送合并、订阅恢复和未知能力路由检查。盒盖、左右耳放置及三组件电量分别保留观测时间；其他 GET 不刷新旧状态时间。共享 Host 对外的 Windows ConnectionState 来自 OS 目录、radio 与挂起状态，ControlReady 独立表示当前核验的控制能力；不能把 BLE 观测或缓存名称视为可写证据。详细来源见 [蓝牙事件研究](research/bluetooth-events.md)，多设备与 BLE 融合见 [后台架构](backend-architecture.md)。
 
 以下为阶段五原始验证记录，时间、场景数和真实设备样本没有更新为本轮结果：
 

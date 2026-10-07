@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Headless;
+using HeyMelodyWindows.Host;
 
 namespace HeyMelodyWindows.App;
 
@@ -16,7 +17,32 @@ internal static class Program
             return PreviewRenderer.Run(preview);
         }
         if (args.Length != 0) { Console.Error.WriteLine(PreviewOptions.Usage); return 2; }
+        if (OperatingSystem.IsWindows())
+        {
+            using var mainInstance = new Mutex(initiallyOwned: false, BackendEndpoint.MainMutexName);
+            var ownsMain = false;
+            try
+            {
+                try { ownsMain = mainInstance.WaitOne(0); }
+                catch (AbandonedMutexException) { ownsMain = true; }
+                if (!ownsMain)
+                {
+                    try { ActivateExistingAsync().GetAwaiter().GetResult(); return 0; }
+                    catch { return 2; }
+                }
+                return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+            }
+            finally { if (ownsMain) mainInstance.ReleaseMutex(); }
+        }
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    }
+
+    private static async Task ActivateExistingAsync()
+    {
+        await using var service = HeadsetServiceFactory.Create();
+        if (service is not IHeadsetEventService events) return;
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await events.ActivateMainUiAsync(budget.Token);
     }
 
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()

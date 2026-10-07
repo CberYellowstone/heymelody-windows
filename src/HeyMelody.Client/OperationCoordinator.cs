@@ -1,6 +1,6 @@
 namespace HeyMelodyWindows.App;
 
-/// <summary>Serializes complete RPCs; foreground work runs before the next polling section.</summary>
+/// <summary>Serializes UI RPCs with lifecycle and user work ahead of queued reads, including legacy scoped refreshes.</summary>
 internal sealed class OperationCoordinator
 {
     internal const int Lifecycle = 0, User = 1, Refresh = 2;

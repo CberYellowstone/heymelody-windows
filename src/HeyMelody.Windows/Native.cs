@@ -8,6 +8,7 @@ namespace HeyMelodyWindows.Windows;
 internal static unsafe class Native
 {
     internal const int AfBth = 32, SockStream = 1, Rfcomm = 3, WouldBlock = 10035;
+    internal const int FdRead = 1, FdWrite = 2, FdConnect = 16, FdClose = 32;
     internal static readonly Guid MelodyServiceId = new("0000079A-D102-11E1-9B23-00025B00A5A5");
     private static readonly object StartupGate = new();
     private static bool _started;
@@ -53,6 +54,12 @@ internal static unsafe class Native
         internal static FdSet One(nint socket) { var set = new FdSet { Count = 1 }; set.Sockets[0] = socket; return set; }
     }
     [StructLayout(LayoutKind.Sequential)] internal struct TimeVal { internal int Seconds, Microseconds; }
+    [InlineArray(10)] internal struct NetworkErrorArray { private int _element0; }
+    [StructLayout(LayoutKind.Sequential)] internal struct NetworkEvents
+    {
+        internal int Events;
+        internal NetworkErrorArray Errors;
+    }
     // Complete SDK WSAQUERYSETW; lpVersion is required before lpszComment. Default natural alignment.
     [StructLayout(LayoutKind.Sequential)] internal struct QuerySet
     {
@@ -103,6 +110,8 @@ internal static unsafe class Native
     [DllImport("ws2_32.dll")] internal static extern int closesocket(nint socket);
     [DllImport("ws2_32.dll")] internal static extern int ioctlsocket(nint socket, int command, ref uint argument);
     [DllImport("ws2_32.dll")] internal static extern int connect(nint socket, ref SockAddrBth address, int length);
+    [DllImport("ws2_32.dll")] internal static extern int WSAEventSelect(nint socket, nint eventHandle, int events);
+    [DllImport("ws2_32.dll")] internal static extern int WSAEnumNetworkEvents(nint socket, nint eventHandle, out NetworkEvents events);
     [DllImport("ws2_32.dll")] internal static extern int select(int ignored, FdSet* read, FdSet* write, FdSet* errors, ref TimeVal timeout);
     [DllImport("ws2_32.dll")] internal static extern int getsockopt(nint socket, int level, int option, ref int value, ref int length);
     [DllImport("ws2_32.dll")] internal static extern int send(nint socket, byte* bytes, int length, int flags);
@@ -132,6 +141,8 @@ public static unsafe class NativeLayoutInfo
         ["SOCKADDR_BTH.Port"] = Offset<Native.SockAddrBth>("Port"),
         ["fd_set.Size"] = sizeof(Native.FdSet),
         ["fd_set.Sockets"] = Offset<Native.FdSet>("Sockets"),
+        ["WSANETWORKEVENTS.Size"] = sizeof(Native.NetworkEvents),
+        ["WSANETWORKEVENTS.Errors"] = Offset<Native.NetworkEvents>("Errors"),
         ["WSAQUERYSETW.Size"] = sizeof(Native.QuerySet),
         ["WSAQUERYSETW.Version"] = Offset<Native.QuerySet>("Version"),
         ["WSAQUERYSETW.Context"] = Offset<Native.QuerySet>("Context"),

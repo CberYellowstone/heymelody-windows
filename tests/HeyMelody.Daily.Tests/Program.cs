@@ -1,4 +1,5 @@
 using System.Text;
+using System.Threading.Channels;
 using HeyMelodyWindows.Control;
 using HeyMelodyWindows.Daily;
 using HeyMelodyWindows.Devices;
@@ -395,6 +396,118 @@ await Test("created exact-match EQ exposes its observed ID even with unknown ACK
     Check(!r.Success && r.TargetSubmitted && !r.PrerequisiteSubmitted && r.AckAccepted is null &&
         r.ReadbackMatches == true && r.ObservedEqualizerId == 51 && f.Writes.Count == 1);
 });
+await Test("monitoring subscribes only offered supported events and chooses capability-gated multi registration", async () =>
+{
+    foreach (bool legacy in new[] { false, true })
+    {
+        var f = new Fake { LegacyRegistration = legacy }; await using var c = new DailyClient(f);
+        await c.RefreshAsync(); Check(!f.Requests.Any(x => x.Command is >= 0x0200 and <= 0x0205));
+        await c.StartMonitoringAsync(); await c.StartMonitoringAsync();
+        Check(f.Requests.Count(x => x.Command == 0x0200) == 1);
+        byte[] ids = [1,2,3,5,6,15];
+        if (legacy) Check(f.Requests.Where(x => x.Command == 0x0201).Select(x => x.Payload.Single()).SequenceEqual(ids));
+        else Check(f.Requests.Single(x => x.Command == 0x0205).Payload.SequenceEqual(new byte[] {6,1,2,3,5,6,15}));
+        Check(f.Writes.Count == 0 && !f.Requests.Any(x => x.Command == 0x0202));
+    }
+});
+await Test("persistent idle receive waits, publishes pushed partial battery and placement, never sends ACK", async () =>
+{
+    var f = new Fake(); await using var c = new DailyClient(f); DailySnapshot initial = await c.RefreshAsync();
+    await c.StartMonitoringAsync(); int requests = f.Requests.Count;
+    var seen = new TaskCompletionSource<DailySnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+    c.SnapshotChanged += s => { if(s.CaseOpen == true && s.Battery?.Left?.Percent == 42)seen.TrySetResult(s); };
+    f.Push(0x0204,[1,1,1,42]); f.Push(0x8202,[0,2,3,1,3,2,2,3,4]);
+    DailySnapshot next = await seen.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Check(next.Revision > initial.Revision && next.LeftInCase == false && next.LeftInEar == true
+        && next.RightInCase == true && next.RightInEar == true && next.Battery?.Right?.Percent == 80
+        && next.RightBatteryObservedAtUtc == initial.RightBatteryObservedAtUtc
+        && next.CaseBatteryObservedAtUtc == initial.CaseBatteryObservedAtUtc
+        && next.LeftBatteryObservedAtUtc >= initial.LeftBatteryObservedAtUtc);
+    await Task.Delay(30); Check(f.Requests.Count == requests && f.MaximumReaders == 1);
+    next.Battery!.RawComponents[1] = 99;
+    var ancRefresh = await c.RefreshAsync(DailyRefreshScope.Anc);
+    Check(ancRefresh.Battery?.Left?.Raw == 42 && ancRefresh.CaseObservedAtUtc == next.CaseObservedAtUtc
+        && ancRefresh.LeftPlacementObservedAtUtc == next.LeftPlacementObservedAtUtc
+        && ancRefresh.LeftBatteryObservedAtUtc == next.LeftBatteryObservedAtUtc);
+});
+await Test("notification received after query starts wins over delayed stale query result", async () =>
+{
+    var f = new Fake(); await using var c = new DailyClient(f); await c.RefreshAsync();
+    f.NotificationBeforeNextBatteryReply = new(0x0204,240,[1,1,1,43]);
+    DailySnapshot latest = await c.RefreshAsync(DailyRefreshScope.Battery);
+    Check(latest.Battery?.Left?.Percent == 43 && latest.Battery.Right?.Percent == 80);
+});
+await Test("SET ACK and later notification in the same read are both retained without treating push as ACK", async () =>
+{
+    var f = new Fake { EmptySetAck = true, NotificationWithNextSetReply = new(0x0504,240,[7]) };
+    await using var c = new DailyClient(f); var seen = new TaskCompletionSource<DailySnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+    c.SnapshotChanged += s => { if(s.PresetId == 7) seen.TrySetResult(s); };
+    var result = await c.ApplyPresetAsync(7);
+    await seen.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Check(!result.Success && result.AckAccepted is null && result.ReadbackVerified && f.Writes.Count == 1);
+});
+await Test("0503 feature and 0506 full EQ state push preserve independent settings", async () =>
+{
+    var f = new Fake(); await using var c = new DailyClient(f); await c.RefreshAsync();
+    var seen = new TaskCompletionSource<DailySnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+    c.SnapshotChanged += s => { if(s.DualConnection == true && s.CustomEqualizers.Any(x=>x.Name=="PushEQ")) seen.TrySetResult(s); };
+    f.Push(0x0503,[1,0x11,1]); var eq = Fake.Entry(); eq.Name="PushEQ";
+    f.Push(0x0506,Fake.EncodeEntries([eq]).AsSpan(1).ToArray());
+    DailySnapshot next = await seen.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Check(next.HiRes == true && next.PresetId == 0 && next.CustomEqualizersRead && f.Writes.Count == 0);
+});
+await Test("burst spatial invalidations coalesce into one scoped read after current operation", async () =>
+{
+    var f = new Fake(); await using var c = new DailyClient(f); await c.RefreshAsync(); await c.StartMonitoringAsync();
+    f.PauseNextRequest = 0x0106; Task<DailySnapshot> read = c.RefreshAsync(DailyRefreshScope.Battery);
+    await f.RequestPaused.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    int featureReads = f.Requests.Count(x=>x.Command==0x010D);
+    var marker = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var refreshed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    c.SnapshotChanged += s => { if(s.CaseOpen == true)marker.TrySetResult();if(s.SpatialMode == 2)refreshed.TrySetResult(); };
+    for(int n=0;n<20;n++)f.Push(0x051D,[]);
+    f.Push(0x0204,[2,1,3,4]); await marker.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    f.Spatial=2; f.ReleaseRequest.TrySetResult(); await read;
+    await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Check(f.Requests.Count(x=>x.Command==0x010D)==featureReads+1 && f.Writes.Count==0);
+});
+await Test("unknown 0503 values never authorize features or guess a legacy fallback", async () =>
+{
+    var f = new Fake(); await using var c = new DailyClient(f); await c.RefreshAsync();
+    var seen = new TaskCompletionSource<DailySnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+    c.SnapshotChanged += s => { if(s.RawFeatures.GetValueOrDefault((byte)0x28)==7)seen.TrySetResult(s); };
+    f.Push(0x0503,[3,0x28,7,0x06,1,0xFE,1]);
+    DailySnapshot next = await seen.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Check(next.GameMode is null && !next.Capabilities.GameMode && next.Capabilities.GameFeatureId==0x28
+        && next.RawFeatures[0xFE]==1 && next.Capabilities.HiRes && f.Writes.Count==0);
+});
+await Test("legacy spatial pushes resolve from feature state and unknown values disable its capability", async () =>
+{
+    var f = new Fake { NoModernSpatial=true }; await using var c = new DailyClient(f); await c.RefreshAsync();
+    var valid = new TaskCompletionSource<DailySnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var unknown = new TaskCompletionSource<DailySnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+    c.SnapshotChanged += s => {
+        if(s.RawFeatures.GetValueOrDefault((byte)0x1B)==1)valid.TrySetResult(s);
+        if(s.RawFeatures.GetValueOrDefault((byte)0x1B)==7)unknown.TrySetResult(s);
+    };
+    f.Push(0x0503,[1,0x1B,1]); var next=await valid.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Check(next.SpatialMode==1 && next.Capabilities.SpatialMode && next.Capabilities.SpatialRoute=="legacy");
+    f.Push(0x0503,[1,0x1B,7]); next=await unknown.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Check(next.SpatialMode is null && !next.Capabilities.SpatialMode && f.Writes.Count==0);
+});
+await Test("monitoring re-registers after safe sequence exhaustion without sequence reuse", async () =>
+{
+    var f = new Fake(); await using var c = new DailyClient(f); await c.RefreshAsync(); await c.StartMonitoringAsync();
+    for(int n=0;n<245;n++)await c.RefreshAsync(DailyRefreshScope.Battery);
+    Check(f.Opens >= 2 && f.Requests.Count(x=>x.Command==0x0200)==f.Opens
+        && f.SequenceSets.All(x=>x.Value.Distinct().Count()==x.Value.Count));
+});
+await Test("disposing idle persistent reader cancels the pending read", async () =>
+{
+    var f = new Fake(); var c = new DailyClient(f); await c.RefreshAsync();
+    await c.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+    Check(f.ActiveReaders==0);
+});
 Console.WriteLine($"Daily tests: {passed} passed; no native devices accessed.");
 
 sealed class Fake : IControlConnector
@@ -411,6 +524,15 @@ sealed class Fake : IControlConnector
     public int Opens, MaximumConcurrentSend;
     private int _activeSend;
     public Dictionary<int,List<byte>> SequenceSets = [];
+    private Transport? _currentTransport;
+    public void Push(ushort command, byte[] payload) => _currentTransport!.Push(command, payload);
+    public Packet? NotificationBeforeNextBatteryReply;
+    public Packet? NotificationWithNextSetReply;
+    public bool LegacyRegistration;
+    public ushort PauseNextRequest;
+    public TaskCompletionSource RequestPaused = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ReleaseRequest = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public int ActiveReaders, MaximumReaders;
     public byte AncLevel = 3, Preset, Spatial, SetterStatus;
     public bool ReportModern = true, SendOldSequenceFirst, EmptySetAck, FailSetSend, HideSpatialAfterHiResOff, UnsupportedProduct, NoModernSpatial;
     public bool SelectCustomOnWrite = true;
@@ -420,7 +542,8 @@ sealed class Fake : IControlConnector
     public Task<IControlTransport> OpenAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested(); int id=++Opens; SequenceSets[id]=[];
-        return Task.FromResult<IControlTransport>(new Transport(this,id));
+        _currentTransport = new Transport(this,id);
+        return Task.FromResult<IControlTransport>(_currentTransport);
     }
     public static byte[] EncodeEntries(List<CustomEqualizer> entries)
     {
@@ -465,6 +588,9 @@ sealed class Fake : IControlConnector
             0x0114 => [0,8],
             0x010D => FeatureReply(p.Payload),
             0x0106 => [0,3,1,75,2,80,3,90],
+            0x0107 => [0,3,1,0,2,0,3,0],
+            0x0200 => [0,8,1,2,3,5,6,15,240,241],
+            0x0205 or 0x0201 => [0],
             0x010C => [0,..DailyParsers.BuildAnc(AncLevel)],
             0x010F => [0,Preset],
             0x0122 => p.Payload.Length==0 ? EncodeEntries(Entries) : throw new Exception("GET 0122 requires empty official payload"),
@@ -480,12 +606,13 @@ sealed class Fake : IControlConnector
     private byte[] Capabilities()
     {
         var bitmap=Convert.FromHexString("FF775AEEEE8FA65F1700000000000000");
-        if(NoModernSpatial)bitmap[5]&=0x7F;return bitmap;
+        if(NoModernSpatial)bitmap[5]&=0x7F;
+        if(LegacyRegistration)bitmap[2]&=0xBF;return bitmap;
     }
     private sealed class Transport(Fake owner,int id):IControlTransport
     {
-        private readonly Queue<byte[]> _received=new();
-        private Exception? _readFailure;
+        private readonly Channel<byte[]> _received=Channel.CreateUnbounded<byte[]>();
+        public void Push(ushort command, byte[] payload) => _received.Writer.TryWrite(PacketEncoder.Encode(command, 240, payload));
         public async Task SendAsync(ReadOnlyMemory<byte> bytes,CancellationToken token)
         {
             token.ThrowIfCancellationRequested();int concurrent=Interlocked.Increment(ref owner._activeSend);
@@ -494,19 +621,40 @@ sealed class Fake : IControlConnector
             {
                 await Task.Yield();var p=new PacketDecoder().Feed(bytes.Span).Single();
                 owner.SequenceSets[id].Add(p.Sequence);var response=owner.Response(p);
+                if(owner.PauseNextRequest==p.Command)
+                {owner.PauseNextRequest=0;owner.RequestPaused.TrySetResult();await owner.ReleaseRequest.Task.WaitAsync(token);}
                 if (p.Command >= 0x0400)
                 {
-                    if (owner.SetReadFailure is { } failure) { _readFailure = failure; return; }
+                    if (owner.SetReadFailure is { } failure) { _received.Writer.TryComplete(failure); return; }
                     if (owner.SetReadEof)
-                    { if (owner.TruncatedSetFrame) _received.Enqueue([0xAA]); return; }
+                    { if (owner.TruncatedSetFrame) _received.Writer.TryWrite([0xAA]); _received.Writer.TryComplete(); return; }
                 }
-                if(owner.SendOldSequenceFirst)_received.Enqueue(PacketEncoder.Encode((ushort)(p.Command|0x8000),unchecked((byte)(p.Sequence-1)),[0]));
-                _received.Enqueue(PacketEncoder.Encode((ushort)(p.Command|0x8000),p.Sequence,response));
+                if(owner.SendOldSequenceFirst)_received.Writer.TryWrite(PacketEncoder.Encode((ushort)(p.Command|0x8000),unchecked((byte)(p.Sequence-1)),[0]));
+                byte[] encoded = PacketEncoder.Encode((ushort)(p.Command|0x8000),p.Sequence,response);
+                if(p.Command==0x0106 && owner.NotificationBeforeNextBatteryReply is { } notification)
+                {
+                    owner.NotificationBeforeNextBatteryReply=null;
+                    encoded=[..PacketEncoder.Encode(notification.Command,notification.Sequence,notification.Payload),..encoded];
+                }
+                if(p.Command>=0x0400 && owner.NotificationWithNextSetReply is { } following)
+                {
+                    owner.NotificationWithNextSetReply=null;
+                    encoded=[..encoded,..PacketEncoder.Encode(following.Command,following.Sequence,following.Payload)];
+                }
+                _received.Writer.TryWrite(encoded);
             }
             finally{Interlocked.Decrement(ref owner._activeSend);}
         }
-        public Task<int> ReadAsync(Memory<byte> buffer,CancellationToken token)
-        {token.ThrowIfCancellationRequested();if(_readFailure is { } failure)throw failure;if(_received.Count==0)return Task.FromResult(0);var data=_received.Dequeue();data.CopyTo(buffer);return Task.FromResult(data.Length);}
-        public ValueTask DisposeAsync()=>ValueTask.CompletedTask;
+        public async Task<int> ReadAsync(Memory<byte> buffer,CancellationToken token)
+        {
+            int readers=Interlocked.Increment(ref owner.ActiveReaders);owner.MaximumReaders=Math.Max(owner.MaximumReaders,readers);
+            try
+            {
+                if (!await _received.Reader.WaitToReadAsync(token)) return 0;
+                var data=await _received.Reader.ReadAsync(token);data.CopyTo(buffer);return data.Length;
+            }
+            finally{Interlocked.Decrement(ref owner.ActiveReaders);}
+        }
+        public ValueTask DisposeAsync(){_received.Writer.TryComplete();return ValueTask.CompletedTask;}
     }
 }

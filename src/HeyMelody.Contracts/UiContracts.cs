@@ -14,6 +14,9 @@ public sealed record UiEqEntry(int Id, string Name, int MinimumGain, int Maximum
 
 public enum RefreshScope { Full, Identity, Features, Anc, Equalizer, Battery, Information }
 public enum ConnectionState { Unknown, Connected, Disconnected }
+public enum MonitoringState { Unknown, WaitingForConnection, Connecting, Monitoring, Paused, Unsupported, Unavailable }
+public enum CaseLidState { Unknown, Open, Closed }
+public enum EarbudPlacement { Unknown, InCase, InEar, OutOfCase }
 public enum ApplyFailure
 {
     None, Validation, StateUnavailable, PeerRejected, ReadbackMismatch,
@@ -22,6 +25,25 @@ public enum ApplyFailure
 
 public sealed class UiSnapshot
 {
+    public string BackendInstanceId { get; set; } = "";
+    public long DeviceGeneration { get; set; }
+    public long Revision { get; set; }
+    public bool ControlReady { get; set; }
+    public MonitoringState MonitoringState { get; set; }
+    public CaseLidState CaseLid { get; set; }
+    public EarbudPlacement LeftPlacement { get; set; }
+    public EarbudPlacement RightPlacement { get; set; }
+    public string? ObservationSource { get; set; }
+    public DateTimeOffset? ObservationTime { get; set; }
+    public DateTimeOffset? BatteryObservationTime { get; set; }
+    public DateTimeOffset? PlacementObservationTime { get; set; }
+    public DateTimeOffset? CaseObservationTime { get; set; }
+    public DateTimeOffset? LeftPlacementObservationTime { get; set; }
+    public DateTimeOffset? RightPlacementObservationTime { get; set; }
+    public DateTimeOffset? LeftBatteryObservationTime { get; set; }
+    public DateTimeOffset? RightBatteryObservationTime { get; set; }
+    public DateTimeOffset? CaseBatteryObservationTime { get; set; }
+    public bool ObservationFresh { get; set; }
     public string Identity { get; set; } = "";
     public string DeviceName { get; set; } = "";
     public string? ProductId { get; set; }

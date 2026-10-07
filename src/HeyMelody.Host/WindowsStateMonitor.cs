@@ -1,0 +1,362 @@
+using System.Collections.Concurrent;
+using System.Globalization;
+using System.Runtime.InteropServices;
+using HeyMelodyWindows.App;
+using HeyMelodyWindows.Protocol;
+using global::Windows.Devices.Bluetooth;
+using global::Windows.Devices.Bluetooth.Advertisement;
+using global::Windows.Devices.Enumeration;
+using global::Windows.Devices.Radios;
+using global::Windows.Storage.Streams;
+
+namespace HeyMelodyWindows.Host;
+
+/// <summary>OS callbacks and BLE observations never perform synchronous SDP or native enumeration.</summary>
+internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDisposable
+{
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly ConcurrentDictionary<string, ulong> _addresses = new(StringComparer.Ordinal);
+    private readonly List<Radio> _radios = [];
+    private readonly object _refreshSync = new();
+    private readonly object _observerSync = new();
+    private DeviceWatcher? _devices;
+    private BluetoothLEAdvertisementWatcher? _advertisements;
+    private PowerMessageWindow? _power;
+    private CancellationTokenSource? _advertisementRetry;
+    private CancellationTokenSource? _deviceRetry;
+    private bool _catalogScheduled, _catalogDirty;
+    private bool? _radioAvailable;
+    private int _advertisementFailures;
+    private int _deviceFailures;
+    private long _scanGeneration;
+    private volatile bool _suspended, _disposed;
+
+    public async Task StartAsync()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        try
+        {
+            _power = new PowerMessageWindow(OnSuspend);
+            if (!_power.IsRegistered) supervisor.ReportHealth("休眠状态通知暂不可用；蓝牙状态监听继续运行。");
+        }
+        catch (Exception) { supervisor.ReportHealth("休眠状态通知暂不可用；蓝牙状态监听继续运行。"); }
+        try
+        {
+            var selector = BluetoothDevice.GetDeviceSelectorFromPairingState(true);
+            _devices = DeviceInformation.CreateWatcher(selector,
+                ["System.Devices.Aep.DeviceAddress", "System.Devices.Aep.IsConnected"], DeviceInformationKind.AssociationEndpoint);
+            _devices.Added += Added; _devices.Updated += Updated; _devices.Removed += Removed;
+            _devices.EnumerationCompleted += (_, _) => { lock (_observerSync) _deviceFailures = 0; ScheduleCatalog(); };
+            _devices.Stopped += (_, _) => RestartDeviceWatcher();
+            _devices.Start();
+        }
+        catch (Exception)
+        { supervisor.ReportHealth("蓝牙设备事件监听暂不可用；已连接耳机的状态监听继续运行。"); RestartDeviceWatcher(); }
+        try
+        {
+            var radios = await Radio.GetRadiosAsync();
+            lock (_observerSync)
+                foreach (var radio in radios.Where(r => r.Kind == RadioKind.Bluetooth))
+                { _radios.Add(radio); radio.StateChanged += RadioChanged; }
+            UpdateRadio();
+        }
+        catch (Exception)
+        { supervisor.ReportHealth("无法读取蓝牙开关状态；已连接耳机的状态监听继续运行。"); StartAdvertisements(); }
+    }
+    private void Added(DeviceWatcher watcher, DeviceInformation info)
+    {
+        if (_disposed || _suspended) return;
+        if (TryAddress(info.Properties, out var address))
+        {
+            _addresses[info.Id] = address; supervisor.ObservePairing(address, true);
+            if (TryConnected(info.Properties, out var connected)) supervisor.ObserveConnection(address, connected);
+        }
+        ScheduleCatalog();
+    }
+    private void Updated(DeviceWatcher watcher, DeviceInformationUpdate update)
+    {
+        if (_disposed || _suspended) return;
+        if (TryAddress(update.Properties, out var parsed)) _addresses[update.Id] = parsed;
+        if (_addresses.TryGetValue(update.Id, out var address) && TryConnected(update.Properties, out var connected))
+            supervisor.ObserveConnection(address, connected);
+        if (update.Properties.ContainsKey("System.Devices.Aep.IsConnected")
+            || update.Properties.ContainsKey("System.Devices.Aep.DeviceAddress")
+            || update.Properties.ContainsKey("System.ItemNameDisplay")) ScheduleCatalog();
+    }
+    private void Removed(DeviceWatcher watcher, DeviceInformationUpdate update)
+    {
+        if (_disposed || _suspended) return;
+        if (_addresses.TryRemove(update.Id, out var address)) supervisor.ObservePairing(address, false);
+        ScheduleCatalog();
+    }
+    private static bool TryAddress(IReadOnlyDictionary<string, object> properties, out ulong address)
+    {
+        address = 0;
+        if (!properties.TryGetValue("System.Devices.Aep.DeviceAddress", out var value) || value is not string text) return false;
+        var digits = string.Concat(text.Where(Uri.IsHexDigit));
+        return digits.Length == 12 && ulong.TryParse(digits, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out address) && address != 0;
+    }
+    private static bool TryConnected(IReadOnlyDictionary<string, object> properties, out bool connected)
+    {
+        connected = false;
+        if (!properties.TryGetValue("System.Devices.Aep.IsConnected", out var value) || value is not bool flag) return false;
+        connected = flag; return true;
+    }
+    private void RadioChanged(Radio sender, object args)
+    {
+        if (_disposed) return;
+        try { UpdateRadio(); }
+        catch (Exception) { supervisor.ReportHealth("无法读取蓝牙开关状态；已连接耳机的状态监听继续运行。"); }
+    }
+    private void UpdateRadio()
+    {
+        lock (_observerSync)
+        {
+            if (_disposed) return;
+            bool? available = _radios.Any(r => r.State == RadioState.On) ? true
+                : _radios.Count > 0 && _radios.All(r => r.State is RadioState.Off or RadioState.Disabled) ? false : null;
+            if (available is { } state)
+            {
+                var changed = _radioAvailable != available; _radioAvailable = available;
+                if (changed)
+                {
+                    supervisor.SetRadioAvailable(state); _advertisementFailures = _deviceFailures = 0;
+                    if (state) RestartDeviceWatcher();
+                }
+            }
+            if (_radioAvailable != false && !_suspended) { StartAdvertisements(); ScheduleCatalog(); }
+            else StopAdvertisements();
+        }
+    }
+    private void RestartDeviceWatcher()
+    {
+        lock (_observerSync)
+        {
+            if (_disposed || _suspended || _radioAvailable == false || _devices is null || _deviceRetry is not null
+                || _devices.Status is DeviceWatcherStatus.Started or DeviceWatcherStatus.EnumerationCompleted or DeviceWatcherStatus.Stopping
+                || ++_deviceFailures > 3) return;
+            var delay = TimeSpan.FromMilliseconds(_deviceFailures switch { 1 => 250, 2 => 1000, _ => 2000 });
+            var retry = _deviceRetry = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+            _ = RetryAsync();
+            async Task RetryAsync()
+            {
+                try
+                {
+                    await Task.Delay(delay, retry.Token);
+                    lock (_observerSync)
+                    {
+                        if (!ReferenceEquals(_deviceRetry, retry)) return;
+                        _deviceRetry = null;
+                        if (_disposed || _suspended || _radioAvailable == false) return;
+                        try
+                        {
+                            if (_devices.Status is DeviceWatcherStatus.Created or DeviceWatcherStatus.Stopped or DeviceWatcherStatus.Aborted)
+                                _devices.Start();
+                        }
+                        catch (Exception)
+                        { supervisor.ReportHealth("蓝牙设备事件监听暂不可用；已连接耳机的状态监听继续运行。"); RestartDeviceWatcher(); }
+                    }
+                }
+                catch (OperationCanceledException) { }
+                finally { retry.Dispose(); }
+            }
+        }
+    }
+    private void StartAdvertisements()
+    {
+        lock (_observerSync)
+        {
+            if (_disposed || _suspended || _radioAvailable == false || _advertisements is not null || _advertisementRetry is not null) return;
+            long generation = Interlocked.Increment(ref _scanGeneration);
+            var startedAt = DateTimeOffset.UtcNow;
+            try
+            {
+                var watcher = new BluetoothLEAdvertisementWatcher { ScanningMode = BluetoothLEScanningMode.Active };
+                watcher.Received += (_, args) => Advertisement(generation, startedAt, args);
+                watcher.Stopped += (_, _) => AdvertisementFailed(generation);
+                _advertisements = watcher; watcher.Start();
+            }
+            catch (Exception) { AdvertisementFailed(generation); }
+        }
+    }
+    private void AdvertisementFailed(long generation)
+    {
+        lock (_observerSync)
+        {
+            if (_disposed || _suspended || _radioAvailable == false || generation != _scanGeneration) return;
+            _advertisements = null;
+            supervisor.ReportHealth("耳机广播监听暂不可用；已连接耳机的状态监听继续运行。");
+            if (_advertisementRetry is not null || ++_advertisementFailures > 3) return;
+            var delay = TimeSpan.FromSeconds(_advertisementFailures switch { 1 => 1, 2 => 2, _ => 5 });
+            var retry = _advertisementRetry = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+            _ = RetryAsync();
+            async Task RetryAsync()
+            {
+                try
+                {
+                    await Task.Delay(delay, retry.Token);
+                    lock (_observerSync)
+                    {
+                        if (!ReferenceEquals(_advertisementRetry, retry)) return;
+                        _advertisementRetry = null; StartAdvertisements();
+                    }
+                }
+                catch (OperationCanceledException) { }
+                finally { retry.Dispose(); }
+            }
+        }
+    }
+    internal static bool IsCurrentAdvertisement(DateTimeOffset timestamp, DateTimeOffset startedAt, short rssi)
+        => timestamp >= startedAt && rssi != -127;
+    private void Advertisement(long generation, DateTimeOffset startedAt, BluetoothLEAdvertisementReceivedEventArgs args)
+    {
+        if (_disposed || _suspended || generation != Volatile.Read(ref _scanGeneration)
+            || !IsCurrentAdvertisement(args.Timestamp, startedAt, args.RawSignalStrengthInDBm)) return;
+        try
+        {
+            foreach (var manufacturer in args.Advertisement.ManufacturerData)
+            {
+                if (manufacturer.CompanyId is not (0x079A or 0x072F)) continue;
+                using var reader = DataReader.FromBuffer(manufacturer.Data);
+                if (reader.UnconsumedBufferLength > 4096) continue;
+                var data = new byte[reader.UnconsumedBufferLength]; reader.ReadBytes(data);
+                if (!OppoAdvertisementParser.TryParse(manufacturer.CompanyId, data, out var parsed) || parsed is null
+                    || !parsed.TryResolveAddress(args.BluetoothAddress, args.BluetoothAddressType == BluetoothAddressType.Public, out var address)) continue;
+                lock (_observerSync)
+                {
+                    if (_disposed || _suspended || generation != _scanGeneration) return;
+                    _advertisementFailures = 0;
+                    supervisor.ObserveBroadcast(address, new(parsed.ProductId,
+                        parsed.CaseOpen is { } lid ? lid ? CaseLidState.Open : CaseLidState.Closed : CaseLidState.Unknown,
+                        (EarbudPlacement)parsed.LeftPlacement, (EarbudPlacement)parsed.RightPlacement,
+                        parsed.LeftBattery, parsed.RightBattery, parsed.CaseBattery, null, null, null, args.Timestamp));
+                }
+            }
+        }
+        catch (Exception) { }
+    }
+    private void StopAdvertisements()
+    {
+        lock (_observerSync)
+        {
+            Interlocked.Increment(ref _scanGeneration);
+            _advertisementRetry?.Cancel(); _advertisementRetry?.Dispose(); _advertisementRetry = null;
+            var watcher = _advertisements; _advertisements = null;
+            try { watcher?.Stop(); } catch { }
+        }
+    }
+    private void OnSuspend(bool suspended)
+    {
+        if (_disposed) return;
+        lock (_observerSync)
+        {
+            if (_suspended == suspended) return;
+            _suspended = suspended; _advertisementFailures = _deviceFailures = 0;
+            if (suspended)
+            {
+                var retry = _deviceRetry; _deviceRetry = null;
+                if (retry is not null) { retry.Cancel(); retry.Dispose(); }
+            }
+            supervisor.SetSuspended(suspended);
+        }
+        if (suspended)
+        { StopAdvertisements(); try { _devices?.Stop(); } catch { } }
+        else
+        {
+            RestartDeviceWatcher();
+            UpdateRadio(); ScheduleCatalog();
+        }
+    }
+    private void ScheduleCatalog()
+    {
+        if (_disposed || _suspended) return;
+        lock (_refreshSync)
+        {
+            _catalogDirty = true;
+            if (_catalogScheduled) return;
+            _catalogScheduled = true;
+        }
+        _ = RefreshAsync();
+        async Task RefreshAsync()
+        {
+            try
+            {
+                while (!_disposed && !_suspended)
+                {
+                    await Task.Delay(200, _lifetime.Token);
+                    lock (_refreshSync) _catalogDirty = false;
+                    try { await supervisor.RefreshCatalogAsync(_lifetime.Token); }
+                    catch (Exception) when (!_lifetime.IsCancellationRequested) { }
+                    lock (_refreshSync) if (!_catalogDirty) return;
+                }
+            }
+            catch (OperationCanceledException) { }
+            finally
+            {
+                bool reschedule;
+                lock (_refreshSync) { _catalogScheduled = false; reschedule = _catalogDirty && !_disposed && !_suspended; }
+                if (reschedule) ScheduleCatalog();
+            }
+        }
+    }
+    public void Dispose()
+    {
+        if (_disposed) return; _disposed = true;
+        StopAdvertisements();
+        lock (_observerSync)
+        {
+            var retry = _deviceRetry; _deviceRetry = null;
+            if (retry is not null) { retry.Cancel(); retry.Dispose(); }
+            foreach (var radio in _radios) radio.StateChanged -= RadioChanged;
+        }
+        _lifetime.Cancel(); try { _devices?.Stop(); } catch { }
+        _power?.Dispose();
+    }
+}
+
+internal sealed class PowerMessageWindow : IDisposable
+{
+    private readonly WindowProc _callback;
+    private readonly Action<bool> _suspend;
+    private nint _window, _previous, _powerRegistration;
+    internal bool IsRegistered => _powerRegistration != 0;
+    internal PowerMessageWindow(Action<bool> suspend)
+    {
+        _suspend = suspend; _callback = Procedure;
+        // Invisible top-level windows receive power broadcasts; message-only windows do not.
+        _window = CreateWindowEx(0, "STATIC", "HeyMelodyPower", 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        if (_window == 0) return;
+        var callback = Marshal.GetFunctionPointerForDelegate(_callback);
+        _previous = nint.Size == 8 ? SetWindowLongPtr(_window, -4, callback) : SetWindowLong(_window, -4, callback);
+        _powerRegistration = RegisterSuspendResumeNotification(_window, 0);
+    }
+    private nint Procedure(nint window, uint message, nuint wparam, nint lparam)
+    {
+        if (message == 0x218)
+        {
+            try
+            {
+                if (wparam == 4) _suspend(true);
+                else if (wparam is 7 or 18) _suspend(false);
+            }
+            catch (Exception) { } // Never let a managed exception cross the native window procedure.
+        }
+        return _previous == 0 ? DefWindowProc(window, message, wparam, lparam) : CallWindowProc(_previous, window, message, wparam, lparam);
+    }
+    public void Dispose()
+    {
+        if (_window == 0) return;
+        if (_powerRegistration != 0) { UnregisterSuspendResumeNotification(_powerRegistration); _powerRegistration = 0; }
+        if (_previous != 0) { if (nint.Size == 8) SetWindowLongPtr(_window, -4, _previous); else SetWindowLong(_window, -4, _previous); }
+        DestroyWindow(_window); _window = 0; GC.KeepAlive(_callback);
+    }
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)] private delegate nint WindowProc(nint window, uint message, nuint wparam, nint lparam);
+    [DllImport("user32.dll", EntryPoint = "CreateWindowExW", CharSet = CharSet.Unicode)] private static extern nint CreateWindowEx(uint extendedStyle, string className, string name, uint style, int x, int y, int width, int height, nint parent, nint menu, nint instance, nint parameter);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern nint SetWindowLongPtr(nint window, int index, nint value);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW")] private static extern nint SetWindowLong(nint window, int index, nint value);
+    [DllImport("user32.dll", EntryPoint = "CallWindowProcW")] private static extern nint CallWindowProc(nint previous, nint window, uint message, nuint wparam, nint lparam);
+    [DllImport("user32.dll", EntryPoint = "DefWindowProcW")] private static extern nint DefWindowProc(nint window, uint message, nuint wparam, nint lparam);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool DestroyWindow(nint window);
+    [DllImport("user32.dll", SetLastError = true)] private static extern nint RegisterSuspendResumeNotification(nint recipient, uint flags);
+    [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool UnregisterSuspendResumeNotification(nint registration);
+}

@@ -11,9 +11,12 @@ using Avalonia.VisualTree;
 using FluentAvalonia.Styling;
 using HeyMelodyWindows.App;
 
+if (ProcessLifetimeTests.TryRunHelper(args, out var helperExit)) return helperExit;
+
 if (args is ["--native-smoke"]) return NativeSmoke.Run();
 if (args is ["--native-settings-smoke"]) return NativeSmoke.Run(openSettings: true);
 if (args is ["--native-startup-smoke"]) return NativeStartupSmoke.Run();
+if (args is ["--native-backend-smoke"]) return NativeBackendSmoke.Run();
 
 string output = args.Length == 2 && args[0] == "--output-dir" ? Path.GetFullPath(args[1])
     : Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "avalonia-ui-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8]);
@@ -118,8 +121,10 @@ try
     var startupChecks = StartupTests.Run(session);
     var settingsManagementChecks = SettingsManagementTests.Run(session);
     passed += startupChecks + settingsManagementChecks;
-    Check(passed == (OperatingSystem.IsWindows() ? 45 : 42), "Every UI scenario and interaction case must finish");
-    var report = new { schemaVersion = 1, version = "0.6.0", passed, success = true, nativeBluetoothCalls = 0, screenshotScope = "headless Skia content; native titlebar not included", screenshots = receipts };
+    Check(passed == (OperatingSystem.IsWindows() ? 47 : 44), "Every UI scenario and interaction case must finish");
+    var report = new { schemaVersion = 1, version = AppVersion.Display, passed, success = true, nativeBluetoothCalls = 0,
+        verificationScope = "source/mock checks; not a packaged executable or hardware execution receipt",
+        screenshotScope = "headless Skia content; native titlebar not included", screenshots = receipts };
     using (var stream = new FileStream(Path.Combine(output, "validation.json"), FileMode.CreateNew)) JsonSerializer.Serialize(stream, report, new JsonSerializerOptions { WriteIndented = true });
     Console.WriteLine(JsonSerializer.Serialize(new { passed, success = true, nativeBluetoothCalls = 0, output }));
     return 0;

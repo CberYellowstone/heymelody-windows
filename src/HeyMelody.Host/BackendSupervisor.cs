@@ -1,0 +1,546 @@
+using System.Text.Json;
+using HeyMelodyWindows.App;
+using HeyMelodyWindows.Windows;
+
+namespace HeyMelodyWindows.Host;
+
+internal sealed record BroadcastObservation(string ProductId, CaseLidState Lid, EarbudPlacement Left,
+    EarbudPlacement Right, int? LeftBattery, int? RightBattery, int? CaseBattery,
+    bool? LeftCharging, bool? RightCharging, bool? CaseCharging, DateTimeOffset ReceivedAt)
+{
+    internal DateTimeOffset? CaseTime { get; init; }
+    internal DateTimeOffset? LeftTime { get; init; }
+    internal DateTimeOffset? RightTime { get; init; }
+    internal DateTimeOffset? LeftBatteryTime { get; init; }
+    internal DateTimeOffset? RightBatteryTime { get; init; }
+    internal DateTimeOffset? CaseBatteryTime { get; init; }
+}
+
+/// <summary>The single owner of device identities, policy and published state. Native work lives in disposable child processes.</summary>
+internal sealed class BackendSupervisor : IAsyncDisposable
+{
+    private sealed class Peer(BluetoothCandidate candidate)
+    {
+        internal BluetoothCandidate Candidate = candidate;
+        internal readonly string Identity = Guid.NewGuid().ToString("N");
+        internal long Generation = 1, Revision, SppRevision;
+        internal readonly Dictionary<long, long> PublicSppRevisions = [];
+        internal bool Present = true, Allowed, Paused, Initializing;
+        internal int Failures;
+        internal MonitoringState State = MonitoringState.WaitingForConnection;
+        internal UiSnapshot? Spp;
+        internal string? VerifiedProductId;
+        internal CaseLidState LastObservedLid;
+        internal DateTimeOffset? LastLidObservationTime;
+        internal UiSnapshot Published = new();
+        internal IPeerWorker? Worker;
+        internal BroadcastObservation? Broadcast;
+        internal CancellationTokenSource? BroadcastExpiry;
+        internal CancellationTokenSource Lifetime = new();
+        internal readonly SemaphoreSlim Commands = new(1);
+    }
+
+    private readonly object _sync = new();
+    private readonly SemaphoreSlim _catalogGate = new(1);
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly Dictionary<ulong, Peer> _peers = [];
+    private readonly Dictionary<ulong, bool> _osConnections = [];
+    private readonly Dictionary<ulong, bool> _osPresent = [];
+    private readonly DeviceWhitelistStore _whitelist;
+    private readonly Func<CancellationToken, Task<IReadOnlyList<BluetoothCandidate>>> _enumerate;
+    private readonly Func<IPeerWorker> _workerFactory;
+    private readonly TimeProvider _time;
+    private HashSet<string> _allowed = new(StringComparer.Ordinal);
+    private string? _catalogWarning;
+    private bool _radioAvailable = true, _suspended, _stopping, _disposed;
+    public string InstanceId { get; } = Guid.NewGuid().ToString("N");
+    public event Action<BackendEvent>? EventPublished;
+
+    internal BackendSupervisor(DeviceWhitelistStore? whitelist = null,
+        Func<CancellationToken, Task<IReadOnlyList<BluetoothCandidate>>>? enumerate = null,
+        Func<IPeerWorker>? workerFactory = null, TimeProvider? time = null)
+    {
+        _whitelist = whitelist ?? DeviceWhitelistStore.CreateDefault();
+        _enumerate = enumerate ?? PeerWorker.EnumerateAsync;
+        _workerFactory = workerFactory ?? (() => new PeerWorker());
+        _time = time ?? TimeProvider.System;
+        try { _allowed = _whitelist.Load(); }
+        catch (InvalidDataException) { _catalogWarning = "设备选择记录已损坏，请重新选择并保存。"; }
+    }
+
+    public Task InitializeAsync(CancellationToken token) => RefreshCatalogAsync(token);
+    public BackendSubscription Subscribe(Action<BackendSubscription>? atomicReply = null)
+    {
+        lock (_sync)
+        {
+            var result = new BackendSubscription { BackendInstanceId = InstanceId, Catalog = CatalogLocked(),
+                Devices = DevicesLocked(), Snapshots = _peers.Values.Where(p => p.Present && p.Allowed).Select(p => Copy(p.Published)).ToArray() };
+            atomicReply?.Invoke(result); return result;
+        }
+    }
+    public IReadOnlyList<UiDevice> Devices() { lock (_sync) return DevicesLocked(); }
+    public UiDeviceCatalog Catalog() { lock (_sync) return CatalogLocked(); }
+    private IReadOnlyList<UiDevice> DevicesLocked() => _peers.Values.Where(p => p.Present && p.Allowed)
+        .OrderByDescending(p => p.Candidate.Connected).ThenBy(p => p.Candidate.Name, StringComparer.OrdinalIgnoreCase)
+        .Select(p => new UiDevice(p.Identity, p.Candidate.Name, p.Candidate.Connected)).ToArray();
+    private UiDeviceCatalog CatalogLocked() => new(_peers.Values.Where(p => p.Present)
+        .OrderByDescending(p => p.Candidate.Connected).ThenBy(p => p.Candidate.Name, StringComparer.OrdinalIgnoreCase)
+        .Select(p => new UiDeviceCandidate(p.Identity, p.Candidate.Name, p.Candidate.Connected, p.Allowed)).ToArray(), _catalogWarning);
+
+    public async Task RefreshCatalogAsync(CancellationToken token)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
+        await _catalogGate.WaitAsync(linked.Token);
+        try
+        {
+            var candidates = await _enumerate(linked.Token);
+            List<Peer> start = [];
+            lock (_sync)
+            {
+                if (_stopping) return;
+                var present = candidates.Where(WindowsBluetooth.IsAudioCandidate)
+                    .Where(p => !_osPresent.TryGetValue(p.Address, out var paired) || paired).ToDictionary(p => p.Address);
+                foreach (var peer in _peers.Values)
+                    if (!present.ContainsKey(peer.Candidate.Address) && peer.Present)
+                    { peer.Present = false; StopPeerLocked(peer); PublishLocked(peer); }
+                foreach (var candidate in present.Values)
+                {
+                    if (!_peers.TryGetValue(candidate.Address, out var peer)) _peers[candidate.Address] = peer = new(candidate);
+                    var wasConnected = peer.Candidate.Connected;
+                    peer.Present = true;
+                    peer.Candidate = _osConnections.TryGetValue(candidate.Address, out var connected)
+                        ? candidate with { Connected = connected } : candidate;
+                    peer.Allowed = _allowed.Contains(DeviceWhitelistStore.KeyFor(candidate.Address));
+                    if (!peer.Allowed || !peer.Candidate.Connected || !_radioAvailable || _suspended)
+                    { if (peer.Worker is not null || wasConnected != peer.Candidate.Connected) StopPeerLocked(peer); }
+                    else if (peer.State != MonitoringState.Unsupported && !peer.Paused && peer.Worker is null) start.Add(peer);
+                    PublishLocked(peer);
+                }
+                PublishCatalogLocked();
+            }
+            foreach (var peer in start) _ = EnsureWorkerAsync(peer);
+        }
+        catch (Exception) when (!linked.IsCancellationRequested)
+        {
+            lock (_sync) EmitLocked(new() { Kind = "health", Message = "无法读取蓝牙设备列表，保留原来的设备选择。" });
+            throw;
+        }
+        finally { _catalogGate.Release(); }
+    }
+
+    public async Task<UiWhitelistSaveResult> SaveWhitelistAsync(IReadOnlyList<string> identities, CancellationToken token)
+    {
+        if (identities.Count is 0 or > 4096 || identities.Any(string.IsNullOrWhiteSpace))
+            return new(false, "请至少选择一台有效的音频设备。");
+        await RefreshCatalogAsync(token);
+        List<Peer> start = [];
+        lock (_sync)
+        {
+            token.ThrowIfCancellationRequested();
+            var requested = identities.Distinct(StringComparer.Ordinal).ToArray();
+            var chosen = requested.Select(id => _peers.Values.FirstOrDefault(p => p.Present && p.Identity == id)).ToArray();
+            if (chosen.Any(p => p is null)) return new(false, "所选设备已解除配对，请刷新列表后重试。");
+            var keys = chosen.Select(p => DeviceWhitelistStore.KeyFor(p!.Candidate.Address)).ToHashSet(StringComparer.Ordinal);
+            try { _whitelist.Save(keys); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return new(false, "无法保存设备选择，请重试。"); }
+            _allowed = keys; _catalogWarning = null;
+            foreach (var peer in _peers.Values)
+            {
+                peer.Allowed = keys.Contains(DeviceWhitelistStore.KeyFor(peer.Candidate.Address));
+                if (!peer.Allowed) { StopPeerLocked(peer); peer.Broadcast = null; CancelBroadcastExpiryLocked(peer); }
+                else if (EligibleLocked(peer) && peer.Worker is null) start.Add(peer);
+                PublishLocked(peer);
+            }
+            PublishCatalogLocked();
+        }
+        foreach (var peer in start) _ = EnsureWorkerAsync(peer);
+        return new(true);
+    }
+
+    public UiSnapshot Select(string identity)
+    { lock (_sync) return Copy(FindLocked(identity).Published); }
+    public UiSnapshot Pause(string identity)
+    {
+        lock (_sync)
+        {
+            var peer = FindLocked(identity); peer.Paused = true; StopPeerLocked(peer);
+            peer.State = MonitoringState.Paused; PublishLocked(peer); return Copy(peer.Published);
+        }
+    }
+    public UiSnapshot Resume(string identity)
+    {
+        Peer peer;
+        lock (_sync)
+        {
+            peer = FindLocked(identity); peer.Paused = false; peer.Failures = 0;
+            if (peer.State is MonitoringState.Unsupported or MonitoringState.Unavailable) peer.State = MonitoringState.WaitingForConnection;
+            PublishLocked(peer);
+        }
+        _ = EnsureWorkerAsync(peer); return Select(identity);
+    }
+    private Peer FindLocked(string identity) => _peers.Values.FirstOrDefault(p => p.Identity == identity && p.Present && p.Allowed)
+        ?? throw new InvalidOperationException("所选耳机已不在有效设备名单中。");
+    private bool EligibleLocked(Peer p) => !_stopping && !_suspended && _radioAvailable && p.Present && p.Allowed
+        && p.Candidate.Connected && !p.Paused;
+
+    private async Task EnsureWorkerAsync(Peer peer)
+    {
+        IPeerWorker worker; long generation; CancellationToken token;
+        lock (_sync)
+        {
+            if (!EligibleLocked(peer) || peer.Worker is not null || peer.Initializing || peer.State == MonitoringState.Unsupported) return;
+            peer.Initializing = true; generation = peer.Generation; token = peer.Lifetime.Token;
+            worker = peer.Worker = _workerFactory(); peer.State = MonitoringState.Connecting;
+            worker.SnapshotChanged += s => ReceiveSpp(peer, generation, s);
+            worker.Unavailable += () => WorkerFailed(peer, generation);
+            PublishLocked(peer);
+        }
+        try
+        {
+            var snapshot = await worker.InitializeAsync(peer.Candidate.Address, peer.Identity, peer.Candidate.Name, token);
+            lock (_sync)
+            {
+                if (peer.Generation != generation || !ReferenceEquals(peer.Worker, worker)) return;
+                peer.Initializing = false;
+                if (!snapshot.ControlReady)
+                {
+                    if (!snapshot.SupportedModel && snapshot.ProductId is not null)
+                    { StopPeerLocked(peer); peer.Spp = Copy(snapshot); peer.VerifiedProductId = snapshot.ProductId; peer.Broadcast = null;
+                        CancelBroadcastExpiryLocked(peer);
+                        peer.State = MonitoringState.Unsupported; PublishLocked(peer); }
+                    else WorkerFailedLocked(peer, generation);
+                    return;
+                }
+                peer.Failures = 0; AdoptSppLocked(peer, snapshot);
+            }
+        }
+        catch (Exception) { WorkerFailed(peer, generation); }
+    }
+    private void ReceiveSpp(Peer peer, long generation, UiSnapshot snapshot)
+    {
+        lock (_sync)
+        {
+            if (peer.Generation != generation || peer.Paused || !peer.Allowed || snapshot.Identity != peer.Identity) return;
+            AdoptSppLocked(peer, snapshot);
+            if (!snapshot.ControlReady && peer.Worker is not null && !peer.Initializing) WorkerFailedLocked(peer, generation);
+        }
+    }
+    private void AdoptSppLocked(Peer peer, UiSnapshot snapshot)
+    {
+        if (snapshot.Revision != 0 && snapshot.Revision <= peer.SppRevision) return;
+        peer.SppRevision = snapshot.Revision; peer.Spp = Copy(snapshot);
+        if (snapshot.ProductId is { Length: > 0 } product)
+        {
+            peer.VerifiedProductId = product;
+            if (peer.Broadcast is { } ble && !string.Equals(ble.ProductId, product, StringComparison.OrdinalIgnoreCase))
+            { peer.Broadcast = null; CancelBroadcastExpiryLocked(peer); }
+        }
+        peer.State = snapshot.ControlReady ? MonitoringState.Monitoring : MonitoringState.Unavailable;
+        PublishLocked(peer);
+        if (snapshot.Revision != 0)
+        {
+            peer.PublicSppRevisions[snapshot.Revision] = peer.Revision;
+            if (peer.PublicSppRevisions.Count > 128) peer.PublicSppRevisions.Remove(peer.PublicSppRevisions.Keys.Min());
+        }
+    }
+    private void WorkerFailed(Peer peer, long generation) { lock (_sync) WorkerFailedLocked(peer, generation); }
+    private void WorkerFailedLocked(Peer peer, long generation)
+    {
+        if (peer.Generation != generation || peer.Paused || _stopping) return;
+        StopPeerLocked(peer); peer.State = MonitoringState.Unavailable; PublishLocked(peer);
+        var failures = ++peer.Failures;
+        if (failures > 3 || !EligibleLocked(peer)) return;
+        var nextGeneration = peer.Generation;
+        var token = peer.Lifetime.Token;
+        _ = RetryAsync();
+        async Task RetryAsync()
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(failures switch { 1 => 1, 2 => 2, _ => 5 }), _time, token);
+                lock (_sync) { if (peer.Generation != nextGeneration) return; }
+                await EnsureWorkerAsync(peer);
+            }
+            catch (OperationCanceledException) { }
+        }
+    }
+    private void StopPeerLocked(Peer peer)
+    {
+        peer.Generation++; peer.SppRevision = 0; peer.PublicSppRevisions.Clear(); peer.Spp = null; peer.Initializing = false;
+        peer.Lifetime.Cancel(); peer.Lifetime.Dispose(); peer.Lifetime = new();
+        var worker = peer.Worker; peer.Worker = null;
+        if (worker is not null) _ = worker.DisposeAsync();
+        peer.State = peer.Paused ? MonitoringState.Paused : !_radioAvailable || _suspended ? MonitoringState.Unavailable
+            : MonitoringState.WaitingForConnection;
+    }
+
+    public async Task<UiSnapshot> RefreshAsync(string identity, RefreshScope scope, CancellationToken queuedCancellation)
+    {
+        Peer peer; lock (_sync) peer = FindLocked(identity);
+        await peer.Commands.WaitAsync(queuedCancellation);
+        try
+        {
+            queuedCancellation.ThrowIfCancellationRequested();
+            IPeerWorker? worker; long generation; CancellationToken token;
+            lock (_sync) { worker = EligibleLocked(peer) ? peer.Worker : null; generation = peer.Generation; token = peer.Lifetime.Token; }
+            if (worker is null) return Select(identity);
+            var snapshot = await worker.RefreshAsync(scope, token);
+            lock (_sync) { if (generation == peer.Generation) AdoptSppLocked(peer, snapshot); return Copy(peer.Published); }
+        }
+        finally { peer.Commands.Release(); }
+    }
+
+    public async Task<UiApplyResult> ApplyAsync(string identity, long generation, UiAction action, CancellationToken queuedCancellation)
+    {
+        Peer peer; lock (_sync) peer = FindLocked(identity);
+        await peer.Commands.WaitAsync(queuedCancellation);
+        try
+        {
+            queuedCancellation.ThrowIfCancellationRequested();
+            IPeerWorker worker; CancellationToken token; long initialRevision;
+            lock (_sync)
+            {
+                if (generation != peer.Generation || !EligibleLocked(peer) || !peer.Published.ControlReady || peer.Worker is null)
+                    return new() { BackendReceiptReceived = true, FailureKind = ApplyFailure.StateUnavailable,
+                        ConnectionState = peer.Published.ConnectionState, After = Copy(peer.Published), Message = "耳机连接或状态已变化，未提交设置。" };
+                worker = peer.Worker; token = peer.Lifetime.Token; initialRevision = peer.Revision;
+            }
+            var result = await worker.ApplyAsync(action, token);
+            lock (_sync)
+            {
+                if (generation == peer.Generation && result.After is { } after) AdoptSppLocked(peer, after);
+                // Preserve the receipt's actual readback. A newer notification is a separate
+                // observation, not permission to rewrite the evidence of this submission.
+                if (result.After is { } receipt)
+                {
+                    var privateRevision = receipt.Revision;
+                    receipt.BackendInstanceId = InstanceId; receipt.DeviceGeneration = generation;
+                    receipt.Revision = generation == peer.Generation && peer.PublicSppRevisions.TryGetValue(privateRevision, out var revision)
+                        ? revision : initialRevision;
+                    receipt.MonitoringState = receipt.ControlReady ? MonitoringState.Monitoring : MonitoringState.Unavailable;
+                }
+            }
+            return result;
+        }
+        finally { peer.Commands.Release(); }
+    }
+
+    public void ObserveConnection(ulong address, bool connected)
+    {
+        Peer? start = null;
+        lock (_sync)
+        {
+            _osConnections[address] = connected;
+            if (!_peers.TryGetValue(address, out var peer) || peer.Candidate.Connected == connected) return;
+            peer.Candidate = peer.Candidate with { Connected = connected }; peer.Failures = 0;
+            if (!connected) StopPeerLocked(peer);
+            else { if (peer.State == MonitoringState.Unsupported) peer.State = MonitoringState.WaitingForConnection; if (EligibleLocked(peer)) start = peer; }
+            PublishLocked(peer); PublishCatalogLocked();
+        }
+        if (start is not null) _ = EnsureWorkerAsync(start);
+    }
+
+    public void ObserveBroadcast(ulong address, BroadcastObservation observation)
+    {
+        lock (_sync)
+        {
+            if (_stopping || _suspended || !_radioAvailable || !_peers.TryGetValue(address, out var peer)
+                || !peer.Present || !peer.Allowed || !string.Equals(observation.ProductId, "06EC10", StringComparison.OrdinalIgnoreCase)
+                || peer.VerifiedProductId is { } product && !string.Equals(product, observation.ProductId, StringComparison.OrdinalIgnoreCase)
+                || peer.Broadcast is { } previous && previous.ReceivedAt > observation.ReceivedAt) return;
+            var old = peer.Broadcast;
+            // Missing components do not erase independently observed components. Their own
+            // timestamps expire them, so a stream of status packets cannot keep old batteries fresh.
+            peer.Broadcast = observation with
+            {
+                Lid = observation.Lid == CaseLidState.Unknown ? old?.Lid ?? CaseLidState.Unknown : observation.Lid,
+                Left = observation.Left == EarbudPlacement.Unknown ? old?.Left ?? EarbudPlacement.Unknown : observation.Left,
+                Right = observation.Right == EarbudPlacement.Unknown ? old?.Right ?? EarbudPlacement.Unknown : observation.Right,
+                LeftBattery = observation.LeftBattery ?? old?.LeftBattery,
+                RightBattery = observation.RightBattery ?? old?.RightBattery,
+                CaseBattery = observation.CaseBattery ?? old?.CaseBattery,
+                LeftCharging = observation.LeftBattery is null ? old?.LeftCharging : observation.LeftCharging,
+                RightCharging = observation.RightBattery is null ? old?.RightCharging : observation.RightCharging,
+                CaseCharging = observation.CaseBattery is null ? old?.CaseCharging : observation.CaseCharging,
+                CaseTime = observation.Lid != CaseLidState.Unknown ? observation.ReceivedAt : old?.CaseTime,
+                LeftTime = observation.Left != EarbudPlacement.Unknown ? observation.ReceivedAt : old?.LeftTime,
+                RightTime = observation.Right != EarbudPlacement.Unknown ? observation.ReceivedAt : old?.RightTime,
+                LeftBatteryTime = observation.LeftBattery is not null ? observation.ReceivedAt : old?.LeftBatteryTime,
+                RightBatteryTime = observation.RightBattery is not null ? observation.ReceivedAt : old?.RightBatteryTime,
+                CaseBatteryTime = observation.CaseBattery is not null ? observation.ReceivedAt : old?.CaseBatteryTime
+            };
+            PublishLocked(peer, suppressEquivalentObservation: true);
+            ScheduleBroadcastExpiryLocked(peer);
+        }
+    }
+
+    private void ScheduleBroadcastExpiryLocked(Peer peer)
+    {
+        CancelBroadcastExpiryLocked(peer);
+        if (peer.Broadcast is not { } observation) return;
+        var now = _time.GetUtcNow();
+        var timestamps = new[] { observation.CaseTime, observation.LeftTime, observation.RightTime,
+            observation.LeftBatteryTime, observation.RightBatteryTime, observation.CaseBatteryTime };
+        var next = timestamps.Where(t => t is { } value && value + TimeSpan.FromSeconds(30) > now)
+            .Select(t => t!.Value + TimeSpan.FromSeconds(30)).DefaultIfEmpty(now).Min();
+        if (next <= now) { peer.Broadcast = null; return; }
+        var expiry = peer.BroadcastExpiry = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        _ = ExpireAsync();
+        async Task ExpireAsync()
+        {
+            try
+            {
+                await Task.Delay(next - now, _time, expiry.Token);
+                lock (_sync)
+                {
+                    if (!ReferenceEquals(peer.BroadcastExpiry, expiry)) return;
+                    peer.BroadcastExpiry = null;
+                    PublishLocked(peer, suppressEquivalentObservation: true);
+                    ScheduleBroadcastExpiryLocked(peer);
+                }
+            }
+            catch (OperationCanceledException) { }
+            finally { expiry.Dispose(); }
+        }
+    }
+
+    private static void CancelBroadcastExpiryLocked(Peer peer)
+    {
+        var expiry = peer.BroadcastExpiry; peer.BroadcastExpiry = null;
+        if (expiry is not null) { expiry.Cancel(); expiry.Dispose(); }
+    }
+
+    public void ObservePairing(ulong address, bool paired)
+    {
+        lock (_sync)
+        {
+            _osPresent[address] = paired;
+            if (paired || !_peers.TryGetValue(address, out var peer)) return;
+            peer.Present = false; StopPeerLocked(peer); peer.Broadcast = null; CancelBroadcastExpiryLocked(peer);
+            PublishCatalogLocked();
+        }
+    }
+
+    public void ReportHealth(string message)
+    { lock (_sync) EmitLocked(new() { Kind = "health", Message = message }); }
+
+    public void SetRadioAvailable(bool available) => SetEnvironment(available, null);
+    public void SetSuspended(bool suspended) => SetEnvironment(null, suspended);
+    private void SetEnvironment(bool? radio, bool? suspended)
+    {
+        List<Peer> start = [];
+        lock (_sync)
+        {
+            if (radio is { } r) _radioAvailable = r;
+            if (suspended is { } s) _suspended = s;
+            foreach (var peer in _peers.Values)
+            {
+                if (!_radioAvailable || _suspended)
+                { StopPeerLocked(peer); peer.Broadcast = null; CancelBroadcastExpiryLocked(peer); }
+                else if (EligibleLocked(peer) && peer.Worker is null) { peer.Failures = 0; start.Add(peer); }
+                PublishLocked(peer);
+            }
+            EmitLocked(new() { Kind = "health", Message = _suspended ? "电脑休眠，耳机状态监听已暂停。"
+                : !_radioAvailable ? "蓝牙不可用，等待蓝牙恢复。" : "蓝牙状态监听已恢复。" });
+        }
+        foreach (var peer in start) _ = EnsureWorkerAsync(peer);
+    }
+
+    private void PublishLocked(Peer peer, bool suppressEquivalentObservation = false)
+    {
+        var snapshot = peer.Spp is null ? new UiSnapshot() : Copy(peer.Spp);
+        snapshot.Identity = peer.Identity; snapshot.DeviceName = peer.Candidate.Name;
+        snapshot.BackendInstanceId = InstanceId; snapshot.DeviceGeneration = peer.Generation;
+        snapshot.Connected = peer.Candidate.Connected && _radioAvailable && !_suspended;
+        snapshot.ConnectionState = !_radioAvailable || _suspended ? ConnectionState.Unknown
+            : peer.Candidate.Connected ? ConnectionState.Connected : ConnectionState.Disconnected;
+        snapshot.ControlReady = EligibleLocked(peer) && peer.Spp?.ControlReady == true;
+        snapshot.MonitoringState = peer.Paused ? MonitoringState.Paused : peer.State;
+        if (!snapshot.ControlReady)
+        {
+            snapshot.CanSetAnc = snapshot.CanSetEqualizer = snapshot.CanSetCustomEqualizer = snapshot.CanSetDualConnection = false;
+            snapshot.CanSetGameMode = snapshot.CanSetSpatial = snapshot.CanSetHiRes = false;
+        }
+        var ble = peer.Broadcast;
+        var usedBle = false;
+        var now = _time.GetUtcNow();
+        bool Fresh(DateTimeOffset? time) => time is { } value && value + TimeSpan.FromSeconds(30) > now;
+        bool Newer(DateTimeOffset? broadcast, DateTimeOffset? spp) => Fresh(broadcast) && (spp is null || broadcast > spp);
+        if (ble is not null)
+        {
+            snapshot.ProductId ??= ble.ProductId;
+            if (ble.LeftBattery is not null && Newer(ble.LeftBatteryTime, snapshot.LeftBatteryObservationTime))
+            { snapshot.LeftBattery = ble.LeftBattery; snapshot.LeftCharging = ble.LeftCharging; snapshot.LeftBatteryObservationTime = ble.LeftBatteryTime; usedBle = true; }
+            if (ble.RightBattery is not null && Newer(ble.RightBatteryTime, snapshot.RightBatteryObservationTime))
+            { snapshot.RightBattery = ble.RightBattery; snapshot.RightCharging = ble.RightCharging; snapshot.RightBatteryObservationTime = ble.RightBatteryTime; usedBle = true; }
+            if (ble.CaseBattery is not null && Newer(ble.CaseBatteryTime, snapshot.CaseBatteryObservationTime))
+            { snapshot.CaseBattery = ble.CaseBattery; snapshot.CaseCharging = ble.CaseCharging; snapshot.CaseBatteryObservationTime = ble.CaseBatteryTime; usedBle = true; }
+            if (ble.Lid != CaseLidState.Unknown && Newer(ble.CaseTime, snapshot.CaseObservationTime))
+            { snapshot.CaseLid = ble.Lid; snapshot.CaseObservationTime = ble.CaseTime; usedBle = true; }
+            if (ble.Left != EarbudPlacement.Unknown && Newer(ble.LeftTime, snapshot.LeftPlacementObservationTime))
+            { snapshot.LeftPlacement = ble.Left; snapshot.LeftPlacementObservationTime = ble.LeftTime; usedBle = true; }
+            if (ble.Right != EarbudPlacement.Unknown && Newer(ble.RightTime, snapshot.RightPlacementObservationTime))
+            { snapshot.RightPlacement = ble.Right; snapshot.RightPlacementObservationTime = ble.RightTime; usedBle = true; }
+        }
+        snapshot.BatteryObservationTime = Latest(snapshot.LeftBatteryObservationTime, snapshot.RightBatteryObservationTime, snapshot.CaseBatteryObservationTime);
+        snapshot.PlacementObservationTime = Latest(snapshot.CaseObservationTime, snapshot.LeftPlacementObservationTime, snapshot.RightPlacementObservationTime);
+        snapshot.ObservationFresh = snapshot.ControlReady || usedBle;
+        snapshot.ObservationSource = snapshot.ControlReady ? usedBle ? "spp+ble" : "spp" : usedBle ? "ble" : null;
+        snapshot.ObservationTime = Latest(snapshot.BatteryObservationTime, snapshot.PlacementObservationTime,
+            snapshot.ControlReady ? snapshot.SampleTime : null);
+        var firstLidObservation = peer.LastObservedLid == CaseLidState.Unknown;
+        var openEdge = false;
+        if (snapshot.CaseLid != CaseLidState.Unknown && snapshot.CaseObservationTime is { } lidTime
+            && (peer.LastLidObservationTime is null || lidTime > peer.LastLidObservationTime))
+        {
+            openEdge = snapshot.CaseLid == CaseLidState.Open && peer.LastObservedLid != CaseLidState.Open;
+            // Unknown, expiration, pause and sleep are not evidence that the case closed.
+            // Nor is an older SPP value revealed when a newer BLE observation expires.
+            peer.LastObservedLid = snapshot.CaseLid; peer.LastLidObservationTime = lidTime;
+        }
+        if (suppressEquivalentObservation && !openEdge && SameObservation(peer.Published, snapshot)) return;
+        snapshot.Revision = ++peer.Revision;
+        peer.Published = snapshot;
+        if (peer.Present && peer.Allowed)
+        {
+            EmitLocked(new() { Kind = "snapshot", Snapshot = Copy(snapshot) });
+            if (openEdge) EmitLocked(new() { Kind = "caseOpen", Snapshot = Copy(snapshot), FirstObservation = firstLidObservation });
+        }
+    }
+    private static DateTimeOffset? Latest(params DateTimeOffset?[] values) => values.Where(v => v.HasValue).DefaultIfEmpty().Max();
+    private static bool SameObservation(UiSnapshot left, UiSnapshot right) => left.ProductId == right.ProductId
+        && left.CaseLid == right.CaseLid && left.LeftPlacement == right.LeftPlacement && left.RightPlacement == right.RightPlacement
+        && left.LeftBattery == right.LeftBattery && left.RightBattery == right.RightBattery && left.CaseBattery == right.CaseBattery
+        && left.LeftCharging == right.LeftCharging && left.RightCharging == right.RightCharging && left.CaseCharging == right.CaseCharging
+        && left.ObservationFresh == right.ObservationFresh && left.ObservationSource == right.ObservationSource;
+    private void PublishCatalogLocked() => EmitLocked(new() { Kind = "catalog", Catalog = CatalogLocked(), Devices = DevicesLocked() });
+    private void EmitLocked(BackendEvent value) { value.BackendInstanceId = InstanceId; EventPublished?.Invoke(value); }
+    private static UiSnapshot Copy(UiSnapshot s) => JsonSerializer.Deserialize<UiSnapshot>(JsonSerializer.Serialize(s, RpcWire.Json), RpcWire.Json)!;
+
+    public async ValueTask DisposeAsync()
+    {
+        List<IPeerWorker> workers;
+        lock (_sync)
+        {
+            if (_disposed) return;
+            _disposed = true; _stopping = true;
+            workers = _peers.Values.Where(p => p.Worker is not null).Select(p => p.Worker!).ToList();
+            foreach (var peer in _peers.Values) { peer.Lifetime.Cancel(); CancelBroadcastExpiryLocked(peer); }
+            _lifetime.Cancel();
+        }
+        foreach (var worker in workers) await worker.DisposeAsync();
+    }
+
+    public async Task StopGracefullyAsync()
+    {
+        Peer[] peers;
+        lock (_sync) { _stopping = true; peers = _peers.Values.ToArray(); }
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(125));
+        foreach (var peer in peers)
+        {
+            try { await peer.Commands.WaitAsync(deadline.Token); peer.Commands.Release(); }
+            catch (OperationCanceledException) { break; }
+        }
+        await DisposeAsync();
+    }
+}

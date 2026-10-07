@@ -409,4 +409,36 @@ Test("Decoder refuses independent fragment FSN wrap and resets", () =>
     Check(decoder.Feed(Convert.FromHexString("AA0700000301000000")).Single().Command == 0x0103);
     decoder.Complete();
 });
+Test("notification envelopes exclude event IDs and legacy response status", () =>
+{
+    Check(NotificationParsers.TryParse(new(0x0204,5,[1,1,1,42]), out var current)
+        && current!.Kind == DeviceNotificationKind.Battery && current.Data.SequenceEqual(new byte[]{1,1,42}));
+    Check(NotificationParsers.TryParse(new(0x8202,5,[0,2,1,3,4]), out var legacy)
+        && legacy!.Kind == DeviceNotificationKind.Placement && legacy.Data.SequenceEqual(new byte[]{1,3,4}));
+    Check(!NotificationParsers.TryParse(new(0x0204,5,[240,1]),out _));
+    Check(!NotificationParsers.IsNotificationCommand(0x8406));
+});
+Test("notification capability and component lists reject malformed length and duplicate IDs", () =>
+{
+    Check(NotificationParsers.ParseSupportedEvents([0,3,1,2,15]).SequenceEqual(new byte[]{1,2,15}));
+    Check(NotificationParsers.ParseComponentPairs([2,1,42,2,61])[2] == 61);
+    foreach(byte[] data in new byte[][]{[0],[1,0],[0,2,1],[0,2,1,1]})
+    {
+        bool rejected=false;try{NotificationParsers.ParseSupportedEvents(data);}catch(FormatException){rejected=true;}Check(rejected);
+    }
+    foreach(byte[] data in new byte[][]{[],[2,1,42],[2,1,42,1,61]})
+    {
+        bool rejected=false;try{NotificationParsers.ParseComponentPairs(data);}catch(FormatException){rejected=true;}Check(rejected);
+    }
+});
+Test("setting synchronization commands are notification-only, spatial requests invalidate state", () =>
+{
+    foreach(var entry in new (ushort Command,DeviceNotificationKind Kind)[]{(0x0503,DeviceNotificationKind.Features),
+        (0x0504,DeviceNotificationKind.Preset),(0x0506,DeviceNotificationKind.CustomEqualizers),(0x051D,DeviceNotificationKind.SpatialInvalidated)})
+        Check(NotificationParsers.TryParse(new(entry.Command,7,[]),out var parsed) && parsed!.Kind==entry.Kind);
+    Check(!new RequestKey(0x0406,7).MatchesResponse(new(0x0504,7,[0]))
+        && !new RequestKey(0x0403,7).MatchesResponse(new(0x0503,7,[0]))
+        && !new RequestKey(0x0418,7).MatchesResponse(new(0x0506,7,[0])));
+});
+OppoAdvertisementTests.Run(Test);
 Console.WriteLine($"{passed} offline protocol tests passed.");

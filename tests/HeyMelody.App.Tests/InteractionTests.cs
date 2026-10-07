@@ -12,9 +12,10 @@ internal static class InteractionTests
     public static int Run(HeadlessUnitTestSession session)
     {
         Run("background reads preserve editing and queued mouse actions", BackgroundInteractionAsync);
+        Run("backend pushes update bound controls without setters and BLE observations keep settings disabled", EventInteractionAsync);
         Run("settings waits for the shared dialog owner and cancels cleanly", SettingsSerializationAsync);
         Run("retry and alert dialogs use the required buttons", DialogButtonsAsync);
-        return 3;
+        return 4;
 
         void Run(string name, Func<Task> test)
         {
@@ -22,6 +23,40 @@ internal static class InteractionTests
                 .GetAwaiter().GetResult();
             Console.WriteLine("PASS " + name);
         }
+    }
+
+    private static async Task EventInteractionAsync()
+    {
+        var service = new PushService();
+        await using var vm = new MainViewModel(service, new NoConfirm());
+        service.EventReceived += vm.AdoptBackendEvent;
+        await vm.InitializeAsync();
+        var view = new MainView { DataContext = vm };
+        var window = CreateWindow(view);
+        try
+        {
+            window.Show(); view.ExpandAllSettings(); Dispatcher.UIThread.RunJobs();
+            var anc = view.FindControl<ComboBox>("AncCombo")!;
+            var game = view.FindControl<ToggleSwitch>("GameSwitch")!;
+            anc.SelectedItem = vm.AncOptions.Last();
+            view.FindControl<TextBox>("EqNameEditor")!.Text = "广播期间保留";
+            Dispatcher.UIThread.RunJobs();
+            var selected = vm.SelectedAnc?.Key;
+            var update = service.Next(); update.GameMode = true; update.LeftBattery = 54;
+            service.Push(update); Dispatcher.UIThread.RunJobs();
+            Check(game.IsChecked == true && vm.LeftBatteryText == "54%" && service.Actions.Count == 0,
+                "A pushed phone setting updates the switch without invoking its user click handler.");
+            Check(vm.SelectedAnc?.Key == selected && vm.EqDirty && vm.EqName == "广播期间保留",
+                "Bound item updates preserve the unsubmitted selection and EQ draft.");
+            var ble = service.Next(); ble.ControlReady = false; ble.Connected = false;
+            ble.ConnectionState = ConnectionState.Disconnected; ble.ObservationFresh = true;
+            ble.MonitoringState = MonitoringState.WaitingForConnection; ble.LeftBattery = 43;
+            service.Push(ble); Dispatcher.UIThread.RunJobs();
+            Check(vm.LeftBatteryText == "43%" && !game.IsEnabled && !anc.IsEnabled
+                && !view.FindControl<ItemsControl>("BandEditor")!.IsEnabled && service.Actions.Count == 0,
+                "BLE battery remains visible while every settings editor is gated by verified control.");
+        }
+        finally { window.Close(); }
     }
 
     private static async Task BackgroundInteractionAsync()
@@ -176,5 +211,46 @@ internal static class InteractionTests
             });
         }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class PushService : IHeadsetEventService
+    {
+        private readonly PreviewService _inner = new();
+        private UiSnapshot? _snapshot;
+        public event Action<BackendEvent>? EventReceived;
+        public List<UiAction> Actions { get; } = [];
+        public UiSnapshot Next()
+        {
+            var snapshot = System.Text.Json.JsonSerializer.Deserialize<UiSnapshot>(
+                System.Text.Json.JsonSerializer.Serialize(_snapshot))!;
+            snapshot.Revision++; return snapshot;
+        }
+        public void Push(UiSnapshot snapshot)
+        {
+            _snapshot = snapshot;
+            EventReceived?.Invoke(new() { Kind = "snapshot", BackendInstanceId = snapshot.BackendInstanceId, Snapshot = snapshot });
+        }
+        public async Task<BackendSubscription> SubscribeAsync(string role, CancellationToken token)
+        {
+            var devices = await _inner.EnumerateAsync(token);
+            _snapshot = await _inner.ConnectAsync(devices[0].Identity, token);
+            _snapshot.BackendInstanceId = "ui-test-backend"; _snapshot.DeviceGeneration = 1; _snapshot.Revision = 1;
+            _snapshot.ControlReady = true; _snapshot.MonitoringState = MonitoringState.Monitoring;
+            return new() { BackendInstanceId = _snapshot.BackendInstanceId, Devices = devices, Snapshots = [_snapshot] };
+        }
+        public Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken token) => _inner.EnumerateAsync(token);
+        public Task<UiSnapshot> SelectAsync(string identity, CancellationToken token) => Task.FromResult(_snapshot!);
+        public Task<UiSnapshot> PauseAsync(string identity, CancellationToken token) => throw new InvalidOperationException();
+        public Task<UiSnapshot> ResumeAsync(string identity, CancellationToken token) => throw new InvalidOperationException();
+        public Task<UiSnapshot> RefreshAsync(string identity, RefreshScope scope, CancellationToken token) => Task.FromResult(_snapshot!);
+        public Task<UiApplyResult> ApplyAsync(string identity, long generation, UiAction action, CancellationToken token)
+        { Actions.Add(action); throw new InvalidOperationException("A state push must never send a setter."); }
+        public Task AcknowledgeExitAsync(string requestId, bool approved, CancellationToken token) => Task.CompletedTask;
+        public Task ActivateMainUiAsync(CancellationToken token) => Task.CompletedTask;
+        public Task<UiSnapshot> ConnectAsync(string identity, CancellationToken token) => throw new InvalidOperationException();
+        public Task DisconnectAsync(CancellationToken token) => throw new InvalidOperationException();
+        public Task<UiSnapshot> RefreshAsync(CancellationToken token) => throw new InvalidOperationException();
+        public Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token) => throw new InvalidOperationException();
+        public ValueTask DisposeAsync() => _inner.DisposeAsync();
     }
 }

@@ -61,6 +61,7 @@ public sealed class DailyCapabilities
 }
 public sealed class DailySnapshot
 {
+    public long Revision { get; set; }
     public DateTimeOffset ObservedAtUtc { get; set; }
     public bool Connected { get; set; }
     public bool ProfileVerified { get; set; }
@@ -68,6 +69,18 @@ public sealed class DailySnapshot
     public string? DeviceName { get; set; }
     public string? FirmwareVersion { get; set; }
     public byte? CodecRaw { get; set; }
+    public bool? CaseOpen { get; set; }
+    public bool? LeftInCase { get; set; }
+    public bool? RightInCase { get; set; }
+    public bool? LeftInEar { get; set; }
+    public bool? RightInEar { get; set; }
+    public DateTimeOffset? CaseObservedAtUtc { get; set; }
+    public DateTimeOffset? LeftPlacementObservedAtUtc { get; set; }
+    public DateTimeOffset? RightPlacementObservedAtUtc { get; set; }
+    public DateTimeOffset? LeftBatteryObservedAtUtc { get; set; }
+    public DateTimeOffset? RightBatteryObservedAtUtc { get; set; }
+    public DateTimeOffset? CaseBatteryObservedAtUtc { get; set; }
+    public Dictionary<byte, byte> RawStatusComponents { get; set; } = [];
     public BatterySnapshot? Battery { get; set; }
     public AncSnapshot? Anc { get; set; }
     public byte? PresetId { get; set; }

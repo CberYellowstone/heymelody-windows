@@ -1,5 +1,7 @@
 # 阶段 3/4：Hi-Res 闭环与高采样率实测
 
+历史记录：下文仅对应 2026-10-06 的受控实验及本机证据，不证明当前发布包。当前工具依赖和验证边界见 [仓库说明](../../REPOSITORY.md)。文中的源码、研究输入和 artifacts 路径均相对于仓库根目录。
+
 2026-10-06 完成。代码包含 `HeyMelody.Control`、`HeyMelody.Audio`、`HeyMelody.Experiments`，用户入口 `Run-HiRes.ps1`。原有只读入口与阶段 1/2 证据保留。
 
 ## 结果

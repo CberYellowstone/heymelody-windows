@@ -10,7 +10,7 @@ public static class HeadsetServiceFactory
         : throw new PlatformNotSupportedException("真实耳机只读预览目前仅支持 Windows。");
 }
 
-/// <summary>Explicit desktop fallback until a native Bluetooth backend is implemented.</summary>
+/// <summary>Explicit fallback for platforms without a Bluetooth backend.</summary>
 public sealed class UnsupportedPlatformService : IHeadsetService
 {
     public const string Message = "当前平台尚未实现蓝牙控制；可使用 --ui-preview 查看界面演示。";

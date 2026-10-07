@@ -9,7 +9,7 @@ public sealed partial class MainViewModel
     public bool ManagingDevices => _managingDevices;
     public bool CanManageDevices => !Closing && !_lifecyclePending;
 
-    /// <summary>Disconnects safely and keeps control operations disabled until management completes.</summary>
+    /// <summary>Detaches the selected display and suspends UI writes while shared monitoring continues.</summary>
     public async Task<bool> PrepareDeviceManagementAsync()
     {
         if (!CanManageDevices) return false;
@@ -24,13 +24,14 @@ public sealed partial class MainViewModel
                 if (Closing) return;
                 var devices = Devices;
                 var identity = SelectedDevice?.Identity;
-                if (!await ChangeSelectedDeviceAsync(null, "管理设备",
-                    "管理设备需要先断开客户端，并丢弃尚未保存的均衡器调整。继续吗？")) return;
+                if (!await ChangeSelectedDeviceAsync(null, "管理设备", EventService is not null
+                    ? "管理设备会丢弃尚未保存的均衡器调整。继续吗？"
+                    : "管理设备需要先断开客户端，并丢弃尚未保存的均衡器调整。继续吗？")) return;
                 if (Closing) return;
                 _managementDevices = devices;
                 _managementSelectedIdentity = identity;
                 _managingDevices = prepared = true;
-                SetStatus("正在管理设备，耳机控制已暂停。");
+                SetStatus(EventService is not null ? "正在管理设备，后台继续监听耳机状态。" : "正在管理设备，耳机控制已暂停。");
             }, OperationCoordinator.Lifecycle, _lifetime.Token);
         }
         catch (OperationCanceledException) { }
@@ -39,7 +40,7 @@ public sealed partial class MainViewModel
             if (!Closing)
             {
                 InvalidateSnapshot();
-                SetStatus("无法断开耳机，设备管理尚未打开。请重试。", true);
+                SetStatus("无法准备设备管理，请重试。", true);
             }
         }
         finally
@@ -50,7 +51,7 @@ public sealed partial class MainViewModel
         return prepared && !Closing;
     }
 
-    /// <summary>Restores cached devices on cancellation, or enumerates the saved list once; never reconnects.</summary>
+    /// <summary>Restores cached selection or reloads the saved list, then attaches its cached backend state.</summary>
     public async Task<bool> CompleteDeviceManagementAsync(bool saved)
     {
         if (!_managingDevices || _completingDeviceManagement || Closing) return false;
@@ -69,6 +70,11 @@ public sealed partial class MainViewModel
                 _title = _selectedDevice?.Name ?? "选择一副耳机";
                 ResetSelection();
                 completed = devices.Count != 0;
+                if (completed && EventService is not null)
+                {
+                    await AttachSelectedBackendAsync();
+                    return;
+                }
                 SetStatus(completed ? "选择耳机后连接" : "没有可用的白名单设备，请重新管理设备。", !completed);
             }, OperationCoordinator.Lifecycle, _lifetime.Token);
         }
@@ -106,6 +112,11 @@ public sealed partial class MainViewModel
         _selectedDevice = device;
         ResetSelection();
         _title = device?.Name ?? "选择一副耳机";
+        if (EventService is not null)
+        {
+            await AttachSelectedBackendAsync();
+            return true;
+        }
         if (hadSession) await _service.DisconnectAsync(_lifetime.Token);
         SetStatus("选择耳机后连接");
         return true;

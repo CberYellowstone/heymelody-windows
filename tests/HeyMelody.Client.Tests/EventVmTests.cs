@@ -1,0 +1,307 @@
+using System.Text.Json;
+using HeyMelodyWindows.App;
+
+internal static class EventVmTests
+{
+    public static async Task RunAsync(Func<string, Func<Task>, Task> test)
+    {
+        await test("live read-only preview attaches the shared backend without changing a paused device", async () =>
+        {
+            var backend = new EventService();
+            backend.Snapshots["device-a"].MonitoringState = MonitoringState.Paused;
+            backend.Snapshots["device-a"].ControlReady = false;
+            await using var service = new ReadOnlyPreviewService(backend);
+            var devices = await service.EnumerateAsync(CancellationToken.None);
+            Check(devices is [{ Identity: "device-a" }]);
+            var snapshot = await service.ConnectAsync(devices[0].Identity, CancellationToken.None);
+            await service.RefreshAsync(RefreshScope.Battery, CancellationToken.None);
+            await service.DisconnectAsync(CancellationToken.None);
+            Check(snapshot.MonitoringState == MonitoringState.Paused && !snapshot.ControlReady);
+            Check(backend.Selections.SequenceEqual(["device-a"]) && backend.Pauses.Count == 0 && backend.Resumes.Count == 0);
+            Check(backend.RefreshTargets.Single() == ("device-a", RefreshScope.Battery) && backend.Actions.Count == 0);
+            try { await service.ApplyAsync(new("GameMode", 1), CancellationToken.None); throw new Exception("Preview admitted a setter."); }
+            catch (InvalidOperationException) { }
+        });
+        await test("event VM attaches cached devices without polling or owning their connections", async () =>
+        {
+            var service = new EventService(); await using var vm = Create(service);
+            await vm.InitializeAsync();
+            Check(vm.HasVerifiedSnapshot && service.Subscriptions == 1 && service.Selections.SequenceEqual(["device-a"]));
+            await vm.PollAsync(); await vm.PollAsync();
+            Check(service.Refreshes == 0 && service.Pauses.Count == 0 && service.Resumes.Count == 0);
+            await vm.SelectDeviceAsync(vm.Devices[1]);
+            Check(vm.HasVerifiedSnapshot && vm.SelectedDevice?.Identity == "device-b");
+            Check(service.Selections.SequenceEqual(["device-a", "device-b"]) && service.Pauses.Count == 0 && service.Resumes.Count == 0);
+            await vm.ToggleGameCommand.ExecuteAsync(true);
+            Check(service.Actions.Single() is { Identity: "device-b", Generation: 1, Action.Kind: "GameMode" });
+        });
+        await test("event VM shows fresh BLE battery but requires verified control before every write", async () =>
+        {
+            var service = new EventService(); await using var vm = Create(service); await vm.InitializeAsync();
+            var ble = Next(service.Snapshots["device-a"]);
+            ble.ControlReady = false; ble.Connected = false; ble.ConnectionState = ConnectionState.Disconnected;
+            ble.MonitoringState = MonitoringState.WaitingForConnection; ble.ObservationSource = "ble";
+            ble.ObservationFresh = true; ble.LeftBattery = 42; ble.LeftCharging = true;
+            service.Push(ble);
+            Check(vm.LeftBatteryText == "42%" && vm.LeftChargeText == "正在充电" && !vm.HasVerifiedSnapshot);
+            Check(!vm.CanSetGameMode && !vm.CanEditEq && !vm.CanChooseAnc);
+            await vm.ToggleGameCommand.ExecuteAsync(true); await vm.ApplyAncCommand.ExecuteAsync(null);
+            Check(service.Actions.Count == 0);
+            var stale = Next(ble); stale.ObservationFresh = false; service.Push(stale);
+            Check(vm.LeftBatteryText == "—" && vm.LeftChargeText == "尚未读取");
+            var unverified = Next(stale); unverified.Connected = true; unverified.ConnectionState = ConnectionState.Connected;
+            service.Push(unverified); await vm.ToggleGameCommand.ExecuteAsync(true);
+            Check(!vm.HasVerifiedSnapshot && service.Actions.Count == 0);
+        });
+        await test("event VM pushes preserve draft and option choices without sending settings", async () =>
+        {
+            var service = new EventService(); await using var vm = Create(service); await vm.InitializeAsync();
+            vm.SelectedAnc = vm.AncOptions.Last(); vm.SelectedPreset = vm.PresetOptions.Last(); vm.SelectedSpatial = vm.SpatialOptions.Last();
+            vm.EqName = "手机更新时保留"; vm.Bands[0].Gain = 4;
+            var update = Next(service.Snapshots["device-a"]); update.LeftBattery = 67; update.GameMode = true;
+            update.EqualizerEntries = [new(1, "手机均衡器", -6, 6, true, [new(31, -2)])]; service.Push(update);
+            Check(vm.LeftBatteryText == "67%" && vm.GameMode == true);
+            Check(vm.SelectedAnc?.Key == 0x0107 && vm.SelectedPreset?.Key == 7 && vm.SelectedSpatial?.Key == 2);
+            Check(vm.EqDirty && vm.EqName == "手机更新时保留" && vm.Bands[0].Gain == 4 && service.Actions.Count == 0);
+        });
+        await test("event VM retains staged protocol IDs through empty unverified options and a new control generation", async () =>
+        {
+            var service = new EventService(); await using var vm = Create(service); await vm.InitializeAsync();
+            var initial = Copy(service.Snapshots["device-a"]);
+            vm.SelectedAnc = vm.AncOptions.Last(); vm.SelectedPreset = vm.PresetOptions.Last(); vm.SelectedSpatial = vm.SpatialOptions.Last();
+            vm.EqName = "控制重连草稿"; vm.Bands[0].Gain = 4;
+            var waiting = Next(initial); waiting.DeviceGeneration = 2; waiting.Revision = 1;
+            waiting.ControlReady = false; waiting.Connected = false; waiting.ConnectionState = ConnectionState.Disconnected;
+            waiting.MonitoringState = MonitoringState.WaitingForConnection; waiting.ObservationFresh = true;
+            waiting.AncOptions = []; waiting.EqualizerOptions = []; waiting.SpatialOptions = []; waiting.EqualizerEntries = [];
+            service.Push(waiting);
+            Check(vm.SelectedAnc?.Key == 0x0107 && vm.SelectedPreset?.Key == 7 && vm.SelectedSpatial?.Key == 2);
+            Check(!vm.CanChooseAnc && !vm.CanChoosePreset && !vm.CanChooseSpatial && !vm.CanEditEq);
+            await vm.ApplyAncCommand.ExecuteAsync(null); Check(service.Actions.Count == 0);
+            var restored = Copy(initial); restored.DeviceGeneration = 3; restored.Revision = 1; service.Push(restored);
+            Check(vm.HasVerifiedSnapshot && vm.SelectedAnc?.Key == 0x0107 && vm.SelectedPreset?.Key == 7 && vm.SelectedSpatial?.Key == 2);
+            Check(vm.EqDirty && vm.EqName == "控制重连草稿" && vm.Bands[0].Gain == 4 && service.Actions.Count == 0);
+            await vm.ApplyAncCommand.ExecuteAsync(null);
+            Check(service.Actions.Single() is { Generation: 3, Action.Value: 0x0107 });
+            var phone = Next(service.Snapshots["device-a"]); phone.Anc = 0x0104; service.Push(phone);
+            Check(vm.SelectedAnc?.Key == 0x0104, "A completed submission must release its staged protocol ID.");
+        });
+        await test("event VM rejects older revisions, generations, and a retired backend", async () =>
+        {
+            var service = new EventService(); await using var vm = Create(service); await vm.InitializeAsync();
+            var latest = Next(service.Snapshots["device-a"]); latest.Revision = 8; latest.LeftBattery = 68; service.Push(latest);
+            var late = Copy(latest); late.Revision = 7; late.LeftBattery = 10; service.Push(late);
+            Check(vm.LeftBatteryText == "68%");
+            var sameRevision = Copy(latest); sameRevision.LeftBattery = 11; service.Push(sameRevision);
+            Check(vm.LeftBatteryText == "68%");
+            var generation = Copy(latest); generation.DeviceGeneration = 2; generation.Revision = 1; generation.LeftBattery = 53; service.Push(generation);
+            late.Revision = 100; service.Push(late); Check(vm.LeftBatteryText == "53%");
+            var restarted = Copy(generation); restarted.BackendInstanceId = "backend-b"; restarted.DeviceGeneration = 1;
+            restarted.Revision = 1; restarted.LeftBattery = 31; service.Push(restarted);
+            service.Push(generation); Check(vm.LeftBatteryText == "31%" && vm.HasVerifiedSnapshot);
+        });
+        await test("event VM ignores a stale explicit refresh after a newer phone update", async () =>
+        {
+            var service = new EventService { RefreshBlocked = Completion<UiSnapshot>() };
+            await using var vm = Create(service); await vm.InitializeAsync();
+            var old = Copy(service.Snapshots["device-a"]); var read = vm.RefreshStateCommand.ExecuteAsync(null);
+            var phone = Next(old); phone.GameMode = true; phone.LeftBattery = 61; service.Push(phone);
+            service.RefreshBlocked.SetResult(old); await read.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(vm.GameMode == true && vm.LeftBatteryText == "61%" && service.Refreshes == 1);
+            Check(service.RefreshTargets.Single() == ("device-a", RefreshScope.Full) && service.Actions.Count == 0);
+        });
+        await test("event VM cannot roll back a newer push with an older successful write receipt", async () =>
+        {
+            var service = new EventService { ApplyBlocked = Completion<UiApplyResult>() };
+            await using var vm = Create(service); await vm.InitializeAsync();
+            var after = Next(service.Snapshots["device-a"]); after.GameMode = true;
+            var write = vm.ToggleGameCommand.ExecuteAsync(true);
+            var phone = Next(after); phone.GameMode = false; phone.LeftBattery = 55; service.Push(phone);
+            service.ApplyBlocked.SetResult(Confirmed(after)); await write.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(vm.GameMode == false && vm.LeftBatteryText == "55%" && vm.HasVerifiedSnapshot);
+            Check(service.Actions.Count == 1 && !vm.Busy && vm.LastApplyAttempts.Single().Accepted);
+        });
+        await test("event VM rejects write evidence from a different backend control session", async () =>
+        {
+            var service = new EventService { ApplyBlocked = Completion<UiApplyResult>() };
+            await using var vm = Create(service); await vm.InitializeAsync();
+            var write = vm.ToggleGameCommand.ExecuteAsync(true);
+            var foreign = Next(service.Snapshots["device-a"]); foreign.BackendInstanceId = "retired-backend";
+            foreign.GameMode = true; service.ApplyBlocked.SetResult(Confirmed(foreign));
+            await write.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(service.Actions.Count == 1 && vm.HasVerifiedSnapshot && vm.GameMode == false);
+            Check(vm.LastApplyAttempts.Single().FailureKind == ApplyFailure.WorkerUnavailable && vm.StatusWarning);
+        });
+        await test("event VM freezes queued option values and retains edits made after submission", async () =>
+        {
+            var service = new EventService { RefreshBlocked = Completion<UiSnapshot>() };
+            await using var vm = Create(service); await vm.InitializeAsync();
+            var read = vm.RefreshStateCommand.ExecuteAsync(null);
+            vm.SelectedAnc = vm.AncOptions.Last(); var write = vm.ApplyAncCommand.ExecuteAsync(null);
+            vm.SelectedAnc = vm.AncOptions.First();
+            Check(service.Actions.Count == 0);
+            service.RefreshBlocked.SetResult(service.Snapshots["device-a"]);
+            await read.WaitAsync(TimeSpan.FromSeconds(3)); await write.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(service.Actions.Single() is { Identity: "device-a", Generation: 1, Action.Value: 0x0107 });
+            Check(vm.SelectedAnc?.Key == 0x0104 && service.Snapshots["device-a"].Anc == 0x0107);
+        });
+        await test("event VM drops queued settings across a device generation change while retaining EQ drafts", async () =>
+        {
+            var service = new EventService { RefreshBlocked = Completion<UiSnapshot>() };
+            await using var vm = Create(service); await vm.InitializeAsync(); vm.EqName = "断线保留"; vm.Bands[0].Gain = 3;
+            var read = vm.RefreshStateCommand.ExecuteAsync(null); var queued = vm.ToggleGameCommand.ExecuteAsync(true);
+            var reconnected = Next(service.Snapshots["device-a"]); reconnected.DeviceGeneration++;
+            reconnected.Revision = 1; service.Push(reconnected);
+            await read.WaitAsync(TimeSpan.FromSeconds(3)); await queued.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(vm.HasVerifiedSnapshot && vm.EqDirty && vm.EqName == "断线保留" && vm.Bands[0].Gain == 3);
+            Check(service.Actions.Count == 0 && !vm.Busy && !vm.IsRefreshing);
+        });
+        await test("event VM does not replay an in-flight setting after backend receipt loss", async () =>
+        {
+            var service = new EventService { ApplyBlocked = Completion<UiApplyResult>() };
+            await using var vm = Create(service); await vm.InitializeAsync();
+            var write = vm.ToggleGameCommand.ExecuteAsync(true);
+            service.Publish(new() { Kind = "unavailable", Message = "后台版本不兼容，请更新后重启。" });
+            Check(!vm.HasVerifiedSnapshot && vm.Status.Contains("版本不兼容"));
+            service.ApplyBlocked.SetException(new IOException("pipe ended")); await write.WaitAsync(TimeSpan.FromSeconds(3));
+            var replacement = Copy(service.Snapshots["device-a"]); replacement.BackendInstanceId = "backend-b";
+            replacement.Revision = 1; service.Push(replacement); await vm.PollAsync();
+            Check(service.Actions.Count == 1 && vm.HasVerifiedSnapshot && !vm.Busy);
+        });
+        await test("event VM manual button pauses only its selected peer and BLE display keeps updating", async () =>
+        {
+            var service = new EventService(); await using var vm = Create(service); await vm.InitializeAsync();
+            await vm.ConnectCommand.ExecuteAsync(null);
+            Check(service.Pauses.SequenceEqual(["device-a"]) && service.Resumes.Count == 0);
+            Check(vm.ConnectButtonText == "连接耳机" && !vm.HasVerifiedSnapshot && service.Snapshots["device-b"].ControlReady);
+            var ble = Next(service.Snapshots["device-a"]); ble.LeftBattery = 47; service.Push(ble);
+            Check(vm.LeftBatteryText == "47%" && !vm.CanSetGameMode);
+            await vm.ConnectCommand.ExecuteAsync(null);
+            Check(service.Resumes.SequenceEqual(["device-a"]) && vm.HasVerifiedSnapshot && vm.ConnectButtonText == "断开客户端");
+        });
+        await test("event VM device management detaches display while backend monitoring continues", async () =>
+        {
+            var service = new EventService(); await using var vm = Create(service); await vm.InitializeAsync();
+            Check(await vm.PrepareDeviceManagementAsync() && vm.ManagingDevices && !vm.HasVerifiedSnapshot);
+            var push = Next(service.Snapshots["device-a"]); push.LeftBattery = 39; service.Push(push);
+            Check(service.Pauses.Count == 0 && !vm.HasVerifiedSnapshot);
+            Check(await vm.CompleteDeviceManagementAsync(false));
+            Check(vm.HasVerifiedSnapshot && vm.LeftBatteryText == "39%" && service.Selections.Count == 2);
+        });
+        await test("event VM backend exit uses draft voting before detaching, and cancellation restores editing", async () =>
+        {
+            var service = new EventService(); var confirmations = new Confirmations(false, true, true);
+            var vm = Create(service, confirmations); await vm.InitializeAsync(); vm.EqName = "托盘退出确认";
+            Check(!await vm.ConfirmBackendExitAsync() && vm.EqDirty && vm.CanEditEq && service.Disposals == 0);
+            Check(await vm.ConfirmBackendExitAsync() && vm.Closing && service.Disposals == 0);
+            service.Publish(new() { Kind = "exitCancelled" });
+            Check(!vm.Closing && vm.EqDirty && vm.CanEditEq);
+            Check(await vm.ConfirmBackendExitAsync() && confirmations.Calls == 3);
+            Check(await vm.RequestCloseAsync() && confirmations.Calls == 3 && service.Disposals == 1);
+            await vm.DisposeAsync(); Check(service.Disposals == 1 && service.Pauses.Count == 0);
+        });
+    }
+
+    private static MainViewModel Create(EventService service, Confirmations? confirmations = null)
+    {
+        var vm = new MainViewModel(service, confirmations ?? new(true));
+        service.EventReceived += vm.AdoptBackendEvent;
+        return vm;
+    }
+    private static void Check(bool value, string message = "Event VM assertion failed.")
+    { if (!value) throw new InvalidOperationException(message); }
+    private static TaskCompletionSource<T> Completion<T>() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private static UiSnapshot Copy(UiSnapshot snapshot) => JsonSerializer.Deserialize<UiSnapshot>(JsonSerializer.Serialize(snapshot))!;
+    private static UiSnapshot Next(UiSnapshot snapshot) { var next = Copy(snapshot); next.Revision++; return next; }
+    private static UiApplyResult Confirmed(UiSnapshot after) => new()
+    {
+        BackendReceiptReceived = true, ConnectionState = ConnectionState.Connected, FailureKind = ApplyFailure.None,
+        TargetSubmitted = true, AckStatus = 0, Accepted = true, ReadbackMatches = true, SubmissionAttempted = true, After = after
+    };
+    private static UiSnapshot Snapshot(string identity) => new()
+    {
+        BackendInstanceId = "backend-a", DeviceGeneration = 1, Revision = 1, ControlReady = true,
+        MonitoringState = MonitoringState.Monitoring, ObservationFresh = true, ObservationSource = "spp",
+        Identity = identity, ProductId = "06EC10", DeviceName = identity == "device-a" ? "OPPO Enco X4" : "另一副耳机",
+        Connected = true, ConnectionState = ConnectionState.Connected, SupportedModel = true,
+        LeftBattery = 90, RightBattery = 80, CaseBattery = 70, Anc = 0x0104, Equalizer = 0, Spatial = 0,
+        HiRes = true, DualConnection = true, GameMode = false,
+        CanSetAnc = true, CanSetEqualizer = true, CanSetCustomEqualizer = true, CanSetSpatial = true,
+        CanSetHiRes = true, CanSetDualConnection = true, CanSetGameMode = true, SpatialHiResMutex = true,
+        AncOptions = [new(0x0104, "深度降噪"), new(0x0107, "智能降噪")],
+        EqualizerOptions = [new(0, "丹拿原声"), new(7, "丹拿高解析")], SpatialOptions = [new(0, "关闭"), new(2, "头部追踪")],
+        EqualizerEntries = [new(1, "均衡器一", -6, 6, true, [new(31, 0)]), new(2, "均衡器二", -6, 6, false, [new(31, 2)])]
+    };
+    private sealed class Confirmations(params bool[] responses) : IConfirmationService
+    {
+        public int Calls;
+        public Task<bool> ConfirmAsync(string title, string message, CancellationToken cancellationToken) =>
+            Task.FromResult(responses[Math.Min(Calls++, responses.Length - 1)]);
+    }
+    private sealed record Submission(string Identity, long Generation, UiAction Action);
+    private sealed class EventService : IHeadsetEventService
+    {
+        public event Action<BackendEvent>? EventReceived;
+        public Dictionary<string, UiSnapshot> Snapshots { get; } = new(StringComparer.Ordinal)
+        { ["device-a"] = Snapshot("device-a"), ["device-b"] = Snapshot("device-b") };
+        public int Subscriptions, Refreshes, Disposals;
+        public List<string> Selections { get; } = [];
+        public List<string> Pauses { get; } = [];
+        public List<string> Resumes { get; } = [];
+        public List<Submission> Actions { get; } = [];
+        public List<(string Identity, RefreshScope Scope)> RefreshTargets { get; } = [];
+        public TaskCompletionSource<UiSnapshot>? RefreshBlocked;
+        public TaskCompletionSource<UiApplyResult>? ApplyBlocked;
+        public void Publish(BackendEvent notification) => EventReceived?.Invoke(notification);
+        public void Push(UiSnapshot snapshot)
+        {
+            Snapshots[snapshot.Identity] = snapshot;
+            Publish(new() { Kind = "snapshot", BackendInstanceId = snapshot.BackendInstanceId, Snapshot = snapshot });
+        }
+        public Task<BackendSubscription> SubscribeAsync(string role, CancellationToken cancellationToken)
+        {
+            Check(role == "main"); Subscriptions++;
+            return Task.FromResult(new BackendSubscription
+            { BackendInstanceId = Snapshots.Values.First().BackendInstanceId, Devices = Devices(), Snapshots = Snapshots.Values.ToArray() });
+        }
+        private IReadOnlyList<UiDevice> Devices() => Snapshots.Values.Select(snapshot => new UiDevice(snapshot.Identity, snapshot.DeviceName, snapshot.Connected)).ToArray();
+        public Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken cancellationToken) => Task.FromResult(Devices());
+        public Task<UiSnapshot> SelectAsync(string identity, CancellationToken cancellationToken)
+        { Selections.Add(identity); return Task.FromResult(Snapshots[identity]); }
+        public Task<UiSnapshot> PauseAsync(string identity, CancellationToken cancellationToken)
+        {
+            Pauses.Add(identity); var after = Next(Snapshots[identity]); after.MonitoringState = MonitoringState.Paused;
+            after.ControlReady = false; Snapshots[identity] = after; return Task.FromResult(after);
+        }
+        public Task<UiSnapshot> ResumeAsync(string identity, CancellationToken cancellationToken)
+        {
+            Resumes.Add(identity); var after = Next(Snapshots[identity]); after.MonitoringState = MonitoringState.Monitoring;
+            after.ControlReady = true; Snapshots[identity] = after; return Task.FromResult(after);
+        }
+        public Task<UiSnapshot> RefreshAsync(string identity, RefreshScope scope, CancellationToken cancellationToken)
+        {
+            Refreshes++; RefreshTargets.Add((identity, scope));
+            return RefreshBlocked?.Task.WaitAsync(cancellationToken) ?? Task.FromResult(Snapshots[identity]);
+        }
+        public Task<UiApplyResult> ApplyAsync(string identity, long deviceGeneration, UiAction action, CancellationToken cancellationToken)
+        {
+            Actions.Add(new(identity, deviceGeneration, action));
+            if (ApplyBlocked is not null) return ApplyBlocked.Task.WaitAsync(cancellationToken);
+            var after = Next(Snapshots[identity]);
+            switch (action.Kind)
+            {
+                case "Anc": after.Anc = action.Value; break;
+                case "Equalizer": after.Equalizer = action.Value; break;
+                case "GameMode": after.GameMode = action.Value == 1; break;
+            }
+            Snapshots[identity] = after; return Task.FromResult(Confirmed(after));
+        }
+        public Task AcknowledgeExitAsync(string exitRequestId, bool approved, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task ActivateMainUiAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<UiSnapshot> ConnectAsync(string identity, CancellationToken cancellationToken) => throw new InvalidOperationException("Legacy connect must not own backend monitoring.");
+        public Task DisconnectAsync(CancellationToken cancellationToken) => throw new InvalidOperationException("Selecting or closing must not disconnect shared monitoring.");
+        public Task<UiSnapshot> RefreshAsync(CancellationToken cancellationToken) => throw new InvalidOperationException("Refresh must freeze its device target.");
+        public Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken cancellationToken) => throw new InvalidOperationException("Apply must freeze its device target and generation.");
+        public ValueTask DisposeAsync() { Disposals++; return ValueTask.CompletedTask; }
+    }
+}

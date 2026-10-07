@@ -23,6 +23,8 @@ try
     Run("startup error can retry and corrupted configuration can be repaired", RecoveryAsync);
     Run("row pointer and keyboard selection, overlay geometry and theme layouts", LayoutAsync);
     Run("Bluetooth launcher does not enumerate or save devices", LauncherAsync);
+    Run("backend catalog pushes preserve selected checkboxes and save failure feedback", CatalogPushAsync);
+    Run("backend exit waits for the pending save and cancellation restores controls", BackendExitAsync);
     Console.WriteLine($"PASS {passed} device manager cases; nativeBluetoothCalls=0; whitelistWrites=0");
     return 0;
 }
@@ -168,6 +170,40 @@ static async Task LauncherAsync()
         else Check(launcher.Uris.Count == 0, "Non-Windows preview cannot launch a Windows URI.");
     }
     finally { window.Close(); }
+}
+
+static async Task CatalogPushAsync()
+{
+    var service = new FakeService { Catalog = new([new("a", "第一副耳机", false, true), new("b", "第二副耳机", false, false)]) };
+    await using var vm = new DeviceManagerViewModel(service); await vm.RefreshAsync();
+    vm.Devices[0].IsChecked = false; vm.Devices[1].IsChecked = true;
+    vm.AdoptBackendEvent(new() { Kind = "catalog", Catalog = new([new("a", "第一副耳机", true, true), new("b", "已重命名耳机", true, false)]) });
+    Check(!vm.Devices[0].IsChecked && vm.Devices[1].IsChecked && vm.Devices.All(row => row.Connected)
+        && service.Enumerations == 1 && service.Saves == 0, "A catalog push changes names and connection state without overwriting unsaved checks or querying again.");
+    var release = new TaskCompletionSource<UiWhitelistSaveResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+    service.Save = (_, token) => release.Task.WaitAsync(token); var saving = vm.SaveAsync();
+    vm.AdoptBackendEvent(new() { Kind = "catalog", Catalog = new([new("b", "已重命名耳机", false, false)]) });
+    Check(vm.Devices.Count == 2 && vm.Busy, "A catalog arriving during a save waits for the frozen payload operation.");
+    release.SetResult(new(false, "保存结果未确认，请重新选择。")); await saving;
+    Check(vm.Devices.Count == 1 && vm.Devices[0].IsChecked && !vm.Devices[0].Connected && vm.HasError,
+        "A deferred catalog updates rows after failure and keeps the retry explanation.");
+    Check(service.LastSaved!.SequenceEqual(["b"]) && vm.ExitCode == 1, "Connection pushes do not alter the save target or report success.");
+    vm.AdoptBackendEvent(new() { Kind = "unavailable", Message = "后台版本不兼容，请更新。" });
+    Check(vm.Error.Contains("版本不兼容"), "Backend diagnostics retain an actionable version error.");
+}
+
+static async Task BackendExitAsync()
+{
+    var release = new TaskCompletionSource<UiWhitelistSaveResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var service = new FakeService { Save = (_, token) => release.Task.WaitAsync(token) };
+    await using var vm = new DeviceManagerViewModel(service); await vm.RefreshAsync();
+    var saving = vm.SaveAsync(); var vote = vm.PrepareBackendExitAsync();
+    Check(!vote.IsCompleted && !vm.CanCommit && !vm.CanRefresh, "The tray exit vote waits for an in-flight selection save.");
+    release.SetResult(new(false, "尚未保存。")); await saving; await vote;
+    Check(!vm.CanCommit && !vm.CanRefresh && !vm.Closing && service.Disposals == 0,
+        "An approved exit remains suspended until the backend's stopping phase.");
+    vm.CancelBackendExit(); Check(vm.CanCommit && vm.CanRefresh && vm.ExitCode == 1,
+        "A cancelled backend exit restores the unsaved selection controls.");
 }
 
 static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }

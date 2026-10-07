@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.6.0',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.7.0',
     [switch]$SkipTests,
     [switch]$FinalizeOnly,
     [string]$ValidationPath
@@ -119,10 +119,11 @@ foreach ($architecture in @('x64', 'x86', 'arm64')) {
         if (-not $guiAssets.libraries.PSObject.Properties[$dependency.Name]) { throw ('The manager has a dependency not covered by the shared GUI notices: ' + $dependency.Name) }
     }
     Export-PackageNotices (Join-Path $root 'src/HeyMelody.App/obj/project.assets.json') $app
+    Export-PackageNotices (Join-Path $root 'src/HeyMelody.Host/obj/project.assets.json') $hostOutput
     $builds += [ordered]@{
         architecture = $architecture; rid = $rid; selfContained = $true
         gui = ($architecture + '/HeyMelody.exe'); deviceManager = ($architecture + '/HeyMelody.DeviceManager.exe'); host = ($architecture + '/backend/HeyMelody.Host.exe')
-        guiFramework = 'net10.0'; deviceManagerFramework = 'net10.0'; hostFramework = 'net10.0-windows'; uiToolkit = 'Avalonia + FluentAvalonia'
+        guiFramework = 'net10.0'; deviceManagerFramework = 'net10.0'; hostFramework = 'net10.0-windows10.0.19041.0'; uiToolkit = 'Avalonia + FluentAvalonia'
         guiSha256 = (Get-FileHash -LiteralPath (Join-Path $app 'HeyMelody.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
         deviceManagerSha256 = (Get-FileHash -LiteralPath (Join-Path $app 'HeyMelody.DeviceManager.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
         hostSha256 = (Get-FileHash -LiteralPath (Join-Path $hostOutput 'HeyMelody.Host.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -132,7 +133,7 @@ foreach ($architecture in @('x64', 'x86', 'arm64')) {
 Copy-Item -LiteralPath (Join-Path $root 'packaging/Start-HeyMelody.ps1') -Destination (Join-Path $stage 'Start-HeyMelody.ps1')
 Copy-Item -LiteralPath (Join-Path $root 'packaging/Start-HeyMelody.cmd') -Destination (Join-Path $stage 'Start-HeyMelody.cmd')
 Copy-Item -LiteralPath (Join-Path $root 'packaging/README.md') -Destination (Join-Path $stage 'README.md')
-Copy-Item -LiteralPath (Join-Path $root 'packaging/README-使用说明.md') -Destination (Join-Path $stage 'README-使用说明.md')
+Copy-Item -LiteralPath (Join-Path $root 'packaging/README.md') -Destination (Join-Path $stage 'README-使用说明.md')
 Copy-Item -LiteralPath (Join-Path $root 'packaging/SOURCE-NOTES.md') -Destination (Join-Path $stage 'SOURCE-NOTES.md')
 if ($ValidationPath) {
     foreach ($build in $builds) {

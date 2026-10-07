@@ -1,10 +1,12 @@
 # 阶段五集成有界审阅
 
-## 历史记录与当前实现范围
+本文保存 0.5.0 原始审阅及 0.6.x 后续说明，不覆盖 0.7.0 共享托盘后台。当前行为见 [后台架构](../backend-architecture.md) 与 [日常控制层](../daily-notes.md)。文中的源码、研究输入和 artifacts 路径均相对于仓库根目录。
+
+## 历史记录与 0.6.x 后续说明
 
 下文从“审阅时间”开始的内容是 2026-10-06 02:58 UTC 对当时 WPF/0.5.0 集成的原始有界审阅。文件位置、行号、939 行读取范围和“未运行测试”等声明仅属于那次审阅；旧 `HeyMelody.App/MainWindow.xaml.cs`、App 内 Bridge/Contracts 不代表当前 Avalonia 文件布局，原审阅结论也不覆盖后来改动。
 
-2026-10-06 当前 Avalonia 实现对应 `src/HeyMelody.Client/{MainViewModel.cs,MainViewModel.Actions.cs,OperationCoordinator.cs,ClientBridge.cs}`、`src/HeyMelody.Contracts/{UiContracts.cs,RpcWire.cs}`、`src/HeyMelody.App/` 与 `src/HeyMelody.Host/`。本次文档核对读取了当前 Daily/Host、Bridge 和客户端调度/操作路径；没有因此重新执行原审阅、构建或设备调用。当前行为详见 [daily-notes.md](daily-notes.md)，当前发布与验证入口见 [README.md](README.md)。
+2026-10-06 的 0.6.x Avalonia 实现对应 `src/HeyMelody.Client/{MainViewModel.cs,MainViewModel.Actions.cs,OperationCoordinator.cs,ClientBridge.cs}`、`src/HeyMelody.Contracts/{UiContracts.cs,RpcWire.cs}`、`src/HeyMelody.App/` 与 `src/HeyMelody.Host/`。本次文档核对读取了当前 Daily/Host、Bridge 和客户端调度/操作路径；没有因此重新执行原审阅、构建或设备调用。当前行为详见 [日常控制层](../daily-notes.md)，当前发布与验证入口见 [README.md](../../README.md)。
 
 - 自动轮询仍以八秒为触发间隔，但分成身份/能力、功能/空间、降噪、EQ、电量和设备信息六个通信边界。通信仍串行；生命周期和用户操作优先于下一个后台分区。未查询分区从持锁时的最新缓存合并，因此恢复轮询不会覆盖刚完成的 SET 回读。普通分区字段失败只关闭对应能力，身份或传输无法恢复时失效整个可写快照。
 - 后台刷新不再全局禁用控件；同一设置组等待写入，其他设置及本地 EQ 编辑可继续。草稿版本和会话 epoch 防止旧结果覆盖后来编辑或另一设备。取消重试会清除全部草稿及排队写入，并完整刷新。

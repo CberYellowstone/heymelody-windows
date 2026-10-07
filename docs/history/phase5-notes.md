@@ -1,8 +1,10 @@
 # 阶段五：HeyMelody for Windows 0.5.0
 
-本文保存 WPF 0.5.0 的历史交付和验证记录。下文的发布包、WPF 运行时布局、测试数量、设备样本、时间和哈希只对应当时版本，不能用于证明当前 Avalonia 发布或刷新改进已验证。当前版本和发布入口见 [README.md](README.md) 及对应包的 `manifest.json`；当前 Daily/Host 的分区缓存、连接分类、ACK/回读和客户端重试边界见 [daily-notes.md](daily-notes.md)，集成变化见 [integration-review.md](integration-review.md) 的当前范围说明。
+文中的源码、研究输入和 artifacts 路径均相对于仓库根目录；当前实现说明见 [文档索引](../README.md)。
 
-当前 Avalonia 的后台轮询按通信分区执行，不再在自动刷新时全局禁用控件。Daily/Host/Bridge 仍不自动重放 SET/IPC；客户端仅在重新核对后允许一次后续尝试，不能安全自动重复时先确认，断连或身份/结果不可验证时不再次写入。下面“都不自动重放”“不自动补发”等表述记录的是 0.5.0 的行为，不能据此否定当前客户端这条有界重试路径；其中的旧 x64/x86 实机样本也没有被更新为新版本或真实 SET 验证。
+本文保存 WPF 0.5.0 的历史交付和验证记录。下文的发布包、WPF 运行时布局、测试数量、设备样本、时间和哈希只对应当时版本，不能用于证明当前 Avalonia 发布或刷新改进已验证。当前版本和发布入口见 [README.md](../../README.md) 及对应包的 `manifest.json`；当前 Daily/Host 的分区缓存、连接分类、ACK/回读和客户端重试边界见 [日常控制层](../daily-notes.md)，集成变化见 [integration-review.md](integration-review.md) 的当前范围说明。
+
+以下段落描述 0.6.x 后续改进，当前 0.7.0 已转为事件推送，见 [后台架构](../backend-architecture.md)。0.6.x 的后台轮询按通信分区执行，不再在自动刷新时全局禁用控件。Daily/Host/Bridge 仍不自动重放 SET/IPC；客户端仅在重新核对后允许一次后续尝试，不能安全自动重复时先确认，断连或身份/结果不可验证时不再次写入。下面“都不自动重放”“不自动补发”等表述记录的是 0.5.0 的行为，不能据此否定当前客户端这条有界重试路径；其中的旧 x64/x86 实机样本也没有被更新为新版本或真实 SET 验证。
 
 Windows 客户端已落地，目标型号为 Product ID 精确匹配 `06EC10` 的 OPPO Enco X4。发布包为 `release/HeyMelody_Windows_0.5.0_AllArchitectures.zip`，完整解压后双击 `Start-HeyMelody.cmd`。启动器按 Windows 原生架构选择 x64、x86 或 ARM64，各版本携带运行时。源码构建使用 .NET SDK10 和 `Build-Client.ps1`。
 

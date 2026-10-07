@@ -137,6 +137,8 @@ try
         Check(File.ReadAllLines(counter).Length == 1);
     });
     await VmTests.RunAsync(Test);
+    await SharedBridgeTests.RunAsync(Test);
+    await EventVmTests.RunAsync(Test);
     Console.WriteLine(JsonSerializer.Serialize(new { passed, success = true, architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(), nativeBluetoothCalls = 0 }, RpcWire.Json));
     return 0;
 }
@@ -148,7 +150,7 @@ finally
 }
 
 string Counter(string name) => Path.Combine(scratch, name + ".txt");
-ClientBridge Bridge(string mode, string counter, TimeSpan? budget = null) => new(() =>
+LegacyWorkerBridge Bridge(string mode, string counter, TimeSpan? budget = null) => new(() =>
 {
     string host = Environment.ProcessPath ?? throw new InvalidOperationException();
     var start = new ProcessStartInfo(host)
@@ -161,7 +163,12 @@ ClientBridge Bridge(string mode, string counter, TimeSpan? budget = null) => new
         start.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
     start.ArgumentList.Add("--fake-worker"); start.ArgumentList.Add(mode); start.ArgumentList.Add(counter); return start;
 }, budget);
-async Task Test(string name, Func<Task> test) { await test(); passed++; Console.WriteLine("PASS " + name); }
+async Task Test(string name, Func<Task> test)
+{
+    try { await test().WaitAsync(TimeSpan.FromSeconds(30)); }
+    catch (TimeoutException error) { throw new TimeoutException(name + " timed out.", error); }
+    passed++; Console.WriteLine("PASS " + name);
+}
 static void Check(bool value) { if (!value) throw new InvalidOperationException("Assertion failed."); }
 static async Task Throws<T>(Func<Task> action) where T : Exception
 {

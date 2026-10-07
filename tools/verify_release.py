@@ -112,12 +112,13 @@ def verify(root, package, evidence=None):
     for arch, machine in expected.items():
         folder = package / arch
         gui, host = folder / "HeyMelody.exe", folder / "backend" / "HeyMelody.Host.exe"
-        native = [folder / "libSkiaSharp.dll", folder / "libHarfBuzzSharp.dll", folder / "av_libglesv2.dll"]
+        native = [directory / filename for directory in (folder, host.parent)
+                  for filename in ("libSkiaSharp.dll", "libHarfBuzzSharp.dll", "av_libglesv2.dll")]
         for path in [gui, host, folder / "coreclr.dll", host.parent / "coreclr.dll", *native]:
             assert PE(path).machine == machine, str(path)
         assert declared[arch]["rid"] == "win-" + arch and declared[arch]["selfContained"] is True
         assert declared[arch]["guiSha256"] == sha(gui) and declared[arch]["hostSha256"] == sha(host)
-        assert declared[arch]["guiFramework"] == "net10.0" and declared[arch]["hostFramework"] == "net10.0-windows"
+        assert declared[arch]["guiFramework"] == "net10.0" and declared[arch]["hostFramework"] == "net10.0-windows10.0.19041.0"
         for name, directory in [("HeyMelody", folder), ("HeyMelody.Host", host.parent)]:
             runtime = json.loads((directory / (name + ".runtimeconfig.json")).read_text("utf-8-sig"))["runtimeOptions"]
             assert runtime["tfm"] == "net10.0" and runtime.get("includedFrameworks")
@@ -126,24 +127,22 @@ def verify(root, package, evidence=None):
             assert dependencies["runtimeTarget"]["name"].endswith("/win-" + arch)
             assert (directory / "LICENSE.txt").is_file() and (directory / "THIRD-PARTY-NOTICES.txt").is_file()
             libraries = dependencies["libraries"]
-            if name == "HeyMelody":
-                assert any(key.startswith("Avalonia/") for key in libraries)
-                assert any(key.startswith("FluentAvaloniaUI/") for key in libraries)
-            else:
-                assert not any(key.startswith("Avalonia") for key in libraries), "Bluetooth host must not depend on the UI toolkit"
+            assert any(key.startswith("Avalonia/") for key in libraries)
+            assert any(key.startswith("FluentAvaloniaUI/") for key in libraries)
         assert not (folder / "PresentationFramework.dll").exists()
         assert not (folder / "LICENSE-WINDOWSDESKTOP.txt").exists()
-        notices = json.loads((folder / "PACKAGE-NOTICES.json").read_text("utf-8-sig"))
-        assert notices["schemaVersion"] == 1 and notices["packages"]
-        assert {"Avalonia", "FluentAvaloniaUI", "SkiaSharp", "HarfBuzzSharp"}.issubset(
-            {entry["package"] for entry in notices["packages"]})
-        for entry in notices["packages"]:
-            assert entry["version"] and checked_file(folder, entry["metadata"])
-            for notice in entry["files"]:
-                assert sha(checked_file(folder, notice["path"])) == notice["sha256"]
-        assert notices["supplementalNotices"]
-        for notice in notices["supplementalNotices"]:
-            assert sha(checked_file(folder, notice["path"])) == notice["sha256"]
+        for directory in (folder, host.parent):
+            notices = json.loads((directory / "PACKAGE-NOTICES.json").read_text("utf-8-sig"))
+            assert notices["schemaVersion"] == 1 and notices["packages"]
+            assert {"Avalonia", "FluentAvaloniaUI", "SkiaSharp", "HarfBuzzSharp"}.issubset(
+                {entry["package"] for entry in notices["packages"]})
+            for entry in notices["packages"]:
+                assert entry["version"] and checked_file(directory, entry["metadata"])
+                for notice in entry["files"]:
+                    assert sha(checked_file(directory, notice["path"])) == notice["sha256"]
+            assert notices["supplementalNotices"]
+            for notice in notices["supplementalNotices"]:
+                assert sha(checked_file(directory, notice["path"])) == notice["sha256"]
         icon = verify_icon(gui, root / "src" / "HeyMelody.App" / "Assets" / "HeyMelody.ico")
         receipt = receipts.get(arch, {})
         if receipt:

@@ -48,6 +48,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private UiDevice? _selectedDevice;
     private UiEqEntry? _selectedEqEntry;
     private UiOption? _selectedAnc, _selectedPreset, _selectedSpatial;
+    private int? _pendingAncKey, _pendingPresetKey, _pendingSpatialKey;
     private IReadOnlyList<UiDevice> _devices = [];
     private IReadOnlyList<UiOption> _ancOptions = [], _presetOptions = [], _spatialOptions = [];
     private IReadOnlyList<UiEqEntry> _eqEntries = [];
@@ -89,13 +90,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool Closing => _closing || _closeRequested;
     public bool UpdatingState => _displaying;
     public DialogCoordinator Dialogs { get; }
-    public bool HasVerifiedSnapshot => _snapshot is { Connected: true, SupportedModel: true, Failure: null }
-        && _snapshot.Identity == _sessionIdentity && _sessionIdentity == SelectedDevice?.Identity;
+    public bool HasVerifiedSnapshot => IsVerifiedControl(_snapshot)
+        && _snapshot?.Identity == _sessionIdentity && _sessionIdentity == SelectedDevice?.Identity;
     private bool CanWrite => HasVerifiedSnapshot && !Closing && !_lifecyclePending;
     public bool CanConnect => !Closing && !_lifecyclePending && SelectedDevice is not null;
     public bool CanRefreshDevices => !Closing && !_lifecyclePending;
     public bool CanRefreshState => !Closing && !_lifecyclePending && _sessionIdentity is not null;
-    public string ConnectButtonText => _sessionIdentity is null ? "连接耳机" : "断开客户端";
+    public string ConnectButtonText => EventService is not null
+        ? _snapshot is null || _snapshot.MonitoringState == MonitoringState.Paused ? "连接耳机" : "断开客户端"
+        : _sessionIdentity is null ? "连接耳机" : "断开客户端";
     public bool CanChooseAnc => CanWrite && _snapshot!.CanSetAnc;
     public bool CanChoosePreset => CanWrite && _snapshot!.CanSetEqualizer;
     public bool CanChooseSpatial => CanWrite && _snapshot!.CanSetSpatial;
@@ -113,12 +116,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public string DualStateText => PendingState("DualConnection") ?? BooleanState(_snapshot?.DualConnection);
     public string GameStateText => PendingState("GameMode") ?? BooleanState(_snapshot?.GameMode);
     public string HiResStateText => PendingState("Audio") ?? BooleanState(_snapshot?.HiRes);
-    public string LeftBatteryText => Battery(_snapshot?.LeftBattery);
-    public string RightBatteryText => Battery(_snapshot?.RightBattery);
-    public string CaseBatteryText => Battery(_snapshot?.CaseBattery);
-    public string LeftChargeText => Charge(_snapshot?.LeftCharging, _snapshot?.LeftBattery);
-    public string RightChargeText => Charge(_snapshot?.RightCharging, _snapshot?.RightBattery);
-    public string CaseChargeText => Charge(_snapshot?.CaseCharging, _snapshot?.CaseBattery);
+    private bool HasFreshObservation => EventService is null || HasVerifiedSnapshot || _snapshot?.ObservationFresh == true;
+    public string LeftBatteryText => Battery(HasFreshObservation ? _snapshot?.LeftBattery : null);
+    public string RightBatteryText => Battery(HasFreshObservation ? _snapshot?.RightBattery : null);
+    public string CaseBatteryText => Battery(HasFreshObservation ? _snapshot?.CaseBattery : null);
+    public string LeftChargeText => Charge(HasFreshObservation ? _snapshot?.LeftCharging : null, HasFreshObservation ? _snapshot?.LeftBattery : null);
+    public string RightChargeText => Charge(HasFreshObservation ? _snapshot?.RightCharging : null, HasFreshObservation ? _snapshot?.RightBattery : null);
+    public string CaseChargeText => Charge(HasFreshObservation ? _snapshot?.CaseCharging : null, HasFreshObservation ? _snapshot?.CaseBattery : null);
     public string? Firmware => _snapshot?.Firmware;
     public string? ProductId => _snapshot is { } snapshot
         && snapshot.Identity == _sessionIdentity && _sessionIdentity == SelectedDevice?.Identity
@@ -131,9 +135,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public IReadOnlyList<UiOption> AncOptions => _ancOptions;
     public IReadOnlyList<UiOption> PresetOptions => _presetOptions;
     public IReadOnlyList<UiOption> SpatialOptions => _spatialOptions;
-    public UiOption? SelectedAnc { get => _selectedAnc; set { if (SetProperty(ref _selectedAnc, value)) { if (!_displaying) { _pendingAnc = true; _ancVersion++; } NotifyCommands(); } } }
-    public UiOption? SelectedPreset { get => _selectedPreset; set { if (SetProperty(ref _selectedPreset, value)) { if (!_displaying) { _pendingPreset = true; _presetVersion++; } NotifyCommands(); } } }
-    public UiOption? SelectedSpatial { get => _selectedSpatial; set { if (SetProperty(ref _selectedSpatial, value)) { if (!_displaying) { _pendingSpatial = true; _spatialVersion++; } NotifyCommands(); } } }
+    public UiOption? SelectedAnc { get => _selectedAnc; set { if (SetProperty(ref _selectedAnc, value)) { if (!_displaying) { _pendingAnc = true; _pendingAncKey = value?.Key; _ancVersion++; } NotifyCommands(); } } }
+    public UiOption? SelectedPreset { get => _selectedPreset; set { if (SetProperty(ref _selectedPreset, value)) { if (!_displaying) { _pendingPreset = true; _pendingPresetKey = value?.Key; _presetVersion++; } NotifyCommands(); } } }
+    public UiOption? SelectedSpatial { get => _selectedSpatial; set { if (SetProperty(ref _selectedSpatial, value)) { if (!_displaying) { _pendingSpatial = true; _pendingSpatialKey = value?.Key; _spatialVersion++; } NotifyCommands(); } } }
     public IReadOnlyList<UiEqEntry> EqEntries => _eqEntries;
     public UiEqEntry? SelectedEqEntry => _selectedEqEntry;
     public string EqName { get => _eqName; set { if (SetProperty(ref _eqName, value) && !_displaying) SetEqDirty(true); } }
@@ -170,6 +174,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public async Task InitializeAsync(IReadOnlyList<UiDevice>? devices = null)
     {
+        await SubscribeToBackendAsync();
         await EnumerateAsync(devices);
         if (_preview && SelectedDevice is not null) await ConnectOrDisconnectAsync();
     }
@@ -198,10 +203,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (selected?.Identity != SelectedDevice?.Identity)
         {
             AdvanceSession();
-            if (_sessionIdentity is not null) await _service.DisconnectAsync(_lifetime.Token);
+            if (EventService is null && _sessionIdentity is not null) await _service.DisconnectAsync(_lifetime.Token);
             _sessionIdentity = null; ResetSelection();
         }
         _devices = devices; _selectedDevice = selected; _title = selected?.Name ?? "选择一副耳机";
+        if (EventService is not null) { await AttachSelectedBackendAsync(); NotifyState(); return; }
         SetStatus(_service is UnsupportedPlatformService ? UnsupportedPlatformService.Message : devices.Count == 0 ? "未发现已配对耳机" : _snapshot is { Connected: true } ? "设备列表已刷新 · 耳机保持连接" : "选择耳机后连接", _service is UnsupportedPlatformService);
         NotifyState();
     });
@@ -217,10 +223,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (selected?.Identity != SelectedDevice?.Identity)
             {
                 AdvanceSession();
-                if (_sessionIdentity is not null) await _service.DisconnectAsync(_lifetime.Token);
+                if (EventService is null && _sessionIdentity is not null) await _service.DisconnectAsync(_lifetime.Token);
                 _sessionIdentity = null; ResetSelection();
             }
             _devices = devices; _selectedDevice = selected; _title = selected?.Name ?? "选择一副耳机";
+            if (EventService is not null) { await AttachSelectedBackendAsync(); NotifyState(); return; }
             SetStatus(_service is UnsupportedPlatformService ? UnsupportedPlatformService.Message : devices.Count == 0 ? "未发现已配对耳机" : _snapshot is { Connected: true } ? "设备列表已刷新 · 耳机保持连接" : "选择耳机后连接", _service is UnsupportedPlatformService);
             NotifyState();
         });
@@ -233,6 +240,19 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private Task ConnectOrDisconnectAsync() => RunAsync("正在连接耳机并读取状态…", async () =>
     {
+        if (EventService is { } events)
+        {
+            if (SelectedDevice is not { } selected) return;
+            var pause = _snapshot is { MonitoringState: not MonitoringState.Paused };
+            if (pause && EqDirty && !await ConfirmAsync("断开客户端", "暂停此设备的控制连接会丢弃尚未保存的均衡器调整。继续吗？")) return;
+            AdvanceSession();
+            if (pause) ResetSelection();
+            _sessionIdentity = selected.Identity;
+            var observed = pause ? await events.PauseAsync(selected.Identity, _lifetime.Token)
+                : await events.ResumeAsync(selected.Identity, _lifetime.Token);
+            AdoptRead(observed);
+            return;
+        }
         if (_sessionIdentity is not null)
         {
             if (EqDirty && !await ConfirmAsync("断开客户端", "断开客户端会丢弃尚未保存的均衡器调整。继续吗？")) return;
@@ -249,7 +269,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Log(snapshot.Failure is null && snapshot.Connected ? "已连接耳机，读取当前设置。" : "连接尚未就绪，设置暂不可用。");
     });
 
-    public Task PollAsync() => CanRefreshState && !Busy ? RefreshStateAsync() : Task.CompletedTask;
+    public Task PollAsync() => EventService is null && CanRefreshState && !Busy ? RefreshStateAsync() : Task.CompletedTask;
     private Task RefreshStateAsync()
     {
         if (!CanRefreshState) return Task.CompletedTask;
@@ -262,15 +282,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         try
         {
-            foreach (var scope in new[] { RefreshScope.Identity, RefreshScope.Features, RefreshScope.Anc,
-                RefreshScope.Equalizer, RefreshScope.Battery, RefreshScope.Information })
+            var scopes = EventService is not null ? new[] { RefreshScope.Full }
+                : new[] { RefreshScope.Identity, RefreshScope.Features, RefreshScope.Anc,
+                    RefreshScope.Equalizer, RefreshScope.Battery, RefreshScope.Information };
+            foreach (var scope in scopes)
             {
                 if (epoch != _sessionEpoch || Closing || _lifecyclePending) break;
                 var valid = false;
                 await _operations.RunAsync(async () =>
                 {
                     if (epoch != _sessionEpoch || Closing) return;
-                    var snapshot = await _service.RefreshAsync(scope, _lifetime.Token);
+                    var snapshot = await ReadSelectedAsync(scope, EventService is not null ? token : _lifetime.Token);
                     if (epoch != _sessionEpoch || Closing) return;
                     valid = AdoptRead(snapshot);
                 }, OperationCoordinator.Refresh, token);
@@ -286,7 +308,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (snapshot.Identity != _sessionIdentity || _sessionIdentity != SelectedDevice?.Identity)
         { InvalidateSnapshot(); SetStatus("连接设备已变化，请重新选择并连接耳机。", true); return false; }
-        DisplaySnapshot(snapshot);
+        if (!DisplaySnapshot(snapshot)) return HasVerifiedSnapshot;
+        if (EventService is not null)
+        {
+            var message = snapshot.MonitoringState switch
+            {
+                MonitoringState.Paused => "已暂停控制连接 · 蓝牙状态与盒盖事件继续监听",
+                MonitoringState.Connecting => "正在建立耳机控制连接…",
+                MonitoringState.WaitingForConnection => snapshot.ObservationFresh ? "已收到耳机广播 · 等待蓝牙连接" : "等待耳机连接 · 后台继续监听",
+                MonitoringState.Unsupported => "该型号的设置尚未适配",
+                MonitoringState.Unavailable => "蓝牙后台暂不可用，请检查蓝牙状态。",
+                _ => HasVerifiedSnapshot ? "已连接 · 接收耳机状态更新" : snapshot.ObservationFresh ? "已收到耳机广播 · 设置暂不可用" : "耳机当前状态未确认"
+            };
+            SetStatus(message, snapshot.MonitoringState == MonitoringState.Unavailable);
+            return HasVerifiedSnapshot;
+        }
         var valid = snapshot.Connected && snapshot.Failure is null;
         SetStatus(valid ? "已连接 · 状态已刷新" : "耳机状态未确认，暂时不能修改设置。", !valid);
         return valid;
@@ -299,18 +335,28 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _operations.CancelQueuedWrites(); _pending.Clear();
     }
 
-    private void DisplaySnapshot(UiSnapshot snapshot)
+    private bool DisplaySnapshot(UiSnapshot snapshot)
     {
-        if (snapshot.Failure is not null || !snapshot.Connected || snapshot.Identity != _sessionIdentity) { InvalidateSnapshot(); return; }
+        if (!CacheSnapshot(snapshot)) return false;
+        if (snapshot.Identity != _sessionIdentity
+            || EventService is null && (snapshot.Failure is not null || !snapshot.Connected))
+        { InvalidateSnapshot(); return false; }
         _snapshot = snapshot; _displaying = true;
         _title = snapshot.DeviceName;
-        _subtitle = snapshot.SupportedModel ? $"已连接{(snapshot.Firmware is null ? "" : $" · 固件 {snapshot.Firmware}")}" : "该型号的设置尚未适配";
-        var anc = _pendingAnc ? SelectedAnc?.Key : snapshot.Anc;
-        var preset = _pendingPreset ? SelectedPreset?.Key : snapshot.Equalizer;
-        var spatial = _pendingSpatial ? SelectedSpatial?.Key : snapshot.Spatial;
-        _ancOptions = RetainOptions(_ancOptions, snapshot.AncOptions);
-        _presetOptions = RetainOptions(_presetOptions, snapshot.EqualizerOptions);
-        _spatialOptions = RetainOptions(_spatialOptions, snapshot.SpatialOptions);
+        _subtitle = IsVerifiedControl(snapshot)
+            ? $"已连接{(snapshot.Firmware is null ? "" : $" · 固件 {snapshot.Firmware}")}"
+            : EventService is not null && snapshot.ObservationFresh ? "耳机广播状态 · 控制连接未就绪"
+            : snapshot.SupportedModel ? "控制连接未就绪，设置暂不可用" : "该型号的设置尚未适配";
+        var anc = _pendingAnc ? _pendingAncKey : snapshot.Anc;
+        var preset = _pendingPreset ? _pendingPresetKey : snapshot.Equalizer;
+        var spatial = _pendingSpatial ? _pendingSpatialKey : snapshot.Spatial;
+        var unverified = EventService is not null && !IsVerifiedControl(snapshot);
+        _ancOptions = unverified && _pendingAnc && snapshot.AncOptions.Count == 0
+            ? _ancOptions : RetainOptions(_ancOptions, snapshot.AncOptions);
+        _presetOptions = unverified && _pendingPreset && snapshot.EqualizerOptions.Count == 0
+            ? _presetOptions : RetainOptions(_presetOptions, snapshot.EqualizerOptions);
+        _spatialOptions = unverified && _pendingSpatial && snapshot.SpatialOptions.Count == 0
+            ? _spatialOptions : RetainOptions(_spatialOptions, snapshot.SpatialOptions);
         // Publish the new item lists first: two-way ComboBox bindings may clear an old selection
         // when ItemsSource changes. Restore the explicit protocol keys only after that notification.
         NotifyState();
@@ -327,6 +373,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         else _selectedEqEntry = _eqEntries.FirstOrDefault(x => x.Id == selectedId);
         NotifyState(); _displaying = false;
+        return true;
     }
 
     private void InvalidateSnapshot()
@@ -342,6 +389,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void ResetSelection()
     {
         _pendingAnc = _pendingPreset = _pendingSpatial = false;
+        _pendingAncKey = _pendingPresetKey = _pendingSpatialKey = null;
         _ancOptions = []; _presetOptions = []; _spatialOptions = []; _actionWarnings.Clear();
         _eqEntries = []; LoadEntry(null); InvalidateSnapshot();
     }
@@ -447,7 +495,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         SuspendActionsForClose(); _closeDialogRunning = true;
         try
         {
-            if (EqDirty && !_preview && !await ConfirmAsync("关闭客户端", "均衡器还有未保存的调整，确定关闭吗？")) return false;
+            if (EqDirty && !_preview && !_backendExitApproved && !await ConfirmAsync("关闭客户端", "均衡器还有未保存的调整，确定关闭吗？")) return false;
             _closing = true; _lifetime.Cancel(); NotifyState();
             await DisposeAsync(); return true;
         }
