@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Controls;
 using System.ComponentModel;
@@ -14,27 +15,39 @@ public partial class MainView : UserControl
     private FAContentDialog? _settingsDialog;
     private Task? _settingsOperation;
     private CancellationTokenSource? _settingsCancellation;
+    private CancellationTokenSource? _bluetoothSettingsCancellation;
+    private bool _openingBluetoothSettings;
     private bool _closingWindow;
+    internal ILauncher? LauncherOverride { get; set; }
+    internal Func<Task>? ManageDevicesRequested { get; set; }
+    private bool _manageDevicesRequested;
+    public DeviceVisualCatalog VisualCatalog { get; } = new();
     private MainViewModel? ViewModel => DataContext as MainViewModel;
     public MainView()
     {
         InitializeComponent();
+        InitializeDeviceBar();
+        AddDeviceHost.IsEnabled = OperatingSystem.IsWindows();
         SizeChanged += (_, _) => UpdateLayoutMode(Bounds.Width);
         DataContextChanged += (_, _) =>
         {
             if (_observedViewModel is not null) _observedViewModel.PropertyChanged -= ViewModelPropertyChanged;
+            VisualCatalog.Clear();
             _observedViewModel = ViewModel;
             if (ViewModel is { } vm)
             {
                 vm.PropertyChanged += ViewModelPropertyChanged;
             }
             UpdateArtwork();
+            RequestDeviceCenter();
         };
     }
 
     private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs change)
     {
-        if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.ProductId) or nameof(MainViewModel.HasVerifiedSnapshot)) UpdateArtwork();
+        if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.ProductId) or nameof(MainViewModel.HasVerifiedSnapshot)
+            or nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices)) UpdateArtwork();
+        if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices)) RequestDeviceCenterIfChanged();
     }
 
     public void SetPlatformNotice(bool visible) => PlatformNotice.IsOpen = PlatformNotice.IsVisible = visible;
@@ -42,7 +55,12 @@ public partial class MainView : UserControl
     public void ExpandAllSettings()
     { EqualizerPanel.IsExpanded = ExperiencePanel.IsExpanded = DeviceInfoPanel.IsExpanded = true; }
 
-    private void UpdateArtwork() => HeroArt.ShowX4 = ViewModel is { HasVerifiedSnapshot: true, ProductId: "06EC10" };
+    private void UpdateArtwork()
+    {
+        var vm = ViewModel;
+        VisualCatalog.Update(vm?.Devices ?? [], vm?.SelectedDevice, vm?.ProductId);
+        HeroArt.Visual = VisualCatalog.ProductFor(vm?.SelectedDevice);
+    }
 
     private void UpdateLayoutMode(double width)
     {
@@ -75,7 +93,7 @@ public partial class MainView : UserControl
         if (_selectingDevice || ViewModel is not { } vm || vm.UpdatingState || Equals(DevicePicker.SelectedItem, vm.SelectedDevice)) return;
         _selectingDevice = true;
         try { await vm.SelectDeviceAsync(DevicePicker.SelectedItem as UiDevice); DevicePicker.SelectedItem = vm.SelectedDevice; }
-        finally { _selectingDevice = false; }
+        finally { _selectingDevice = false; RequestDeviceCenter(); }
     }
     private async void EqEntry_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
@@ -93,20 +111,63 @@ public partial class MainView : UserControl
 
     private async void AppSettings_Click(object? sender, RoutedEventArgs e) => await OpenSettingsDialogAsync();
 
+    private async void AddDevice_Click(object? sender, RoutedEventArgs e) => await OpenBluetoothSettingsAsync();
+
+    internal async Task OpenBluetoothSettingsAsync()
+    {
+        if (!OperatingSystem.IsWindows() || _closingWindow || _openingBluetoothSettings
+            || ViewModel is not { Closing: false } vm || TopLevel.GetTopLevel(this) is not { } owner) return;
+        using var cancellation = new CancellationTokenSource();
+        _bluetoothSettingsCancellation = cancellation;
+        _openingBluetoothSettings = true;
+        AddDeviceHost.IsEnabled = false;
+        try
+        {
+            bool launched;
+            try { launched = await (LauncherOverride ?? owner.Launcher).LaunchUriAsync(new Uri("ms-settings:bluetooth")); }
+            catch { launched = false; }
+            if (launched || _closingWindow || vm.Closing || cancellation.IsCancellationRequested) return;
+            await vm.Dialogs.RunAsync(async token =>
+            {
+                if (_closingWindow || vm.Closing) return;
+                await ShowSettingsDialogAsync(new FAContentDialog
+                {
+                    Title = "无法打开蓝牙设置",
+                    Content = "无法打开蓝牙设置，请在 Windows 设置中打开蓝牙与设备。",
+                    CloseButtonText = "确定",
+                    DefaultButton = FAContentDialogButton.Close
+                }, owner, token);
+            }, cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested || vm.Closing) { }
+        finally
+        {
+            _bluetoothSettingsCancellation = null;
+            _openingBluetoothSettings = false;
+            AddDeviceHost.IsEnabled = OperatingSystem.IsWindows() && !_closingWindow;
+        }
+    }
+
     internal async Task OpenSettingsDialogAsync()
     {
         if (_closingWindow || _settingsOperation is not null || ViewModel is not { Closing: false } vm) return;
+        _manageDevicesRequested = false;
         using var cancellation = new CancellationTokenSource();
         _settingsCancellation = cancellation;
         _settingsOperation = vm.Dialogs.RunAsync(ShowAppSettingsAsync, cancellation.Token);
         try { await _settingsOperation; }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested || vm.Closing) { }
         finally { _settingsOperation = null; _settingsCancellation = null; }
+        // The settings lease must be released before the EQ discard confirmation.
+        if (_manageDevicesRequested && !_closingWindow && !vm.Closing && ManageDevicesRequested is { } manage)
+            await manage();
     }
 
     public async Task DismissSettingsDialogAsync()
     {
         _closingWindow = true;
+        AddDeviceHost.IsEnabled = false;
+        _bluetoothSettingsCancellation?.Cancel();
         _settingsCancellation?.Cancel();
         _settingsDialog?.Hide();
         if (_settingsOperation is { } task)
@@ -115,7 +176,11 @@ public partial class MainView : UserControl
             catch (OperationCanceledException) { }
         }
     }
-    public void ResumeSettingsDialogs() => _closingWindow = false;
+    public void ResumeSettingsDialogs()
+    {
+        _closingWindow = false;
+        AddDeviceHost.IsEnabled = OperatingSystem.IsWindows() && !_openingBluetoothSettings;
+    }
 
     private async Task ShowAppSettingsAsync(CancellationToken token)
     {
@@ -127,11 +192,16 @@ public partial class MainView : UserControl
         content.Children.Add(new TextBlock { Text = "外观", FontWeight = Avalonia.Media.FontWeight.SemiBold }); content.Children.Add(theme);
         content.Children.Add(new TextBlock { Text = $"HeyMelody {AppVersion.Display} · 社区客户端\n通过蓝牙管理已配对的 OPPO 耳机。", TextWrapping = Avalonia.Media.TextWrapping.Wrap });
         var dialog = new FAContentDialog { Title = "应用设置", Content = content, PrimaryButtonText = "保存", CloseButtonText = "取消", DefaultButton = FAContentDialogButton.Primary };
+        var manageDevices = new Button { Content = "管理设备", HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+            IsEnabled = OperatingSystem.IsWindows() && ManageDevicesRequested is not null && ViewModel is { CanManageDevices: true } };
+        manageDevices.Click += (_, _) => { _manageDevicesRequested = true; dialog.Hide(); };
+        content.Children.Add(manageDevices);
         if (await ShowSettingsDialogAsync(dialog, owner, token) != FAContentDialogResult.Primary || _closingWindow || token.IsCancellationRequested) return;
         var selected = theme.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" };
         if (Application.Current is App app) app.ApplyTheme(selected);
         if (!ThemePreferences.Save(selected))
             await ShowSettingsDialogAsync(new FAContentDialog { Title = "外观已切换", Content = "无法保存主题偏好，下次启动将使用原来的设置。", CloseButtonText = "确定" }, owner, token);
+
     }
 
     private async Task<FAContentDialogResult> ShowSettingsDialogAsync(FAContentDialog dialog, TopLevel owner, CancellationToken token)

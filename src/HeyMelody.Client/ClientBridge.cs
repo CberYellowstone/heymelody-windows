@@ -7,7 +7,7 @@ using HeyMelodyWindows.Host;
 namespace HeyMelodyWindows.App;
 
 /// <summary>Supervises a private stdio worker. Native SDP never runs on the UI thread.</summary>
-public sealed class ClientBridge : IHeadsetService
+public sealed class ClientBridge : IHeadsetService, IDeviceManagementService
 {
     private const int MaximumRecord = RpcWire.MaximumLineCharacters;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -26,6 +26,13 @@ public sealed class ClientBridge : IHeadsetService
 
     public async Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken cancellationToken) =>
         await RequestAsync<List<UiDevice>>("enumerate", null, null, TimeSpan.FromSeconds(75), cancellationToken);
+
+    public Task<UiDeviceCatalog> EnumerateCandidatesAsync(CancellationToken cancellationToken) =>
+        RequestAsync<UiDeviceCatalog>("enumerateCandidates", null, null, TimeSpan.FromSeconds(75), cancellationToken);
+
+    public Task<UiWhitelistSaveResult> SaveWhitelistAsync(IReadOnlyList<string> identities, CancellationToken cancellationToken) =>
+        RequestAsync<UiWhitelistSaveResult>("saveWhitelist", null, null, TimeSpan.FromSeconds(75), cancellationToken,
+            deviceIdentities: identities.ToArray());
 
     public Task<UiSnapshot> ConnectAsync(string identity, CancellationToken cancellationToken) =>
         RequestAsync<UiSnapshot>("connect", identity, null, TimeSpan.FromSeconds(90), cancellationToken);
@@ -63,7 +70,7 @@ public sealed class ClientBridge : IHeadsetService
     }
 
     private async Task<T> RequestAsync<T>(string operation, string? identity, UiAction? action,
-        TimeSpan budget, CancellationToken token, RefreshScope? scope = null)
+        TimeSpan budget, CancellationToken token, RefreshScope? scope = null, string[]? deviceIdentities = null)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
         linked.CancelAfter(_testBudget ?? budget);
@@ -74,7 +81,8 @@ public sealed class ClientBridge : IHeadsetService
             ObjectDisposedException.ThrowIf(_disposed, this);
             StartWorker();
             long id = checked(++_nextId);
-            var request = JsonSerializer.Serialize(new { schemaVersion = 1, id, operation, identity, action, refreshScope = scope }, Json);
+            var request = JsonSerializer.Serialize(new { schemaVersion = 1, id, operation, identity, action,
+                refreshScope = scope, deviceIdentities }, Json);
             if (request.Length > MaximumRecord) throw new InvalidDataException();
             submitted = true;
             await _worker!.StandardInput.WriteLineAsync(request.AsMemory(), linked.Token);

@@ -7,8 +7,10 @@ using HeyMelodyWindows.Windows;
 
 namespace HeyMelodyWindows.Host;
 
-public sealed class NativeHeadsetService : IHeadsetService
+public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementService
 {
+    private readonly Func<IReadOnlyList<BluetoothCandidate>> _enumerate;
+    private readonly DeviceWhitelistStore _whitelist;
     private readonly Dictionary<ulong, string> _identities = [];
     private readonly Dictionary<string, BluetoothCandidate> _devices = [];
     private DailyClient? _client;
@@ -18,26 +20,79 @@ public sealed class NativeHeadsetService : IHeadsetService
     private DailySnapshot? _last;
     private int _getSubmissions, _setSubmissions, _otherSubmissions;
 
+    public NativeHeadsetService() : this(WindowsBluetooth.EnumeratePaired, DeviceWhitelistStore.CreateDefault()) { }
+
+    internal NativeHeadsetService(Func<IReadOnlyList<BluetoothCandidate>> enumerate, DeviceWhitelistStore whitelist)
+    { _enumerate = enumerate; _whitelist = whitelist; }
+
     public Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        var paired = WindowsBluetooth.EnumeratePaired().Where(device => device.Remembered).ToArray();
+        var allowed = _whitelist.Load();
+        var result = EnumerateCandidates(token).Where(device => allowed.Contains(DeviceWhitelistStore.KeyFor(device.Address)))
+            .Select(device => new UiDevice(_identities[device.Address], device.Name, device.Connected)).ToArray();
+        return Task.FromResult<IReadOnlyList<UiDevice>>(result);
+    }
+
+    public Task<UiDeviceCatalog> EnumerateCandidatesAsync(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        HashSet<string> allowed;
+        string? warning = null;
+        try { allowed = _whitelist.Load(); }
+        catch (InvalidDataException)
+        {
+            allowed = new(StringComparer.Ordinal);
+            warning = "设备选择记录已损坏，请重新选择并保存。";
+        }
+        var result = EnumerateCandidates(token).Select(device => new UiDeviceCandidate(_identities[device.Address],
+            device.Name, device.Connected, allowed.Contains(DeviceWhitelistStore.KeyFor(device.Address)))).ToArray();
+        return Task.FromResult(new UiDeviceCatalog(result, warning));
+    }
+
+    private IReadOnlyList<BluetoothCandidate> EnumerateCandidates(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        var paired = _enumerate().Where(WindowsBluetooth.IsAudioCandidate).ToArray();
+        token.ThrowIfCancellationRequested();
         _devices.Clear();
-        var result = new List<UiDevice>();
         foreach (var device in paired)
         {
             if (!_identities.TryGetValue(device.Address, out string? identity))
                 _identities[device.Address] = identity = Guid.NewGuid().ToString("N");
             _devices[identity] = device;
-            result.Add(new(identity, device.Name, device.Connected));
         }
-        return Task.FromResult<IReadOnlyList<UiDevice>>(result.OrderByDescending(device => device.Connected)
-            .ThenBy(device => device.Name, StringComparer.OrdinalIgnoreCase).ToArray());
+        return paired.OrderByDescending(device => device.Connected)
+            .ThenBy(device => device.Name, StringComparer.OrdinalIgnoreCase).ThenBy(device => device.Address).ToArray();
+    }
+
+    public Task<UiWhitelistSaveResult> SaveWhitelistAsync(IReadOnlyList<string> identities, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (identities.Count is 0 or > 4096 || identities.Any(string.IsNullOrWhiteSpace))
+            return Task.FromResult(new UiWhitelistSaveResult(false, "请至少选择一台有效的音频设备。"));
+        var requested = identities.Distinct(StringComparer.Ordinal).ToArray();
+        // Revalidate the complete selection before replacing the previous file.
+        EnumerateCandidates(token);
+        if (requested.Any(identity => !_devices.ContainsKey(identity)))
+            return Task.FromResult(new UiWhitelistSaveResult(false, "所选设备已解除配对或不再可用，请刷新列表后重新选择。"));
+        token.ThrowIfCancellationRequested();
+        try
+        {
+            _whitelist.Save(requested.Select(identity => DeviceWhitelistStore.KeyFor(_devices[identity].Address)));
+            return Task.FromResult(new UiWhitelistSaveResult(true));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        { return Task.FromResult(new UiWhitelistSaveResult(false, "无法保存设备选择，请重试。")); }
     }
 
     public async Task<UiSnapshot> ConnectAsync(string identity, CancellationToken token)
     {
         if (!_devices.TryGetValue(identity, out var peer)) throw new InvalidOperationException("重新刷新设备列表后再连接。");
+        token.ThrowIfCancellationRequested();
+        if (!_whitelist.Load().Contains(DeviceWhitelistStore.KeyFor(peer.Address))
+            || !_enumerate().Any(device => device.Address == peer.Address && WindowsBluetooth.IsAudioCandidate(device)))
+            throw new InvalidOperationException("所选耳机未启用或已解除配对，请重新选择设备。");
         await DisconnectAsync(token);
         _selected = identity; _selectedName = peer.Name; _selectedAddress = peer.Address;
         _getSubmissions = _setSubmissions = _otherSubmissions = 0;
@@ -131,7 +186,7 @@ public sealed class NativeHeadsetService : IHeadsetService
         if (_selectedAddress is not { } address) return ConnectionState.Unknown;
         try
         {
-            var peers = WindowsBluetooth.EnumeratePaired().Where(x => x.Address == address && x.Remembered).ToArray();
+            var peers = _enumerate().Where(x => x.Address == address && x.Authenticated).ToArray();
             return peers.Length == 1 ? peers[0].Connected ? ConnectionState.Connected : ConnectionState.Disconnected
                 : ConnectionState.Unknown;
         }
@@ -235,7 +290,7 @@ public sealed class NativeHeadsetService : IHeadsetService
         public async Task<IControlTransport> OpenAsync(CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
-            var devices = WindowsBluetooth.EnumeratePaired().Where(device => device.Address == address && device.Remembered).ToArray();
+            var devices = WindowsBluetooth.EnumeratePaired().Where(device => device.Address == address && device.Authenticated).ToArray();
             if (devices.Length != 1 || !devices[0].Connected) throw new IOException("The selected peer is disconnected.");
             var services = WindowsSdp.FindServices(address, _service).Where(service => service.ServiceId == _service &&
                 service.Channel is > 0 and <= 30).DistinctBy(service => service.Channel).ToArray();

@@ -6,6 +6,49 @@
              xmlns:local="clr-namespace:HeyMelodyWindows.App"
              x:Class="HeyMelodyWindows.App.MainView" x:DataType="vm:MainViewModel"
              Background="{DynamicResource ApplicationPageBackgroundThemeBrush}">
+  <UserControl.Resources>
+    <local:DeviceIconVisualConverter x:Key="DeviceIconVisualConverter" />
+    <ControlTheme x:Key="DeviceCardTheme" TargetType="ListBoxItem">
+      <Setter Property="Width" Value="300" />
+      <Setter Property="Height" Value="64" />
+      <Setter Property="Padding" Value="16,8" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+      <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border x:Name="CardBorder" Padding="{TemplateBinding Padding}"
+                  TemplatedControl.IsTemplateFocusTarget="True"
+                  Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}">
+            <ContentPresenter x:Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover">
+        <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+      </Style>
+      <Style Selector="^:pressed">
+        <Setter Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
+      </Style>
+      <Style Selector="^:focus-visible">
+        <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+      </Style>
+      <Style Selector="^:selected">
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Opacity" Value="0.5" />
+      </Style>
+    </ControlTheme>
+  </UserControl.Resources>
   <UserControl.Styles>
     <Style Selector="fa|FASettingsExpander">
       <Setter Property="Margin" Value="0,0,0,8" />
@@ -17,19 +60,14 @@
     <Style Selector="ListBox#DevicePicker">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
-    </Style>
-    <Style Selector="ListBox#DevicePicker ListBoxItem">
-      <Setter Property="Padding" Value="12,8" />
-      <Setter Property="Margin" Value="4,0" />
-      <Setter Property="MinWidth" Value="200" />
-      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="0" />
     </Style>
     <Style Selector="TextBlock.setting-label">
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Margin" Value="0,0,0,6" />
     </Style>
   </UserControl.Styles>
-  <Grid RowDefinitions="*,Auto,Auto">
+  <Grid x:Name="MainLayout" RowDefinitions="*,Auto">
     <Grid x:Name="DeviceArea" ColumnDefinitions="*,500" Margin="24,12,24,0">
       <Grid x:Name="HeroPanel" Margin="8,0,32,0" RowDefinitions="*,Auto">
         <local:ProductArtwork x:Name="HeroArt" Margin="0,16" MaxWidth="600" MaxHeight="520"
@@ -48,7 +86,7 @@
               <TextBlock Text="{Binding Subtitle}" Classes="muted" Margin="0,7,0,0" />
             </StackPanel>
             <Button x:Name="AppSettingsButton" Grid.Column="1" Classes="icon" Click="AppSettings_Click" VerticalAlignment="Top"
-                    IsEnabled="{Binding !Closing}"
+                    IsEnabled="{Binding CanManageDevices}"
                     Margin="8,3,0,0" ToolTip.Tip="应用设置" AutomationProperties.Name="应用设置">
               <fa:FASymbolIcon Symbol="Settings" FontSize="18" />
             </Button>
@@ -209,41 +247,55 @@
         </StackPanel>
       </ScrollViewer>
     </Grid>
-    <Border Grid.Row="1" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-            Background="{DynamicResource LayerFillColorDefaultBrush}" Padding="20,6">
-      <Grid ColumnDefinitions="Auto,*,Auto" MinHeight="64">
-        <TextBlock Text="我的设备" Classes="caption" VerticalAlignment="Center" Margin="0,0,16,0" />
-        <Grid Grid.Column="1">
-          <ListBox x:Name="DevicePicker" ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice, Mode=OneWay}"
-                   SelectionChanged="Device_SelectionChanged" IsEnabled="{Binding CanRefreshDevices}"
-                   ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                   AutomationProperties.Name="设备切换">
-            <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListBox.ItemsPanel>
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="contracts:UiDevice">
-                <Grid ColumnDefinitions="32,*" ColumnSpacing="10">
-                  <fa:FASymbolIcon Symbol="Audio" FontSize="24" VerticalAlignment="Center" />
-                  <StackPanel Grid.Column="1" Spacing="4">
-                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" MaxWidth="220" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="已配对" Classes="caption" />
-                  </StackPanel>
-                </Grid>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-          <TextBlock x:Name="EmptyDevicesText" Text="未找到已配对设备，请完成配对后刷新。"
-                     IsVisible="{Binding !HasDevices}" Classes="muted" VerticalAlignment="Center" Margin="8,0" />
-        </Grid>
-        <Button Grid.Column="2" Command="{Binding RefreshDevicesCommand}" IsEnabled="{Binding CanRefreshDevices}"
-                Classes="icon" Margin="12,0,0,0" VerticalAlignment="Center"
-                ToolTip.Tip="刷新设备" AutomationProperties.Name="刷新设备">
-          <fa:FASymbolIcon Symbol="Refresh" FontSize="20" />
-        </Button>
-      </Grid>
+    <Border x:Name="DeviceBar" Grid.Row="1" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+            Background="{DynamicResource LayerFillColorDefaultBrush}" Padding="20,8">
+      <ScrollViewer x:Name="DeviceBarScroll" HorizontalScrollBarVisibility="Auto"
+                    VerticalScrollBarVisibility="Disabled">
+        <Border x:Name="DeviceStripPadding" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <StackPanel x:Name="DeviceStrip" Orientation="Horizontal" Spacing="8" MinHeight="64">
+            <Grid>
+              <ListBox x:Name="DevicePicker" ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice, Mode=OneWay}"
+                       ItemContainerTheme="{StaticResource DeviceCardTheme}"
+                       SelectionChanged="Device_SelectionChanged" IsEnabled="{Binding CanRefreshDevices}"
+                       MinHeight="64" AutoScrollToSelectedItem="False"
+                       ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                       AutomationProperties.Name="设备切换">
+                <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="8" /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="contracts:UiDevice">
+                    <Grid x:Name="DeviceCardContent" ColumnDefinitions="32,Auto" ColumnSpacing="12"
+                          HorizontalAlignment="Center" VerticalAlignment="Center">
+                      <local:DeviceIconView x:Name="DeviceIcon" Width="28" Height="28" VerticalAlignment="Center">
+                        <local:DeviceIconView.Visual>
+                          <MultiBinding Converter="{StaticResource DeviceIconVisualConverter}">
+                            <Binding Path="." />
+                            <Binding Path="VisualCatalog" RelativeSource="{RelativeSource AncestorType={x:Type local:MainView}}" />
+                            <Binding Path="VisualCatalog.Revision" RelativeSource="{RelativeSource AncestorType={x:Type local:MainView}}" />
+                          </MultiBinding>
+                        </local:DeviceIconView.Visual>
+                      </local:DeviceIconView>
+                      <StackPanel x:Name="DeviceText" Grid.Column="1" Spacing="4" MaxWidth="220">
+                        <TextBlock x:Name="DeviceNameText" Text="{Binding Name}" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
+                        <TextBlock Text="已配对" Classes="caption" />
+                      </StackPanel>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+              <TextBlock x:Name="EmptyDevicesText" Text="暂无已配对设备"
+                         IsVisible="{Binding !HasDevices}" Classes="muted" VerticalAlignment="Center" Margin="8,0" />
+            </Grid>
+            <Border x:Name="AddDeviceHost" VerticalAlignment="Center">
+              <Button x:Name="AddDeviceButton" Width="64" Height="64" Click="AddDevice_Click"
+                      IsEnabled="{Binding !Closing}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                      ToolTip.Tip="添加设备" AutomationProperties.Name="添加设备">
+                <fa:FASymbolIcon Symbol="Add" FontSize="24" />
+              </Button>
+            </Border>
+          </StackPanel>
+        </Border>
+      </ScrollViewer>
     </Border>
-    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="24,8,24,10">
-      <TextBlock Text="{Binding Status}" Classes="caption" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Status}" />
-      <TextBlock Grid.Column="1" Text="{x:Static local:AppVersion.Footer}" Classes="caption" Margin="20,0,0,0" />
-    </Grid>
   </Grid>
 </UserControl>

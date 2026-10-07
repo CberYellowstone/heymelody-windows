@@ -1,0 +1,103 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fa="clr-namespace:FluentAvalonia.UI.Controls;assembly=FluentAvalonia"
+             xmlns:local="clr-namespace:HeyMelodyWindows.DeviceManager"
+             x:Class="HeyMelodyWindows.DeviceManager.DeviceManagerView" x:DataType="local:DeviceManagerViewModel">
+  <UserControl.Resources>
+    <ControlTheme x:Key="DeviceRowTheme" TargetType="CheckBox">
+      <Setter Property="Height" Value="72" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Padding" Value="12,8" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border x:Name="RowBackground" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"
+                  CornerRadius="4" TemplatedControl.IsTemplateFocusTarget="True">
+            <Grid ColumnDefinitions="*,20" ColumnSpacing="16">
+              <ContentPresenter x:Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" />
+              <Border x:Name="CheckGlyphBox" Grid.Column="1" Width="20" Height="20" CornerRadius="3"
+                      VerticalAlignment="Center" BorderThickness="1"
+                      BorderBrush="{DynamicResource ControlStrongStrokeColorDefaultBrush}"
+                      Background="{DynamicResource ControlAltFillColorSecondaryBrush}">
+                <Path x:Name="CheckGlyph" Data="M3,9 L7,13 L15,4" StrokeThickness="2" Margin="1"
+                      Stroke="{DynamicResource TextOnAccentFillColorPrimaryBrush}" IsVisible="False" />
+              </Border>
+            </Grid>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover"><Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" /></Style>
+      <Style Selector="^:pressed"><Setter Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" /></Style>
+      <Style Selector="^:checked /template/ Border#CheckGlyphBox">
+        <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+      </Style>
+      <Style Selector="^:checked /template/ Path#CheckGlyph"><Setter Property="IsVisible" Value="True" /></Style>
+      <Style Selector="^:disabled"><Setter Property="Opacity" Value="0.5" /></Style>
+    </ControlTheme>
+  </UserControl.Resources>
+  <Grid RowDefinitions="Auto,*">
+    <StackPanel Margin="24,12,24,16" Spacing="12">
+      <TextBlock Text="选择要显示的耳机" FontSize="24" FontWeight="SemiBold" />
+      <TextBlock Text="勾选后，这些设备将显示在主界面的设备栏中。" TextWrapping="Wrap"
+                 Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+        <Button x:Name="RefreshButton" Command="{Binding RefreshCommand}" Content="刷新设备" IsEnabled="{Binding CanRefresh}" />
+        <Border x:Name="BluetoothSettingsHost" Grid.Column="1">
+          <Button x:Name="BluetoothSettingsButton" Click="BluetoothSettings_Click"
+                  IsEnabled="{Binding CanRefresh}" Content="蓝牙设置" />
+        </Border>
+      </Grid>
+      <ProgressBar IsIndeterminate="True" Height="2" IsVisible="{Binding Busy}" />
+    </StackPanel>
+    <Grid Grid.Row="1">
+      <ScrollViewer x:Name="DeviceScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="ScrollContent" Margin="16,0,16,84" Spacing="8">
+          <fa:FAInfoBar x:Name="ErrorNotice" IsClosable="False" Severity="Error" IsOpen="{Binding HasError}"
+                        IsVisible="{Binding HasError}" Title="操作未完成" Message="{Binding Error}" />
+          <StackPanel x:Name="EmptyNotice" IsVisible="{Binding ShowEmpty}" Margin="12,24" Spacing="8">
+            <TextBlock Text="暂无已配对的音频设备" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <TextBlock Text="在蓝牙设置中添加设备后刷新列表。" TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+          </StackPanel>
+          <ItemsControl x:Name="DeviceList" ItemsSource="{Binding Devices}" IsEnabled="{Binding CanRefresh}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="local:DeviceCandidateRow">
+                <CheckBox Theme="{StaticResource DeviceRowTheme}" IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                          AutomationProperties.Name="{Binding Name}" AutomationProperties.HelpText="{Binding Status}">
+                  <Grid ColumnDefinitions="36,*" ColumnSpacing="14">
+                    <Viewbox Width="28" Height="28" VerticalAlignment="Center">
+                      <Canvas Width="24" Height="24">
+                        <Path Data="M4,14 L4,11 A8,8 0 0 1 20,11 L20,14 M4,13 L7,13 L7,21 L4,21 Q2,21 2,19 L2,15 Q2,13 4,13 M20,13 L17,13 L17,21 L20,21 Q22,21 22,19 L22,15 Q22,13 20,13"
+                              Stroke="{DynamicResource TextFillColorPrimaryBrush}" StrokeThickness="1.5"
+                              StrokeLineCap="Round" StrokeJoin="Round" />
+                      </Canvas>
+                    </Viewbox>
+                    <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" FontWeight="SemiBold" />
+                      <TextBlock Text="{Binding Status}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                  </Grid>
+                </CheckBox>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </ScrollViewer>
+      <Border x:Name="ActionOverlay" Height="72" VerticalAlignment="Bottom" Padding="24,12"
+              Background="{DynamicResource LayerOnMicaBaseAltFillColorDefaultBrush}">
+        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+          <TextBlock Text="{Binding SelectionText}" VerticalAlignment="Center" FontSize="12"
+                     Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+          <Button x:Name="SaveButton" Grid.Column="1" Content="保存" Classes="accent" Command="{Binding SaveCommand}"
+                  IsEnabled="{Binding CanCommit}" MinWidth="80" VerticalAlignment="Center" />
+          <Button x:Name="CancelButton" Grid.Column="2" Content="取消" Command="{Binding CancelCommand}"
+                  IsEnabled="{Binding CanCommit}" MinWidth="80" VerticalAlignment="Center" />
+        </Grid>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

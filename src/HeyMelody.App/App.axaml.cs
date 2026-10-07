@@ -15,6 +15,7 @@ public partial class App : Application
         {
             ApplyTheme(ThemePreferences.Load());
             desktop.MainWindow = new MainWindow();
+            desktop.Exit += (_, _) => DeviceVisuals.DisposeResources();
         }
         base.OnFrameworkInitializationCompleted();
     }

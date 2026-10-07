@@ -1,75 +1,11 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:fa="clr-namespace:FluentAvalonia.UI.Controls;assembly=FluentAvalonia"
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="HeyMelodyWindows.App.ProductArtwork"
+             x:Name="ArtworkHost"
              AutomationProperties.Name="耳机产品示意图">
-  <UserControl.Resources>
-    <LinearGradientBrush x:Key="Shell" StartPoint="0%,0%" EndPoint="80%,100%">
-      <GradientStop Color="#FFFFFF" Offset="0" /><GradientStop Color="#F4F3EF" Offset="0.38" />
-      <GradientStop Color="#C4C7C8" Offset="0.85" /><GradientStop Color="#92989D" Offset="1" />
-    </LinearGradientBrush>
-    <LinearGradientBrush x:Key="Lid" StartPoint="0%,0%" EndPoint="0%,100%">
-      <GradientStop Color="#FCFCFA" Offset="0" /><GradientStop Color="#DBDDDC" Offset="1" />
-    </LinearGradientBrush>
-    <LinearGradientBrush x:Key="Metal" StartPoint="0%,0%" EndPoint="100%,0%">
-      <GradientStop Color="#5B646A" Offset="0" /><GradientStop Color="#E6E7E4" Offset="0.25" />
-      <GradientStop Color="#FFFFFF" Offset="0.5" /><GradientStop Color="#B7BDBF" Offset="0.83" />
-      <GradientStop Color="#6D777B" Offset="1" />
-    </LinearGradientBrush>
-    <RadialGradientBrush x:Key="Bud" Center="35%,30%" RadiusX="85%" RadiusY="85%">
-      <GradientStop Color="#FFFFFF" Offset="0" /><GradientStop Color="#EBECE9" Offset="0.45" />
-      <GradientStop Color="#969FA2" Offset="1" />
-    </RadialGradientBrush>
-  </UserControl.Resources>
-  <Grid>
-    <Viewbox x:Name="X4Drawing" Stretch="Uniform" IsVisible="False">
-      <Canvas Width="600" Height="460">
-        <Ellipse Canvas.Left="106" Canvas.Top="398" Width="386" Height="24" Fill="#15000000" />
-        <Ellipse Canvas.Left="134" Canvas.Top="403" Width="328" Height="10" Fill="#12000000" />
-        <Path Data="M139,239 C121,221 120,180 135,135 C151,88 446,88 464,136 C479,176 480,220 460,240 Z"
-              Fill="{StaticResource Lid}" Stroke="#C6CBCD" StrokeThickness="1.5" />
-        <Path Data="M153,218 C143,192 146,153 159,143 C187,123 412,124 439,145 C451,157 454,194 444,217 Z"
-              Fill="#BFC4C4" />
-        <Path Data="M168,212 C155,170 215,145 257,156 C281,163 278,205 276,213 Z" Fill="#858E91" />
-        <Path Data="M324,213 C321,176 330,159 351,156 C396,151 445,175 432,212 Z" Fill="#858E91" />
-        <Path Data="M137,230 C162,198 438,198 464,230 C478,248 463,270 434,276 L168,276 C138,270 123,247 137,230 Z"
-              Fill="#6F7A80" />
-        <Path Data="M160,235 C187,213 412,213 441,236 C451,246 435,256 417,260 L182,260 C163,257 148,247 160,235 Z"
-              Fill="#E1E4E1" />
-        <Path Data="M133,249 C172,286 429,286 469,249 L455,334 C441,399 164,399 146,334 Z"
-              Fill="{StaticResource Shell}" Stroke="#B7BFC2" StrokeThickness="1.5" />
-        <Path Data="M145,272 C203,304 399,305 457,272" Stroke="#FFFFFF" StrokeThickness="3" Opacity="0.7" />
-        <Path Data="M160,341 C209,380 389,380 442,341" Stroke="#B7BFC0" StrokeThickness="1.5" Opacity="0.35" />
-        <Ellipse Canvas.Left="297" Canvas.Top="315" Width="7" Height="3" Fill="#6C8581" />
-        <Path Data="M281,337 L317,337" Stroke="#A7AEAF" StrokeThickness="1.5" />
-        <Canvas RenderTransformOrigin="50%,50%">
-          <Canvas.RenderTransform><RotateTransform Angle="-16" CenterX="207" CenterY="195" /></Canvas.RenderTransform>
-          <Path Data="M195,168 C194,155 209,148 221,157 L225,253 C225,269 194,269 194,253 Z"
-                Fill="{StaticResource Metal}" Stroke="#AAB4B9" StrokeThickness="1" />
-          <Path Data="M170,164 C152,137 173,109 204,107 C236,105 254,126 247,151 C244,164 232,175 219,176 C198,181 179,178 170,164 Z"
-                Fill="{StaticResource Bud}" Stroke="#B8BEC0" StrokeThickness="1" />
-          <Ellipse Canvas.Left="159" Canvas.Top="127" Width="26" Height="34" Fill="#444C50" />
-          <Ellipse Canvas.Left="165" Canvas.Top="132" Width="14" Height="24" Fill="#1E272C" />
-          <Path Data="M224,174 L226,249" Stroke="#FFFFFF" StrokeThickness="2" Opacity="0.75" />
-          <Ellipse Canvas.Left="202" Canvas.Top="116" Width="14" Height="5" Fill="#586167" />
-        </Canvas>
-        <Canvas RenderTransformOrigin="50%,50%">
-          <Canvas.RenderTransform><RotateTransform Angle="16" CenterX="394" CenterY="195" /></Canvas.RenderTransform>
-          <Path Data="M376,168 C375,155 390,148 403,157 L407,253 C407,269 376,269 376,253 Z"
-                Fill="{StaticResource Metal}" Stroke="#AAB4B9" StrokeThickness="1" />
-          <Path Data="M353,151 C345,126 364,105 396,107 C427,109 448,137 430,164 C420,178 402,181 381,176 C368,175 356,164 353,151 Z"
-                Fill="{StaticResource Bud}" Stroke="#B8BEC0" StrokeThickness="1" />
-          <Ellipse Canvas.Left="417" Canvas.Top="127" Width="26" Height="34" Fill="#444C50" />
-          <Ellipse Canvas.Left="423" Canvas.Top="132" Width="14" Height="24" Fill="#1E272C" />
-          <Path Data="M379,174 L381,249" Stroke="#FFFFFF" StrokeThickness="2" Opacity="0.75" />
-          <Ellipse Canvas.Left="385" Canvas.Top="116" Width="14" Height="5" Fill="#586167" />
-        </Canvas>
-      </Canvas>
-    </Viewbox>
-    <Viewbox x:Name="GenericDrawing" Stretch="Uniform" MaxWidth="220" MaxHeight="220">
-    <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="220" Height="220"
-            CornerRadius="110" Background="{DynamicResource ControlFillColorDefaultBrush}">
-      <fa:FASymbolIcon Symbol="Audio" FontSize="96" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-    </Border>
-    </Viewbox>
-  </Grid>
+  <ContentPresenter x:Name="VisualPresenter"
+                    Content="{Binding Visual, ElementName=ArtworkHost}"
+                    ContentTemplate="{Binding VisualTemplate, ElementName=ArtworkHost}"
+                    HorizontalContentAlignment="Stretch"
+                    VerticalContentAlignment="Stretch" />
 </UserControl>

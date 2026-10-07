@@ -2,11 +2,23 @@
 
 0.6.0 完成 Windows Enco X4 功能的 Avalonia 初版迁移，0.6.1 改进后台刷新、交互及失败处理。当前界面使用 Avalonia 12.1.3、FluentAvaloniaUI 3.1.0 和 CommunityToolkit.Mvvm 8.4.2。其他耳机型号与 macOS/Linux 的实现暂缓。界面和客户端状态模型分别位于 `HeyMelody.App` 与 `HeyMelody.Client`；DTO 和现有 schema-1 stdio 协议位于 `HeyMelody.Contracts`。Windows 蓝牙调用仍由 `HeyMelody.Host` 子进程处理，不进入界面线程。
 
-本轮发布包为 0.6.1；源码项目与 `Build-Client.ps1` 的默认版本仍为 0.6.0，发布时通过 `-Version 0.6.1` 覆盖。界面页脚和关于说明读取 App 程序集的三段版本，因此普通源码构建与本轮发布包可显示不同版本。旧 0.6.0 发布包不包含此次改进。
+本轮发布版本为 0.6.5，在 0.6.4 基础上替换 X4 产品图和底栏图标，并将两处展示拆为可扩展的 View。0.6.4 的设备栏卡片与整栏居中、共同滚动及自然滚动边界，0.6.3 的设备管理器重复关闭按钮修复，以及 0.6.2 的设备白名单和独立管理器继续保留。源码项目与 `Build-Client.ps1` 的默认版本仍为 0.6.0，本轮发布通过 `-Version 0.6.5` 覆盖；普通源码构建使用默认版本，应用设置中的关于说明读取 App 程序集的三段版本。已有 0.6.4 ZIP 保留，X4 PNG 与新 View 已纳入独立的 0.6.5 发布包。0.6.1 及更早发布包不包含设备白名单和独立管理器。
 
 ## 界面与现有功能
 
-参考 `research/main-page.png` 和 `research/headphone-configs.png`，默认窗口 1280×900，最小 900×640：左侧展示产品，右侧显示身份、电量和设置，底部固定设备选择区。宽度小于 1080 时改为上下布局，设置区域单独滚动。产品图为本项目原创矢量示意，仅在已确认的 `06EC10` 身份上展示；未知或断开的设备使用通用图标。
+参考 `research/main-page.png` 和 `research/headphone-configs.png`，默认窗口 1280×900，最小 900×640：左侧展示产品，右侧显示身份、电量和设置，底部固定设备选择区。宽度小于 1080 时改为上下布局，设置区域单独滚动。X4 产品大图使用用户提供的 `research/x4-pods-with-earphones.png`，底栏 X4 图标使用 `research/x4-both-earphones.png`；两张原始 1440×1440 透明 PNG 复制到 App 的 `Assets/Devices/EncoX4` 并作为 Avalonia 资源嵌入，运行时不依赖 `research` 目录。其他设备沿用通用图形。
+
+外观优先按取得的实际 ProductId 判断：`06EC10` 使用 X4 素材，其他非空型号使用通用图形。尚未取得型号时，名称精确匹配 `OPPO Enco X4` 或 `Enco X4`，忽略大小写及首尾空格，选中后即可展示 X4 图片。只读 `MainViewModel.ProductId` 在快照、控制会话和当前选择的 Identity 一致时才暴露型号，`MainView` 按设备 Identity 暂存，切换或断开后继续用于外观；移出列表或更换数据上下文时清理。切换中的旧快照不会将原设备型号归到新选择。此缓存只影响显示，不授予控制能力；连接、适配及写入仍要求实际设备身份和后端状态核实。
+
+`ProductArtwork` 和 `DeviceIconView` 分别作为大图与底栏图标宿主，通过 `Visual` 展示数据及 `VisualTemplate`（`IDataTemplate`）呈现内容；宿主不读取蓝牙状态，也不硬编码 X4 判断。当前实现 PNG 和通用图形模板，未来可用新的展示数据及模板接入字体字符、矢量、Lottie 或可交互 3D 控件，本轮不引入这些渲染依赖。大图保留响应式尺寸限制和输入能力，图片模板等比居中，不在宿主统一套用 Viewbox；小图保持 28×28 占位。素材延迟加载并共享 Bitmap，加载流及时关闭，应用结束时释放资源；各宿主独立创建呈现控件。视觉更新保留原有 `UiDevice` 列表及选择绑定，不重建列表或改变滚动位置。
+
+当前源码已移除最底部状态/版本栏，以及设备栏的“我的设备”标题和刷新按钮。底栏采用 300×64 的横向设备卡片，图标与名称/状态作为一组居中，选中项使用动态主题强调色边框，其他项使用主题灰色描边；长名称省略显示并提供完整名称提示。设备卡片与末尾的“+”放在同一个水平滚动区域，空间足够时整组居中；溢出时不添加首尾空白，首次打开、切换设备及调整窗口宽度后将选中卡片尽量移到视口中央，偏移受实际内容边界限制。首项选中时停在最左侧，末项选中时停在最右侧且“+”完整可见；靠近两端的选中设备完整显示，中间设备可居中。普通鼠标滚轮、触控板及滚动条均可横向滚动，用户滚动后保留当前位置。“+”通过 Avalonia Launcher 打开 Windows 蓝牙设置（`ms-settings:bluetooth`），失败提示与应用设置共用对话框协调器；非 Windows 预览禁用该入口。设备栏只显示当前有效的白名单设备，在启动及管理保存后校验；打开系统设置、返回应用或普通状态轮询均不自动刷新设备列表。
+
+独立 `HeyMelody.DeviceManager` 使用相同的 UI 依赖和主题偏好，默认 520×720、最小 400×480，允许双向拉伸，仅有关闭按钮。候选为已配对 Classic 音频设备，按 Authenticated 和缓存 CoD 筛选，不扫描、不连接；错误或缺失的 CoD 可能导致设备暂不显示。名单键保存到 `%LOCALAPPDATA%/HeyMelody/devices.json`，使用稳定地址的带用途前缀 SHA-256；界面仍只持有 Host 会话 Identity。保存会重新验证所选设备，原子替换文件；枚举失败不清空历史名单，损坏配置可以显式打开管理器重新保存修复。
+
+有效名单为空才自动打开管理器；保存成功后重新检查名单再进入主界面，取消或关闭时无旧有效名单则退出整个程序。应用设置提供“管理设备”：先释放设置对话框所有权，确认丢弃 EQ 草稿并断开控制会话，等待期间暂停主程序操作；取消恢复缓存选择，保存后枚举一次并保留仍有效的原选择，均不自动重连。管理器底部 72px 操作栏覆盖滚动列表，零勾选时保存和取消均禁用，但关闭始终可退出。Windows 11 build 22621 及以上用 DWM 的 Mica Alt，其余情况回退到主题实色；透明度与非活动背景由系统策略决定。
+
+0.6.3 修正透明标题栏下原生与托管关闭按钮的叠加。透明标题栏与 `DwmExtendFrameIntoClientArea` 的全窗口扩展同时露出了 DWM 原生关闭图形和 Avalonia 12 的自绘关闭按钮；`FAAppWindow` 使用 Avalonia 的自绘标题栏，FluentAvalonia 模板本身没有另画一套关闭按钮。`MicaAltBackdrop` 通过 `Win32Properties.AddWindowStylesCallback` 移除 `WS_SYSMENU`，抑制原生标题栏按钮，保留 Avalonia 关闭按钮和 DWM 的 Mica Alt、圆角及阴影。回调在 XAML 的窗口属性赋值与样式重算之前注册，首次显示前已生效；释放窗口时移除回调。没有禁用 DWM 非客户区渲染。
 
 使用 FluentAvalonia 的 `FAAppWindow`、`FASettingsExpander`、`FASettingsExpanderItem`、`FAInfoBar` 和 `FAContentDialog`，以及主题提供的按钮、下拉框、开关、文本框和滑块。系统、浅色、深色主题可在应用设置中切换，偏好保存到 `%LOCALAPPDATA%/HeyMelody/preferences.json`。无效偏好会回退到系统主题。项目图标沿用原创的 `Assets/HeyMelody.ico`。
 
@@ -33,15 +45,28 @@
 dotnet build src/HeyMelody.Host -c Release
 dotnet run --project src/HeyMelody.App -c Release
 dotnet run --project tests/HeyMelody.Client.Tests -c Release
+dotnet run --project tests/HeyMelody.Host.Tests -c Release
 dotnet run --project tests/HeyMelody.App.Tests -c Release
 dotnet run --project tests/HeyMelody.App.Tests -c Release -- --native-smoke
+dotnet run --project tests/HeyMelody.App.Tests -c Release -- --native-startup-smoke
+dotnet run --project tests/HeyMelody.DeviceManager.Tests -c Release
+dotnet run --project tests/HeyMelody.DeviceManager.Tests -c Release -- --native-smoke
+dotnet run --project tests/HeyMelody.DeviceManager.Tests -c Release -- --native-alt-f4-smoke
 ```
 
-App.Tests 使用真实 Skia 绘制 Avalonia 控件，覆盖连接、无设备、未知型号、部分读取、断开五种状态的浅色/深色和 1280×900/900×640，共 20 张截图及 4 项交互检查；交互检查覆盖绑定、真实鼠标点击、协议 ID、刷新不写入、读取阻塞时继续编辑与提交、对话框协调及关闭取消。输出在 `artifacts/avalonia-ui-*`，包含 PNG 哈希与 `validation.json`。测试仅使用模拟服务，不调用原生蓝牙。Headless 调度显式使用 `Dispatch<bool>`，避免无返回值 async 委托变为 `async void` 而漏报失败；在外部调用线程等待及释放会话。
+App.Tests 使用真实 Skia 绘制 Avalonia 控件，覆盖连接、无设备、未知型号、部分读取、断开五种状态的浅色/深色和 1280×900/900×640，在 Windows 上共 45 项检查，包括 20 张截图、原有交互与设备栏检查、3 组卡片/整栏居中、自然滚动边界及手动滚动检查、5 组设备外观和展示模板检查、6 项启动白名单协调检查及设置到管理器的对话框释放检查。系统入口测试注入模拟 Launcher，不打开 Windows 设置；非 Windows 预期总计 42 项。默认输出在 `artifacts/avalonia-ui-*`，包含 PNG 哈希与 `validation.json`，也可通过 `--output-dir` 指定新输出目录。测试仅使用模拟服务，不调用原生蓝牙。Headless 调度显式使用 `Dispatch<bool>`，避免无返回值 async 委托变为 `async void` 而漏报失败；在外部调用线程等待及释放会话。
 
-`--native-smoke` 单独在 Windows 创建屏幕外真实 Win32 `FAAppWindow`，验证标题栏、图标、两个主题和宽窄布局、设置及重试/失败对话框和服务只释放一次。该测试同样使用内存服务，不启动蓝牙后台。交互测试另外覆盖读取阻塞期间的真实鼠标提交、继续编辑、对话框串行和关闭取消。
+`--native-smoke` 单独在 Windows 创建屏幕外真实 Win32 `FAAppWindow`，共 54 项检查，验证标题栏、产品图片和底栏图标、两个主题和宽窄布局、设置及重试/失败对话框和服务只释放一次。使用 8 台模拟设备验证底栏溢出、不额外留白及启动/调整尺寸后的选中卡片按自然边界定位。该测试同样使用内存服务，不启动蓝牙后台。交互测试另外覆盖读取阻塞期间的真实鼠标提交、继续编辑、对话框串行和关闭取消。
 
-`Build-Client.ps1` 默认执行 Protocol 37 项、Devices 13 项、Control 19 项、Daily 52 项、Probe 23 项、Client 60 项、App 24 项，共 228 项检查；`--native-smoke` 另外通过 38 项检查，不由发布脚本默认执行。本轮完整发布前的界面报告位于 `artifacts/avalonia-ui-20261006-143139-7a87a6af/validation.json`，早先的报告仍保留在 `artifacts/refresh-ui-final/validation.json`。文档核对时另补齐旧绑定输入替身的成功回执字段，并断言鼠标提交确实进入已确认成功分支；修正后重新运行 App 的 24 项检查通过，报告为 `artifacts/avalonia-ui-20261006-145245-daeb44ae/validation.json`。当前 App.Tests 报告的 `version` 字段硬编码为 `0.6.0`，不能作为新发布包的专属执行回执。这些源码测试没有真实蓝牙调用，不是已发布 0.6.1 二进制的逐架构硬件执行回执，不能替代耳机和手机同时操作的实机验证。
+X4 素材与展示 View 在发布打包前已完成 Release 源码构建。修正型号身份匹配后的最终 App 检查 45 项通过，报告为 `artifacts/x4-visuals-b3241436/headless-final/validation.json`，执行日志为 `artifacts/x4-visuals-b3241436/headless-final.log`；主程序原生窗口 54 项检查通过，日志为 `artifacts/x4-visuals-b3241436/native-smoke.log`；Client 的 74 项检查通过，日志为 `artifacts/x4-visuals-b3241436/client-tests.log`。三个测试回执的原生蓝牙调用均为 0，原生窗口测试的设置提交为 0，系统设置没有打开。已检查连接状态下浅色 1280×900、深色 1280×900 和深色 900×640 截图中的 PNG、图标及响应式布局，最终截图位于 `headless-final`。汇总报告 `artifacts/x4-visuals-b3241436/validation-summary.json` 记录最终测试、截图及源文件与嵌入素材的哈希。这组普通源码检查使用默认 `0.6.0` 版本，不是各架构发布包的专属执行回执；当时没有运行完整发布脚本或生成新 ZIP，随后 0.6.5 发布构建另行记录。
+
+显式运行 `dotnet run --project tests/HeyMelody.App.Tests -c Release -- --native-settings-smoke` 会滚动到末尾并通过真实“+”按钮打开 Windows 蓝牙设置，当前预期共执行 60 项检查；默认测试和 `--native-smoke` 不打开系统设置。0.6.4 设备栏改进及本轮素材替换均未执行此模式。该模式仅记录 Windows 是否接受 URI 请求，不断言系统页面已显示，不关闭系统设置窗口，也不调用真实蓝牙。
+
+当前源码的 `Build-Client.ps1` 默认执行 Protocol 37 项、Devices 13 项、Control 19 项、Daily 52 项、Probe 23 项、Host 14 项、Client 74 项、App 45 项、DeviceManager 6 项，共 283 项检查；0.6.5 构建已执行并通过完整默认测试，日志为 `artifacts/release-065/build.log`。0.6.4 发布时 App 为 40 项，总计 278 项检查通过；0.6.2 和 0.6.3 发布时 App 为 37 项，总计 275 项检查通过。0.6.2 的主程序 `--native-smoke` 另外执行 38 项，`--native-startup-smoke` 使用真实 Win32 窗口验证 5 组启动、异常恢复和关闭场景；当时管理器 `--native-smoke` 执行 33 项 DWM、窗口样式、浅深色和尺寸检查，并输出 compositor 截图到 `artifacts/device-manager-native`。这些原生模式不由发布脚本默认执行，也不访问真实蓝牙或写用户白名单。Client 新增管理生命周期和 RPC 检查，Host 新增隔离目录的稳定身份、配对筛选、原子保存及失效/损坏名单检查；管理器检查多选、刷新、保存失败、关闭取消、操作栏及系统设置入口。
+
+0.6.3 的管理器原生修复验证已通过：`--native-smoke` 和 `--native-alt-f4-smoke` 各执行 75 项检查，报告分别为 `artifacts/device-manager-native-063/report.json` 和 `artifacts/device-manager-native-063-alt-f4/report.json`。浅深色及两种窗口尺寸下均保留 DWM 非客户区渲染和 Mica Alt，只有一个托管关闭按钮及关闭命中区域；compositor 截图确认单一关闭图形、圆角和阴影。标题拖动及右下角拉伸命中保持有效，实际点击关闭按钮和向测试窗口发送 Alt+F4 均返回取消退出码 1。候选设备使用内存模拟服务，原生蓝牙调用和用户白名单写入均为 0；这些是源码原生窗口验证，不代表已验证各架构发布 EXE 或真实耳机。
+
+已发布 0.6.1 当时的 App 检查为 24 项、总计 228 项，旧报告仍保留。当前 App.Tests 报告的 `version` 字段硬编码为 `0.6.0`，不能作为新发布包的专属执行回执。这些源码测试没有真实蓝牙调用，不能替代耳机和手机同时操作的实机验证。
 
 离屏预览使用相同界面和状态模型，输出文件必须不存在：
 
@@ -55,4 +80,14 @@ dotnet src/HeyMelody.App/bin/Release/net10.0/HeyMelody.dll --ui-preview artifact
 
 `--ui-live-preview <新PNG路径>` 通过只读包装访问原 Windows 后台，仅允许唯一已连接且名称精确为 OPPO Enco X4 的设备。没有可信快照即退出 1，不生成连接截图；结束时等待 Host 释放。该入口允许枚举、连接和读取，不允许设置写入，也不启动轮询。
 
-三 RID 的自包含发布使用 `Build-Client.ps1`。0.6.1 的静态包检查位于 `release/HeyMelody_Windows_0.6.1_STATIC-VALIDATION.json`，验证可执行文件架构、哈希、图标、原生绘图库和许可；该报告明确未验证真实蓝牙、真实只读 GUI 预览或 ARM64 硬件执行。`manifest.json` 和可选执行回执只绑定 GUI/Host 的 EXE 哈希，不涵盖应用托管 DLL，不能单凭这些哈希证明包与当前源码完全对应。历史 0.5.0 硬件证据不能证明本次迁移。模拟截图、原生窗口测试、构建和静态检查不代表真实耳机写入；只读 live preview 也不能证明本次提交、重试及手机并发行为。
+三 RID 的自包含发布使用 `Build-Client.ps1`。0.6.5 使用 `-Version 0.6.5` 完成全部 283 项默认测试及 x64/x86/ARM64 构建，ZIP 为 `release/HeyMelody_Windows_0.6.5_AllArchitectures.zip`。该轮 App 的 45 项检查报告为 `artifacts/avalonia-ui-20261006-201921-50225a6d/validation.json`，另行重跑主程序原生窗口的 54 项检查通过，日志为 `artifacts/release-065/native-smoke.log`，原生蓝牙调用和设置提交均为 0。静态报告 `release/HeyMelody_Windows_0.6.5_STATIC-VALIDATION.json` 核对三架构 9 个入口程序集的 `0.6.5.0` 版本、哈希、依赖、.NET 10.0.12 自包含运行时、许可，以及 ZIP 中的 1513 个文件路径/大小和 316 个关键内容哈希，全部通过。`artifacts/release-065/embedded-artwork.json` 的 6 项检查确认两张原始 PNG 在三架构的 GUI 程序集中完整嵌入，内容与提供的文件逐字节匹配。构建及静态日志位于 `artifacts/release-065`；这些源码测试与静态校验不代表三架构发布 EXE 的真实耳机执行或原生 ARM64 硬件验证。
+
+0.6.4 历史发布使用 `-Version 0.6.4` 完成全部 278 项默认测试及 x64/x86/ARM64 构建，ZIP 为 `release/HeyMelody_Windows_0.6.4_AllArchitectures.zip`。该发布前主程序 `--native-smoke` 的 50 项检查另行通过，验证首设备在真实 Win32 窗口中停在左边界且无额外留白；首、中、尾及邻近边界设备、末尾“+”完整可见和溢出状态变化由 App 的 40 项检查覆盖，离屏报告为 `artifacts/avalonia-ui-20261006-192934-9d5eae32/validation.json`。该轮构建和原生日志位于 `artifacts/release-064`。静态报告 `release/HeyMelody_Windows_0.6.4_STATIC-VALIDATION.json` 核对三架构 9 个入口程序集的 `0.6.4.0` 版本、哈希、依赖、运行时、许可，以及 ZIP 中的 1513 个文件路径/大小和 316 个关键内容哈希，全部通过。ZIP SHA-256 为 `1768863d0b81120507d142c97e3067fcc8e7b12d0733497be2a0cb4974846f05`。已有 ZIP 不含本轮 X4 PNG 和展示 View 改进，其静态报告也不验证这组新源码。
+
+0.6.3 历史发布通过 `-Version 0.6.3` 完成全部 275 项测试及 x64/x86/ARM64 构建，ZIP 为 `release/HeyMelody_Windows_0.6.3_AllArchitectures.zip`。静态验证报告 `release/HeyMelody_Windows_0.6.3_STATIC-VALIDATION.json` 核对三架构 9 个入口程序集的 `0.6.3.0` 版本、可执行文件与托管 DLL 哈希、原生依赖、共享运行时和许可，以及 ZIP 中的 1513 个文件路径/大小及 143 个关键内容哈希，全部通过。
+
+上述 0.6.3 发布包生成后，源码继续改进主界面设备栏的居中及共同滚动布局。当时完成 Release 构建，App 的 40 项检查及主程序原生窗口的 50 项检查通过；离屏报告位于 `artifacts/avalonia-ui-20261006-190031-92941599/validation.json`。该轮没有重新打包，现有 0.6.3 ZIP 不包含这组设备栏改进；0.6.4 已将其与自然滚动边界调整一同发布。该历史报告验证的是首尾额外留白方案，不能作为 0.6.4 自然边界或后续 X4 素材行为的回执。
+
+0.6.2 历史发布通过 `-Version 0.6.2` 完成完整测试和 x64/x86/ARM64 发布，ZIP 位于 `release/HeyMelody_Windows_0.6.2_AllArchitectures.zip`。静态包报告 `release/HeyMelody_Windows_0.6.2_STATIC-VALIDATION.json` 核对各架构 GUI、管理器、Host 的版本、可执行文件与托管 DLL 哈希、原生依赖、共享运行时、许可，以及 ZIP 中的 1513 个文件路径/大小和 143 个关键内容哈希。发布版 x64 管理器的模拟启动/关闭回执位于 `artifacts/published-manager-0.6.2-x64-mock-smoke.json`，使用 `--ui-preview`，关闭返回 1，复验中用户配置未改变。
+
+发布包的 `manifest.json` 和可选执行回执绑定 GUI、管理器和 Host 的 EXE 哈希；托管 DLL 哈希另记在静态包报告中。报告明确未验证真实蓝牙及 ARM64 硬件执行。旧报告仍保留，但历史 0.5.0 硬件证据不能证明本次迁移。模拟截图、原生窗口测试、构建和静态检查不代表真实耳机写入；只读 live preview 也不能证明本次提交、重试及手机并发行为。

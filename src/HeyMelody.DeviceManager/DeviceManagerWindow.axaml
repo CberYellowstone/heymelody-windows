@@ -1,0 +1,9 @@
+<fa:FAAppWindow xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                xmlns:fa="clr-namespace:FluentAvalonia.UI.Windowing;assembly=FluentAvalonia"
+                xmlns:local="clr-namespace:HeyMelodyWindows.DeviceManager"
+                x:Class="HeyMelodyWindows.DeviceManager.DeviceManagerWindow" Title="设备管理"
+                Icon="avares://HeyMelody.DeviceManager/Assets/HeyMelody.ico"
+                Width="520" Height="720" MinWidth="400" MinHeight="480" CanResize="True" ShowAsDialog="True"
+                WindowStartupLocation="CenterScreen">
+  <local:DeviceManagerView x:Name="Page" />
+</fa:FAAppWindow>

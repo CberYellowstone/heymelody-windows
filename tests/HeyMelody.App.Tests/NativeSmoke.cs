@@ -2,25 +2,31 @@ using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using FluentAvalonia.UI.Controls;
 using HeyMelodyWindows.App;
 
-/// <summary>A real Win32 window with an in-memory service; never starts a Bluetooth worker.</summary>
+/// <summary>
+/// A real Win32 window with an in-memory headset service; never starts a Bluetooth worker.
+/// Only --native-settings-smoke launches Windows settings. A true launcher result confirms
+/// that Windows accepted the URI request, not that a particular settings page was displayed.
+/// </summary>
 internal static class NativeSmoke
 {
     private static SmokeState _state = new();
 
-    public static int Run()
+    public static int Run(bool openSettings = false)
     {
         if (!OperatingSystem.IsWindows())
         {
             Console.WriteLine(JsonSerializer.Serialize(new { success = false, reason = "Windows required", nativeBluetoothCalls = 0 }));
             return 2;
         }
-        _state = new();
+        _state = new() { OpenSettings = openSettings };
         var uiThread = new Thread(() =>
         {
             try
@@ -34,7 +40,8 @@ internal static class NativeSmoke
         uiThread.Start();
         if (!uiThread.Join(TimeSpan.FromSeconds(20))) _state.Failure ??= "Native UI thread did not stop in twenty seconds.";
         var success = _state.Failure is null && _state.Closed && _state.Service.Disposals == 1
-            && _state.Service.Submissions == 0 && _state.Checks > 0;
+            && _state.Service.Submissions == 0 && _state.Checks > 0
+            && (!_state.OpenSettings || _state.SystemSettingsLaunchAccepted == true);
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             schemaVersion = 1, success, passed = _state.Checks, nativeBluetoothCalls = 0,
@@ -42,7 +49,12 @@ internal static class NativeSmoke
             serviceDisposals = _state.Service.Disposals, windowClosed = _state.Closed,
             settingsDialogCompleted = _state.SettingsDialogCompleted,
             failureDialogsCompleted = _state.FailureDialogsCompleted,
-            scope = "real Win32 FAAppWindow geometry, themes and lifecycle with an in-memory service; no DWM pixel or hardware assertions",
+            systemSettingsLaunchRequested = _state.OpenSettings,
+            systemSettingsLaunchAccepted = _state.SystemSettingsLaunchAccepted,
+            systemSettingsLaunchUri = _state.SystemSettingsLaunchUri,
+            scope = _state.OpenSettings
+                ? "real Win32 FAAppWindow geometry, themes and lifecycle with an in-memory headset service; one real Windows settings launch; true means the OS accepted the URI request, not that page content was verified; no DWM pixel or hardware assertions"
+                : "real Win32 FAAppWindow geometry, themes and lifecycle with an in-memory service; no system settings launch, DWM pixel or hardware assertions",
             states = _state.Receipts, failure = _state.Failure
         }));
         return success ? 0 : 1;
@@ -55,6 +67,9 @@ internal static class NativeSmoke
         public bool Closed { get; set; }
         public bool SettingsDialogCompleted { get; set; }
         public bool FailureDialogsCompleted { get; set; }
+        public bool OpenSettings { get; init; }
+        public bool? SystemSettingsLaunchAccepted { get; set; }
+        public string? SystemSettingsLaunchUri { get; set; }
         public string? Failure { get; set; }
         public List<object> Receipts { get; } = [];
         public TaskCompletionSource ClosedSignal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -112,19 +127,49 @@ internal static class NativeSmoke
                 var pageOrigin = page.TranslatePoint(default, window) ?? throw new InvalidOperationException("View is detached.");
                 Check(page.Bounds.Width > 0 && page.Bounds.Height > 0 && pageOrigin.Y >= window.TitleBar.Height - 1, "Content fits below titlebar.");
                 Check(page.IsCompact == (page.Bounds.Width < 1080), "Native responsive breakpoint.");
-                Check(page.FindControl<ProductArtwork>("HeroArt")?.ShowX4 == true, "Product visual reflects connected X4.");
+                var hero = page.FindControl<ProductArtwork>("HeroArt") ?? throw new InvalidOperationException("Product artwork missing.");
+                Check(Equals(hero.Visual, DeviceVisuals.X4Product)
+                    && hero.GetVisualDescendants().OfType<Image>().SingleOrDefault() is { Source: not null },
+                    "Connected X4 uses the embedded product PNG in the native window.");
                 var picker = page.FindControl<ListBox>("DevicePicker") ?? throw new InvalidOperationException("Picker missing.");
                 var pickerOrigin = picker.TranslatePoint(default, page) ?? throw new InvalidOperationException("Picker is detached.");
                 Check(picker.IsVisible && picker.Bounds.Height > 0 && pickerOrigin.Y >= 0
                     && pickerOrigin.Y + picker.Bounds.Height <= page.Bounds.Height + 1, "Picker remains inside native content viewport.");
+                DeviceBarTests.CheckBottomBar(page, page);
+                var scroll = page.FindControl<ScrollViewer>("DeviceBarScroll") ?? throw new InvalidOperationException("Device bar scroll missing.");
+                var padding = page.FindControl<Border>("DeviceStripPadding") ?? throw new InvalidOperationException("Device strip padding missing.");
+                var strip = page.FindControl<StackPanel>("DeviceStrip") ?? throw new InvalidOperationException("Device strip missing.");
+                var add = page.FindControl<Button>("AddDeviceButton") ?? throw new InvalidOperationException("Add device button missing.");
+                Check(picker.GetVisualAncestors().Contains(scroll) && add.GetVisualAncestors().Contains(scroll),
+                    "The native device picker and trailing add button share one scroll viewport.");
+                Check(scroll.Extent.Width > scroll.Viewport.Width && padding.Padding == default
+                    && Math.Abs(scroll.Extent.Width - strip.Bounds.Width) <= 1,
+                    "The native overflowing strip ends at its actual contents without artificial centering space.");
+                var selectedCard = picker.ContainerFromIndex(picker.SelectedIndex) as ListBoxItem
+                    ?? throw new InvalidOperationException("Selected native device card was not realized.");
+                var icon = selectedCard.GetVisualDescendants().OfType<DeviceIconView>().Single();
+                Check(Equals(icon.Visual, DeviceVisuals.X4Icon) && icon.Bounds.Size == new Size(28, 28)
+                    && icon.GetVisualDescendants().OfType<Image>().SingleOrDefault() is { Source: not null },
+                    "The native X4 card uses the embedded earphones PNG in its fixed icon slot.");
+                var selectedOrigin = selectedCard.TranslatePoint(default, scroll)
+                    ?? throw new InvalidOperationException("Selected native device card is detached.");
+                var selectedCenter = selectedOrigin.X + selectedCard.Bounds.Width / 2;
+                Check(selectedCard.IsSelected && Equals(picker.SelectedItem, vm.SelectedDevice)
+                    && picker.SelectedIndex == 0 && Math.Abs(scroll.Offset.X) <= 1
+                    && selectedOrigin.X >= -1 && selectedOrigin.X + selectedCard.Bounds.Width <= scroll.Viewport.Width + 1,
+                    "The first selected native device stays fully visible at the natural left boundary after startup and resizing.");
                 _state.Receipts.Add(new
                 {
                     theme = dark ? "dark" : "light", requestedWidth = size.Width, requestedHeight = size.Height,
                     clientWidth = window.ClientSize.Width, clientHeight = window.ClientSize.Height,
                     contentWidth = page.Bounds.Width, contentHeight = page.Bounds.Height,
-                    titleBarHeight = titleBar!.Bounds.Height, compact = page.IsCompact
+                    titleBarHeight = titleBar!.Bounds.Height, compact = page.IsCompact,
+                    deviceCount = picker.ItemCount, deviceViewportWidth = scroll.Viewport.Width,
+                    deviceExtentWidth = scroll.Extent.Width, deviceOffset = scroll.Offset.X,
+                    selectedDeviceCenter = selectedCenter, devicePadding = padding.Padding.Left
                 });
             }
+            if (_state.OpenSettings) await VerifySystemSettingsLaunchAsync(page, window, vm);
             Check(_state.Service.Submissions == 0, "Native smoke never submits settings.");
             var dialogs = new WindowConfirmationService(window);
             var retryTask = vm.Dialogs.RunAsync(token => dialogs.ConfirmRetryAsync("重试设置", "请核对后决定是否重试。", token));
@@ -167,6 +212,39 @@ internal static class NativeSmoke
         }
     }
 
+    private static async Task VerifySystemSettingsLaunchAsync(MainView page, MainWindow window, MainViewModel vm)
+    {
+        var owner = TopLevel.GetTopLevel(page) ?? throw new InvalidOperationException("Page has no native owner.");
+        var launcher = new RecordingLauncher(owner.Launcher);
+        page.LauncherOverride = launcher;
+        var enumerations = _state.Service.Enumerations;
+        var selected = vm.SelectedDevice;
+        var button = page.FindControl<Button>("AddDeviceButton") ?? throw new InvalidOperationException("Add device button missing.");
+        var scroll = page.FindControl<ScrollViewer>("DeviceBarScroll") ?? throw new InvalidOperationException("Device bar scroll missing.");
+        scroll.Offset = new Vector(scroll.Extent.Width, 0);
+        await Task.Delay(50); Dispatcher.UIThread.RunJobs();
+        var buttonOrigin = button.TranslatePoint(default, scroll) ?? throw new InvalidOperationException("Add device button is detached.");
+        Check(buttonOrigin.X >= -1 && buttonOrigin.X + button.Bounds.Width <= scroll.Viewport.Width + 1,
+            "Scrolling to the native strip's end makes the add device button visible before activation.");
+        Check(button.IsEffectivelyEnabled, "Native add device button is enabled before launch.");
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _state.SystemSettingsLaunchUri = launcher.Uris.SingleOrDefault()?.OriginalString;
+        _state.SystemSettingsLaunchAccepted = await launcher.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Check(launcher.Uris is [{ OriginalString: "ms-settings:bluetooth" }],
+            "The native add device button launches the Bluetooth settings URI exactly once.");
+        Check(_state.SystemSettingsLaunchAccepted == true, "Windows accepts the Bluetooth settings URI request.");
+        var host = page.FindControl<Border>("AddDeviceHost") ?? throw new InvalidOperationException("Add device host missing.");
+        for (int attempt = 0; !host.IsEnabled && attempt < 40; attempt++) await Task.Delay(25);
+        Check(host.IsEnabled, "Native add device control recovers after the accepted launch.");
+        Check(!window.GetVisualDescendants().OfType<FAContentDialog>().Any(), "Accepted launch creates no application error dialog.");
+        Check(_state.Service.Enumerations == enumerations && _state.Service.Submissions == 0
+            && Equals(vm.SelectedDevice, selected) && vm.HasVerifiedSnapshot,
+            "Opening Windows settings leaves device enumeration, selection and the verified session intact without a setter.");
+        // Keep this explicit smoke mode alive briefly for an external UI Automation
+        // observer; the launcher receipt alone does not verify the Settings page.
+        await Task.Delay(TimeSpan.FromSeconds(3));
+    }
+
     private static async Task StopOnTimeoutAsync(MainWindow window, IClassicDesktopStyleApplicationLifetime desktop)
     {
         await Task.Delay(TimeSpan.FromSeconds(12));
@@ -199,7 +277,14 @@ internal static class NativeSmoke
         private readonly PreviewService _inner = new();
         public int Submissions { get; private set; }
         public int Disposals { get; private set; }
-        public Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken token) => _inner.EnumerateAsync(token);
+        public int Enumerations { get; private set; }
+        public async Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken token)
+        {
+            Enumerations++;
+            var first = (await _inner.EnumerateAsync(token))[0];
+            return new[] { first }.Concat(Enumerable.Range(1, 7)
+                .Select(index => new UiDevice("native-smoke-device-" + index, "原生布局测试耳机 " + (index + 1), true))).ToArray();
+        }
         public Task<UiSnapshot> ConnectAsync(string identity, CancellationToken token) => _inner.ConnectAsync(identity, token);
         public Task DisconnectAsync(CancellationToken token) => _inner.DisconnectAsync(token);
         public Task<UiSnapshot> RefreshAsync(CancellationToken token) => _inner.RefreshAsync(token);
@@ -209,5 +294,27 @@ internal static class NativeSmoke
             throw new InvalidOperationException("Native smoke forbids settings.");
         }
         public ValueTask DisposeAsync() { Disposals++; return _inner.DisposeAsync(); }
+    }
+
+    private sealed class RecordingLauncher(ILauncher inner) : ILauncher
+    {
+        public List<Uri> Uris { get; } = [];
+        public TaskCompletionSource<bool> Completed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<bool> LaunchUriAsync(Uri uri)
+        {
+            Uris.Add(uri);
+            try
+            {
+                var accepted = await inner.LaunchUriAsync(uri);
+                Completed.TrySetResult(accepted);
+                return accepted;
+            }
+            catch (Exception error)
+            {
+                Completed.TrySetException(error);
+                throw;
+            }
+        }
+        public Task<bool> LaunchFileAsync(IStorageItem file) => inner.LaunchFileAsync(file);
     }
 }

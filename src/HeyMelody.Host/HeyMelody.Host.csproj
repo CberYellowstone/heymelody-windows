@@ -9,6 +9,7 @@
     <Version>0.6.0</Version>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="HeyMelody.Host.Tests" />
     <ProjectReference Include="../HeyMelody.Windows/HeyMelody.Windows.csproj" />
     <ProjectReference Include="../HeyMelody.Daily/HeyMelody.Daily.csproj" />
     <ProjectReference Include="../HeyMelody.Contracts/HeyMelody.Contracts.csproj" />

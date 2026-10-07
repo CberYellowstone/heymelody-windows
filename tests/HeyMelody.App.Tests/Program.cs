@@ -12,6 +12,8 @@ using FluentAvalonia.Styling;
 using HeyMelodyWindows.App;
 
 if (args is ["--native-smoke"]) return NativeSmoke.Run();
+if (args is ["--native-settings-smoke"]) return NativeSmoke.Run(openSettings: true);
+if (args is ["--native-startup-smoke"]) return NativeStartupSmoke.Run();
 
 string output = args.Length == 2 && args[0] == "--output-dir" ? Path.GetFullPath(args[1])
     : Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "avalonia-ui-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8]);
@@ -46,9 +48,10 @@ try
                 Check(picker.IsVisible && picker.Bounds.Height > 0, "Device picker stays visible");
                 var pickerOrigin = picker.TranslatePoint(default, window)!.Value;
                 Check(pickerOrigin.Y >= 0 && pickerOrigin.Y + picker.Bounds.Height <= size.Height, "Device picker is within viewport");
+                DeviceBarTests.CheckBottomBar(view, window);
                 var anc = view.FindControl<ComboBox>("AncCombo")!;
                 Check(anc.IsEnabled == (scenario is "connected" or "partial"), "Only verified models enable controls");
-                Check(view.FindControl<ProductArtwork>("HeroArt")!.ShowX4 == (scenario is "connected" or "partial"), "Artwork uses verified product ID");
+                DeviceVisualTests.CheckScenario(view, scenario);
                 if (scenario == "partial")
                 {
                     Check(vm.CaseBatteryText == "—" && vm.HiResStateText == "未确认", "Unknown fields stay unknown");
@@ -110,7 +113,12 @@ try
         return true;
     }, CancellationToken.None).GetAwaiter().GetResult();
     passed += InteractionTests.Run(session);
-    Check(passed == 24, "Every UI scenario and interaction case must finish");
+    passed += DeviceBarTests.Run(session);
+    passed += DeviceVisualTests.Run(session);
+    var startupChecks = StartupTests.Run(session);
+    var settingsManagementChecks = SettingsManagementTests.Run(session);
+    passed += startupChecks + settingsManagementChecks;
+    Check(passed == (OperatingSystem.IsWindows() ? 45 : 42), "Every UI scenario and interaction case must finish");
     var report = new { schemaVersion = 1, version = "0.6.0", passed, success = true, nativeBluetoothCalls = 0, screenshotScope = "headless Skia content; native titlebar not included", screenshots = receipts };
     using (var stream = new FileStream(Path.Combine(output, "validation.json"), FileMode.CreateNew)) JsonSerializer.Serialize(stream, report, new JsonSerializerOptions { WriteIndented = true });
     Console.WriteLine(JsonSerializer.Serialize(new { passed, success = true, nativeBluetoothCalls = 0, output }));

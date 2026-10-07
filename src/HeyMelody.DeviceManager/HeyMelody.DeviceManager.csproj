@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <AssemblyName>HeyMelody.DeviceManager</AssemblyName>
+    <RootNamespace>HeyMelodyWindows.DeviceManager</RootNamespace>
+    <Version>0.6.0</Version><RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <ApplicationManifest Condition="$([MSBuild]::IsOSPlatform('Windows'))">app.manifest</ApplicationManifest>
+    <ApplicationIcon>../HeyMelody.App/Assets/HeyMelody.ico</ApplicationIcon>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.3" />
+    <PackageReference Include="FluentAvaloniaUI" Version="3.1.0" />
+    <ProjectReference Include="../HeyMelody.Client/HeyMelody.Client.csproj" />
+    <AvaloniaResource Include="../HeyMelody.App/Assets/HeyMelody.ico" Link="Assets/HeyMelody.ico" />
+    <InternalsVisibleTo Include="HeyMelody.DeviceManager.Tests" />
+  </ItemGroup>
+</Project>

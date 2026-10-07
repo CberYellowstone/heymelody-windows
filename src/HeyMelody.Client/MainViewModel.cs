@@ -120,7 +120,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public string RightChargeText => Charge(_snapshot?.RightCharging, _snapshot?.RightBattery);
     public string CaseChargeText => Charge(_snapshot?.CaseCharging, _snapshot?.CaseBattery);
     public string? Firmware => _snapshot?.Firmware;
-    public string? ProductId => _snapshot?.ProductId;
+    public string? ProductId => _snapshot is { } snapshot
+        && snapshot.Identity == _sessionIdentity && _sessionIdentity == SelectedDevice?.Identity
+        ? snapshot.ProductId : null;
     public bool SpatialHiResMutex => _snapshot?.SpatialHiResMutex == true;
     public IReadOnlyList<string> Warnings => _snapshot?.Warnings ?? [];
     public bool HasWarnings => Warnings.Count != 0;
@@ -166,9 +168,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         NotifyCommands();
     }
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(IReadOnlyList<UiDevice>? devices = null)
     {
-        await EnumerateAsync();
+        await EnumerateAsync(devices);
         if (_preview && SelectedDevice is not null) await ConnectOrDisconnectAsync();
     }
 
@@ -189,9 +191,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         finally { _lifecyclePending = false; NotifyState(); }
     }
 
-    private Task EnumerateAsync() => RunAsync("正在查找已配对耳机…", async () =>
+    private Task EnumerateAsync(IReadOnlyList<UiDevice>? initialDevices = null) => RunAsync("正在查找已配对耳机…", async () =>
     {
-        var devices = await _service.EnumerateAsync(_lifetime.Token);
+        var devices = initialDevices ?? await _service.EnumerateAsync(_lifetime.Token);
         var selected = devices.FirstOrDefault(d => d.Identity == SelectedDevice?.Identity) ?? devices.FirstOrDefault();
         if (selected?.Identity != SelectedDevice?.Identity)
         {
@@ -226,14 +228,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public Task SelectDeviceAsync(UiDevice? device) => RunAsync("正在切换耳机…", async () =>
     {
-        if (device?.Identity == SelectedDevice?.Identity) return;
-        if (device is not null && !Devices.Any(d => d.Identity == device.Identity)) return;
-        if (EqDirty && !await ConfirmAsync("切换耳机", "切换耳机会丢弃尚未保存的均衡器调整。继续切换吗？")) return;
-        AdvanceSession();
-        var hadSession = _sessionIdentity is not null;
-        _sessionIdentity = null; _selectedDevice = device; ResetSelection(); _title = device?.Name ?? "选择一副耳机";
-        if (hadSession) await _service.DisconnectAsync(_lifetime.Token);
-        SetStatus("选择耳机后连接"); NotifyState();
+        await ChangeSelectedDeviceAsync(device, "切换耳机", "切换耳机会丢弃尚未保存的均衡器调整。继续切换吗？");
     });
 
     private Task ConnectOrDisconnectAsync() => RunAsync("正在连接耳机并读取状态…", async () =>
@@ -471,6 +466,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _closing = true; _lifetime.Cancel();
         try { await _service.DisposeAsync(); } catch { }
         await _operations.WhenIdle;
+        ClearDeviceManagement();
         foreach (var band in Bands) band.PropertyChanged -= BandChanged;
         NotifyState();
     }

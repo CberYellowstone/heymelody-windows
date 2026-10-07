@@ -27,6 +27,8 @@ public static class Program
                     object data = request.Operation switch
                     {
                         "enumerate" => await service.EnumerateAsync(budget.Token),
+                        "enumerateCandidates" => await service.EnumerateCandidatesAsync(budget.Token),
+                        "saveWhitelist" => await service.SaveWhitelistAsync(request.DeviceIdentities ?? throw new InvalidDataException(), budget.Token),
                         "connect" => await service.ConnectAsync(request.Identity ?? throw new InvalidDataException(), budget.Token),
                         "refresh" => await service.RefreshAsync(request.RefreshScope ?? RefreshScope.Full, budget.Token),
                         "diagnostics" => service.Diagnostics(),

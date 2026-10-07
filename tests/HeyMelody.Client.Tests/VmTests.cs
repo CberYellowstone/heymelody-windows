@@ -156,6 +156,7 @@ internal static class VmTests
             Check(confirmations.Calls == 2 && !confirmations.First.Task.IsCompleted && service.Actions.Count == 0 && service.Disposals == 1);
         });
         await RefreshInteractionTests.RunAsync(test);
+        await DeviceManagementTests.RunAsync(test);
     }
 
     private static MainViewModel Create(FakeService service, Confirmations? confirmations = null) => new(service, confirmations ?? new(true));

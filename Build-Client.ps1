@@ -19,7 +19,7 @@ if ((Test-Path -LiteralPath $archive) -or ((Test-Path -LiteralPath $stage) -and 
 }
 if ($FinalizeOnly -and -not (Test-Path -LiteralPath $stage -PathType Container)) { throw 'There is no published directory to finalize.' }
 if (-not $SkipTests -and -not $FinalizeOnly) {
-    foreach ($project in @('HeyMelody.Protocol.Tests', 'HeyMelody.Devices.Tests', 'HeyMelody.Control.Tests', 'HeyMelody.Daily.Tests', 'HeyMelody.Probe.Tests', 'HeyMelody.Client.Tests', 'HeyMelody.App.Tests')) {
+    foreach ($project in @('HeyMelody.Protocol.Tests', 'HeyMelody.Devices.Tests', 'HeyMelody.Control.Tests', 'HeyMelody.Daily.Tests', 'HeyMelody.Probe.Tests', 'HeyMelody.Host.Tests', 'HeyMelody.Client.Tests', 'HeyMelody.App.Tests', 'HeyMelody.DeviceManager.Tests')) {
         & dotnet run --project (Join-Path $root ('tests/' + $project + '/' + $project + '.csproj')) -c Release
         if ($LASTEXITCODE -ne 0) { throw ('Tests failed: ' + $project) }
     }
@@ -92,11 +92,13 @@ foreach ($architecture in @('x64', 'x86', 'arm64')) {
         Write-Host ('Publishing ' + $rid)
         & dotnet publish (Join-Path $root 'src/HeyMelody.App/HeyMelody.App.csproj') -c Release -r $rid --self-contained true -o $app '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) --nologo
         if ($LASTEXITCODE -ne 0) { throw ('GUI publish failed: ' + $rid) }
+        & dotnet publish (Join-Path $root 'src/HeyMelody.DeviceManager/HeyMelody.DeviceManager.csproj') -c Release -r $rid --self-contained true -o $app '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) --nologo
+        if ($LASTEXITCODE -ne 0) { throw ('Device manager publish failed: ' + $rid) }
         & dotnet publish (Join-Path $root 'src/HeyMelody.Host/HeyMelody.Host.csproj') -c Release -r $rid --self-contained true -o $hostOutput '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) --nologo
         if ($LASTEXITCODE -ne 0) { throw ('Host publish failed: ' + $rid) }
     }
     $runtimeConfig = Get-Content -LiteralPath (Join-Path $app 'HeyMelody.runtimeconfig.json') -Raw | ConvertFrom-Json
-    foreach ($runtimeEntry in @(@{ directory = $app; name = 'HeyMelody' }, @{ directory = $hostOutput; name = 'HeyMelody.Host' })) {
+    foreach ($runtimeEntry in @(@{ directory = $app; name = 'HeyMelody' }, @{ directory = $app; name = 'HeyMelody.DeviceManager' }, @{ directory = $hostOutput; name = 'HeyMelody.Host' })) {
         $runtimeDirectory = $runtimeEntry.directory
         $publishedRuntime = Get-Content -LiteralPath (Join-Path $runtimeDirectory ($runtimeEntry.name + '.runtimeconfig.json')) -Raw | ConvertFrom-Json
         $runtimeVersion = @($publishedRuntime.runtimeOptions.includedFrameworks | Where-Object { $_.name -eq 'Microsoft.NETCore.App' })[0].version
@@ -105,12 +107,24 @@ foreach ($architecture in @('x64', 'x86', 'arm64')) {
         Copy-Item -LiteralPath (Join-Path $corePackage 'THIRD-PARTY-NOTICES.TXT') -Destination (Join-Path $runtimeDirectory 'THIRD-PARTY-NOTICES.txt')
     }
     if (@($runtimeConfig.runtimeOptions.includedFrameworks | Where-Object { $_.name -eq 'Microsoft.WindowsDesktop.App' }).Count -ne 0) { throw 'The Avalonia GUI must not publish the Windows Desktop runtime.' }
+    $managerConfig = Get-Content -LiteralPath (Join-Path $app 'HeyMelody.DeviceManager.runtimeconfig.json') -Raw | ConvertFrom-Json
+    if (@($managerConfig.runtimeOptions.includedFrameworks | Where-Object { $_.name -eq 'Microsoft.WindowsDesktop.App' }).Count -ne 0) { throw 'The device manager must not publish the Windows Desktop runtime.' }
+    $guiRuntime = @($runtimeConfig.runtimeOptions.includedFrameworks | Where-Object { $_.name -eq 'Microsoft.NETCore.App' })[0].version
+    $managerRuntime = @($managerConfig.runtimeOptions.includedFrameworks | Where-Object { $_.name -eq 'Microsoft.NETCore.App' })[0].version
+    if ($guiRuntime -ne $managerRuntime) { throw 'The GUI and device manager must share the exact .NET runtime version.' }
+    # Both GUI projects deliberately use identical package versions in the same publish directory.
+    $guiAssets = Get-Content -LiteralPath (Join-Path $root 'src/HeyMelody.App/obj/project.assets.json') -Raw | ConvertFrom-Json
+    $managerAssets = Get-Content -LiteralPath (Join-Path $root 'src/HeyMelody.DeviceManager/obj/project.assets.json') -Raw | ConvertFrom-Json
+    foreach ($dependency in $managerAssets.libraries.PSObject.Properties | Where-Object { $_.Value.type -eq 'package' }) {
+        if (-not $guiAssets.libraries.PSObject.Properties[$dependency.Name]) { throw ('The manager has a dependency not covered by the shared GUI notices: ' + $dependency.Name) }
+    }
     Export-PackageNotices (Join-Path $root 'src/HeyMelody.App/obj/project.assets.json') $app
     $builds += [ordered]@{
         architecture = $architecture; rid = $rid; selfContained = $true
-        gui = ($architecture + '/HeyMelody.exe'); host = ($architecture + '/backend/HeyMelody.Host.exe')
-        guiFramework = 'net10.0'; hostFramework = 'net10.0-windows'; uiToolkit = 'Avalonia + FluentAvalonia'
+        gui = ($architecture + '/HeyMelody.exe'); deviceManager = ($architecture + '/HeyMelody.DeviceManager.exe'); host = ($architecture + '/backend/HeyMelody.Host.exe')
+        guiFramework = 'net10.0'; deviceManagerFramework = 'net10.0'; hostFramework = 'net10.0-windows'; uiToolkit = 'Avalonia + FluentAvalonia'
         guiSha256 = (Get-FileHash -LiteralPath (Join-Path $app 'HeyMelody.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+        deviceManagerSha256 = (Get-FileHash -LiteralPath (Join-Path $app 'HeyMelody.DeviceManager.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
         hostSha256 = (Get-FileHash -LiteralPath (Join-Path $hostOutput 'HeyMelody.Host.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
         hardwareExecutionVerified = $false; validationScope = 'build-only; see VALIDATION.json for actual execution evidence'
     }
@@ -123,7 +137,7 @@ Copy-Item -LiteralPath (Join-Path $root 'packaging/SOURCE-NOTES.md') -Destinatio
 if ($ValidationPath) {
     foreach ($build in $builds) {
         $receipt = @($validation.builds | Where-Object { $_.architecture -eq $build.architecture })
-        if ($receipt.Count -ne 1 -or $receipt[0].guiSha256 -ne $build.guiSha256 -or $receipt[0].hostSha256 -ne $build.hostSha256) { throw ('Validation executable hashes do not match: ' + $build.architecture) }
+        if ($receipt.Count -ne 1 -or $receipt[0].guiSha256 -ne $build.guiSha256 -or $receipt[0].deviceManagerSha256 -ne $build.deviceManagerSha256 -or $receipt[0].hostSha256 -ne $build.hostSha256) { throw ('Validation executable hashes do not match: ' + $build.architecture) }
     }
     Copy-Item -LiteralPath $ValidationPath -Destination (Join-Path $stage 'VALIDATION.json')
 }

@@ -2,17 +2,19 @@
 
 独立源码仓库、克隆后的构建步骤和本地研究资料依赖见 [REPOSITORY.md](REPOSITORY.md)。
 
-当前发布版本为 **0.6.1**，在 0.6.0 的 **Avalonia + FluentAvalonia** 迁移基础上改进设备刷新交互。界面保留产品展示、设备信息和设置、底部设备切换布局，以及 OPPO Enco X4 的电量、降噪、五种声音预设、十段 EQ、双连、游戏和空间模式、Hi-Res 互斥控制。自动刷新分段读取，用户提交优先于下一段刷新；刷新期间可以继续选择设置和编辑 EQ，只限制正在提交的功能组再次提交。
+当前发布版本为 **0.6.5**，使用 **Avalonia + FluentAvalonia**。独立设备管理器维护要显示的已配对音频设备白名单；有效名单为空时先打开管理器，也可从应用设置进入。主界面底栏使用主题色边框标记所选设备，卡片内容与整栏居中，设备卡片和末尾的“+”共同横向滚动；选中项按实际滚动边界尽量靠近中央。“+”打开 Windows 蓝牙设置。X4 产品图与底栏图标使用独立展示 View，预留动画、3D、矢量与字体图标的模板入口。管理器使用 Mica Alt 背景，仅有一个关闭按钮；不支持该材质的系统回退到主题实色。
 
-执行 `Build-Client.ps1 -Version 0.6.1` 后，完整解压 `release/HeyMelody_Windows_0.6.1_AllArchitectures.zip`，双击 `Start-HeyMelody.cmd`；或直接运行对应架构目录中的 `HeyMelody.exe`。x86、x64、ARM64 均自带 .NET 运行时，无须安装 SDK。先在 Windows 中配对并连接耳机，再在客户端选择并连接耳机。只读刷新不发送设置；仅对尚未结束的用户操作进行有界重试，取消重试会清空全部待选设置和 EQ 草稿，再读取耳机实际状态。详细规则见 [gui-notes.md](gui-notes.md)。
+OPPO Enco X4 支持电量、降噪、五种声音预设、十段 EQ、双连、游戏和空间模式、Hi-Res 互斥控制。自动刷新分段读取，用户提交优先于下一段刷新；刷新期间可以继续选择设置和编辑 EQ，只限制正在提交的功能组再次提交。展示型号的名称提示不替代蓝牙控制所需的 Product ID 验证。
+
+执行 `Build-Client.ps1 -Version 0.6.5` 后，完整解压 `release/HeyMelody_Windows_0.6.5_AllArchitectures.zip`，双击 `Start-HeyMelody.cmd`；或直接运行对应架构目录中的 `HeyMelody.exe`。x86、x64、ARM64 均自带 .NET 运行时，无须安装 SDK。先在 Windows 中配对耳机，在设备管理器中勾选并保存，再在主界面选择并连接耳机；首次启动若未保存任何有效设备而关闭管理器，整个程序退出。只读刷新不发送设置；仅对尚未结束的用户操作进行有界重试，取消重试会清空全部待选设置和 EQ 草稿，再读取耳机实际状态。详细规则见 [gui-notes.md](gui-notes.md)。
 
 当前范围为 **Windows 上已有 Enco X4 功能及刷新交互**，实际蓝牙控制继续使用独立的 Windows 后台。其他型号、macOS/Linux 后台和 2.3 Mbps 无损链路的推进已暂缓；已完成的资料调研保留在 [docs/research](docs/research)，不构成本版本支持承诺。
 
-源码入口为 `src/HeyMelody.App`，共享界面契约为 `src/HeyMelody.Contracts`，界面状态和进程通信为 `src/HeyMelody.Client`，蓝牙后台为 `src/HeyMelody.Host`，日常功能为 `src/HeyMelody.Daily`。使用 .NET SDK 10 构建；官方 NuGet 源已写入 `NuGet.Config`。常规离线测试不需要本地 APK 或旧证据 ZIP，完整步骤见 [REPOSITORY.md](REPOSITORY.md)。OTA、录音、翻译和健康功能留待后续阶段。
+源码入口为 `src/HeyMelody.App`，独立管理器为 `src/HeyMelody.DeviceManager`，共享界面契约为 `src/HeyMelody.Contracts`，界面状态和进程通信为 `src/HeyMelody.Client`，蓝牙后台为 `src/HeyMelody.Host`，日常功能为 `src/HeyMelody.Daily`。使用 .NET SDK 10 构建；官方 NuGet 源已写入 `NuGet.Config`。常规离线测试不需要本地 APK 或旧证据 ZIP，完整步骤见 [REPOSITORY.md](REPOSITORY.md)。OTA、录音、翻译和健康功能留待后续阶段。
 
 新界面的布局、交互约束、主题与模拟/真实只读预览入口见 [gui-notes.md](gui-notes.md)。
 
-0.6.1 已通过发布脚本的 228 项离线/界面测试、另行执行的 38 项原生 Windows 窗口检查、三架构静态包检查与 ZIP 完整性检查；打包后的 x64/x86 模拟界面预览运行成功。上述验证未调用真实耳机，也没有执行 ARM64 实机测试。验证入口与范围见 [REPOSITORY.md](REPOSITORY.md)。
+0.6.5 已通过发布脚本的 283 项离线/界面测试、另行执行的 54 项原生 Windows 窗口检查、三架构静态包检查与 ZIP 完整性检查；两张 X4 PNG 在三架构程序集中逐字节验证通过。上述验证未调用真实耳机，也没有执行 ARM64 实机测试。验证入口与范围见 [REPOSITORY.md](REPOSITORY.md)。生成的发布包与本地验证报告不随 Git 提交。
 
 历史 0.5.0 的 x64/x86 蓝牙 GET 与真实界面预览证据保留在 `phase5-notes.md` 和本地 `artifacts/phase5-release-validation.json`，仅证明该旧版本。本分支不会自动沿用旧报告作为新发布包的硬件验证；交叉构建也不代表已在 ARM64 电脑执行。
 
