@@ -1,0 +1,4 @@
+# Existing dependency versions used by the 2026-10-07 offline acceptance.
+# No Android execution or androguard is required by this tool closure.
+cryptography==46.0.4
+Pillow==12.2.0

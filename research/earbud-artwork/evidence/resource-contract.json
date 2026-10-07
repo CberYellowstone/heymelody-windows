@@ -1,0 +1,405 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "source": "欢律.apk",
+      "package": "com.heytap.headset",
+      "version_name": "17.6.5",
+      "version_code": 117006005,
+      "apk_sha256": "eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4",
+      "dex_entry": "classes3.dex",
+      "dex_sha256": "b1ef4c90f60bdc6b333b61a14b6ea99d01a7ad2d7c7ed07776f8a2b46de04025",
+      "class": "Lcom/oplus/melody/model/net/H;",
+      "resource_methods": [
+        {
+          "method": "Lcom/oplus/melody/model/net/H;->b(Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)Ljava/util/concurrent/CompletableFuture;",
+          "http_method": "POST",
+          "route": "v1/earphone/resource/{type}",
+          "parameters": "HeaderMap, Body",
+          "annotations": [
+            {
+              "type": "Lag/o;",
+              "value": "v1/earphone/resource/{type}"
+            },
+            {
+              "type": "Ldalvik/annotation/Signature;",
+              "value": [
+                "(",
+                "Ljava/lang/String;",
+                "Ljava/util/Map<",
+                "Ljava/lang/String;",
+                "Ljava/lang/String;",
+                ">;",
+                "Ljava/lang/String;",
+                ")",
+                "Ljava/util/concurrent/CompletableFuture<",
+                "Ljava/lang/String;",
+                ">;"
+              ]
+            }
+          ],
+          "parameter_annotations": [
+            [
+              {
+                "type": "Lag/s;",
+                "value": "type"
+              }
+            ],
+            [
+              {
+                "type": "Lag/j;"
+              }
+            ],
+            [
+              {
+                "type": "Lag/a;"
+              }
+            ]
+          ]
+        },
+        {
+          "method": "Lcom/oplus/melody/model/net/H;->h(Ljava/util/Map;Ljava/lang/String;)Ljava/util/concurrent/CompletableFuture;",
+          "http_method": "POST",
+          "route": "v1/earphone/resource/fetch",
+          "parameters": "HeaderMap, Body",
+          "annotations": [
+            {
+              "type": "Lag/o;",
+              "value": "v1/earphone/resource/fetch"
+            },
+            {
+              "type": "Ldalvik/annotation/Signature;",
+              "value": [
+                "(",
+                "Ljava/util/Map<",
+                "Ljava/lang/String;",
+                "Ljava/lang/String;",
+                ">;",
+                "Ljava/lang/String;",
+                ")",
+                "Ljava/util/concurrent/CompletableFuture<",
+                "Ljava/lang/String;",
+                ">;"
+              ]
+            }
+          ],
+          "parameter_annotations": [
+            [
+              {
+                "type": "Lag/j;"
+              }
+            ],
+            [
+              {
+                "type": "Lag/a;"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "version_code": 17006003,
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "dex_entry": "classes2.dex",
+      "dex_sha256": "dc1fcb15e4a71ac74a7f990679ceaceeb9cf13f267631c765650af26c0a42bba",
+      "class": "Lcom/oplus/melody/model/net/F;",
+      "resource_methods": [
+        {
+          "method": "Lcom/oplus/melody/model/net/F;->b(Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)Ljava/util/concurrent/CompletableFuture;",
+          "http_method": "POST",
+          "route": "v1/earphone/resource/{type}",
+          "parameters": "HeaderMap, Body",
+          "annotations": [
+            {
+              "type": "LAe/o;",
+              "value": "v1/earphone/resource/{type}"
+            },
+            {
+              "type": "Ldalvik/annotation/Signature;",
+              "value": [
+                "(",
+                "Ljava/lang/String;",
+                "Ljava/util/Map<",
+                "Ljava/lang/String;",
+                "Ljava/lang/String;",
+                ">;",
+                "Ljava/lang/String;",
+                ")",
+                "Ljava/util/concurrent/CompletableFuture<",
+                "Ljava/lang/String;",
+                ">;"
+              ]
+            }
+          ],
+          "parameter_annotations": [
+            [
+              {
+                "type": "LAe/s;",
+                "value": "type"
+              }
+            ],
+            [
+              {
+                "type": "LAe/j;"
+              }
+            ],
+            [
+              {
+                "type": "LAe/a;"
+              }
+            ]
+          ]
+        },
+        {
+          "method": "Lcom/oplus/melody/model/net/F;->h(Ljava/util/Map;Ljava/lang/String;)Ljava/util/concurrent/CompletableFuture;",
+          "http_method": "POST",
+          "route": "v1/earphone/resource/fetch",
+          "parameters": "HeaderMap, Body",
+          "annotations": [
+            {
+              "type": "LAe/o;",
+              "value": "v1/earphone/resource/fetch"
+            },
+            {
+              "type": "Ldalvik/annotation/Signature;",
+              "value": [
+                "(",
+                "Ljava/util/Map<",
+                "Ljava/lang/String;",
+                "Ljava/lang/String;",
+                ">;",
+                "Ljava/lang/String;",
+                ")",
+                "Ljava/util/concurrent/CompletableFuture<",
+                "Ljava/lang/String;",
+                ">;"
+              ]
+            }
+          ],
+          "parameter_annotations": [
+            [
+              {
+                "type": "LAe/j;"
+              }
+            ],
+            [
+              {
+                "type": "LAe/a;"
+              }
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "api_base": "https://iot-earbuds-cn.heytapmobi.com/",
+  "authentication": {
+    "headers": [
+      "Content-Type",
+      "appid",
+      "ts",
+      "nonce",
+      "sv",
+      "sign"
+    ],
+    "public_appid": "earphone",
+    "sv": "v1",
+    "request_body_signature": "HMAC-SHA1, lowercase hexadecimal, exact UTF-8 body bytes",
+    "material_source": "APK-local encrypted application material authenticated using APK certificate digest; memory only",
+    "requires_account_or_phone_identifier_in_traced_chain": false,
+    "secret_material_persisted": false,
+    "code_evidence": [
+      {
+        "dex": "classes2.dex",
+        "class": "LC7/a;",
+        "method": "c()Lkotlin/Pair;",
+        "offset_bytes": "0x0008",
+        "behavior": "Read current APK signing certificate digest"
+      },
+      {
+        "dex": "classes.dex",
+        "class": "LY6/b;",
+        "method": "F(String,byte[])String",
+        "offset_bytes": "0x0028",
+        "behavior": "AES/GCM/NoPadding with 12-byte nonce and 128-bit tag"
+      },
+      {
+        "dex": "classes2.dex",
+        "class": "Lcom/oplus/melody/model/net/D;",
+        "method": "a(String,SecretKeySpec)Map",
+        "offset_bytes": "0x0082",
+        "behavior": "HmacSha1 over the serialized request body"
+      }
+    ]
+  },
+  "body_defaults": {
+    "platform": "android",
+    "channel_by_package": {
+      "com.heytap.headset": "2",
+      "com.oplus.melody": "1"
+    },
+    "versionCode": "String containing package versionCode"
+  },
+  "model_module": {
+    "endpoint": "v1/earphone/resource/fetch",
+    "additional_body_fields": [
+      "productId",
+      "color",
+      "moduleId"
+    ],
+    "appearance_module_id": 14,
+    "response_fields": [
+      "fileName",
+      "resourceUrl",
+      "resourceName",
+      "resourceDescription",
+      "sha256"
+    ],
+    "config_type": "Lf9/d;",
+    "config_fields": [
+      "model3D",
+      "modelWebp"
+    ],
+    "code_evidence": {
+      "class": "LF8/h;",
+      "method": "b(int,String)CompletableFuture",
+      "dex": "classes2.dex",
+      "offset_bytes": "0x001E",
+      "behavior": "Constant moduleId 14, passed to LJ8/a.e at 0x0022"
+    }
+  },
+  "control_resource": {
+    "endpoint": "v1/earphone/resource/control",
+    "additional_body_fields": [
+      "productId",
+      "color"
+    ],
+    "omitted_fields": [
+      "moduleId",
+      "language"
+    ],
+    "response_fields": [
+      "url",
+      "imgUrl",
+      "cartoonUrl",
+      "productId",
+      "sha256"
+    ],
+    "selected_download_field": "cartoonUrl",
+    "config_type": "Lf9/b;",
+    "config_fields": [
+      "boxImageRes",
+      "capsuleImageRes",
+      "capsuleVideoRes",
+      "detailImageRes",
+      "leftImageRes",
+      "rightImageRes",
+      "lottieResList",
+      "leftLottieResList",
+      "rightLottieResList",
+      "discoveryStates",
+      "hearingEnhancementRes",
+      "hearingEnhancementAnimRes"
+    ],
+    "code_evidence": [
+      {
+        "class": "LJ8/a;",
+        "method": "f(int,String)CompletableFuture",
+        "offset_bytes": "0x0000",
+        "behavior": "Resolve color, create control_<productId>_<color> cache name, invoke abstract k at 0x0042"
+      },
+      {
+        "class": "LJ8/o;",
+        "method": "k(int,String,String,String,boolean)CompletableFuture",
+        "offset_bytes": "0x000E",
+        "behavior": "Concrete implementation creates LJ8/n cache/network supplier"
+      },
+      {
+        "class": "LJ8/n;",
+        "method": "get()Object",
+        "offset_bytes": "0x00EA",
+        "behavior": "Non-fetch/non-popup branch creates LJ8/d"
+      },
+      {
+        "class": "LJ8/d;",
+        "method": "apply(Object)Object",
+        "offset_bytes": "0x0022",
+        "behavior": "Call net/n.l(color,type,productId), implemented by net/D.l"
+      },
+      {
+        "class": "Lcom/oplus/melody/model/net/D;",
+        "method": "l(int,String,String)CompletableFuture",
+        "offset_bytes": "0x0008",
+        "behavior": "Body productId; color added at 0x0012; path type is control"
+      },
+      {
+        "class": "LJ8/j;",
+        "method": "apply(Object)Object",
+        "offset_bytes": "0x00FC",
+        "behavior": "control selects getAnimUrl() serialized as cartoonUrl; sha256 at 0x0104"
+      }
+    ]
+  },
+  "color_resolution": {
+    "class": "Lcom/oplus/melody/model/repository/earphone/L;",
+    "method": "E(int,String)int",
+    "dex": "classes2.dex",
+    "explicit_color": "Any input other than -1 is returned unchanged; first branch at byte offset 0x0002",
+    "unknown_color": "Input -1 uses configured defaultColor >=0; otherwise realme+supportSpp returns 0, realme without SPP returns 1; other brands retain -1",
+    "configured_defaults": {
+      "060410": 0,
+      "060810": 0,
+      "061010": 1,
+      "060412": 1,
+      "062C10": 1,
+      "050410": 0,
+      "050010": 0,
+      "050810": 0,
+      "050414": 2
+    },
+    "x4_default": "No defaultColor field in either recovered whitelist",
+    "server_color_enumeration_discovered": false,
+    "color_number_is_marketing_name": false,
+    "default_selection_evidence": "evidence/default-color-selection.json"
+  },
+  "cache": {
+    "class": "LJ8/a;",
+    "method": "l(String)File",
+    "offset_bytes": "0x0008",
+    "base": "Context.getFilesDir()/melody-model-download",
+    "oem_candidate": "/data/user_de/0/com.oplus.melody/files/melody-model-download",
+    "heymelody_candidate": "/data/user/0/com.heytap.headset/files/melody-model-download",
+    "control_name": "control_<productId>_<resolvedColor>",
+    "model_name": "fetch14_<productId>_<resolvedColor>",
+    "config": "config.json",
+    "legacy_model_member": "res/raw/detail_model.vfxms",
+    "preferences_name": "melody-model-download",
+    "shared_public_cache_proven": false
+  },
+  "cases": {
+    "x4-model": {
+      "productId": "06EC10",
+      "color": "0",
+      "moduleId": "14",
+      "endpoint": "v1/earphone/resource/fetch",
+      "color_evidence": "Explicit probe value; no configured OPPO default confirmed."
+    },
+    "x3-model": {
+      "productId": "067410",
+      "color": "0",
+      "moduleId": "14",
+      "endpoint": "v1/earphone/resource/fetch",
+      "color_evidence": "Explicit probe value; support3DModel=1 in both APK configurations."
+    },
+    "enco-free-control": {
+      "productId": "060410",
+      "color": "0",
+      "endpoint": "v1/earphone/resource/control",
+      "color_evidence": "defaultColor=0 in both recovered APK whitelists."
+    }
+  }
+}
