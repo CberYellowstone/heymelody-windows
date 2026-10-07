@@ -14,6 +14,7 @@ public partial class MainWindow : FAAppWindow
     private readonly WindowConfirmationService _confirmations;
     private readonly IHeadsetEventService? _events;
     private Task? _exitVote;
+    private Task? _calibrationOperation;
     private bool _closing, _closed, _opened, _managing;
 
     public MainWindow() : this(HeadsetServiceFactory.Create(), false,
@@ -32,6 +33,11 @@ public partial class MainWindow : FAAppWindow
         Page.DataContext = _viewModel;
         Page.SetPlatformNotice(!OperatingSystem.IsWindows());
         Page.ManageDevicesRequested = manager is not null ? ManageDevicesAsync : null;
+        if (!preview && service is ICalibrationService calibration)
+        {
+            Page.RequestFitTest = () => LaunchCalibrationAsync("fit", calibration);
+            Page.RequestHearingSetup = () => LaunchCalibrationAsync("hearing", calibration);
+        }
         Page.IsEnabled = manager is null;
         StartupOverlay.IsVisible = manager is not null;
         Opened += async (_, _) => await InitializeOnceAsync();
@@ -194,6 +200,34 @@ public partial class MainWindow : FAAppWindow
         }
     }
 
+    private async Task LaunchCalibrationAsync(string kind, ICalibrationService service)
+    {
+        if (_closing || _calibrationOperation is not null) return;
+        var operation = RunCalibrationAsync(kind, service);
+        _calibrationOperation = operation;
+        try { await operation; }
+        finally { if (ReferenceEquals(_calibrationOperation, operation)) _calibrationOperation = null; }
+    }
+    private async Task RunCalibrationAsync(string kind, ICalibrationService service)
+    {
+        UiCalibrationState? state = null;
+        try
+        {
+            state = await _viewModel.CreateCalibrationAsync(kind);
+            await new CalibrationProcess().RunAsync(kind, state.Handle, service, _managerLifetime.Token);
+            if (!_closing) await _viewModel.RefreshStateCommand.ExecuteAsync(null);
+        }
+        catch (OperationCanceledException) when (_managerLifetime.IsCancellationRequested) { }
+        catch (Exception)
+        {
+            if (!_closing) await _viewModel.Dialogs.RunAsync(token => _confirmations.AlertAsync("无法打开测试", "测试组件未能正常启动或完成，请检查耳机连接及客户端文件后重试。", token), _managerLifetime.Token);
+        }
+        finally
+        {
+            if (state is not null) { try { await service.CancelCalibrationAsync(state.Handle, CancellationToken.None); } catch { } }
+        }
+    }
+
     private async void OnClosing(object? sender, WindowClosingEventArgs e)
     {
         if (_closed) return;
@@ -208,12 +242,15 @@ public partial class MainWindow : FAAppWindow
             _closing = false; Page.ResumeSettingsDialogs(); return;
         }
         _managerLifetime.Cancel();
+        if (_calibrationOperation is { } calibration)
+        { try { await calibration; } catch { } }
         if (_manager?.CurrentOperation is { } operation)
         {
             try { await operation; }
             catch (Exception) { }
         }
         await _viewModel.DisposeAsync();
+        Page.VisualCatalog.Dispose();
         _closed = true;
         Dispatcher.UIThread.Post(Close);
     }

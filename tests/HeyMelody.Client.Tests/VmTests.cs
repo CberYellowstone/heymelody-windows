@@ -87,7 +87,7 @@ internal static class VmTests
             vm.EqName = "我的调整"; vm.Bands[0].Gain = 4;
             await vm.SaveEqCommand.ExecuteAsync(null);
             Check(!vm.EqDirty && service.Actions.Count == 1);
-            Check(service.Actions[0].EqualizerEntry is { Bands.Count: 10, Name: "我的调整" });
+            Check(service.Actions[0].EqualizerEntry is { Bands.Count: 1, Name: "我的调整" } entry && entry.Bands[0].FrequencyHz == 31);
         });
         await test("VM accepts a write during an overlapping read and serializes its submission", async () =>
         {

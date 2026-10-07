@@ -74,7 +74,7 @@
                               VerticalAlignment="Center" HorizontalAlignment="Stretch" />
         <StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="0,0,0,32" Spacing="6">
           <TextBlock Text="{Binding Title}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" />
-          <TextBlock x:Name="HeroCaption" Text="Enco Free4 三维模型" Classes="caption" HorizontalAlignment="Center" />
+          <TextBlock x:Name="HeroCaption" Text="耳机外观" Classes="caption" HorizontalAlignment="Center" />
         </StackPanel>
       </Grid>
       <ScrollViewer x:Name="ControlScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto"
@@ -125,45 +125,16 @@
               </StackPanel>
             </Grid>
           </Border>
-          <fa:FASettingsExpander Header="降噪" Description="调整你听见的环境声音">
+          <fa:FASettingsExpander Header="降噪" Description="调整你听见的环境声音" IsExpanded="True">
             <fa:FASettingsExpander.IconSource><fa:FASymbolIconSource Symbol="Audio" /></fa:FASettingsExpander.IconSource>
-            <fa:FASettingsExpander.Footer>
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <ComboBox x:Name="AncCombo" Width="148" ItemsSource="{Binding AncOptions}"
-                          SelectedItem="{Binding SelectedAnc, Mode=TwoWay}" IsEnabled="{Binding CanChooseAnc}"
-                          AutomationProperties.Name="降噪模式">
-                  <ComboBox.ItemTemplate><DataTemplate x:DataType="contracts:UiOption"><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
-                </ComboBox>
-                <Button Content="应用" Command="{Binding ApplyAncCommand}" IsEnabled="{Binding CanSetAnc}" />
-              </StackPanel>
-            </fa:FASettingsExpander.Footer>
+            <local:AncModeSelector />
           </fa:FASettingsExpander>
-          <fa:FASettingsExpander x:Name="EqualizerPanel" Header="均衡器" Description="预设与十段自定义 EQ">
+          <fa:FASettingsExpander x:Name="EqualizerPanel" Header="均衡器" Description="预设与自定义 EQ" IsExpanded="True">
             <fa:FASettingsExpander.IconSource><fa:FASymbolIconSource Symbol="MusicInfo" /></fa:FASettingsExpander.IconSource>
             <Border Padding="20,16">
               <StackPanel Spacing="12">
-                <Grid ColumnDefinitions="*,Auto">
-                  <ComboBox x:Name="PresetCombo" ItemsSource="{Binding PresetOptions}"
-                            SelectedItem="{Binding SelectedPreset, Mode=TwoWay}" IsEnabled="{Binding CanChoosePreset}"
-                            HorizontalAlignment="Stretch" AutomationProperties.Name="声音预设">
-                    <ComboBox.ItemTemplate><DataTemplate x:DataType="contracts:UiOption"><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
-                  </ComboBox>
-                  <Button Grid.Column="1" Content="应用预设" Command="{Binding ApplyPresetCommand}"
-                          IsEnabled="{Binding CanSetEqualizer}" Margin="8,0,0,0" />
-                </Grid>
-                <Border Height="1" Background="{DynamicResource ControlStrokeColorDefaultBrush}" Margin="0,4" />
-                <TextBlock Text="自定义均衡器" Classes="setting-label" />
+                <local:EqualizerChoiceView />
                 <TextBlock Text="{Binding EqHint}" Classes="muted" FontSize="12" />
-                <Grid ColumnDefinitions="*,Auto">
-                  <ComboBox x:Name="EqEntryCombo" ItemsSource="{Binding EqEntries}"
-                            SelectedItem="{Binding SelectedEqEntry, Mode=OneWay}"
-                            SelectionChanged="EqEntry_SelectionChanged" HorizontalAlignment="Stretch"
-                            IsEnabled="{Binding CanEditEq}" AutomationProperties.Name="自定义均衡器条目">
-                    <ComboBox.ItemTemplate><DataTemplate x:DataType="contracts:UiEqEntry"><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
-                  </ComboBox>
-                  <Button Grid.Column="1" Content="新建" Command="{Binding NewEqCommand}"
-                          IsEnabled="{Binding CanEditEq}" Margin="8,0,0,0" />
-                </Grid>
                 <TextBox x:Name="EqNameEditor" Text="{Binding EqName, Mode=TwoWay}" MaxLength="30" PlaceholderText="均衡器名称"
                          IsEnabled="{Binding CanEditEq}" AutomationProperties.Name="均衡器名称" />
                 <ItemsControl x:Name="BandEditor" ItemsSource="{Binding Bands}" IsEnabled="{Binding CanEditEq}">
@@ -183,53 +154,36 @@
                 </ItemsControl>
                 <TextBlock Text="{Binding EqDirtyText}" Classes="caption" />
                 <WrapPanel Orientation="Horizontal">
-                  <Button Content="启用此 EQ" Command="{Binding UseEqCommand}" Margin="0,0,8,4" />
                   <Button Content="恢复当前" Command="{Binding ResetEqCommand}" Margin="0,0,8,4" />
-                  <Button Content="保存均衡器" Command="{Binding SaveEqCommand}" Classes="accent" Margin="0,0,0,4" />
+                  <Button Content="保存并启用" Command="{Binding SaveEqCommand}" Classes="accent" Margin="0,0,0,4" />
                 </WrapPanel>
               </StackPanel>
             </Border>
           </fa:FASettingsExpander>
-          <fa:FASettingsExpander x:Name="ExperiencePanel" Header="连接与体验" Description="双连、游戏与音频模式" IsExpanded="True">
-            <fa:FASettingsExpander.IconSource><fa:FASymbolIconSource Symbol="Settings" /></fa:FASettingsExpander.IconSource>
-            <fa:FASettingsExpanderItem Content="双设备连接" Description="{Binding DualStateText}">
-              <fa:FASettingsExpanderItem.Footer>
-                <ToggleSwitch x:Name="DualSwitch" IsChecked="{Binding DualConnection, Mode=OneWay}"
-                              IsEnabled="{Binding CanSetDualConnection}" Click="Dual_Click" OnContent="" OffContent=""
-                              AutomationProperties.Name="双设备连接" />
-              </fa:FASettingsExpanderItem.Footer>
-            </fa:FASettingsExpanderItem>
-            <fa:FASettingsExpanderItem Content="游戏模式" Description="{Binding GameStateText}">
-              <fa:FASettingsExpanderItem.Footer>
-                <ToggleSwitch x:Name="GameSwitch" IsChecked="{Binding GameMode, Mode=OneWay}"
-                              IsEnabled="{Binding CanSetGameMode}" Click="Game_Click" OnContent="" OffContent=""
-                              AutomationProperties.Name="游戏模式" />
-              </fa:FASettingsExpanderItem.Footer>
-            </fa:FASettingsExpanderItem>
-            <fa:FASettingsExpanderItem Content="空间音频">
-              <fa:FASettingsExpanderItem.Footer>
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                  <ComboBox x:Name="SpatialCombo" Width="166" ItemsSource="{Binding SpatialOptions}"
-                            SelectedItem="{Binding SelectedSpatial, Mode=TwoWay}" IsEnabled="{Binding CanChooseSpatial}"
-                            AutomationProperties.Name="空间音频模式">
-                    <ComboBox.ItemTemplate><DataTemplate x:DataType="contracts:UiOption"><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
-                  </ComboBox>
-                  <Button Content="应用" Command="{Binding ApplySpatialCommand}" IsEnabled="{Binding CanSetSpatial}" />
-                </StackPanel>
-              </fa:FASettingsExpanderItem.Footer>
-            </fa:FASettingsExpanderItem>
-            <fa:FASettingsExpanderItem Content="Hi-Res 高清音频" Description="{Binding HiResStateText}">
-              <fa:FASettingsExpanderItem.Footer>
-                <ToggleSwitch x:Name="HiResSwitch" IsChecked="{Binding HiRes, Mode=OneWay}"
-                              IsEnabled="{Binding CanSetHiRes}" Click="HiRes_Click" OnContent="" OffContent=""
-                              AutomationProperties.Name="Hi-Res 高清音频" />
-              </fa:FASettingsExpanderItem.Footer>
-            </fa:FASettingsExpanderItem>
-            <Border Padding="20,12" IsVisible="{Binding SpatialHiResMutex}">
-              <TextBlock Text="此耳机的空间音频与 Hi-Res 互斥，切换前会请你确认。"
-                         Classes="muted" FontSize="12" />
+          <ItemsControl x:Name="FeatureSectionsView" ItemsSource="{Binding FeatureSections}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:FeatureSectionViewModel">
+                <local:FeatureSectionView />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <fa:FASettingsExpander Header="黄金听感" Description="选择已有配置，或建立适合自己的听感">
+            <Border Padding="20,16">
+              <StackPanel Spacing="12">
+                <ComboBox x:Name="HearingProfileCombo" ItemsSource="{Binding HearingProfiles}"
+                          SelectedItem="{Binding SelectedHearingProfile, Mode=OneWay}" IsEnabled="{Binding CanSelectHearingProfile}"
+                          HorizontalAlignment="Stretch" AutomationProperties.Name="黄金听感配置">
+                  <ComboBox.ItemTemplate><DataTemplate x:DataType="contracts:UiHearingProfile"><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
+                </ComboBox>
+                <Button Content="设置黄金听感" Click="HearingSetup_Click" IsEnabled="{Binding CanSetupHearing}" HorizontalAlignment="Left" />
+              </StackPanel>
             </Border>
           </fa:FASettingsExpander>
+          <fa:FASettingsExpanderItem Content="耳塞贴合度测试" Description="检查两耳的佩戴贴合度">
+            <fa:FASettingsExpanderItem.Footer>
+              <Button Content="开始测试" Click="FitTest_Click" IsEnabled="{Binding CanFitTest}" />
+            </fa:FASettingsExpanderItem.Footer>
+          </fa:FASettingsExpanderItem>
           <fa:FASettingsExpander x:Name="DeviceInfoPanel" Header="设备信息" Description="型号与固件">
             <fa:FASettingsExpander.IconSource><fa:FASymbolIconSource Symbol="ContactInfo" /></fa:FASettingsExpander.IconSource>
             <Border Padding="20,16">

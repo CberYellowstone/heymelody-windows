@@ -7,7 +7,7 @@ using HeyMelodyWindows.Windows;
 
 namespace HeyMelodyWindows.Host;
 
-public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementService
+public sealed partial class NativeHeadsetService : IHeadsetService, IDeviceManagementService
 {
     private readonly Func<IReadOnlyList<BluetoothCandidate>> _enumerate;
     private readonly DeviceWhitelistStore _whitelist;
@@ -19,6 +19,10 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
     private string _selectedName = "";
     private DailySnapshot? _last;
     private int _getSubmissions, _setSubmissions, _otherSubmissions;
+    private long _uiRevision;
+    private long _lastDailyRevision;
+    private readonly object _snapshotGate = new();
+    private readonly Dictionary<long, long> _uiRevisions = [];
     public event Action<UiSnapshot>? SnapshotChanged;
 
     public NativeHeadsetService() : this(WindowsBluetooth.EnumeratePaired, DeviceWhitelistStore.CreateDefault()) { }
@@ -97,7 +101,7 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
         await DisconnectAsync(token);
         _selected = identity; _selectedName = peer.Name; _selectedAddress = peer.Address;
         _getSubmissions = _setSubmissions = _otherSubmissions = 0;
-        _client = new DailyClient(new PeerConnector(peer.Address, RecordSubmission));
+        _client = CreateDailyClient(peer.Address);
         return Map(await _client.RefreshAsync(token));
     }
 
@@ -109,10 +113,12 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
             throw new InvalidDataException();
         await DisconnectAsync(token);
         _selected = identity; _selectedName = name; _selectedAddress = address;
-        _client = new DailyClient(new PeerConnector(address, RecordSubmission));
+        _client = CreateDailyClient(address);
         _client.SnapshotChanged += OnDailySnapshot;
         var snapshot = Map(await _client.RefreshAsync(token));
         if (snapshot.ControlReady) await _client.StartMonitoringAsync(token);
+        await InitializeCalibrationAsync(token);
+        snapshot = Map(_last!);
         return snapshot;
     }
 
@@ -120,8 +126,10 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
 
     public async Task DisconnectAsync(CancellationToken token)
     {
+        await DisposeCalibrationAsync();
         var client = _client; _client = null; _selected = null; _selectedName = ""; _selectedAddress = null;
         if (client is not null) { client.SnapshotChanged -= OnDailySnapshot; await client.DisposeAsync(); }
+        lock (_snapshotGate) { _lastDailyRevision = 0; _uiRevisions.Clear(); _last = null; }
     }
 
     public async Task<UiSnapshot> RefreshAsync(CancellationToken token)
@@ -131,13 +139,18 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
     {
         if (!Enum.IsDefined(scope)) throw new ArgumentOutOfRangeException(nameof(scope));
         if (_client is null) throw new InvalidOperationException("请先连接耳机。");
-        return Map(await _client.RefreshAsync((DailyRefreshScope)scope, token));
+        var state = await _client.RefreshAsync((DailyRefreshScope)scope, token);
+        if (scope is RefreshScope.Full or RefreshScope.Features && CalibrationAvailable("hearing"))
+            try { await ReadHearingProfilesAsync(token); } catch (Exception) when (!token.IsCancellationRequested) { }
+        return Map(state);
     }
 
     public async Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token)
     {
         if (_client is null) return new() { BackendReceiptReceived = true, FailureKind = ApplyFailure.StateUnavailable,
             ConnectionState = ConnectionState.Unknown, Message = "尚未连接耳机，未发送设置。" };
+        if (action.Kind == "Feature" && action.FeatureId is "dual" or "game" or "hires" or "spatial")
+            action = action with { Kind = action.FeatureId switch { "dual" => "DualConnection", "game" => "GameMode", "hires" => "HiRes", _ => "Spatial" } };
         DailyApplyResult result;
         switch (action.Kind)
         {
@@ -152,7 +165,7 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
                 result = await _client.SelectCustomEqualizerAsync((byte)action.Value, token); break;
             case "CustomEqualizer":
                 if (action.EqualizerEntry is not { } entry || entry.Id is < 0 or > 255 ||
-                    entry.Bands.Count != 10 || entry.MinimumGain is < -128 or > 127 || entry.MaximumGain is < -128 or > 127 ||
+                    entry.Bands.Count is < 1 or > 32 || entry.MinimumGain is < -128 or > 127 || entry.MaximumGain is < -128 or > 127 ||
                     entry.Bands.Any(band => band.FrequencyHz is < 1 or > 65535 || band.Gain is < -128 or > 127))
                     return InvalidAction();
                 result = await _client.SaveEqualizerAsync(new EqualizerEdit
@@ -173,6 +186,9 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
             case "HiRes":
                 if (action.Value is not (0 or 1)) return InvalidAction();
                 result = await _client.SetHiResAsync(action.Value == 1, action.AllowMutexChange, token); break;
+            case "Feature":
+                if (action.FeatureId is null || action.FeatureId.Length > 128) return InvalidAction();
+                result = await _client.ApplyFeatureAsync(action.FeatureId, action.Value, action.Text, token); break;
             default: return InvalidAction();
         }
         UiSnapshot? after = result.After is null ? null : Map(result.After);
@@ -230,13 +246,26 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
 
     private UiSnapshot Map(DailySnapshot snapshot)
     {
-        _last = snapshot;
+        lock (_snapshotGate) return MapSnapshot(snapshot);
+    }
+    private UiSnapshot MapSnapshot(DailySnapshot snapshot)
+    {
+        // Calibration/profile metadata may enrich the same Daily observation. Keep
+        // those updates ordered while preserving the revision of older receipts.
+        long revision;
+        if (snapshot.Revision >= _lastDailyRevision)
+        {
+            _last = snapshot; _lastDailyRevision = snapshot.Revision;
+            revision = ++_uiRevision; _uiRevisions[snapshot.Revision] = revision;
+            if (_uiRevisions.Count > 128) _uiRevisions.Remove(_uiRevisions.Keys.Min());
+        }
+        else revision = _uiRevisions.GetValueOrDefault(snapshot.Revision, 1);
         bool valid = snapshot.Connected && snapshot.ProfileVerified && snapshot.Error is null;
         var caps = snapshot.Capabilities;
         return new UiSnapshot
         {
             Identity = _selected ?? "", DeviceName = _selectedName,
-            Revision = snapshot.Revision,
+            Revision = revision,
             ControlReady = valid,
             CaseLid = snapshot.CaseOpen is { } open ? open ? CaseLidState.Open : CaseLidState.Closed : CaseLidState.Unknown,
             LeftPlacement = Placement(snapshot.LeftInCase, snapshot.LeftInEar),
@@ -249,6 +278,20 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
             RightBatteryObservationTime = snapshot.RightBatteryObservedAtUtc,
             CaseBatteryObservationTime = snapshot.CaseBatteryObservedAtUtc,
             ProductId = snapshot.ProductId,
+            ResourceSource = _resourceSource,
+            ResourceRevision = _resourceRevision,
+            CustomEqualizerCapacity = snapshot.CustomEqualizerCapacity,
+            EqualizerFrequencies = snapshot.EqualizerFrequencies.Select(hz => (int)hz).ToArray(),
+            AncModes = BuildAncModes(snapshot),
+            FeatureSections = snapshot.FeatureSections.Select(section => new UiFeatureSection(section.Id, section.Title, section.DefaultExpanded,
+                section.Controls.Select(control => new UiFeatureControl(control.Id, control.Title, UiFeatureKind(control.Kind), control.Value,
+                    control.Kind == "text" ? control.Text : null,
+                    control.Options.Select(option => new UiOption(option.Value, option.Name)).ToArray(), control.Minimum ?? 0, control.Maximum ?? 1,
+                    CanWrite: valid && control.CanWrite, Description: control.Kind == "text" ? "" : control.Text ?? "")).ToArray())).ToArray(),
+            CanFitTest = valid && CalibrationAvailable("fit"),
+            CanSetupHearing = valid && CalibrationAvailable("hearing"),
+            HearingEnabled = snapshot.RawFeatures.TryGetValue(0x0B, out var enabled) ? enabled switch { 0 => false, 1 => true, _ => null } : null,
+            HearingProfiles = _hearingProfiles,
             Connected = snapshot.Connected, SupportedModel = snapshot.ProfileVerified,
             ConnectionState = ConnectionEvidence(snapshot),
             Failure = snapshot.Error is null ? null : "未能完整读取耳机状态，请刷新或重新连接。",
@@ -268,9 +311,7 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
             SpatialHiResMutex = caps.SpatialHiResMutex,
             AncOptions = snapshot.AncOptions.Select(option => new UiOption((option.Primary << 8) | option.Level, option.Name)).ToArray(),
             EqualizerOptions = snapshot.Presets.Select(option => new UiOption(option.ProtocolId, option.Name)).ToArray(),
-            SpatialOptions = caps.SpatialRoute == "legacy"
-                ? [new(0, "关闭"), new(1, "开启")]
-                : [new(0, "关闭"), new(1, "固定空间音频"), new(2, "头部跟踪")],
+            SpatialOptions = SpatialOptions(snapshot),
             EqualizerEntries = snapshot.CustomEqualizers.Select(entry => new UiEqEntry(entry.Id, entry.Name,
                 entry.MinimumGain, entry.MaximumGain, entry.Selected,
                 entry.Bands.Select(band => new UiBand(band.Frequency, band.Gain)).ToArray())).ToArray(),
@@ -278,6 +319,9 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
             Warnings = snapshot.Warnings.Count == 0 ? [] : ["部分耳机状态暂时不可用，相关设置已禁用。"]
         };
     }
+
+    private static string UiFeatureKind(string kind) => kind switch
+    { "switch" => "Switch", "slider" => "Slider", "radio" => "Radio", "combo" => "Combo", "text" => "Text", _ => kind };
 
     private static EarbudPlacement Placement(bool? inCase, bool? inEar) => inEar == true ? EarbudPlacement.InEar
         : inCase == true ? EarbudPlacement.InCase : inCase == false ? EarbudPlacement.OutOfCase : EarbudPlacement.Unknown;
@@ -317,20 +361,20 @@ public sealed class NativeHeadsetService : IHeadsetService, IDeviceManagementSer
         decoder.Complete();
     }
 
-    private sealed class PeerConnector(ulong address, Action<ReadOnlyMemory<byte>> record) : IControlConnector
+    private sealed class PeerConnector(ulong address, Action<ReadOnlyMemory<byte>> record, IReadOnlyList<Guid>? serviceIds = null) : IControlConnector
     {
-        private readonly Guid _service = X4Profile.Load().Uuid;
+        private readonly IReadOnlyList<Guid> _serviceIds = serviceIds ?? [X4Profile.Load().Uuid];
         public async Task<IControlTransport> OpenAsync(CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
             var devices = WindowsBluetooth.EnumeratePaired().Where(device => device.Address == address && device.Authenticated).ToArray();
             if (devices.Length != 1 || !devices[0].Connected) throw new IOException("The selected peer is disconnected.");
-            var services = WindowsSdp.FindServices(address, _service).Where(service => service.ServiceId == _service &&
-                service.Channel is > 0 and <= 30).DistinctBy(service => service.Channel).ToArray();
+            var services = _serviceIds.SelectMany(id => WindowsSdp.FindServices(address, id).Where(service => service.ServiceId == id &&
+                service.Channel is > 0 and <= 30)).DistinctBy(service => (service.ServiceId, service.Channel)).ToArray();
             if (services.Length != 1) throw new IOException("A unique Melody service is required.");
             using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);
             budget.CancelAfter(TimeSpan.FromSeconds(5));
-            return new Transport(await RfcommConnection.ConnectAsync(address, _service, services[0].Channel, budget.Token), record);
+            return new Transport(await RfcommConnection.ConnectAsync(address, services[0].ServiceId, services[0].Channel, budget.Token), record);
         }
     }
 

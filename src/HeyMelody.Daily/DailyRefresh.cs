@@ -18,6 +18,7 @@ public sealed partial class DailyClient
         {
             previous = _session; _session = null; _commands = null; _profile = null;
             _registeredSession = null; _monitoringWarning = null; _changes.Clear(); _invalidated.Clear();
+            _registeredEvents.Clear();
         }
         if (previous is not null) await previous.DisposeAsync();
     }
@@ -134,24 +135,25 @@ public sealed partial class DailyClient
             lock (_stateGate) _changes.Clear();
         }
         s.ProductId = productId;
-        _profile = DeviceModelResolver.FindByProductId(productId);
+        _profile = _profileResolver(productId);
         byte[] cap = await GetAsync(0x0100, [], s, token) ?? throw new IOException();
         if (cap.Length < 2 || cap.Length > 512) throw new FormatException();
         _commands = CommandCapabilities.Parse(cap.AsSpan(1));
-        if (_profile is null)
+        if (_profile is null || !_profile.SupportSpp || _profile.Uuid == Guid.Empty ||
+            _profile.Conditions.Evaluate(new(AndroidAppVersionMarker: _appVersionMarker)) == VersionConditionStatus.Fail)
         {
             s.ProfileVerified = false;
             s.Error = "当前型号尚无已核实的配置，日常设置不可用。";
             return s;
         }
         s.ProfileVerified = true; s.DeviceName = _profile.Name;
+        s.CustomEqualizerCapacity = _profile.CustomEqualizerCapacity;
         s.EqualizerFrequencies = _profile.CustomEqFrequencies.Select(x => checked((ushort)x)).ToArray();
-        s.Presets = _profile.EqualizerModes.Select(x => new PresetOption(checked((byte)x.ProtocolIndex), x.ModeType,
-            x.ModeType switch { 42 => "丹拿原声", 43 => "丹拿高解析", 28 => "纯享人声", 46 => "清亮高音", 29 => "澎湃低音", _ => $"预设 {x.ProtocolIndex}" })).ToList();
-        s.AncOptions = _profile.NoiseReductionModes.SelectMany(p => p.Children.Select(c =>
+        ResolvePresetOptions(s);
+        s.AncOptions = _profile.NoiseReductionModes.SelectMany(p => (p.Children.Count == 0 ? new[] {p} : p.Children).Select(c =>
             new AncOption((byte)p.ProtocolIndex, (byte)c.ProtocolIndex, c.ModeType, c.ModeType switch {
                 1 => "关闭降噪", 2 => "通透", 7 => "智能切换", 4 => "深度降噪", 8 => "中度降噪", 3 => "轻度降噪",
-                11 => "更少噪音", 12 => "标准", 13 => "更多噪音", _ => $"降噪档位 {c.ProtocolIndex}"
+                10 => "自适应降噪", 11 => "更少噪音", 12 => "标准", 13 => "更多噪音", _ => $"降噪档位 {c.ProtocolIndex}"
             }))).ToList();
         _readWarnings[DailyRefreshScope.Identity] = s.Warnings.ToList();
         return s;
@@ -194,12 +196,21 @@ public sealed partial class DailyClient
                 break;
             case DailyRefreshScope.Features:
                 s.RawFeatures = []; s.SpatialMode = null;
+                s.BassEngine = null; s.PromptVolume = null; s.GameSound = null; s.Gestures = [];
                 // State reads never generate setters; subscriptions are a separate explicit opt-in.
-                await Parse(0x010D, [5, 0x11, 0x06, 0x28, 0x18, 0x1B], data => s.RawFeatures = DailyParsers.ParseFeatures(data));
+                await Parse(0x010D, FeatureQuery(), data => s.RawFeatures = DailyParsers.ParseFeatures(data));
                 bool legacy = s.RawFeatures.TryGetValue(0x1B, out byte legacySpatial) && legacySpatial <= 1;
                 if (_commands!.Supports(0x012A) && (_commands.Supports(0x0422) || !legacy))
                     await Parse(0x012A, [], data => s.SpatialMode = DailyParsers.ParseSpatial(data));
                 else if (legacy) s.SpatialMode = legacySpatial;
+                if (_profile!.FunctionVersion("bassEngineSupport") == 1)
+                    await Parse(0x0124, [], data => s.BassEngine = DailyFeatureCodecs.ParseBass(data));
+                if (_profile.FunctionVersion("promptVolume") == 1)
+                    await Parse(0x0130, [], data => s.PromptVolume = DailyFeatureCodecs.ParsePromptVolume(data));
+                if (_profile.GameSoundModes.Count > 0)
+                    await Parse(0x012B, [], data => s.GameSound = DailyFeatureCodecs.ParseGameSound(data));
+                if (_profile.RawFunctions.TryGetProperty("control", out var controls) && controls.ValueKind == System.Text.Json.JsonValueKind.Array && controls.GetArrayLength() > 0)
+                    await Parse(0x0108, DailyFeatureCodecs.GestureQuery(), data => s.Gestures = DailyFeatureCodecs.ParseGestures(data));
                 break;
             case DailyRefreshScope.Battery:
                 s.Battery = null;
@@ -226,29 +237,38 @@ public sealed partial class DailyClient
     }
     private void ResolveCapabilities(DailySnapshot s)
     {
-        if (_profile is null || _commands is null || !s.ProfileVerified) { s.Capabilities = new(); return; }
+        if (_profile is null || _commands is null || !s.ProfileVerified) { s.Capabilities = new(); s.FeatureSections = []; return; }
         bool? Feature(byte id) => s.RawFeatures.TryGetValue(id, out byte value) ? value switch { 0 => false, 1 => true, _ => null } : null;
         bool legacy = s.RawFeatures.TryGetValue(0x1B, out byte value) && value <= 1;
         bool modern = _commands.Supports(0x012A) && (_commands.Supports(0x0422) || !legacy);
         if (!modern) s.SpatialMode = legacy ? value : null;
-        var resolved = CapabilityResolver.Resolve(_profile, _commands, s.RawFeatures);
+        var versions = new DeviceVersionContext(s.FirmwareVersion, _appVersionMarker);
+        var resolved = CapabilityResolver.Resolve(_profile, _commands, s.RawFeatures, versions);
+        bool Declared(string name) => _profile.FunctionVersion(name) > 0;
+        bool allowed = _profile.Conditions.Evaluate(versions) == VersionConditionStatus.Pass;
+        ResolvePresetOptions(s);
+        s.AncOptions = s.AncOptions.Where(x => _profile.NoiseReductionModes.Any(parent => parent.ProtocolIndex == x.Primary
+            && parent.Conditions.Evaluate(versions) == VersionConditionStatus.Pass
+            && (parent.Children.Count == 0 ? parent.ProtocolIndex == x.Level : parent.Children.Any(child => child.ProtocolIndex == x.Level
+                && child.Conditions.Evaluate(versions) == VersionConditionStatus.Pass)))).ToList();
         s.DualConnection = Feature(0x11); s.HiRes = Feature(0x18);
         s.GameMode = resolved.GameMode.FeatureId.HasValue ? Feature(resolved.GameMode.FeatureId.Value) : null;
         bool Commands(ushort read, ushort write) => _commands.Supports(read) && _commands.Supports(write);
         s.Capabilities = new()
         {
             Battery = s.Battery is not null,
-            Anc = Commands(0x010C, 0x0404) && s.Anc?.Primary is not null,
-            Preset = Commands(0x010F, 0x0406) && s.PresetId is not null,
-            CustomEqualizer = Commands(0x0122, 0x0418) && s.CustomEqualizersRead,
-            DualConnection = Commands(0x010D, 0x0403) && s.DualConnection is not null,
-            GameMode = Commands(0x010D, 0x0403) && s.GameMode is not null,
-            HiRes = Commands(0x010D, 0x0403) && s.HiRes is not null,
-            SpatialMode = s.SpatialMode is not null && (modern ? Commands(0x012A, 0x0422) : Commands(0x010D, 0x0403)),
+            Anc = allowed && _profile.NoiseReductionModes.Count > 0 && Commands(0x010C, 0x0404) && s.Anc?.Primary is not null,
+            Preset = allowed && Declared("equalizer") && Commands(0x010F, 0x0406) && s.PresetId is not null,
+            CustomEqualizer = allowed && Declared("customEqualizer") && Commands(0x0122, 0x0418) && s.CustomEqualizersRead,
+            DualConnection = allowed && Declared("multiDevicesConnect") && Commands(0x010D, 0x0403) && s.DualConnection is not null,
+            GameMode = allowed && Declared("gameMode") && Commands(0x010D, 0x0403) && s.GameMode is not null,
+            HiRes = allowed && Declared("highToneQuality") && Commands(0x010D, 0x0403) && s.HiRes is not null,
+            SpatialMode = allowed && _profile.SpatialTypes.Count > 0 && s.SpatialMode is not null && (modern ? Commands(0x012A, 0x0422) : Commands(0x010D, 0x0403)),
             SpatialHiResMutex = _profile.SpatialHiResMutex == 1,
             GameFeatureId = resolved.GameMode.FeatureId,
             SpatialRoute = modern ? "modern" : legacy ? "legacy" : "unavailable"
         };
+        BuildFeatureSections(s);
     }
     private static DailySnapshot Clone(DailySnapshot s) => new()
     {
@@ -260,6 +280,7 @@ public sealed partial class DailyClient
         LeftBatteryObservedAtUtc = s.LeftBatteryObservedAtUtc, RightBatteryObservedAtUtc = s.RightBatteryObservedAtUtc,
         CaseBatteryObservedAtUtc = s.CaseBatteryObservedAtUtc,
         ProductId = s.ProductId, DeviceName = s.DeviceName, FirmwareVersion = s.FirmwareVersion, CodecRaw = s.CodecRaw,
+        CustomEqualizerCapacity = s.CustomEqualizerCapacity,
         Battery = s.Battery is null ? null : new() { Left = s.Battery.Left, Right = s.Battery.Right,
             Case = s.Battery.Case, RawComponents = new(s.Battery.RawComponents) },
         Anc = s.Anc is null ? null : new() { Kind = s.Anc.Kind, ModeType = s.Anc.ModeType,
@@ -270,6 +291,11 @@ public sealed partial class DailyClient
         CustomEqualizersRead = s.CustomEqualizersRead, EqualizerFrequencies = s.EqualizerFrequencies.ToArray(),
         DualConnection = s.DualConnection, GameMode = s.GameMode, SpatialMode = s.SpatialMode, HiRes = s.HiRes,
         RawFeatures = new(s.RawFeatures), Warnings = s.Warnings.ToList(), Error = s.Error,
+        BassEngine = s.BassEngine, PromptVolume = s.PromptVolume,
+        GameSound = s.GameSound is null ? null : new(s.GameSound.SelectedType, Array.AsReadOnly(s.GameSound.SupportedTypes.ToArray())),
+        Gestures = Array.AsReadOnly(s.Gestures.ToArray()),
+        FeatureSections = Array.AsReadOnly(s.FeatureSections.Select(x => x with { Controls = Array.AsReadOnly(x.Controls.Select(c => c with {
+            Options = Array.AsReadOnly(c.Options.ToArray()) }).ToArray()) }).ToArray()),
         Capabilities = new() { Battery = s.Capabilities.Battery, Anc = s.Capabilities.Anc, Preset = s.Capabilities.Preset,
             CustomEqualizer = s.Capabilities.CustomEqualizer, DualConnection = s.Capabilities.DualConnection,
             GameMode = s.Capabilities.GameMode, SpatialMode = s.Capabilities.SpatialMode, HiRes = s.Capabilities.HiRes,

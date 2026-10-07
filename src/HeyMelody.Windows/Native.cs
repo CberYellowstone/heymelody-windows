@@ -10,6 +10,7 @@ internal static unsafe class Native
     internal const int AfBth = 32, SockStream = 1, Rfcomm = 3, WouldBlock = 10035;
     internal const int FdRead = 1, FdWrite = 2, FdConnect = 16, FdClose = 32;
     internal static readonly Guid MelodyServiceId = new("0000079A-D102-11E1-9B23-00025B00A5A5");
+    internal static readonly Guid LegacyMelodyServiceId = new("00001107-D102-11E1-9B23-00025B00A5A5");
     private static readonly object StartupGate = new();
     private static bool _started;
 
@@ -20,7 +21,8 @@ internal static unsafe class Native
     internal static void Validate(ulong address, Guid serviceId)
     {
         if (address == 0 || address > 0xFFFFFFFFFFFFUL) throw new ArgumentOutOfRangeException(nameof(address));
-        if (serviceId != MelodyServiceId) throw new ArgumentException("Only the Melody 079A service is allowed.", nameof(serviceId));
+        if (serviceId != MelodyServiceId && serviceId != LegacyMelodyServiceId)
+            throw new ArgumentException("Only the OPPO control services 079A and 1107 are allowed.", nameof(serviceId));
     }
     internal static Win32Exception Error(int error, string message) => new(error, message);
     internal static void Startup()

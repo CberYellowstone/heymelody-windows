@@ -11,3 +11,5 @@
 *.ico binary
 # Embedded profile is verified byte-for-byte by its SHA256; never change line endings.
 src/HeyMelody.Devices/Assets/oppo-enco-x4.json -text
+# Catalog and artwork hashes require the original bytes on every checkout.
+src/HeyMelody.Resources/Bundles/** -text

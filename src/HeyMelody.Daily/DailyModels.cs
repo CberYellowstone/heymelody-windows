@@ -1,4 +1,11 @@
+using HeyMelodyWindows.Protocol;
+
 namespace HeyMelodyWindows.Daily;
+
+public sealed record DailyFeatureOption(int Value, string Name);
+public sealed record DailyFeatureControl(string Id, string Title, string Kind, int? Value, string? Text,
+    IReadOnlyList<DailyFeatureOption> Options, int? Minimum, int? Maximum, bool CanWrite);
+public sealed record DailyFeatureSection(string Id, string Title, bool DefaultExpanded, IReadOnlyList<DailyFeatureControl> Controls);
 
 public enum DailyRefreshScope { Full, Identity, Features, Anc, Equalizer, Battery, Information }
 public enum DailyApplyFailure
@@ -89,12 +96,18 @@ public sealed class DailySnapshot
     public List<CustomEqualizer> CustomEqualizers { get; set; } = [];
     public bool CustomEqualizersRead { get; set; }
     public ushort[] EqualizerFrequencies { get; set; } = [];
+    public int CustomEqualizerCapacity { get; set; } = 3;
     public bool? DualConnection { get; set; }
     public bool? GameMode { get; set; }
     public byte? SpatialMode { get; set; }
     public bool? HiRes { get; set; }
     public DailyCapabilities Capabilities { get; set; } = new();
     public Dictionary<byte, byte> RawFeatures { get; set; } = [];
+    public BassEngineRange? BassEngine { get; set; }
+    public byte? PromptVolume { get; set; }
+    public GameSoundState? GameSound { get; set; }
+    public IReadOnlyList<GestureAssignment> Gestures { get; set; } = [];
+    public IReadOnlyList<DailyFeatureSection> FeatureSections { get; set; } = [];
     public List<string> Warnings { get; set; } = [];
     public string? Error { get; set; }
 }

@@ -51,6 +51,18 @@ public sealed class UiSnapshot
     public bool Connected { get; set; }
     public ConnectionState ConnectionState { get; set; }
     public bool SupportedModel { get; set; }
+    public string ResourceSource { get; set; } = "HeyMelody";
+    public long ResourceRevision { get; set; }
+    public byte? Color { get; set; }
+    public DateTimeOffset? ColorObservationTime { get; set; }
+    public int CustomEqualizerCapacity { get; set; } = 3;
+    public IReadOnlyList<int> EqualizerFrequencies { get; set; } = [];
+    public IReadOnlyList<UiAncMode> AncModes { get; set; } = [];
+    public IReadOnlyList<UiFeatureSection> FeatureSections { get; set; } = [];
+    public bool CanFitTest { get; set; }
+    public bool CanSetupHearing { get; set; }
+    public bool? HearingEnabled { get; set; }
+    public IReadOnlyList<UiHearingProfile> HearingProfiles { get; set; } = [];
     public int? LeftBattery { get; set; }
     public int? RightBattery { get; set; }
     public int? CaseBattery { get; set; }
@@ -83,7 +95,7 @@ public sealed class UiSnapshot
 // Kind: Anc | Equalizer | CustomEqualizer | CustomSelect | DualConnection | GameMode | Spatial | HiRes.
 // Value is an explicit protocol ID or 0/1; custom EQ carries the complete entry.
 public sealed record UiAction(string Kind, int Value, UiEqEntry? EqualizerEntry = null,
-    bool AllowMutexChange = false);
+    bool AllowMutexChange = false, string? FeatureId = null, string? Text = null);
 public sealed class UiApplyResult
 {
     public bool BackendReceiptReceived { get; set; }

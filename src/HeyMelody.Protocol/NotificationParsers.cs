@@ -1,12 +1,12 @@
 namespace HeyMelodyWindows.Protocol;
 
-public enum DeviceNotificationKind { Battery, Placement, Anc, GameMode, DualConnection, Capabilities, Features, Preset, CustomEqualizers, SpatialInvalidated }
+public enum DeviceNotificationKind { Battery, Placement, Anc, GameMode, DualConnection, Capabilities, Features, Preset, CustomEqualizers, SpatialInvalidated, Bass }
 public sealed record DeviceNotification(DeviceNotificationKind Kind, byte[] Data);
 
 /// <summary>APK notification envelopes. Parsing never generates an ACK or a device write.</summary>
 public static class NotificationParsers
 {
-    public static bool IsNotificationCommand(ushort command) => command is 0x0204 or 0x8202 or 0x0503 or 0x0504 or 0x0506 or 0x051D;
+    public static bool IsNotificationCommand(ushort command) => command is 0x0204 or 0x8202 or 0x0503 or 0x0504 or 0x0506 or 0x0508 or 0x051D;
     public static byte[] ParseSupportedEvents(ReadOnlySpan<byte> payload)
     {
         if (payload.Length < 2 || payload[0] != 0 || payload.Length != payload[1] + 2)
@@ -37,6 +37,8 @@ public static class NotificationParsers
         {
             0x0503 => DeviceNotificationKind.Features, 0x0504 => DeviceNotificationKind.Preset,
             0x0506 => DeviceNotificationKind.CustomEqualizers,
+            // OEM CoreService.m0 0508 @ 5747C0: signed min,max,current without status.
+            0x0508 => DeviceNotificationKind.Bass,
             // Phone spatial negotiation is not an authoritative 012A state report.
             0x051D => DeviceNotificationKind.SpatialInvalidated, _ => null
         };

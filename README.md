@@ -1,25 +1,30 @@
 # HeyMelody for Windows
 
-独立源码仓库、克隆后的构建步骤和本地研究资料依赖见 [REPOSITORY.md](REPOSITORY.md)。
+**0.8.1** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型、Lottie 展示。
 
-后续设备操作和美术适配请从 [研究交接与离线验收](docs/research/device-adaptation-handoff.md) 开始；两 App 的云配置、认证解密、模型与图册已有固定证据，原件须随本地工作区保全。
+0.8.1 修复了资源目录包含两种 OPPO 控制服务、底层却只允许其中一种而造成的连接失败，并修正连接尚未建立时误报“型号未适配”的提示。本机 Enco X4 已通过两套预装及缓存资源的 x64 后台初始化、状态读取和通知订阅验证，全程未发送设置命令；详见 [实机验证记录](docs/research/enco-x4-0.8.1.md)。
 
-当前版本为 **0.7.1**，使用 **Avalonia + FluentAvalonia**。独立工作区验证的 Enco Free4 三维模型与交互已迁入 `arch/modular-devices`，主界面左侧支持拖动、松手惯性和 20°/秒水平自转。设备控制仍沿用 0.7.0 的 X4 架构，Free4 此次只用于外观展示。独立后台负责蓝牙通信和任务栏托盘；主界面及设备管理器通过当前用户、当前登录会话的双向命名管道订阅设备状态。后台自动监听白名单中已由 Windows 连接的受支持耳机，以 RFCOMM 通知和 OPPO BLE 广播更新电量、设置及开盖观测。
+预装欢律与 ColorOS“无线耳机”两套独立资源，目录分别包含 **85、141 个耳机产品 ID**，覆盖 OPPO、OnePlus、realme，排除音箱。这是资源目录覆盖；控制仍须同时满足所选配置、已实现的协议 codec、固件条件和设备实际能力。未知协议、无 SPP 及需要外部 App 的型号不会开放设置，图片或名称识别也不授予控制权限。
 
-OPPO Enco X4 支持电量、降噪、五种声音预设、十段 EQ、双连、游戏和空间模式、Hi-Res 互斥控制。状态通知与用户设置共用每台设备的持续接收通道；手动刷新和设置验证仍执行读取。更新期间可以继续选择设置和编辑 EQ，只限制正在提交的功能组再次提交。展示型号的名称提示不替代蓝牙控制所需的 Product ID 验证。
+设置默认选择欢律、开启在线资源，可切换资源来源并填入自定义请求密钥。本版保留各来源的预置密钥。两套来源各自缓存，不合并参数或外观；完整控制配置采用内容版本较高的一版，同版本采用预装版。美术更新按厂商摘要比较，新包校验并发布后清理旧在线版本，正在显示的旧包等待释放；预装离线资源保持不动。关闭在线资源停止网络请求，已下载的有效新版仍可使用。用户密钥和缓存加密密钥以本地 JSON 明文保存。
 
-执行 `Build-Client.ps1 -Version 0.7.1 -Architectures x64` 后，完整解压 `release/HeyMelody_Windows_0.7.1_x64.zip`，双击 `Start-3D-Demo.cmd` 体验 Free4 模型；正常客户端入口为 `Start-HeyMelody.cmd` 或架构目录中的 `HeyMelody.exe`。本次 x64 包自带 .NET 运行时。正常使用时先在 Windows 中配对并连接耳机，再通过设备管理器保存白名单。关闭主界面后后台继续运行；右键托盘选择“打开主界面”或“退出”。直接运行 `backend/HeyMelody.Host.exe` 只启动后台。本版本不添加登录自启，尚未实现独立开盖弹窗。
+降噪使用圆形模式按钮和细分选项，EQ 按型号提供频段和容量，内置与自定义方案分组显示。普通控制采用开关、Slider、RadioButton、文本框和 ComboBox。耳塞贴合度测试由独立 `HeyMelody.FitTest.exe` 处理；黄金听感由独立 `HeyMelody.HearingSetup.exe` 向导创建，主界面的 ComboBox 选择本机保存及耳机当前读回的完整方案。校准组件共享 Host 的蓝牙连接，不另行建立控制连接。
 
-在仓库根目录运行 `Run-3D-Demo.ps1` 或双击 `Run-3D-Demo.cmd` 可构建并打开开发版模型演示，无需连接耳机；构建需要 .NET 10 SDK。模型来源、适配方法和迁移前体验包验证见 [Free4 记录](docs/research/enco-free4-0.7.1.md)。
+先在 Windows 中配对、连接耳机，再通过设备管理器保存白名单。完整解压发布包后运行 `Start-HeyMelody.cmd` 或所选架构目录中的 `HeyMelody.exe`；发布包自带 .NET 运行时。主界面关闭后后台继续运行，右键托盘可以重新打开界面或退出。设备管理器、贴合度测试和黄金听感向导均随包提供。本版本不添加登录自启或独立开盖弹窗。
 
-界面接收后台推送，保留手动刷新及设置前后读取确认。界面中的连接/断开用于恢复或暂停所选耳机的控制监听；暂停持续到手动恢复或后台重启，BLE 观测继续。设备设置必须经过型号、能力、后台实例和连接代次校验；回执丢失不会自动重发。详细规则见 [界面说明](docs/gui-notes.md) 和 [后台架构说明](docs/backend-architecture.md)。
+耳机设置和手机推送共用每台设备的持续接收通道。回执、设备确认和观测状态分别处理，丢失回执不自动重放操作；未提交的 EQ 草稿保留。校准期间限制同一设备的冲突写入，其他设备继续工作；关闭、断连、休眠和切换资源来源会终止当前校准并回读状态。
 
-当前范围为 **Windows 上已有 Enco X4 功能、托盘后台及事件同步**。其他型号、macOS/Linux 后台和 2.3 Mbps 无损链路的推进已暂缓；已完成的资料调研保留在 [docs/research](docs/research)，不构成本版本支持承诺。
+源码构建需要 .NET 10 SDK，官方 NuGet 源见 `NuGet.Config`：
 
-源码入口为 `src/HeyMelody.App`，独立管理器为 `src/HeyMelody.DeviceManager`，共享界面契约为 `src/HeyMelody.Contracts`，界面状态和进程通信为 `src/HeyMelody.Client`，蓝牙后台为 `src/HeyMelody.Host`，日常功能为 `src/HeyMelody.Daily`。使用 .NET SDK 10 构建；官方 NuGet 源已写入 `NuGet.Config`。常规离线测试不需要本地 APK 或旧证据 ZIP，完整步骤见 [REPOSITORY.md](REPOSITORY.md)。OTA、录音、翻译和健康功能留待后续阶段。
+```powershell
+dotnet build src/HeyMelody.App/HeyMelody.App.csproj -c Release
+dotnet run --project tests/HeyMelody.Resources.Tests
+dotnet run --project tests/HeyMelody.Calibration.Tests
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.1
+```
 
-验证入口与执行范围见 [REPOSITORY.md](REPOSITORY.md)。模拟协议、IPC、界面测试及三架构静态包检查不证明真实耳机、手机并发修改或 ARM64 实机行为。生成的发布包与本地验证报告不随 Git 提交。
+常规构建和离线测试使用仓库中的资源包，不需要本地 APK。重新提取资源需要固定的 `research` 原件，入口是 `tools/bundle_resources.py`；运行中的软件不读取研究目录。原始资源版权与溯源保留在发布包的 notices 和资源清单中。
 
-历史 0.5.0 的 x64/x86 蓝牙 GET 与真实界面预览证据保留在 [阶段五历史记录](docs/history/phase5-notes.md) 和本地 `artifacts/phase5-release-validation.json`，仅证明该旧版本。本分支不会自动沿用旧报告作为新发布包的硬件验证；交叉构建也不代表已在 ARM64 电脑执行。
+本轮没有把静态解析、模拟协议或 UI 测试当作所有型号的实机验证。新增型号、校准流程、手机并发操作、休眠恢复和 ARM64 行为仍需对应硬件验证；历史 X4 证据只证明记录中的版本与设备。OTA、录音、翻译、健康功能、macOS/Linux 后台及 2.3 Mbps 无损链路保持后续范围。
 
-文档入口见 [docs/README.md](docs/README.md)。保留的只读 CLI 与 Hi-Res 受控实验工具见 [CLI 工具说明](docs/cli-tools.md)，其发送范围和历史硬件证据独立于当前 GUI/后台。
+完整模块、构建和验证说明见 [REPOSITORY.md](REPOSITORY.md)，协议与资源依据见 [研究交接](docs/research/device-adaptation-handoff.md)，历史记录见 [文档入口](docs/README.md)。发布包、研究原件和生成报告不随 Git 提交。

@@ -12,6 +12,7 @@ public sealed record OppoAdvertisement
     public ushort FastPairId { get; init; }
     public ulong? EmbeddedAddress { get; init; }
     public byte? RawStatus { get; init; }
+    public byte? Color { get; init; }
     public bool? CaseOpen { get; init; }
     public AdvertisedPlacement LeftPlacement { get; init; }
     public AdvertisedPlacement RightPlacement { get; init; }
@@ -48,7 +49,7 @@ public static class OppoAdvertisementParser
 
         int cursor = 7;
         ulong? address = null;
-        byte? status = null, left = null, right = null, batteryCase = null;
+        byte? status = null, left = null, right = null, batteryCase = null, color = null;
         if ((flags & 0x0002) != 0 && !Skip(data, ref cursor, 1)) return false;
         if ((flags & 0x0004) != 0)
         {
@@ -68,7 +69,8 @@ public static class OppoAdvertisementParser
             if (data.Length - cursor < 3) return false;
             left = data[cursor++]; right = data[cursor++]; batteryCase = data[cursor++];
         }
-        if ((flags & 0x0020) != 0 && !Skip(data, ref cursor, 1)) return false;
+        if ((flags & 0x0020) != 0)
+        { if (data.Length - cursor < 1) return false; color = data[cursor++]; }
         if ((flags & 0x0040) != 0)
         {
             if (data.Length - cursor < 1) return false;
@@ -82,7 +84,7 @@ public static class OppoAdvertisementParser
         advertisement = new OppoAdvertisement
         {
             ProductId = ((uint)data[0] | (uint)data[1] << 8 | (uint)data[2] << 16).ToString("X6"),
-            Flags = flags, FastPairId = fastPair, EmbeddedAddress = address, RawStatus = status,
+            Flags = flags, FastPairId = fastPair, EmbeddedAddress = address, RawStatus = status, Color = color,
             CaseOpen = status is { } bits ? (bits & 1) != 0 : null,
             LeftPlacement = Placement(status, 1, 2), RightPlacement = Placement(status, 3, 4),
             RawLeftBattery = left, RawRightBattery = right, RawCaseBattery = batteryCase,

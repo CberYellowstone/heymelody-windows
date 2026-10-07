@@ -5,7 +5,7 @@ namespace HeyMelodyWindows.App;
 // Public messages contain opaque device identities, never Bluetooth addresses.
 public sealed class BackendRequest
 {
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 3;
     public long Id { get; set; }
     public string Operation { get; set; } = "";
     public string? BackendInstanceId { get; set; }
@@ -17,11 +17,13 @@ public sealed class BackendRequest
     public string? Role { get; set; }
     public string? ExitRequestId { get; set; }
     public bool? Approved { get; set; }
+    public string? CalibrationHandle { get; set; }
+    public long? Revision { get; set; }
 }
 
 public sealed class BackendMessage
 {
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 3;
     public string Kind { get; set; } = "response";
     public long Id { get; set; }
     public bool Success { get; set; }
@@ -42,12 +44,14 @@ public sealed class BackendEvent
     public string? ExitRequestId { get; set; }
     public string? Message { get; set; }
     public bool FirstObservation { get; set; }
+    public UiCalibrationState? Calibration { get; set; }
+    public UiResourceSettings? Resources { get; set; }
 }
 
 public sealed class BackendSubscription
 {
     public string BackendInstanceId { get; set; } = "";
-    public string Version { get; set; } = "0.7.1";
+    public string Version { get; set; } = "0.8.0";
     public UiDeviceCatalog Catalog { get; set; } = new([]);
     public IReadOnlyList<UiDevice> Devices { get; set; } = [];
     public IReadOnlyList<UiSnapshot> Snapshots { get; set; } = [];

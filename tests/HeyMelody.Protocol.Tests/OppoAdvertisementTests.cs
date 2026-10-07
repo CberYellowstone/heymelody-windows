@@ -23,6 +23,7 @@ internal static class OppoAdvertisementTests
                 161, 101, 41, 2, 3, 10, 11, 12, 0xAA, 0xBB, 1, 2, 3, 4];
             Check(OppoAdvertisementParser.TryParse(0x079A, complete, out var record));
             Check(record?.EmbeddedAddress == 0x112233445566 && record.CaseOpen == true);
+            Check(record?.Color == 2);
             for (int length = 0; length < complete.Length; length++)
                 Check(!OppoAdvertisementParser.TryParse(0x079A, complete.AsSpan(0, length), out var truncated) && truncated is null);
             Check(OppoAdvertisementParser.TryParse(0x079A, complete.Concat(new byte[] { 0xFF }).ToArray(), out _));

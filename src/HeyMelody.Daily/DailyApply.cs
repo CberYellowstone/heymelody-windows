@@ -143,6 +143,10 @@ public sealed partial class DailyClient
         0x0418 => snapshot.CustomEqualizersRead,
         0x0422 => snapshot.SpatialMode is not null,
         0x0403 => snapshot.RawFeatures.TryGetValue(payload[0], out byte value) && value <= 1,
+        0x041B => snapshot.BassEngine is not null,
+        0x0427 => snapshot.PromptVolume is not null,
+        0x0423 => snapshot.GameSound is not null && snapshot.RawFeatures.TryGetValue(0x27, out byte enabled) && enabled <= 1,
+        0x0401 => payload.Length == 5 && snapshot.Gestures.Any(x => x.Device == payload[1] && x.Button == payload[2] && x.Action == payload[3]),
         _ => false
     };
     private async Task<bool> SetPrerequisiteAsync(ushort command, byte[] payload, Func<DailySnapshot, bool> target,
@@ -197,6 +201,8 @@ public sealed partial class DailyClient
             return Reject(result, "编辑范围与该条目刚回读的增益范围不一致。");
         if (existing is null)
         {
+            if (before.CustomEqualizers.Count >= before.CustomEqualizerCapacity)
+                return Reject(result, "设备的自定义 EQ 槽位已满，请删除一个方案后再创建。");
             // Official APK Ab/Z$i.smali:115/123 creates action=1 with +6/-6 dB. It is source policy,
             // not a guessed device-reported range. Updates still require the exact returned entry limits.
             if (edit.MinimumGain != -6 || edit.MaximumGain != 6)
@@ -207,7 +213,7 @@ public sealed partial class DailyClient
         byte[] payload;
         try { payload = DailyParsers.BuildEqualizer(edit, before.EqualizerFrequencies,
             preserveReportedName: existing is not null && existing.Name == edit.Name); }
-        catch (Exception) { return Reject(result, "EQ 名称、十段频率或增益未通过校验。"); }
+        catch (Exception) { return Reject(result, "EQ 名称、频率或增益未通过校验。"); }
         if (existing is { Selected: true } && existing.Name == edit.Name &&
             existing.MinimumGain == edit.MinimumGain && existing.MaximumGain == edit.MaximumGain &&
             existing.Bands.SequenceEqual(edit.Bands))

@@ -1,0 +1,33 @@
+{
+    "host": {
+        "packageName": "com.oplus.melody",
+        "componentName": "com.oplus.melody.seedling.MelodySeedlingCardWidgetProvider",
+        "minHostVersion": 4008000
+    },
+    "card": {
+        "support": "widget_1*1",
+        "subscribe": [
+            {
+                "size": "widget_1*1",
+                "name": "@string:strings.name",
+                "desc": "@string:strings.description",
+                "groupTitle": "@string:strings.groupTitle",
+                "groupImage": "@image:images/icon.png",
+                "previewImage": "@image:images/icon.png",
+                "cardLoadingIcon": "@image:images/icon.png"
+            }
+        ]
+    },
+    "click": [
+        { 
+           "type": "activity",
+           "packageName": "com.oplus.melody",
+           "action": "com.oplus.melody.action.MINI_APP",
+           "category": "android.intent.category.DEFAULT"
+        },
+        {
+           "type": "uri",
+           "uri": "olink://com.oplus.secondaryhome/miniapp_card?cardId=777770012"
+        }
+    ]
+}

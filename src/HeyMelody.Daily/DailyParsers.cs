@@ -112,8 +112,8 @@ public static class DailyParsers
             Require(!string.IsNullOrWhiteSpace(nameText) && nameText.All(c => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z'
                 or >= '0' and <= '9' or >= '\u4e00' and <= '\u9fa5'));
         byte[] name = Utf8.GetBytes(nameText);
-        Require(name.Length <= 255 && frequencies.Count == 10 && edit.Bands.Count == frequencies.Count
-            && edit.MinimumGain <= edit.MaximumGain);
+        Require(name.Length <= 255 && frequencies.Count is > 0 and <= 32 && edit.Bands.Count == frequencies.Count
+            && edit.MinimumGain <= edit.MaximumGain && frequencies.All(x => x > 0) && frequencies.Distinct().Count() == frequencies.Count);
         for (int n = 0; n < frequencies.Count; n++)
             Require(edit.Bands[n].Frequency == frequencies[n] && edit.Bands[n].Gain >= edit.MinimumGain
                 && edit.Bands[n].Gain <= edit.MaximumGain);

@@ -14,10 +14,12 @@ internal sealed record BroadcastObservation(string ProductId, CaseLidState Lid, 
     internal DateTimeOffset? LeftBatteryTime { get; init; }
     internal DateTimeOffset? RightBatteryTime { get; init; }
     internal DateTimeOffset? CaseBatteryTime { get; init; }
+    internal byte? Color { get; init; }
+    internal DateTimeOffset? ColorTime { get; init; }
 }
 
 /// <summary>The single owner of device identities, policy and published state. Native work lives in disposable child processes.</summary>
-internal sealed class BackendSupervisor : IAsyncDisposable
+internal sealed partial class BackendSupervisor : IAsyncDisposable
 {
     private sealed class Peer(BluetoothCandidate candidate)
     {
@@ -58,17 +60,22 @@ internal sealed class BackendSupervisor : IAsyncDisposable
 
     internal BackendSupervisor(DeviceWhitelistStore? whitelist = null,
         Func<CancellationToken, Task<IReadOnlyList<BluetoothCandidate>>>? enumerate = null,
-        Func<IPeerWorker>? workerFactory = null, TimeProvider? time = null)
+        Func<IPeerWorker>? workerFactory = null, TimeProvider? time = null, HeyMelodyWindows.Resources.ResourceCoordinator? resources = null)
     {
         _whitelist = whitelist ?? DeviceWhitelistStore.CreateDefault();
         _enumerate = enumerate ?? PeerWorker.EnumerateAsync;
         _workerFactory = workerFactory ?? (() => new PeerWorker());
+        _resources = resources ?? (workerFactory is null ? new() : null);
         _time = time ?? TimeProvider.System;
         try { _allowed = _whitelist.Load(); }
         catch (InvalidDataException) { _catalogWarning = "设备选择记录已损坏，请重新选择并保存。"; }
     }
 
-    public Task InitializeAsync(CancellationToken token) => RefreshCatalogAsync(token);
+    public async Task InitializeAsync(CancellationToken token)
+    {
+        await InitializeResourcesAsync(token);
+        await RefreshCatalogAsync(token);
+    }
     public BackendSubscription Subscribe(Action<BackendSubscription>? atomicReply = null)
     {
         lock (_sync)
@@ -191,13 +198,21 @@ internal sealed class BackendSupervisor : IAsyncDisposable
             if (!EligibleLocked(peer) || peer.Worker is not null || peer.Initializing || peer.State == MonitoringState.Unsupported) return;
             peer.Initializing = true; generation = peer.Generation; token = peer.Lifetime.Token;
             worker = peer.Worker = _workerFactory(); peer.State = MonitoringState.Connecting;
+            if (worker is ICalibrationPeerWorker calibration)
+                calibration.CalibrationChanged += state => ReceiveCalibration(peer, generation, state);
             worker.SnapshotChanged += s => ReceiveSpp(peer, generation, s);
             worker.Unavailable += () => WorkerFailed(peer, generation);
             PublishLocked(peer);
         }
         try
         {
+            lock (_sync)
+            {
+                if (peer.Generation != generation || !ReferenceEquals(peer.Worker, worker)) return;
+                ConfigureWorkerResources(worker, peer);
+            }
             var snapshot = await worker.InitializeAsync(peer.Candidate.Address, peer.Identity, peer.Candidate.Name, token);
+            BroadcastObservation? colorObservation;
             lock (_sync)
             {
                 if (peer.Generation != generation || !ReferenceEquals(peer.Worker, worker)) return;
@@ -212,7 +227,10 @@ internal sealed class BackendSupervisor : IAsyncDisposable
                     return;
                 }
                 peer.Failures = 0; AdoptSppLocked(peer, snapshot);
+                colorObservation = peer.Broadcast;
             }
+            if (colorObservation?.Color is { } color)
+                _ = UpdateWorkerColorAsync(peer, colorObservation.ProductId, color);
         }
         catch (Exception) { WorkerFailed(peer, generation); }
     }
@@ -266,6 +284,7 @@ internal sealed class BackendSupervisor : IAsyncDisposable
     }
     private void StopPeerLocked(Peer peer)
     {
+        InvalidateCalibrationLocked(peer);
         peer.Generation++; peer.SppRevision = 0; peer.PublicSppRevisions.Clear(); peer.Spp = null; peer.Initializing = false;
         peer.Lifetime.Cancel(); peer.Lifetime.Dispose(); peer.Lifetime = new();
         var worker = peer.Worker; peer.Worker = null;
@@ -283,6 +302,7 @@ internal sealed class BackendSupervisor : IAsyncDisposable
             queuedCancellation.ThrowIfCancellationRequested();
             IPeerWorker? worker; long generation; CancellationToken token;
             lock (_sync) { worker = EligibleLocked(peer) ? peer.Worker : null; generation = peer.Generation; token = peer.Lifetime.Token; }
+            lock (_sync) if (HasCalibrationLocked(peer)) return Copy(peer.Published);
             if (worker is null) return Select(identity);
             var snapshot = await worker.RefreshAsync(scope, token);
             lock (_sync) { if (generation == peer.Generation) AdoptSppLocked(peer, snapshot); return Copy(peer.Published); }
@@ -300,7 +320,7 @@ internal sealed class BackendSupervisor : IAsyncDisposable
             IPeerWorker worker; CancellationToken token; long initialRevision;
             lock (_sync)
             {
-                if (generation != peer.Generation || !EligibleLocked(peer) || !peer.Published.ControlReady || peer.Worker is null)
+                if (generation != peer.Generation || !EligibleLocked(peer) || !peer.Published.ControlReady || peer.Worker is null || HasCalibrationLocked(peer) || _resourceTransition)
                     return new() { BackendReceiptReceived = true, FailureKind = ApplyFailure.StateUnavailable,
                         ConnectionState = peer.Published.ConnectionState, After = Copy(peer.Published), Message = "耳机连接或状态已变化，未提交设置。" };
                 worker = peer.Worker; token = peer.Lifetime.Token; initialRevision = peer.Revision;
@@ -342,13 +362,15 @@ internal sealed class BackendSupervisor : IAsyncDisposable
 
     public void ObserveBroadcast(ulong address, BroadcastObservation observation)
     {
+        Peer? colorPeer = null;
         lock (_sync)
         {
             if (_stopping || _suspended || !_radioAvailable || !_peers.TryGetValue(address, out var peer)
-                || !peer.Present || !peer.Allowed || !string.Equals(observation.ProductId, "06EC10", StringComparison.OrdinalIgnoreCase)
+                || !peer.Present || !peer.Allowed || !KnownProduct(observation.ProductId)
                 || peer.VerifiedProductId is { } product && !string.Equals(product, observation.ProductId, StringComparison.OrdinalIgnoreCase)
                 || peer.Broadcast is { } previous && previous.ReceivedAt > observation.ReceivedAt) return;
             var old = peer.Broadcast;
+            if (observation.Color is not null && observation.Color != old?.Color) colorPeer = peer;
             // Missing components do not erase independently observed components. Their own
             // timestamps expire them, so a stream of status packets cannot keep old batteries fresh.
             peer.Broadcast = observation with
@@ -368,10 +390,14 @@ internal sealed class BackendSupervisor : IAsyncDisposable
                 LeftBatteryTime = observation.LeftBattery is not null ? observation.ReceivedAt : old?.LeftBatteryTime,
                 RightBatteryTime = observation.RightBattery is not null ? observation.ReceivedAt : old?.RightBatteryTime,
                 CaseBatteryTime = observation.CaseBattery is not null ? observation.ReceivedAt : old?.CaseBatteryTime
+                , Color = observation.Color ?? old?.Color,
+                ColorTime = observation.Color is not null ? observation.ReceivedAt : old?.ColorTime
             };
             PublishLocked(peer, suppressEquivalentObservation: true);
             ScheduleBroadcastExpiryLocked(peer);
         }
+        if (colorPeer is not null && observation.Color is { } color)
+            _ = UpdateWorkerColorAsync(colorPeer, observation.ProductId, color);
     }
 
     private void ScheduleBroadcastExpiryLocked(Peer peer)
@@ -380,7 +406,7 @@ internal sealed class BackendSupervisor : IAsyncDisposable
         if (peer.Broadcast is not { } observation) return;
         var now = _time.GetUtcNow();
         var timestamps = new[] { observation.CaseTime, observation.LeftTime, observation.RightTime,
-            observation.LeftBatteryTime, observation.RightBatteryTime, observation.CaseBatteryTime };
+            observation.LeftBatteryTime, observation.RightBatteryTime, observation.CaseBatteryTime, observation.ColorTime };
         var next = timestamps.Where(t => t is { } value && value + TimeSpan.FromSeconds(30) > now)
             .Select(t => t!.Value + TimeSpan.FromSeconds(30)).DefaultIfEmpty(now).Min();
         if (next <= now) { peer.Broadcast = null; return; }
@@ -451,15 +477,19 @@ internal sealed class BackendSupervisor : IAsyncDisposable
         var snapshot = peer.Spp is null ? new UiSnapshot() : Copy(peer.Spp);
         snapshot.Identity = peer.Identity; snapshot.DeviceName = peer.Candidate.Name;
         snapshot.BackendInstanceId = InstanceId; snapshot.DeviceGeneration = peer.Generation;
+        snapshot.ResourceSource = _activeCatalog?.Source.ToString() ?? snapshot.ResourceSource;
+        snapshot.ResourceRevision = _activeResourceRevision;
         snapshot.Connected = peer.Candidate.Connected && _radioAvailable && !_suspended;
         snapshot.ConnectionState = !_radioAvailable || _suspended ? ConnectionState.Unknown
             : peer.Candidate.Connected ? ConnectionState.Connected : ConnectionState.Disconnected;
-        snapshot.ControlReady = EligibleLocked(peer) && peer.Spp?.ControlReady == true;
+        snapshot.ControlReady = EligibleLocked(peer) && peer.Spp?.ControlReady == true && !HasCalibrationLocked(peer) && !_resourceTransition;
         snapshot.MonitoringState = peer.Paused ? MonitoringState.Paused : peer.State;
         if (!snapshot.ControlReady)
         {
             snapshot.CanSetAnc = snapshot.CanSetEqualizer = snapshot.CanSetCustomEqualizer = snapshot.CanSetDualConnection = false;
             snapshot.CanSetGameMode = snapshot.CanSetSpatial = snapshot.CanSetHiRes = false;
+            snapshot.CanFitTest = snapshot.CanSetupHearing = false;
+            snapshot.FeatureSections = snapshot.FeatureSections.Select(s => s with { Controls = s.Controls.Select(c => c with { CanWrite = false }).ToArray() }).ToArray();
         }
         var ble = peer.Broadcast;
         var usedBle = false;
@@ -469,6 +499,8 @@ internal sealed class BackendSupervisor : IAsyncDisposable
         if (ble is not null)
         {
             snapshot.ProductId ??= ble.ProductId;
+            if (ble.Color is not null && Newer(ble.ColorTime, snapshot.ColorObservationTime))
+            { snapshot.Color = ble.Color; snapshot.ColorObservationTime = ble.ColorTime; usedBle = true; }
             if (ble.LeftBattery is not null && Newer(ble.LeftBatteryTime, snapshot.LeftBatteryObservationTime))
             { snapshot.LeftBattery = ble.LeftBattery; snapshot.LeftCharging = ble.LeftCharging; snapshot.LeftBatteryObservationTime = ble.LeftBatteryTime; usedBle = true; }
             if (ble.RightBattery is not null && Newer(ble.RightBatteryTime, snapshot.RightBatteryObservationTime))
@@ -509,6 +541,7 @@ internal sealed class BackendSupervisor : IAsyncDisposable
     }
     private static DateTimeOffset? Latest(params DateTimeOffset?[] values) => values.Where(v => v.HasValue).DefaultIfEmpty().Max();
     private static bool SameObservation(UiSnapshot left, UiSnapshot right) => left.ProductId == right.ProductId
+        && left.Color == right.Color && left.ResourceSource == right.ResourceSource && left.ResourceRevision == right.ResourceRevision
         && left.CaseLid == right.CaseLid && left.LeftPlacement == right.LeftPlacement && left.RightPlacement == right.RightPlacement
         && left.LeftBattery == right.LeftBattery && left.RightBattery == right.RightBattery && left.CaseBattery == right.CaseBattery
         && left.LeftCharging == right.LeftCharging && left.RightCharging == right.RightCharging && left.CaseCharging == right.CaseCharging
@@ -529,12 +562,14 @@ internal sealed class BackendSupervisor : IAsyncDisposable
             _lifetime.Cancel();
         }
         foreach (var worker in workers) await worker.DisposeAsync();
+        DisposeResources();
     }
 
     public async Task StopGracefullyAsync()
     {
         Peer[] peers;
         lock (_sync) { _stopping = true; peers = _peers.Values.ToArray(); }
+        await CancelAllCalibrationsAsync();
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(125));
         foreach (var peer in peers)
         {

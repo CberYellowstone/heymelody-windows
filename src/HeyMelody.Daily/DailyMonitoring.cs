@@ -48,7 +48,7 @@ public sealed partial class DailyClient
             _registeredSession = session; return;
         }
         byte[] offered = NotificationParsers.ParseSupportedEvents(capability.Payload!);
-        byte[] ids = offered.Where(id => id is 1 or 2 or 3 or 5 or 6 or 15).ToArray();
+        byte[] ids = offered.Where(id => id is 1 or 2 or 3 or 4 or 5 or 6 or 14 or 15).ToArray();
         if (ids.Length != 0)
         {
             if (_commands.Supports(0x0205))
@@ -56,12 +56,14 @@ public sealed partial class DailyClient
                 var reply = await session.RequestAsync(0x0205, [(byte)ids.Length, .. ids], token);
                 if (!reply.Matched || !session.Usable) throw new IOException("Notification registration failed.");
                 if (reply.Status != 0) _monitoringWarning = "设备拒绝了状态通知订阅。";
+                else lock (_stateGate) _registeredEvents.UnionWith(ids);
             }
             else foreach (byte id in ids)
             {
                 var reply = await session.RequestAsync(0x0201, [id], token);
                 if (!reply.Matched || !session.Usable) throw new IOException("Notification registration failed.");
                 if (reply.Status != 0) _monitoringWarning = "设备拒绝了部分状态通知订阅。";
+                else lock (_stateGate) _registeredEvents.Add(id);
             }
         }
         _registeredSession = session;
@@ -93,6 +95,7 @@ public sealed partial class DailyClient
     }
     private void OnSessionEnded(DailySession source, Exception failure)
     {
+        if (ReferenceEquals(_session, source)) Disconnected?.Invoke();
         DailySnapshot? snapshot = null;
         lock (_stateGate)
         {
@@ -106,6 +109,9 @@ public sealed partial class DailyClient
     }
     private void OnNotification(DailySession source, Packet packet)
     {
+        if (!ReferenceEquals(_session, source)) return;
+        foreach (Action<Packet> handler in Notification?.GetInvocationList() ?? [])
+            try { handler(packet); } catch { }
         DeviceNotification? notification;
         try { if (!NotificationParsers.TryParse(packet, out notification)) return; }
         catch (FormatException) { QueueRefresh(DailyRefreshScope.Full); return; }
@@ -147,6 +153,12 @@ public sealed partial class DailyClient
                         updates[$"feature:{id}"] = s => s.RawFeatures[id] = value;
                         if (id is 0x1B or 0x18) refreshes.Add(DailyRefreshScope.Features);
                     }
+                    break;
+                case DeviceNotificationKind.Bass:
+                    if (_profile?.FunctionVersion("bassEngineSupport") != 1 || _commands?.Supports(0x0124) != true) break;
+                    var bass = DailyFeatureCodecs.ParseBass([0, .. data]);
+                    updates["bass"] = s => s.BassEngine = bass;
+                    refreshes.Add(DailyRefreshScope.Features);
                     break;
                 case DeviceNotificationKind.Preset:
                     byte preset = DailyParsers.ParsePreset([0, .. data]);
@@ -265,5 +277,5 @@ public sealed partial class DailyClient
     }
     private static string ReadGroup(ushort command) => command switch {
         0x0106 => "battery:", 0x0107 => "placement:", 0x010C => "anc", 0x010D => "feature:",
-        0x010F => "preset", 0x0122 => "equalizers", 0x012A => "spatial", _ => "information" };
+        0x010F => "preset", 0x0122 => "equalizers", 0x012A => "spatial", 0x0124 => "bass", _ => "information" };
 }

@@ -1,9 +1,10 @@
 # 文档索引
 
-当前版本为 0.7.1。除 Markdown 链接外，文档中的 `src/`、`tests/`、`research/`、`reference/`、`artifacts/` 和 `release/` 路径均相对于仓库根目录。构建、发布和验证入口见 [REPOSITORY.md](../REPOSITORY.md)。
+当前版本为 0.8.1。除 Markdown 链接外，文档中的 `src/`、`tests/`、`research/`、`reference/`、`artifacts/` 和 `release/` 路径均相对于仓库根目录。构建、发布和验证入口见 [REPOSITORY.md](../REPOSITORY.md)。
 
 ## 当前实现
 
+- [Enco X4 控制连接回归与 0.8.1 实机验证](research/enco-x4-0.8.1.md)：控制服务校验修复、型号提示及两套预装／缓存资源的只读验证。
 - [Free4 三维模型与 0.7.1 体验包](research/enco-free4-0.7.1.md)：已迁入当前分支的模型控件、拖动与惯性、自转，以及迁移前独立工作区验证。
 - [后台架构](backend-architecture.md)：托盘、共享 IPC、多设备监听、BLE 观测、设置与退出生命周期。
 - [界面说明](gui-notes.md)：现有 Avalonia/FluentAvalonia 布局、编辑保护和界面验证。

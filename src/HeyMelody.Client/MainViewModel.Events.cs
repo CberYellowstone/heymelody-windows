@@ -14,6 +14,8 @@ public sealed partial class MainViewModel
     public void AdoptBackendEvent(BackendEvent notification)
     {
         if (_closing || EventService is null) return;
+        if (notification.Kind == "resources" && notification.Resources is { } resources && AcceptBackend(notification.BackendInstanceId))
+        { PresentResourceSettings(resources); return; }
         if (notification.Kind == "unavailable")
         {
             AdvanceSession();

@@ -9,7 +9,7 @@ using HeyMelodyWindows.Host;
 namespace HeyMelodyWindows.App;
 
 /// <summary>A client of the shared tray backend. Disposing a client never terminates the backend.</summary>
-public sealed class ClientBridge : IHeadsetEventService, IDeviceManagementService
+public sealed partial class ClientBridge : IHeadsetEventService, IDeviceManagementService, IResourceSettingsService, ICalibrationService, IArtworkService
 {
     private readonly string _pipeName;
     private readonly Action? _startBackend;
@@ -270,7 +270,7 @@ public sealed class ClientBridge : IHeadsetEventService, IDeviceManagementServic
                 string? record = await RpcWire.ReadLineAsync(connection.Reader, _lifetime.Token);
                 if (record is null) break;
                 var message = JsonSerializer.Deserialize<BackendMessage>(record, RpcWire.Json) ?? throw new InvalidDataException();
-                if (message.SchemaVersion != 2)
+                if (message.SchemaVersion != 3)
                 { _versionMismatch = true; throw new InvalidDataException("后台通信版本不一致。"); }
                 if (message.Kind == "response" && message.Id > 0 && message.Id <= Interlocked.Read(ref _nextId))
                 {

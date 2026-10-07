@@ -71,7 +71,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ToggleDualCommand = Register(new AsyncRelayCommand<bool>(value => ApplyAsync(new("DualConnection", value ? 1 : 0)), _ => CanSetDualConnection));
         ToggleGameCommand = Register(new AsyncRelayCommand<bool>(value => ApplyAsync(new("GameMode", value ? 1 : 0)), _ => CanSetGameMode));
         ToggleHiResCommand = Register(new AsyncRelayCommand<bool>(value => ApplyAsync(new("HiRes", value ? 1 : 0)), _ => CanSetHiRes));
-        NewEqCommand = Register(new AsyncRelayCommand(NewEqAsync, () => CanEditEq));
+        NewEqCommand = Register(new AsyncRelayCommand(NewEqAsync, () => CanCreateEq));
         ResetEqCommand = Register(new RelayCommand(() => LoadEntry(SelectedEqEntry), () => CanEditEq));
         SaveEqCommand = Register(new AsyncRelayCommand(SaveEqAsync, () => CanSetCustomEqualizer && EqDirty));
         UseEqCommand = Register(new AsyncRelayCommand(UseEqAsync, () => CanSetCustomEqualizer && !EqDirty && SelectedEqEntry is { Id: > 0 }));
@@ -163,6 +163,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void NotifyCommands() { foreach (var command in _commands) command.NotifyCanExecuteChanged(); }
     private void NotifyState()
     {
+        foreach (var control in _featureSections.SelectMany(s => s.Controls)) control.RefreshPermissions();
         foreach (var property in PresentationProperties)
         {
             var value = typeof(MainViewModel).GetProperty(property)!.GetValue(this);
@@ -176,6 +177,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         await SubscribeToBackendAsync();
         await EnumerateAsync(devices);
+        await LoadResourcePreferencesAsync();
         if (_preview && SelectedDevice is not null) await ConnectOrDisconnectAsync();
     }
 
@@ -317,7 +319,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 MonitoringState.Connecting => "正在建立耳机控制连接…",
                 MonitoringState.WaitingForConnection => snapshot.ObservationFresh ? "已收到耳机广播 · 等待蓝牙连接" : "等待耳机连接 · 后台继续监听",
                 MonitoringState.Unsupported => "该型号的设置尚未适配",
-                MonitoringState.Unavailable => "蓝牙后台暂不可用，请检查蓝牙状态。",
+                MonitoringState.Unavailable => "耳机控制连接暂不可用，请刷新状态或重新连接耳机。",
                 _ => HasVerifiedSnapshot ? "已连接 · 接收耳机状态更新" : snapshot.ObservationFresh ? "已收到耳机广播 · 设置暂不可用" : "耳机当前状态未确认"
             };
             SetStatus(message, snapshot.MonitoringState == MonitoringState.Unavailable);
@@ -342,11 +344,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             || EventService is null && (snapshot.Failure is not null || !snapshot.Connected))
         { InvalidateSnapshot(); return false; }
         _snapshot = snapshot; _displaying = true;
+        UpdateResourcePresentation(snapshot);
         _title = snapshot.DeviceName;
         _subtitle = IsVerifiedControl(snapshot)
             ? $"已连接{(snapshot.Firmware is null ? "" : $" · 固件 {snapshot.Firmware}")}"
-            : EventService is not null && snapshot.ObservationFresh ? "耳机广播状态 · 控制连接未就绪"
-            : snapshot.SupportedModel ? "控制连接未就绪，设置暂不可用" : "该型号的设置尚未适配";
+            : snapshot.MonitoringState switch
+            {
+                MonitoringState.Unsupported => "该型号的设置尚未适配",
+                MonitoringState.Paused => "控制连接已暂停 · 设置暂不可用",
+                MonitoringState.Connecting => "正在建立耳机控制连接…",
+                MonitoringState.Unavailable => "耳机控制连接暂不可用",
+                _ when EventService is not null && snapshot.ObservationFresh => "耳机广播状态 · 控制连接未就绪",
+                MonitoringState.WaitingForConnection => "等待耳机连接 · 设置暂不可用",
+                _ => "控制连接未就绪，设置暂不可用"
+            };
         var anc = _pendingAnc ? _pendingAncKey : snapshot.Anc;
         var preset = _pendingPreset ? _pendingPresetKey : snapshot.Equalizer;
         var spatial = _pendingSpatial ? _pendingSpatialKey : snapshot.Spatial;
@@ -405,6 +416,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         "HiRes" => s.CanSetHiRes && s.HiRes is not null,
         "CustomEqualizer" => s.CanSetCustomEqualizer && action.EqualizerEntry is not null,
         "CustomSelect" => s.CanSetCustomEqualizer && s.EqualizerEntries.Any(x => x.Id == action.Value && x.Id > 0),
+        "Feature" => s.FeatureSections.SelectMany(x => x.Controls).Any(x => x.Id == action.FeatureId && x.CanWrite &&
+            (x.Kind == "Text" || action.Value >= x.Minimum && action.Value <= x.Maximum && (x.Options is null || x.Options.Count == 0 || x.Options.Any(o => o.Key == action.Value)))),
         _ => false
     };
 
@@ -428,7 +441,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private async Task NewEqAsync()
     {
         if (Closing) return;
-        if (!HasVerifiedSnapshot || _snapshot?.CanSetCustomEqualizer != true) return;
+        if (!CanCreateEq) return;
         var epoch = _sessionEpoch; var token = _sessionWork.Token;
         try
         {
@@ -455,6 +468,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void LoadEntry(UiEqEntry? entry)
     {
         var displaying = _displaying; _displaying = true; _selectedEqEntry = entry; _eqDraftId = entry?.Id;
+        var frequencies = entry?.Bands.Select(b => b.FrequencyHz).ToArray()
+            ?? (_snapshot?.EqualizerFrequencies.Count > 0 ? _snapshot.EqualizerFrequencies.ToArray() : Frequencies);
+        EnsureBands(frequencies);
         _draftIdentity++; _eqVersion++; EqName = entry?.Name ?? "我的均衡器";
         foreach (var band in Bands)
         {

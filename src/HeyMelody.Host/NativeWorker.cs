@@ -16,6 +16,19 @@ internal sealed class WorkerRequest
     public string Name { get; set; } = "";
     public RefreshScope Scope { get; set; }
     public UiAction? Action { get; set; }
+    public string? CatalogGzip { get; set; }
+    public string Source { get; set; } = "HeyMelody";
+    public long ResourceRevision { get; set; }
+    public long AppMarker { get; set; } = 17006004;
+    public string StableKey { get; set; } = "";
+    public long Generation { get; set; }
+    public string Handle { get; set; } = "";
+    public long Revision { get; set; }
+    public string CalibrationKind { get; set; } = "";
+    public UiCalibrationInput? Input { get; set; }
+    public int? HearingUid { get; set; }
+    public string? ObservedProductId { get; set; }
+    public byte? ObservedColor { get; set; }
 }
 
 internal sealed class WorkerMessage
@@ -25,6 +38,8 @@ internal sealed class WorkerMessage
     public bool Success { get; set; }
     public JsonElement? Data { get; set; }
     public UiSnapshot? Snapshot { get; set; }
+    public UiCalibrationState? Calibration { get; set; }
+    public string? Error { get; set; }
 }
 
 internal static class NativeWorker
@@ -43,6 +58,9 @@ internal static class NativeWorker
             // supervisor treats child termination as uncertain and never replays writes.
             if (!snapshots.Writer.TryWrite(snapshot)) Environment.Exit(1);
         };
+        var calibrations = Channel.CreateBounded<UiCalibrationState>(new BoundedChannelOptions(64)
+        { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
+        service.CalibrationChanged += state => calibrations.Writer.TryWrite(state);
         async Task WriteAsync(WorkerMessage message)
         {
             var line = JsonSerializer.Serialize(message, RpcWire.Json);
@@ -58,6 +76,12 @@ internal static class NativeWorker
                 await foreach (var snapshot in snapshots.Reader.ReadAllAsync(lifetime.Token))
                     await WriteAsync(new() { Kind = "snapshot", Snapshot = snapshot });
             }
+            catch (Exception) when (lifetime.IsCancellationRequested) { }
+        });
+        var publishingCalibration = Task.Run(async () =>
+        {
+            try { await foreach (var state in calibrations.Reader.ReadAllAsync(lifetime.Token))
+                await WriteAsync(new() { Kind = "calibration", Calibration = state }); }
             catch (Exception) when (lifetime.IsCancellationRequested) { }
         });
         try
@@ -78,6 +102,7 @@ internal static class NativeWorker
                     if (request.Operation == "initialize" && !initialized)
                     {
                         initialized = true;
+                        service.ConfigureResources(request);
                         data = await service.InitializePeerAsync(request.Identity, request.Name, request.Address, budget.Token);
                     }
                     else if (!initialized) throw new InvalidDataException();
@@ -86,17 +111,28 @@ internal static class NativeWorker
                         "refresh" => await service.RefreshAsync(request.Scope, budget.Token),
                         "apply" => await service.ApplyAsync(request.Action ?? throw new InvalidDataException(), budget.Token),
                         "diagnostics" => service.Diagnostics(),
+                        "createCalibration" => service.CreateCalibration(request.Handle, request.CalibrationKind),
+                        "getCalibration" => service.GetCalibration(request.Handle),
+                        "advanceCalibration" => await service.AdvanceCalibrationAsync(request.Handle, request.Revision, request.Input ?? throw new InvalidDataException(), budget.Token),
+                        "cancelCalibration" => await service.CancelCalibrationAsync(request.Handle, budget.Token),
+                        "hearingProfiles" => await service.ReadHearingProfilesAsync(budget.Token),
+                        "selectHearing" => await service.SelectHearingAsync(request.HearingUid, budget.Token),
+                        "observedColor" => await service.SetObservedColorAsync(request.ObservedProductId ?? throw new InvalidDataException(),
+                            request.ObservedColor ?? throw new InvalidDataException(), budget.Token),
+                        "shutdown" => await ShutdownAsync(),
                         _ => throw new InvalidDataException()
                     };
                     response.Success = true; response.Data = JsonSerializer.SerializeToElement(data, RpcWire.Json);
                 }
-                catch (Exception) { response.Success = false; }
+                catch (Exception error) { response.Success = false; response.Error = error is InvalidOperationException or ArgumentException ? error.Message : "设备未能完成操作，请检查连接后重试。"; }
                 await WriteAsync(response);
+                if (request.Operation == "shutdown") break;
             }
             return 0;
+            async Task<bool> ShutdownAsync() { await service.DisconnectAsync(CancellationToken.None); return true; }
         }
         catch (Exception) { return 1; }
-        finally { lifetime.Cancel(); snapshots.Writer.TryComplete(); try { await publishing; } catch { } }
+        finally { await service.DisposeCalibrationAsync(); lifetime.Cancel(); snapshots.Writer.TryComplete(); calibrations.Writer.TryComplete(); try { await Task.WhenAll(publishing, publishingCalibration); } catch { } }
     }
 
     internal static async Task<int> EnumerateAsync()
@@ -143,7 +179,7 @@ internal interface IPeerWorker : IAsyncDisposable
     Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token);
 }
 
-internal sealed class PeerWorker(Func<ProcessStartInfo>? startFactory = null, TimeSpan? testBudget = null) : IPeerWorker
+internal sealed partial class PeerWorker(Func<ProcessStartInfo>? startFactory = null, TimeSpan? testBudget = null) : IPeerWorker, IResourcePeerWorker, ICalibrationPeerWorker
 {
     private readonly SemaphoreSlim _commands = new(1), _writes = new(1);
     private readonly CancellationTokenSource _lifetime = new();
@@ -155,7 +191,9 @@ internal sealed class PeerWorker(Func<ProcessStartInfo>? startFactory = null, Ti
     public event Action? Unavailable;
 
     public Task<UiSnapshot> InitializeAsync(ulong address, string identity, string name, CancellationToken token)
-        => RequestAsync<UiSnapshot>(new() { Operation = "initialize", Address = address, Identity = identity, Name = name }, token);
+        => RequestAsync<UiSnapshot>(new() { Operation = "initialize", Address = address, Identity = identity, Name = name,
+            CatalogGzip = _catalogGzip, Source = _source, ResourceRevision = _resourceRevision, AppMarker = _appMarker, StableKey = _stableKey, Generation = _generation,
+            ObservedProductId = _observedProductId, ObservedColor = _observedColor }, token);
     public Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken token)
         => RequestAsync<UiSnapshot>(new() { Operation = "refresh", Scope = scope }, token);
     public Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token)
@@ -190,9 +228,11 @@ internal sealed class PeerWorker(Func<ProcessStartInfo>? startFactory = null, Ti
             }
             finally { _writes.Release(); }
             var response = await completion.Task.WaitAsync(deadline.Token);
-            if (!response.Success || response.Data is null) throw new IOException();
+            if (!response.Success) throw new InvalidOperationException(response.Error ?? "设备未能完成操作。");
+            if (response.Data is null) throw new InvalidDataException();
             return response.Data.Value.Deserialize<T>(RpcWire.Json) ?? throw new InvalidDataException();
         }
+        catch (InvalidOperationException) { throw; }
         catch (Exception)
         {
             Stop();
@@ -215,6 +255,7 @@ internal sealed class PeerWorker(Func<ProcessStartInfo>? startFactory = null, Ti
             {
                 var message = JsonSerializer.Deserialize<WorkerMessage>(line, RpcWire.Json) ?? throw new InvalidDataException();
                 if (message.Kind == "snapshot" && message.Snapshot is { } snapshot) SnapshotChanged?.Invoke(snapshot);
+                else if (message.Kind == "calibration" && message.Calibration is { } calibration) CalibrationChanged?.Invoke(calibration);
                 else if (message.Kind == "response" && _pending.TryRemove(message.Id, out var pending)) pending.TrySetResult(message);
                 else throw new InvalidDataException();
             }
@@ -235,7 +276,17 @@ internal sealed class PeerWorker(Func<ProcessStartInfo>? startFactory = null, Ti
         try { if (process is { HasExited: false }) process.Kill(entireProcessTree: true); } catch { }
         Unavailable?.Invoke();
     }
-    public ValueTask DisposeAsync() { Stop(); _process?.Dispose(); return ValueTask.CompletedTask; }
+    private int _disposing;
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposing, 1) != 0) return;
+        if (_stopped == 0 && _process is { HasExited: false })
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            try { await RequestAsync<bool>(new() { Operation = "shutdown" }, deadline.Token); } catch { }
+        }
+        Stop(); _process?.Dispose();
+    }
 
     internal static async Task<IReadOnlyList<BluetoothCandidate>> EnumerateAsync(CancellationToken token)
     {

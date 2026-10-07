@@ -53,6 +53,75 @@ internal static class EventVmTests
             service.Push(unverified); await vm.ToggleGameCommand.ExecuteAsync(true);
             Check(!vm.HasVerifiedSnapshot && service.Actions.Count == 0);
         });
+        await test("event VM distinguishes unverified connection states from unsupported models", async () =>
+        {
+            var expectedSubtitles = new Dictionary<MonitoringState, string>
+            {
+                [MonitoringState.Unknown] = "控制连接未就绪，设置暂不可用",
+                [MonitoringState.WaitingForConnection] = "等待耳机连接 · 设置暂不可用",
+                [MonitoringState.Connecting] = "正在建立耳机控制连接…",
+                [MonitoringState.Monitoring] = "控制连接未就绪，设置暂不可用",
+                [MonitoringState.Paused] = "控制连接已暂停 · 设置暂不可用",
+                [MonitoringState.Unavailable] = "耳机控制连接暂不可用"
+            };
+            var service = new EventService();
+            var initial = service.Snapshots["device-a"];
+            initial.ControlReady = false; initial.Connected = false; initial.ConnectionState = ConnectionState.Disconnected;
+            initial.SupportedModel = false; initial.ProductId = null; initial.ObservationFresh = false;
+            initial.MonitoringState = MonitoringState.Unavailable;
+            await using var vm = Create(service); await vm.InitializeAsync();
+            Check(vm.ProductId is null && vm.Subtitle == "耳机控制连接暂不可用");
+            Check(vm.Status == "耳机控制连接暂不可用，请刷新状态或重新连接耳机。" && vm.StatusWarning);
+            foreach (var (state, subtitle) in expectedSubtitles)
+            {
+                var update = Next(service.Snapshots["device-a"]); update.MonitoringState = state; service.Push(update);
+                Check(vm.Subtitle == subtitle, $"Unexpected subtitle for unverified {state}: {vm.Subtitle}");
+                Check(!vm.Subtitle.Contains("未适配") && !vm.Status.Contains("未适配") && vm.ProductId is null);
+                Check(vm.StatusWarning == (state == MonitoringState.Unavailable));
+                Check(!vm.HasVerifiedSnapshot && !vm.CanSetGameMode && !vm.CanChooseAnc && vm.CanRefreshState);
+            }
+            await vm.ToggleGameCommand.ExecuteAsync(true); await vm.ApplyAncCommand.ExecuteAsync(null);
+            Check(service.Actions.Count == 0);
+        });
+        await test("event VM reserves unsupported text for an explicit unsupported-model result", async () =>
+        {
+            var service = new EventService(); var snapshot = service.Snapshots["device-a"];
+            snapshot.ProductId = "FFFF00"; snapshot.SupportedModel = false; snapshot.ControlReady = false;
+            snapshot.MonitoringState = MonitoringState.Unsupported; snapshot.ObservationFresh = true;
+            await using var vm = Create(service); await vm.InitializeAsync();
+            Check(vm.ProductId == "FFFF00" && vm.Subtitle == "该型号的设置尚未适配");
+            Check(vm.Status == "该型号的设置尚未适配" && !vm.HasVerifiedSnapshot && !vm.CanSetGameMode);
+            await vm.ToggleGameCommand.ExecuteAsync(true); Check(service.Actions.Count == 0);
+        });
+        await test("event VM preserves verified firmware and fresh BLE presentation", async () =>
+        {
+            var service = new EventService(); service.Snapshots["device-a"].Firmware = "1234";
+            await using var vm = Create(service); await vm.InitializeAsync();
+            Check(vm.Subtitle == "已连接 · 固件 1234" && vm.HasVerifiedSnapshot);
+            var ble = Next(service.Snapshots["device-a"]);
+            ble.ControlReady = false; ble.Connected = false; ble.ConnectionState = ConnectionState.Disconnected;
+            ble.SupportedModel = false; ble.ProductId = null; ble.MonitoringState = MonitoringState.WaitingForConnection;
+            ble.ObservationSource = "ble"; ble.ObservationFresh = true; ble.LeftBattery = 52; service.Push(ble);
+            Check(vm.Subtitle == "耳机广播状态 · 控制连接未就绪" && vm.LeftBatteryText == "52%");
+            Check(vm.Status == "已收到耳机广播 · 等待蓝牙连接" && !vm.HasVerifiedSnapshot);
+            ble = Next(ble); ble.MonitoringState = MonitoringState.Unavailable; service.Push(ble);
+            Check(vm.Subtitle == "耳机控制连接暂不可用" && vm.LeftBatteryText == "52%" && vm.StatusWarning);
+            Check(service.Actions.Count == 0);
+        });
+        await test("non-event preview preserves verified firmware and explicit unsupported presentation", async () =>
+        {
+            var backend = new EventService(); backend.Snapshots["device-a"].Firmware = "1234";
+            await using var vm = new MainViewModel(new ReadOnlyPreviewService(backend), new Confirmations(true), preview: true);
+            await vm.InitializeAsync();
+            Check(vm.HasVerifiedSnapshot && vm.Subtitle == "已连接 · 固件 1234");
+            var unsupported = backend.Snapshots["device-a"];
+            unsupported.ControlReady = false; unsupported.SupportedModel = false;
+            unsupported.MonitoringState = MonitoringState.Unsupported; await vm.PollAsync();
+            Check(!vm.HasVerifiedSnapshot && vm.Subtitle == "该型号的设置尚未适配");
+            unsupported.MonitoringState = MonitoringState.Unknown; unsupported.ProductId = null; await vm.PollAsync();
+            Check(vm.Subtitle == "控制连接未就绪，设置暂不可用" && !vm.Subtitle.Contains("未适配"));
+            Check(backend.Actions.Count == 0);
+        });
         await test("event VM pushes preserve draft and option choices without sending settings", async () =>
         {
             var service = new EventService(); await using var vm = Create(service); await vm.InitializeAsync();

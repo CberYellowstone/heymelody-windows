@@ -508,6 +508,8 @@ await Test("disposing idle persistent reader cancels the pending read", async ()
     await c.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
     Check(f.ActiveReaders==0);
 });
+await DailyFeatureTests.Run(Test, (value, message) => Check(value, message));
+await ResourceContextTests.RunAsync(Test);
 Console.WriteLine($"Daily tests: {passed} passed; no native devices accessed.");
 
 sealed class Fake : IControlConnector
@@ -519,6 +521,11 @@ sealed class Fake : IControlConnector
     public Exception? SetReadFailure;
     public static readonly ushort[] Frequencies = [31,62,125,250,500,1000,2000,4000,8000,16000];
     public Dictionary<byte,byte> Features = new() { [0x11]=0,[0x06]=0,[0x28]=0,[0x18]=1,[0x1B]=0 };
+    public BassEngineRange Bass = new(-6, 6, 0);
+    public byte PromptVolume = 6, GameSoundType;
+    public byte[] GameSoundTypes = [0,3];
+    public List<GestureAssignment> Gestures = [new(1,0,2,6), new(2,0,2,1)];
+    public byte[]? CapabilityOverride;
     public List<CustomEqualizer> Entries = [Entry()];
     public List<Packet> Writes = [];
     public int Opens, MaximumConcurrentSend;
@@ -567,6 +574,12 @@ sealed class Fake : IControlConnector
             {
                 case 0x0403: Features[p.Payload[0]]=p.Payload[1];break;
                 case 0x0422: Spatial=p.Payload[0];break;
+                case 0x041B: Bass = new(unchecked((sbyte)p.Payload[2]),unchecked((sbyte)p.Payload[1]),unchecked((sbyte)p.Payload[0]));break;
+                case 0x0427: PromptVolume = p.Payload[0];break;
+                case 0x0423: GameSoundType = p.Payload[0]; Features[0x27] = p.Payload[1];break;
+                case 0x0401:
+                    var gesture = new GestureAssignment(p.Payload[1],p.Payload[2],p.Payload[3],p.Payload[4]);
+                    Gestures.RemoveAll(x=>x.Device==gesture.Device&&x.Button==gesture.Button&&x.Action==gesture.Action);Gestures.Add(gesture);break;
                 case 0x0406: Preset=p.Payload[0];foreach(var e in Entries)e.Selected=e.Id==Preset;break;
                 case 0x0404:
                     AncLevel=(byte)Enumerable.Range(0,(p.Payload.Length-2)*8).Single(n=>(p.Payload[2+n/8]&(1<<(n%8)))!=0);break;
@@ -595,6 +608,10 @@ sealed class Fake : IControlConnector
             0x010F => [0,Preset],
             0x0122 => p.Payload.Length==0 ? EncodeEntries(Entries) : throw new Exception("GET 0122 requires empty official payload"),
             0x012A => [0,HideSpatialAfterHiResOff&&Features[0x18]==0?(byte)9:Spatial],
+            0x0124 => [0,unchecked((byte)(sbyte)Bass.Minimum),unchecked((byte)(sbyte)Bass.Maximum),unchecked((byte)(sbyte)Bass.Current)],
+            0x0130 => [0,PromptVolume],
+            0x012B => [0,GameSoundType,(byte)GameSoundTypes.Length,..GameSoundTypes],
+            0x0108 => p.Payload.SequenceEqual(new byte[]{3,2,3,1}) ? [0,(byte)Gestures.Count,..Gestures.SelectMany(x=>new byte[]{x.Device,x.Button,x.Action,x.Function})] : throw new Exception("incorrect gesture query"),
             _ => throw new Exception("unexpected opcode")
         };
     }
@@ -605,6 +622,7 @@ sealed class Fake : IControlConnector
     }
     private byte[] Capabilities()
     {
+        if (CapabilityOverride is not null) return CapabilityOverride;
         var bitmap=Convert.FromHexString("FF775AEEEE8FA65F1700000000000000");
         if(NoModernSpatial)bitmap[5]&=0x7F;
         if(LegacyRegistration)bitmap[2]&=0xBF;return bitmap;

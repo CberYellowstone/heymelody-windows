@@ -96,9 +96,27 @@ def checked_file(directory, relative):
     return path
 
 
+def verify_resource_bundle(directory):
+    bundle = directory / "ResourceBundles"
+    index = checked_file(bundle, "artwork.json")
+    rows = json.loads(index.read_text("utf-8"))
+    provenance = json.loads(checked_file(bundle, "provenance.json").read_text("utf-8"))
+    assert len(rows) >= 800 and len(provenance) == 2, "Incomplete offline resources"
+    for row in rows:
+        assert row["source"] in (0, 1)
+        path = checked_file(bundle, row["path"])
+        assert path.stat().st_size == row["length"] and sha(path) == row["sha256"]
+        if row.get("originalPath"):
+            assert sha(checked_file(bundle, row["originalPath"])) == row["originalSha256"]
+    checked_file(directory, "HeyMelody.Resources.dll")
+    checked_file(directory, "licenses/upstream/Extracted-Earphone-Resources-NOTICE.txt")
+    return dict(artworkEntries=len(rows), sources=len(provenance), indexSha256=sha(index), allIndexedBytesVerified=True)
+
+
 def verify(root, package, evidence=None, architectures=("x64", "x86", "arm64")):
     manifest = json.loads((package / "manifest.json").read_text("utf-8-sig"))
     assert manifest["schemaVersion"] == 2 and manifest["version"]
+    resource_release = tuple(int(part) for part in manifest["version"].split(".")) >= (0, 8, 0)
     declared = {build["architecture"]: build for build in manifest["builds"]}
     machines = {"x64": 0x8664, "x86": 0x14c, "arm64": 0xaa64}
     requested = set(architectures)
@@ -117,20 +135,30 @@ def verify(root, package, evidence=None, architectures=("x64", "x86", "arm64")):
         gui, host = folder / "HeyMelody.exe", folder / "backend" / "HeyMelody.Host.exe"
         manager = checked_file(folder, "HeyMelody.DeviceManager.exe")
         gui_assembly = checked_file(folder, "HeyMelody.dll")
+        components = [checked_file(folder, name + ".exe") for name in ("HeyMelody.FitTest", "HeyMelody.HearingSetup")] if resource_release else []
         native = [directory / filename for directory in (folder, host.parent)
                   for filename in ("libSkiaSharp.dll", "libHarfBuzzSharp.dll", "av_libglesv2.dll")]
-        for path in [gui, manager, host, folder / "coreclr.dll", host.parent / "coreclr.dll", *native]:
+        for path in [gui, manager, host, *components, folder / "coreclr.dll", host.parent / "coreclr.dll", *native]:
             assert PE(path).machine == machine, str(path)
         assert declared[arch]["rid"] == "win-" + arch and declared[arch]["selfContained"] is True
         assert declared[arch]["guiSha256"] == sha(gui) and declared[arch]["hostSha256"] == sha(host)
         assert declared[arch]["deviceManagerSha256"] == sha(manager)
         assert declared[arch]["guiFramework"] == "net10.0" and declared[arch]["hostFramework"] == "net10.0-windows10.0.19041.0"
         assert declared[arch]["deviceManagerFramework"] == "net10.0"
+        if resource_release:
+            for role, executable in zip(("fitTest", "hearingSetup"), components):
+                assert declared[arch][role] == arch + "/" + executable.name
+                assert declared[arch][role + "Sha256"] == sha(executable)
+                assert declared[arch][role + "Framework"] == "net10.0"
         gui_dependencies = None
-        for name, directory in [("HeyMelody", folder), ("HeyMelody.DeviceManager", folder), ("HeyMelody.Host", host.parent)]:
+        entrypoints = [("HeyMelody", folder), ("HeyMelody.DeviceManager", folder), ("HeyMelody.Host", host.parent)]
+        entrypoints += [(path.stem, folder) for path in components]
+        runtime_versions = set()
+        for name, directory in entrypoints:
             runtime = json.loads((directory / (name + ".runtimeconfig.json")).read_text("utf-8-sig"))["runtimeOptions"]
             assert runtime["tfm"] == "net10.0" and runtime.get("includedFrameworks")
             assert {entry["name"] for entry in runtime["includedFrameworks"]} == {"Microsoft.NETCore.App"}
+            runtime_versions.update(entry["version"] for entry in runtime["includedFrameworks"])
             dependencies = json.loads((directory / (name + ".deps.json")).read_text("utf-8-sig"))
             assert dependencies["runtimeTarget"]["name"].endswith("/win-" + arch)
             assert (directory / "LICENSE.txt").is_file() and (directory / "THIRD-PARTY-NOTICES.txt").is_file()
@@ -139,6 +167,11 @@ def verify(root, package, evidence=None, architectures=("x64", "x86", "arm64")):
             assert any(key.startswith("FluentAvaloniaUI/") for key in libraries)
             if name == "HeyMelody":
                 gui_dependencies = dependencies
+            elif directory == folder:
+                for name, item in libraries.items():
+                    if item["type"] == "package":
+                        assert name in gui_dependencies["libraries"] and item["sha512"] == gui_dependencies["libraries"][name]["sha512"]
+        assert len(runtime_versions) == 1, "Entrypoints do not share the exact runtime"
         renderer_packages = [key.split("/", 1) for key in gui_dependencies["libraries"]
                              if key.split("/", 1)[0].casefold() == "ava3dcontrol"]
         assert len(renderer_packages) <= 1, "Ambiguous Ava3DControl dependency versions"
@@ -147,6 +180,11 @@ def verify(root, package, evidence=None, architectures=("x64", "x86", "arm64")):
             renderer_path = checked_file(folder, "Ava3D.dll")
             renderer = dict(package=renderer_packages[0][0], declaredVersion=renderer_packages[0][1],
                             assembly=renderer_path.name, sha256=sha(renderer_path))
+        resources = None
+        if resource_release:
+            assert any(key.startswith("SkiaSharp.Skottie/") for key in gui_dependencies["libraries"])
+            resources = dict(gui=verify_resource_bundle(folder), host=verify_resource_bundle(host.parent))
+            assert declared[arch]["resourceIndexSha256"] == resources["gui"]["indexSha256"]
         assert not (folder / "PresentationFramework.dll").exists()
         assert not (folder / "LICENSE-WINDOWSDESKTOP.txt").exists()
         for directory in (folder, host.parent):
@@ -165,6 +203,10 @@ def verify(root, package, evidence=None, architectures=("x64", "x86", "arm64")):
         receipt = receipts.get(arch, {})
         if receipt:
             assert receipt["guiSha256"] == sha(gui) and receipt["hostSha256"] == sha(host)
+            if resource_release:
+                assert receipt["deviceManagerSha256"] == sha(manager)
+                for role, executable in zip(("fitTest", "hearingSetup"), components):
+                    assert receipt[role + "Sha256"] == sha(executable)
         executed = receipt.get("readOnlyBluetoothExecutionVerified", False)
         if executed:
             diagnostics = receipt["diagnostics"]
@@ -174,12 +216,14 @@ def verify(root, package, evidence=None, architectures=("x64", "x86", "arm64")):
                            guiSha256=sha(gui), guiAssemblySha256=sha(gui_assembly),
                            deviceManagerSha256=sha(manager), hostSha256=sha(host), icon=icon,
                            modelRenderer=renderer,
+                           calibrationExecutables=[dict(name=path.name, sha256=sha(path)) for path in components],
+                           resourceBundles=resources,
                            nativeRenderingAssets=[dict(name=path.name, sha256=sha(path)) for path in native],
                            packageNoticesVerified=True, readOnlyBluetoothExecutionVerified=executed,
                            liveGuiPreviewVerified=receipt.get("liveGuiPreviewVerified", False),
                            realNativeArmHardwareVerified=arch == "arm64" and receipt.get("nativeHardwareVerified", False)))
     return dict(schemaVersion=2, version=manifest["version"], verifiedAtUtc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                success=True, builds=builds, supportedModel="OPPO Enco X4 / 06EC10",
+                success=True, builds=builds, supportedModel="capability-gated source catalogs" if resource_release else "OPPO Enco X4 / 06EC10",
                 validationScope="static packaging with explicit execution receipts" if evidence else "static packaging only; no hardware execution verified",
                 nativeArm64ExecutionVerified=any(build["realNativeArmHardwareVerified"] for build in builds))
 

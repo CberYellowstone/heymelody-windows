@@ -105,7 +105,7 @@ GCM tag 为 16 字节，置于密文末尾；使用认证解密，不能忽略 t
 
 四者两源均声明 `equalizer=4`、`customEqualizer=1`，但此值是功能版本，不能转成“4 段/1 个预设”。X4 频率为 `31,62,125,250,500,1000,2000,4000,8000,16000` Hz；其余三个没有 `customEqFrequency`，研究 APK 的默认频率为 `62,250,1000,4000,8000,16000` Hz。`customEqUiVersion` 默认 1、`customEqMax` 默认 3 是编译代码行为，非缺失字段的原 JSON 值；对应欢律 `LAb/Z;`、无线耳机 `Lca/r;` 的构造器/静态初始化，定位记录在 `analysis.json` 的 `eq_examples`。四个样本均未显式设 `customEqMax`；默认段数和容量不能推广成所有未知协议的保证，也不确定增益边界、步长或自定义 EQ 存储命令。
 
-Free4 普通版和丹拿版均有 `equalizerModeCompat`：`protocolIndex=7`、`minFirmVersion=118`；丹拿版另有 `equalizerModeByVersion`：`protocolIndex=8`、`minFirmVersion=136`、`minAppVersion=15011000`。不能直接合并成无条件可选列表，应继续确认 APK 的版本过滤、排列及条目替代逻辑。普通 Free4 和丹拿版的资源或操作适配不能只按名称共用。
+Free4 普通版和丹拿版均有 `equalizerModeCompat`：`protocolIndex=7`、`minFirmVersion=118`；丹拿版另有 `equalizerModeByVersion`：`protocolIndex=8`、`minFirmVersion=136`、`minAppVersion=15011000`。2026-10-08 已逐指令确认两 APK 的追加顺序、App/Firmware 过滤、颜色和稳定 `order` 排序，详见 [EQ 条件与定位](equalizer-selection.md)；没有按协议 ID 替代或去重。普通 Free4 和丹拿版的资源或操作适配不能只按名称共用。
 
 `noiseReductionMode[].protocolIndex` 与 `modeType` 各有用途，应保留父子层级。X3 有通透子 `protocolIndex=8/9`；Free4 的自适应项是父 `11` 且没有 X4 的 `12/13/14` 子档；X4 自适应父 `11` 下有 `12/13/14`。UI 文字不能直接当线上的命令编号。`control/callControl` 的 `action/support/defaultFunction` 也需按版本解释；`support` 是位图，未确认的位不能自动生成写入值。
 

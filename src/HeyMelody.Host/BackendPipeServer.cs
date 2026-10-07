@@ -70,13 +70,13 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
 
     private async Task HandleAsync(Client client, BackendRequest request)
     {
-        if (request.SchemaVersion != 2)
+        if (request.SchemaVersion != 3)
         { client.Reply(request.Id, null, "versionMismatch", "前后端版本不一致，请重新解压完整客户端。"); return; }
         if (request.Operation.Length is 0 or > 32)
         { client.Reply(request.Id, null, "invalidRequest", "请求无效。"); return; }
         if (request.Operation == "subscribe")
         {
-            if (request.Role is not ("main" or "manager" or "preview" or "observer"))
+            if (request.Role is not ("main" or "manager" or "preview" or "observer" or "calibration"))
             { client.Reply(request.Id, null, "invalidRole", "订阅角色无效。"); return; }
             supervisor.Subscribe(subscription =>
             {
@@ -109,10 +109,28 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
                         throw new InvalidOperationException("后台或连接已变化，未提交设置。");
                     data = await supervisor.ApplyAsync(Identity(), generation,
                         request.Action.Deserialize<UiAction>(RpcWire.Json) ?? throw new InvalidDataException(), client.Lifetime.Token); break;
+                case "resourceSettings": data = supervisor.ResourceSettings(); break;
+                case "saveResourceSettings":
+                    data = await supervisor.SaveResourceSettingsAsync(request.Action.Deserialize<UiResourceSettings>(RpcWire.Json) ?? throw new InvalidDataException(), client.Lifetime.Token); break;
+                case "hearingProfiles":
+                    data = await supervisor.HearingProfilesAsync(Identity(), Generation(), client.Lifetime.Token); break;
+                case "selectHearing":
+                    data = await supervisor.SelectHearingAsync(Identity(), Generation(), NullableInt("uid"), client.Lifetime.Token); break;
+                case "createCalibration":
+                    data = await supervisor.CreateCalibrationAsync(client.Key, Identity(), Generation(), StringArg("kind"), client.Lifetime.Token); break;
+                case "getCalibration": data = supervisor.GetCalibration(client.Key, Handle(), client.Role); break;
+                case "advanceCalibration":
+                    GenerationCheck();
+                    data = await supervisor.AdvanceCalibrationAsync(client.Key, Handle(), request.Revision ?? throw new InvalidDataException(),
+                        request.Action.Deserialize<UiCalibrationInput>(RpcWire.Json) ?? throw new InvalidDataException(), client.Lifetime.Token); break;
+                case "cancelCalibration": data = await supervisor.CancelCalibrationAsync(client.Key, Handle()); break;
+                case "acquireArtwork":
+                    data = new { artwork = await supervisor.AcquireArtworkAsync(client.Key, StringArg("productId"), NullableInt("color"), StringArg("role"), client.Lifetime.Token) }; break;
+                case "releaseArtwork": data = supervisor.ReleaseArtwork(client.Key, StringArg("leaseId")); break;
                 case "exitVote":
                     lock (_voteSync)
                     {
-                        if (client.Role != "main" || request.ExitRequestId != _exitId || request.Approved is not { } approved
+                        if (client.Role is not ("main" or "calibration") || request.ExitRequestId != _exitId || request.Approved is not { } approved
                             || !_votes.TryGetValue(client.Key, out var vote)) throw new InvalidOperationException();
                         client.Reply(request.Id, true);
                         vote.TrySetResult(approved);
@@ -127,11 +145,16 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
         catch (Exception error)
         {
             // Do not forward native exceptions, addresses or arbitrary peer-provided text.
-            var message = error is InvalidOperationException && error.Message.Contains("后台或连接")
-                ? "后台或连接已变化，未提交设置。" : "后台操作未完成，请检查蓝牙状态后重试。";
+            var message = error is InvalidOperationException && error.Message.Length <= 180
+                ? error.Message : "后台操作未完成，请检查蓝牙状态后重试。";
             client.Reply(request.Id, null, "operationFailed", message);
         }
         string Identity() => request.Identity ?? throw new InvalidDataException();
+        string Handle() => request.CalibrationHandle is { Length: 32 } handle ? handle : throw new InvalidDataException();
+        string StringArg(string property) => request.Action.GetProperty(property).GetString() ?? throw new InvalidDataException();
+        int? NullableInt(string property) => request.Action.GetProperty(property).ValueKind == JsonValueKind.Null ? null : request.Action.GetProperty(property).GetInt32();
+        void GenerationCheck() { if (request.BackendInstanceId != supervisor.InstanceId) throw new InvalidOperationException("后台或连接已变化，未提交设置。"); }
+        long Generation() { GenerationCheck(); return request.DeviceGeneration ?? throw new InvalidDataException(); }
     }
 
     public void ActivateMain(bool allowLaunch)
@@ -169,7 +192,7 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
             string id = Guid.NewGuid().ToString("N");
             lock (_voteSync)
             {
-                main = _clients.Values.Where(c => c.Role == "main" && !c.Lifetime.IsCancellationRequested).ToArray();
+                main = _clients.Values.Where(c => c.Role is "main" or "calibration" && !c.Lifetime.IsCancellationRequested).ToArray();
                 _exitId = id; _votes.Clear();
                 foreach (var client in main) _votes[client.Key] = new(TaskCreationOptions.RunContinuationsAsynchronously);
             }
@@ -194,6 +217,7 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
     private void Detach(Client client)
     {
         _clients.TryRemove(client.Key, out _);
+        supervisor.ClientDetached(client.Key);
         lock (_voteSync) if (_votes.TryGetValue(client.Key, out var vote)) vote.TrySetResult(true);
     }
     public async ValueTask DisposeAsync()
@@ -224,12 +248,12 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
         public void SendEvent(BackendEvent value)
         {
             var message = new BackendMessage { Kind = "event", Event = value };
-            if (value.Kind is "snapshot" or "catalog" or "health")
+            if (value.Kind is "snapshot" or "catalog" or "health" or "calibration" or "resources")
             {
                 lock (_outboxSync)
                 {
                     if (_updates.Count >= 256) { Dispose(); return; }
-                    _updates[value.Kind + ":" + value.Snapshot?.Identity] = message;
+                    _updates[value.Kind + ":" + (value.Calibration?.Handle ?? value.Snapshot?.Identity)] = message;
                 }
                 _signal.Writer.TryWrite(0);
             }

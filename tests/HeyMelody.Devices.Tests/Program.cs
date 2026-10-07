@@ -32,6 +32,12 @@ var tests = new (string Name, Action Body)[]
     ("Legacy and modern game candidates follow reported features", Games),
     ("Game sound uses dedicated commands and original type/mutex lists", GameSound),
     ("JSON projection is complete and serializable", JsonProjection),
+    ("Every bundled source profile parses and cannot authorize setters", CatalogProfileTests.AllBundledProfiles),
+    ("Malformed optional profile metadata cannot grant controls", CatalogProfileTests.MalformedOptionalMetadata),
+    ("Firmware compatibility EQ branches preserve native protocol IDs", CatalogProfileTests.CompatibilityEqualizers),
+    ("Version EQ requires both firmware and source app marker", CatalogProfileTests.VersionEqualizers),
+    ("APK EQ append order, stable sorting and exact color selection", CatalogProfileTests.ApkEqualizerOrderingAndColor),
+    ("EQ firmware markers and malformed conditions follow safe branches", CatalogProfileTests.FirmwareMarkerAndMalformedConditions),
 };
 int failed = 0;
 foreach (var test in tests)

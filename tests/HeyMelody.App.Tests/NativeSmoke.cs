@@ -9,6 +9,8 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using FluentAvalonia.UI.Controls;
 using HeyMelodyWindows.App;
+using HeyMelodyWindows.Resources;
+using HeyMelodyWindows.Artwork;
 
 /// <summary>
 /// A real Win32 window with an in-memory headset service; never starts a Bluetooth worker.
@@ -129,8 +131,8 @@ internal static class NativeSmoke
                 Check(page.IsCompact == (page.Bounds.Width < 1080), "Native responsive breakpoint.");
                 var hero = page.FindControl<ProductArtwork>("HeroArt") ?? throw new InvalidOperationException("Product artwork missing.");
                 Check(Equals(hero.Visual, DeviceVisuals.X4Product)
-                    && hero.GetVisualDescendants().OfType<EncoFree4ModelView>().SingleOrDefault() is not null,
-                    "Connected X4 selects the experimental Free4 model control; this smoke check makes no 3D pixel assertion.");
+                    && hero.GetVisualDescendants().OfType<Image>().SingleOrDefault() is not null,
+                    "Connected X4 selects its own original PNG artwork.");
                 var picker = page.FindControl<ListBox>("DevicePicker") ?? throw new InvalidOperationException("Picker missing.");
                 var pickerOrigin = picker.TranslatePoint(default, page) ?? throw new InvalidOperationException("Picker is detached.");
                 Check(picker.IsVisible && picker.Bounds.Height > 0 && pickerOrigin.Y >= 0
@@ -169,6 +171,17 @@ internal static class NativeSmoke
                     selectedDeviceCenter = selectedCenter, devicePadding = padding.Padding.Left
                 });
             }
+            var bundle = new BundledResourceStore();
+            var animationAsset = bundle.FindNamedAsset(ResourceSource.HeyMelody, "melody_ui_gold_hearing_detecting_guide")
+                ?? throw new InvalidOperationException("Original Lottie asset missing.");
+            var animationPath = bundle.FullPath(animationAsset);
+            var artwork = page.FindControl<ProductArtwork>("HeroArt")!;
+            artwork.Visual = new LottieVisual(new ArtworkFile(new Uri(animationPath), Path.GetDirectoryName(animationPath)!, animationAsset.Sha256), DeviceVisuals.GenericProduct);
+            var animation = artwork.GetVisualDescendants().OfType<LottieView>().Single();
+            for (int attempt = 0; animation.RenderedFrameCount < 2 && attempt < 100; attempt++) await Task.Delay(30);
+            Check(animation.AnimationLoaded && animation.RenderedFrameCount >= 2,
+                $"The original APK Lottie is rendered repeatedly by the real Win32 Skia compositor: loaded={animation.AnimationLoaded}, active={animation.AnimationActive}, bounds={animation.Bounds}, frames={animation.RenderedFrameCount}, error={animation.LoadError}.");
+            artwork.Visual = DeviceVisuals.X4Product;
             if (_state.OpenSettings) await VerifySystemSettingsLaunchAsync(page, window, vm);
             Check(_state.Service.Submissions == 0, "Native smoke never submits settings.");
             var dialogs = new WindowConfirmationService(window);

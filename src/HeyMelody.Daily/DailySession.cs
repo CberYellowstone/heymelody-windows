@@ -91,7 +91,7 @@ internal sealed class DailySession : IAsyncDisposable
                         matched = _key is RequestKey key && key.MatchesResponse(packet);
                         if (matched) _reply!.TrySetResult(packet);
                     }
-                    if (!matched && NotificationParsers.IsNotificationCommand(packet.Command))
+                    if (packet.Command == 0x8116 || !matched && NotificationParsers.IsNotificationCommand(packet.Command))
                         Notification?.Invoke(packet);
                 }
             }

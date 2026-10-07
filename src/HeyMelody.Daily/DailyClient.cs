@@ -2,9 +2,15 @@ using HeyMelodyWindows.Control;
 namespace HeyMelodyWindows.Daily;
 
 /// <summary>Daily OPPO controls are serialized; constructing a client never opens or writes a device.</summary>
-public sealed partial class DailyClient(IControlConnector connector) : IAsyncDisposable
+public sealed partial class DailyClient(IControlConnector connector,
+    Func<string, HeyMelodyWindows.Devices.DeviceProfile?>? profileResolver = null,
+    long appVersionMarker = 17006004, string? observedProductId = null, byte? observedColor = null) : IAsyncDisposable
 {
     private readonly IControlConnector _connector = connector ?? throw new ArgumentNullException(nameof(connector));
+    private readonly Func<string, HeyMelodyWindows.Devices.DeviceProfile?> _profileResolver = profileResolver ?? HeyMelodyWindows.Devices.DeviceModelResolver.FindByProductId;
+    private readonly long _appVersionMarker = appVersionMarker;
+    private string? _observedProductId = observedProductId;
+    private byte? _observedColor = observedColor;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private volatile bool _disposed;
     private int _disposeStarted;

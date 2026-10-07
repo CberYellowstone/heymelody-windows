@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <AssemblyName>HeyMelody.Host</AssemblyName>
-    <Version>0.7.1</Version>
+    <Version>0.8.1</Version>
     <ApplicationIcon>../HeyMelody.App/Assets/HeyMelody.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
@@ -18,5 +18,7 @@
     <ProjectReference Include="../HeyMelody.Windows/HeyMelody.Windows.csproj" />
     <ProjectReference Include="../HeyMelody.Daily/HeyMelody.Daily.csproj" />
     <ProjectReference Include="../HeyMelody.Contracts/HeyMelody.Contracts.csproj" />
+    <ProjectReference Include="../HeyMelody.Resources/HeyMelody.Resources.csproj" />
+    <ProjectReference Include="../HeyMelody.Calibration/HeyMelody.Calibration.csproj" />
   </ItemGroup>
 </Project>

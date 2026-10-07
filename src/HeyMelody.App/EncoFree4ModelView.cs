@@ -16,16 +16,15 @@ using Avalonia.Threading;
 namespace HeyMelodyWindows.App;
 
 /// <summary>Experimental artwork viewport. Rendering and glTF loading belong to Ava3DControl.</summary>
-public sealed class EncoFree4ModelView : UserControl
+public class DeviceModelView : UserControl
 {
-    public const string ModelSha256 = "c49540d3e5afd7af8bb5aa562d3dc00e35246361e6efc14fa142a749b7d22bcc";
-    private const int ModelByteLength = 9_727_500;
-    private static readonly Lazy<Task<byte[]>> ModelBytes = new(ReadModelBytesAsync);
+    private readonly DeviceModelVisual _visual;
+    private IDisposable? _resourceLease;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1d / 30) };
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly TextBlock _status = new()
     {
-        Text = "正在加载 Enco Free4 模型…", IsHitTestVisible = false,
+        Text = "正在加载耳机模型…", IsHitTestVisible = false,
         HorizontalAlignment = HorizontalAlignment.Center,
         VerticalAlignment = VerticalAlignment.Center,
         TextWrapping = TextWrapping.Wrap, Margin = new Thickness(16)
@@ -51,11 +50,12 @@ public sealed class EncoFree4ModelView : UserControl
     public long CameraUpdateCount { get; private set; }
     public bool AnimationActive => _timer.IsEnabled;
 
-    public EncoFree4ModelView()
+    public DeviceModelView(DeviceModelVisual visual)
     {
+        _visual = visual;
         ClipToBounds = true;
         Content = new Grid { Children = { Viewport, _status } };
-        AutomationProperties.SetName(this, "Enco Free4 三维模型，可用鼠标拖动旋转");
+        AutomationProperties.SetName(this, "耳机三维模型，可用鼠标拖动旋转");
         _timer.Tick += OnTick;
         Viewport.SceneReady += (_, _) =>
         {
@@ -83,37 +83,37 @@ public sealed class EncoFree4ModelView : UserControl
     }
 
     /// <summary>Validates the bundled original GLB and parses a fresh scene off the UI thread.</summary>
-    public static async Task<GltfModel> LoadModelAsync()
+    internal static async Task<GltfModel> LoadModelAsync(DeviceModelVisual visual)
     {
-        var bytes = await ModelBytes.Value.ConfigureAwait(false);
         return await Task.Run(() =>
         {
-            var model = GltfLoader.LoadModel(bytes, "Enco Free4");
+            using var stream = visual.File.Open();
+            if (stream.Length is <= 0 or > 64 * 1024 * 1024) throw new InvalidDataException("Model size exceeds its limit.");
+            var bytes = new byte[checked((int)stream.Length)];
+            stream.ReadExactly(bytes);
+            var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+            if (!string.IsNullOrEmpty(visual.File.Sha256) && !StringComparer.OrdinalIgnoreCase.Equals(hash, visual.File.Sha256))
+                throw new InvalidDataException("Model integrity check failed.");
+            var model = GltfLoader.LoadModel(bytes, "Earbuds");
             // This verified OEM asset marks its solid material as BLEND, although
             // its RGB base-color map and factor are fully opaque. Alpha rendering
             // disables depth writes, letting internal parts overwrite the shell.
             // Correct only this model's material; retain the original GLB and culling.
-            var material = model.Materials["1001"];
-            material.Blend = BlendMode.Opaque;
-            material.DepthWrite = true;
+            if (hash == EncoFree4ModelView.ModelSha256 || hash == "6f6ab09e3b5067d3f1d4fac732243bb5fe723e3eb982d9b84e629560e5813363")
+            {
+                var material = model.Materials["1001"];
+                material.Blend = BlendMode.Opaque;
+                material.DepthWrite = true;
+            }
             return model;
         }).ConfigureAwait(false);
     }
-
-    private static Task<byte[]> ReadModelBytesAsync() => Task.Run(() =>
-    {
-        using var stream = AssetLoader.Open(new Uri("avares://HeyMelody/Assets/Devices/EncoFree4/model.glb"));
-        var bytes = new byte[ModelByteLength];
-        stream.ReadExactly(bytes);
-        if (stream.ReadByte() != -1 || !Convert.ToHexString(SHA256.HashData(bytes)).Equals(ModelSha256, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("Enco Free4 model integrity check failed.");
-        return bytes;
-    });
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
         _attached = true;
+        _resourceLease = _visual.File.Acquire();
         _window = TopLevel.GetTopLevel(this) as Window;
         if (_window is not null) _window.PropertyChanged += OnWindowPropertyChanged;
         RefreshActivity();
@@ -128,6 +128,10 @@ public sealed class EncoFree4ModelView : UserControl
         _window = null;
         ReleasePointer();
         RefreshActivity();
+        _model = null;
+        Viewport.Scene = null;
+        ModelReady = false;
+        Interlocked.Exchange(ref _resourceLease, null)?.Dispose();
         base.OnDetachedFromVisualTree(e);
     }
 
@@ -148,7 +152,8 @@ public sealed class EncoFree4ModelView : UserControl
     {
         try
         {
-            var model = await LoadModelAsync();
+            using var loadingLease = _visual.File.Acquire();
+            var model = await LoadModelAsync(_visual);
             if (!_attached || generation != _loadGeneration) return;
             _model = model;
             model.Scene.Environment = EnvironmentLight.Studio(1.2f);
@@ -165,8 +170,7 @@ public sealed class EncoFree4ModelView : UserControl
         {
             if (!_attached || generation != _loadGeneration) return;
             LoadError = exception.ToString();
-            _status.Text = "Enco Free4 模型加载失败。\n请查看验证日志。";
-            _status.IsVisible = true;
+            Content = DeviceVisuals.DefaultTemplate.Build(_visual.Fallback);
             Trace.WriteLine(LoadError);
         }
     }
@@ -268,4 +272,14 @@ public sealed class EncoFree4ModelView : UserControl
         pointer?.Capture(null);
         Motion.CancelDrag();
     }
+}
+
+/// <summary>Compatibility viewport for the separately selectable original Free4 preview.</summary>
+public sealed class EncoFree4ModelView : DeviceModelView
+{
+    public const string ModelSha256 = "c49540d3e5afd7af8bb5aa562d3dc00e35246361e6efc14fa142a749b7d22bcc";
+    private static readonly DeviceModelVisual Bundled = new(new ArtworkFile(
+        new Uri("avares://HeyMelody/Assets/Devices/EncoFree4/model.glb"), "", ModelSha256), DeviceVisuals.GenericProduct);
+    public EncoFree4ModelView() : base(Bundled) { }
+    public static Task<GltfModel> LoadModelAsync() => DeviceModelView.LoadModelAsync(Bundled);
 }

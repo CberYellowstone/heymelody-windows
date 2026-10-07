@@ -23,6 +23,11 @@ public sealed class PreviewService : IHeadsetService
         AncOptions = [new(0x0003, "关闭降噪"), new(0x0107, "智能降噪"), new(0x0104, "深度降噪"), new(0x0105, "中度降噪"), new(0x0106, "轻度降噪"), new(0x0208, "通透模式")],
         EqualizerOptions = [new(0, "丹拿原声"), new(7, "丹拿高解析"), new(2, "纯享人声"), new(1, "清亮高音"), new(3, "澎湃低音")],
         SpatialOptions = [new(0, "关闭"), new(1, "固定空间音频"), new(2, "头部追踪")],
+        EqualizerFrequencies = [31,62,125,250,500,1000,2000,4000,8000,16000],
+        FeatureSections = [new("audio", "音频体验", false,
+            [new("dual", "双设备连接", "Switch", 1, CanWrite: true), new("game", "游戏模式", "Switch", 0, CanWrite: true),
+             new("hires", "高清音频", "Switch", 1, CanWrite: true),
+             new("spatial", "空间音频", "Combo", 0, Options: [new(0,"关闭"), new(1,"固定空间音频"), new(2,"头部追踪")], CanWrite:true)])],
         EqualizerEntries = [new(1, "我的均衡器", -6, 6, true, new[] {31,62,125,250,500,1000,2000,4000,8000,16000}.Select((hz, i) => new UiBand(hz, i < 3 ? 2 : i > 6 ? 1 : 0)).ToArray())],
         SampleTime = DateTimeOffset.UtcNow
     };

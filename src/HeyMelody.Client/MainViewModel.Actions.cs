@@ -300,10 +300,11 @@ public sealed partial class MainViewModel
         }
     }
 
+    private static string AudioActionKind(UiAction action) => action.Kind == "Feature" ? action.FeatureId switch { "spatial" => "Spatial", "hires" => "HiRes", _ => action.Kind } : action.Kind;
     private static bool NeedsMutex(UiAction action, UiSnapshot snapshot) => snapshot.SpatialHiResMutex
-        && (action.Kind == "Spatial" && action.Value != 0 && snapshot.HiRes == true
-            || action.Kind == "HiRes" && action.Value == 1 && snapshot.Spatial is > 0);
-    private static string MutexMessage(UiAction action) => action.Kind == "Spatial"
+        && (AudioActionKind(action) == "Spatial" && action.Value != 0 && snapshot.HiRes == true
+            || AudioActionKind(action) == "HiRes" && action.Value == 1 && snapshot.Spatial is > 0);
+    private static string MutexMessage(UiAction action) => AudioActionKind(action) == "Spatial"
         ? "开启空间音频需要先关闭 Hi-Res，音频连接可能短暂中断。继续吗？"
         : "开启 Hi-Res 需要先关闭空间音频，音频连接可能短暂中断。继续吗？";
     private string RetryMessage(UiAction action, UiApplyResult result)
@@ -348,6 +349,8 @@ public sealed partial class MainViewModel
         "DualConnection" => snapshot.DualConnection == (action.Value == 1),
         "GameMode" => snapshot.GameMode == (action.Value == 1),
         "HiRes" => snapshot.HiRes == (action.Value == 1),
+        "Feature" => snapshot.FeatureSections.SelectMany(s => s.Controls).Any(c => c.Id == action.FeatureId &&
+            (c.Kind == "Text" ? c.Text == action.Text : c.Value == action.Value)),
         "CustomSelect" => snapshot.EqualizerEntries.Any(x => x.Id == action.Value && x.Selected),
         "CustomEqualizer" => action.EqualizerEntry is { } requested && snapshot.EqualizerEntries.Count(x => x.Selected && SameContent(x, requested)
             && (requested.Id == 0 ? !intent.PreviousIds.Contains(x.Id) : x.Id == requested.Id)) == 1,

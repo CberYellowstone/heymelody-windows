@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.7.1',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.8.1',
     [ValidateNotNullOrEmpty()][ValidateSet('x64', 'x86', 'arm64')][string[]]$Architectures = @('x64', 'x86', 'arm64'),
     [switch]$SkipTests,
     [switch]$FinalizeOnly,
@@ -28,7 +28,9 @@ if (Test-Path -LiteralPath $existingPackageCache -PathType Container) {
     $restoreProperties += '-p:RestoreFallbackFolders=' + $existingPackageCache
 }
 if (-not $SkipTests -and -not $FinalizeOnly) {
-    foreach ($project in @('HeyMelody.Protocol.Tests', 'HeyMelody.Devices.Tests', 'HeyMelody.Control.Tests', 'HeyMelody.Daily.Tests', 'HeyMelody.Probe.Tests', 'HeyMelody.Host.Tests', 'HeyMelody.Client.Tests', 'HeyMelody.App.Tests', 'HeyMelody.DeviceManager.Tests')) {
+    & dotnet run --project (Join-Path $root 'src/HeyMelody.Windows/OfflineChecks/HeyMelody.Windows.OfflineChecks.csproj') -c Release '-p:CopyDebugSymbolFilesFromPackages=false' @restoreProperties
+    if ($LASTEXITCODE -ne 0) { throw 'Tests failed: HeyMelody.Windows.OfflineChecks' }
+    foreach ($project in @('HeyMelody.Protocol.Tests', 'HeyMelody.Resources.Tests', 'HeyMelody.Calibration.Tests', 'HeyMelody.Calibration.UI.Tests', 'HeyMelody.Devices.Tests', 'HeyMelody.Control.Tests', 'HeyMelody.Daily.Tests', 'HeyMelody.Probe.Tests', 'HeyMelody.Host.Tests', 'HeyMelody.Client.Tests', 'HeyMelody.App.Tests', 'HeyMelody.DeviceManager.Tests')) {
         & dotnet run --project (Join-Path $root ('tests/' + $project + '/' + $project + '.csproj')) -c Release '-p:CopyDebugSymbolFilesFromPackages=false' @restoreProperties
         if ($LASTEXITCODE -ne 0) { throw ('Tests failed: ' + $project) }
     }
@@ -123,6 +125,10 @@ foreach ($architecture in $targetArchitectures) {
         if ($LASTEXITCODE -ne 0) { throw ('GUI publish failed: ' + $rid) }
         & dotnet publish (Join-Path $root 'src/HeyMelody.DeviceManager/HeyMelody.DeviceManager.csproj') -c Release -r $rid --self-contained true -o $app '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) @publishProperties --nologo
         if ($LASTEXITCODE -ne 0) { throw ('Device manager publish failed: ' + $rid) }
+        foreach ($component in @('HeyMelody.FitTest', 'HeyMelody.HearingSetup')) {
+            & dotnet publish (Join-Path $root ('src/' + $component + '/' + $component + '.csproj')) -c Release -r $rid --self-contained true -o $app '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) @publishProperties --nologo
+            if ($LASTEXITCODE -ne 0) { throw ('Calibration component publish failed: ' + $component + '/' + $rid) }
+        }
         & dotnet publish (Join-Path $root 'src/HeyMelody.Host/HeyMelody.Host.csproj') -c Release -r $rid --self-contained true -o $hostOutput '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) @publishProperties --nologo
         if ($LASTEXITCODE -ne 0) { throw ('Host publish failed: ' + $rid) }
     }
@@ -135,6 +141,8 @@ foreach ($architecture in $targetArchitectures) {
     foreach ($runtimeEntry in @(
         @{ directory = $app; name = 'HeyMelody'; assets = 'src/HeyMelody.App/obj/project.assets.json' },
         @{ directory = $app; name = 'HeyMelody.DeviceManager'; assets = 'src/HeyMelody.DeviceManager/obj/project.assets.json' },
+        @{ directory = $app; name = 'HeyMelody.FitTest'; assets = 'src/HeyMelody.FitTest/obj/project.assets.json' },
+        @{ directory = $app; name = 'HeyMelody.HearingSetup'; assets = 'src/HeyMelody.HearingSetup/obj/project.assets.json' },
         @{ directory = $hostOutput; name = 'HeyMelody.Host'; assets = 'src/HeyMelody.Host/obj/project.assets.json' }
     )) {
         $runtimeDirectory = $runtimeEntry.directory
@@ -157,14 +165,32 @@ foreach ($architecture in $targetArchitectures) {
     foreach ($dependency in $managerAssets.libraries.PSObject.Properties | Where-Object { $_.Value.type -eq 'package' }) {
         if (-not $guiAssets.libraries.PSObject.Properties[$dependency.Name]) { throw ('The manager has a dependency not covered by the shared GUI notices: ' + $dependency.Name) }
     }
+    foreach ($component in @('HeyMelody.FitTest', 'HeyMelody.HearingSetup')) {
+        $componentConfig = Get-Content -LiteralPath (Join-Path $app ($component + '.runtimeconfig.json')) -Raw | ConvertFrom-Json
+        $componentFrameworks = @($componentConfig.runtimeOptions.includedFrameworks)
+        if ($componentFrameworks.Count -ne 1 -or $componentFrameworks[0].name -ne 'Microsoft.NETCore.App' -or $componentFrameworks[0].version -ne $guiRuntime) { throw ('Calibration component does not share the GUI runtime: ' + $component) }
+        $componentAssets = Get-Content -LiteralPath (Join-Path $root ('src/' + $component + '/obj/project.assets.json')) -Raw | ConvertFrom-Json
+        foreach ($dependency in $componentAssets.libraries.PSObject.Properties | Where-Object { $_.Value.type -eq 'package' }) {
+            if (-not $guiAssets.libraries.PSObject.Properties[$dependency.Name]) { throw ('Calibration dependency is not covered by shared GUI notices: ' + $dependency.Name) }
+        }
+    }
+    foreach ($resourceDirectory in @($app, $hostOutput)) {
+        foreach ($resourceFile in @('HeyMelody.Resources.dll', 'ResourceBundles/artwork.json', 'ResourceBundles/provenance.json')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $resourceDirectory $resourceFile) -PathType Leaf)) { throw ('Offline resources missing from publication: ' + $resourceFile) }
+        }
+    }
     Export-PackageNotices (Join-Path $root 'src/HeyMelody.App/obj/project.assets.json') $app
     Export-PackageNotices (Join-Path $root 'src/HeyMelody.Host/obj/project.assets.json') $hostOutput
     $builds += [ordered]@{
         architecture = $architecture; rid = $rid; selfContained = $true
         gui = ($architecture + '/HeyMelody.exe'); deviceManager = ($architecture + '/HeyMelody.DeviceManager.exe'); host = ($architecture + '/backend/HeyMelody.Host.exe')
-        guiFramework = 'net10.0'; deviceManagerFramework = 'net10.0'; hostFramework = 'net10.0-windows10.0.19041.0'; uiToolkit = 'Avalonia + FluentAvalonia'
+        fitTest = ($architecture + '/HeyMelody.FitTest.exe'); hearingSetup = ($architecture + '/HeyMelody.HearingSetup.exe')
+        guiFramework = 'net10.0'; deviceManagerFramework = 'net10.0'; fitTestFramework = 'net10.0'; hearingSetupFramework = 'net10.0'; hostFramework = 'net10.0-windows10.0.19041.0'; uiToolkit = 'Avalonia + FluentAvalonia'
         guiSha256 = (Get-FileHash -LiteralPath (Join-Path $app 'HeyMelody.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
         deviceManagerSha256 = (Get-FileHash -LiteralPath (Join-Path $app 'HeyMelody.DeviceManager.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+        fitTestSha256 = (Get-FileHash -LiteralPath (Join-Path $app 'HeyMelody.FitTest.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+        hearingSetupSha256 = (Get-FileHash -LiteralPath (Join-Path $app 'HeyMelody.HearingSetup.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+        resourceIndexSha256 = (Get-FileHash -LiteralPath (Join-Path $app 'ResourceBundles/artwork.json') -Algorithm SHA256).Hash.ToLowerInvariant()
         hostSha256 = (Get-FileHash -LiteralPath (Join-Path $hostOutput 'HeyMelody.Host.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
         hardwareExecutionVerified = $false; validationScope = 'build-only; see VALIDATION.json for actual execution evidence'
     }
@@ -178,7 +204,7 @@ Copy-Item -LiteralPath (Join-Path $root 'packaging/SOURCE-NOTES.md') -Destinatio
 if ($ValidationPath) {
     foreach ($build in $builds) {
         $receipt = @($validation.builds | Where-Object { $_.architecture -eq $build.architecture })
-        if ($receipt.Count -ne 1 -or $receipt[0].guiSha256 -ne $build.guiSha256 -or $receipt[0].deviceManagerSha256 -ne $build.deviceManagerSha256 -or $receipt[0].hostSha256 -ne $build.hostSha256) { throw ('Validation executable hashes do not match: ' + $build.architecture) }
+        if ($receipt.Count -ne 1 -or $receipt[0].guiSha256 -ne $build.guiSha256 -or $receipt[0].deviceManagerSha256 -ne $build.deviceManagerSha256 -or $receipt[0].fitTestSha256 -ne $build.fitTestSha256 -or $receipt[0].hearingSetupSha256 -ne $build.hearingSetupSha256 -or $receipt[0].hostSha256 -ne $build.hostSha256) { throw ('Validation executable hashes do not match: ' + $build.architecture) }
     }
     Copy-Item -LiteralPath $ValidationPath -Destination (Join-Path $stage 'VALIDATION.json')
 }

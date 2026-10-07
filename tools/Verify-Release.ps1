@@ -6,7 +6,7 @@ Version is a stable semantic version (major.minor.patch), matching the managed
 entry assembly version major.minor.patch.0. The staging directory and ZIP must
 already exist under release/. This script does not build or execute the apps.
 .EXAMPLE
-pwsh -File tools/Verify-Release.ps1 -Version 0.7.0 -VerifyDeviceArtwork
+pwsh -File tools/Verify-Release.ps1 -Version 0.8.0 -VerifyDeviceArtwork
 #>
 [CmdletBinding()]
 param(
@@ -105,6 +105,8 @@ $criticalPaths = [Collections.Generic.HashSet[string]]::new([StringComparer]::Or
 [void]$criticalPaths.Add('manifest.json')
 $buildChecks = @()
 $artworkChecks = @()
+$resourceChecks = @()
+$resourceRelease = [version]$Version -ge [version]'0.8.0'
 $sourceArtwork = @()
 
 if ($VerifyDeviceArtwork) {
@@ -149,6 +151,14 @@ foreach ($architecture in @('x64', 'x86', 'arm64')) {
         @{ role = 'deviceManager'; relativePath = $build.deviceManager; expectedHash = $build.deviceManagerSha256; subsystem = 2; assembly = 'HeyMelody.DeviceManager' },
         @{ role = 'host'; relativePath = $build.host; expectedHash = $build.hostSha256; subsystem = 2; assembly = 'HeyMelody.Host' }
     )
+    if ($resourceRelease) {
+        Require ($build.fitTest -eq ($architecture + '/HeyMelody.FitTest.exe') -and $build.hearingSetup -eq ($architecture + '/HeyMelody.HearingSetup.exe')) ('Unexpected calibration entrypoint paths: ' + $architecture)
+        Require ($build.fitTestFramework -eq 'net10.0' -and $build.hearingSetupFramework -eq 'net10.0') ('Unexpected calibration frameworks: ' + $architecture)
+        $executables += @(
+            @{ role = 'fitTest'; relativePath = $build.fitTest; expectedHash = $build.fitTestSha256; subsystem = 2; assembly = 'HeyMelody.FitTest' },
+            @{ role = 'hearingSetup'; relativePath = $build.hearingSetup; expectedHash = $build.hearingSetupSha256; subsystem = 2; assembly = 'HeyMelody.HearingSetup' }
+        )
+    }
     $executableChecks = @()
     $managedChecks = @()
     $runtimeVersions = @()
@@ -203,6 +213,42 @@ foreach ($architecture in @('x64', 'x86', 'arm64')) {
     $hostNotice = Read-Json (Join-Path $hostDirectory 'PACKAGE-NOTICES.json')
     Require ($hostNotice.schemaVersion -eq 1) ('Unexpected backend notice schema: ' + $architecture)
     Check-Notice $hostDirectory $hostNotice
+    if ($resourceRelease) {
+        Require (@($notice.packages | Where-Object { $_.package -eq 'SkiaSharp.Skottie' }).Count -eq 1) ('Lottie dependency notice missing: ' + $architecture)
+        foreach ($directory in @($appDirectory, $hostDirectory)) {
+            Add-CriticalFile (Checked-File $directory 'HeyMelody.Resources.dll')
+            Add-CriticalFile (Checked-File $directory 'licenses/upstream/Extracted-Earphone-Resources-NOTICE.txt')
+            $bundle = Join-Path $directory 'ResourceBundles'
+            $indexPath = Checked-File $bundle 'artwork.json'
+            $provenancePath = Checked-File $bundle 'provenance.json'
+            $entries = @(Read-Json $indexPath)
+            Require ($entries.Count -ge 800) ('Incomplete offline artwork index: ' + $architecture)
+            Require (@(Read-Json $provenancePath).Count -eq 2) ('Both source catalogs require provenance: ' + $architecture)
+            if ($directory -eq $appDirectory) { Require ((Hash-File $indexPath) -eq $build.resourceIndexSha256) ('Resource index does not match manifest: ' + $architecture) }
+            foreach ($entry in $entries) {
+                Require ($entry.source -in @(0, 1)) ('Invalid artwork source: ' + $entry.path)
+                $file = Checked-File $bundle $entry.path
+                Require ((Get-Item -LiteralPath $file).Length -eq $entry.length -and (Hash-File $file) -eq $entry.sha256) ('Offline artwork bytes do not match index: ' + $entry.path)
+                if ($entry.originalPath) {
+                    $original = Checked-File $bundle $entry.originalPath
+                    Require ((Hash-File $original) -eq $entry.originalSha256) ('Offline original artwork hash mismatch: ' + $entry.originalPath)
+                }
+            }
+            foreach ($file in [IO.Directory]::EnumerateFiles($bundle, '*', [IO.SearchOption]::AllDirectories)) { Add-CriticalFile $file }
+            $resourceChecks += [ordered]@{ architecture = $architecture; directory = [IO.Path]::GetRelativePath($taskStage, $bundle).Replace('\', '/'); sourceCount = 2; artworkEntries = $entries.Count; indexSha256 = (Hash-File $indexPath); allIndexedBytesVerified = $true }
+        }
+        foreach ($component in @('HeyMelody.FitTest', 'HeyMelody.HearingSetup')) {
+            $deps = Read-Json (Checked-File $appDirectory ($component + '.deps.json'))
+            Require ($deps.runtimeTarget.name -eq $guiDeps.runtimeTarget.name) ('Calibration runtime target differs: ' + $component)
+            foreach ($library in $deps.libraries.PSObject.Properties | Where-Object { $_.Value.type -eq 'package' }) {
+                Require ($null -ne $guiDeps.libraries.PSObject.Properties[$library.Name]) ('Calibration dependency is not shared by the GUI: ' + $library.Name)
+                if ($library.Name -notlike 'Microsoft.NETCore.App.Runtime.*') {
+                    $parts = $library.Name.Split('/')
+                    Require (@($notice.packages | Where-Object { $_.package -eq $parts[0] -and $_.version -eq $parts[1] }).Count -eq 1) ('Calibration package notice missing: ' + $library.Name)
+                }
+            }
+        }
+    }
     Add-CriticalFile (Checked-File $hostDirectory 'PACKAGE-NOTICES.json')
     $hostDeps = Read-Json (Join-Path $hostDirectory 'HeyMelody.Host.deps.json')
     foreach ($library in $hostDeps.libraries.PSObject.Properties | Where-Object { $_.Value.type -eq 'package' -and $_.Name -notlike 'Microsoft.NETCore.App.Runtime.*' }) {
@@ -318,6 +364,7 @@ $receipt = [ordered]@{
         requested = [bool]$VerifyDeviceArtwork; source = 'checked-in application assets'
         completeSourceMatchesVerified = $artworkChecks.Count; checks = $artworkChecks
     }
+    resourceBundles = @($resourceChecks)
     archive = [ordered]@{
         path = [IO.Path]::GetRelativePath($taskRoot, $taskArchive).Replace('\', '/'); sha256 = (Hash-File $taskArchive)
         allFilePathsAndSizesVerified = $archivePathChecks; criticalContentHashesVerified = $archiveHashChecks

@@ -10,7 +10,8 @@ public static class WindowsSdp
     private const int MaxResults = 256;
     private const uint ReturnName = 0x10, ReturnType = 0x20, ReturnAddress = 0x100;
 
-    /// <summary>Queries only Melody 079A for the specified peer. No inquiry, cache flush,
+    /// <summary>Queries one explicitly selected OPPO control service, 079A or legacy 1107,
+    /// for the specified peer. No inquiry, cache flush,
     /// service registration, registry access, or channel probing occurs. An empty cached result
     /// is not proof that the peer lacks the service. WSALookupServiceBegin/Next are synchronous
     /// native calls and cannot be made absolutely thread-cancellable; the caller must supervise

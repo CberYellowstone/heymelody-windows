@@ -1,0 +1,85 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using HeyMelodyWindows.Protocol;
+
+namespace HeyMelodyWindows.Calibration;
+
+public sealed record CalibrationHistoryEntry(string StableKey, int Uid, string Name, HearingVersion Version,
+    IReadOnlyList<HearingLevel> Levels, byte[]? ScanData, DateTimeOffset SavedAtUtc);
+
+/// <summary>Plain JSON; stable device identity and signed UID are retained without phone account identifiers.</summary>
+public sealed class CalibrationHistoryStore(string directory)
+{
+    private readonly string _directory = Path.GetFullPath(directory);
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
+    public async Task<IReadOnlyList<CalibrationHistoryEntry>> ReadAsync(string stableKey, CancellationToken token = default)
+    {
+        await _gate.WaitAsync(token);
+        try { return await ReadCoreAsync(stableKey, token); } finally { _gate.Release(); }
+    }
+    public async Task CheckSaveAsync(CalibrationHistoryEntry entry, int? replacementUid = null, CancellationToken token = default)
+    {
+        Validate(entry); await _gate.WaitAsync(token);
+        try { _ = Prepare(await ReadCoreAsync(entry.StableKey, token), entry, replacementUid); }
+        finally { _gate.Release(); }
+    }
+    public async Task SaveAsync(CalibrationHistoryEntry entry, CancellationToken token = default, int? replacementUid = null)
+    {
+        Validate(entry); await _gate.WaitAsync(token);
+        try
+        {
+            var entries = Prepare(await ReadCoreAsync(entry.StableKey, token), entry, replacementUid);
+            Directory.CreateDirectory(_directory); string path = GetPath(entry.StableKey), temporary = path + ".tmp";
+            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(entries, Json), new UTF8Encoding(false), token);
+            File.Move(temporary, path, true);
+        }
+        finally { _gate.Release(); }
+    }
+    private static CalibrationHistoryEntry[] Prepare(IReadOnlyList<CalibrationHistoryEntry> existing, CalibrationHistoryEntry entry, int? replacementUid)
+    {
+        if (replacementUid is int replace && !existing.Any(x => x.Uid == replace)) throw new InvalidOperationException("Selected history replacement no longer exists.");
+        var retained = existing.Where(x => x.Uid != entry.Uid && x.Uid != replacementUid).ToArray();
+        if (retained.Any(x => string.Equals(x.Name, entry.Name, StringComparison.OrdinalIgnoreCase))) throw new InvalidOperationException("A calibration with this name already exists.");
+        if (retained.Length >= 10) throw new InvalidOperationException("Calibration history is full. Select an entry to replace.");
+        return retained.Append(entry).OrderByDescending(x => x.SavedAtUtc).ToArray();
+    }
+    public async Task DeleteAsync(string stableKey, int uid, CancellationToken token = default)
+    {
+        await _gate.WaitAsync(token);
+        try
+        {
+            var entries = (await ReadCoreAsync(stableKey, token)).Where(x => x.Uid != uid).ToArray();
+            if (!File.Exists(GetPath(stableKey))) return;
+            string path = GetPath(stableKey), temporary = path + ".tmp";
+            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(entries, Json), new UTF8Encoding(false), token);
+            File.Move(temporary, path, true);
+        }
+        finally { _gate.Release(); }
+    }
+    private async Task<IReadOnlyList<CalibrationHistoryEntry>> ReadCoreAsync(string stableKey, CancellationToken token)
+    {
+        string path = GetPath(stableKey); if (!File.Exists(path)) return [];
+        var entries = JsonSerializer.Deserialize<CalibrationHistoryEntry[]>(await File.ReadAllTextAsync(path, token), Json) ?? [];
+        if (entries.Length > 10 || entries.Any(x => x.StableKey != stableKey) || entries.Select(x => x.Uid).Distinct().Count() != entries.Length)
+            throw new InvalidDataException("Invalid calibration history.");
+        foreach (var entry in entries) Validate(entry);
+        return entries.OrderByDescending(x => x.SavedAtUtc).ToArray();
+    }
+    private string GetPath(string stableKey)
+    {
+        if (string.IsNullOrWhiteSpace(stableKey)) throw new ArgumentException("Device identity is required.", nameof(stableKey));
+        return Path.Combine(_directory, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(stableKey))) + ".json");
+    }
+    public static void ValidateName(string name)
+    {
+        if (name != name.Trim() || name.Length is < 2 or > 40 || name.Any(char.IsControl)) throw new ArgumentException("Name must contain 2–40 characters.", nameof(name));
+    }
+    private static void Validate(CalibrationHistoryEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.StableKey) || entry.Version is not (HearingVersion.V1 or HearingVersion.V2)) throw new InvalidDataException("Invalid calibration history.");
+        ValidateName(entry.Name); CalibrationCodecs.ValidateLevels(entry.Levels);
+        if (entry.Levels.Count != 12 || entry.ScanData?.Length is 0 or > 32767) throw new InvalidDataException("Incomplete calibration history.");
+    }
+}

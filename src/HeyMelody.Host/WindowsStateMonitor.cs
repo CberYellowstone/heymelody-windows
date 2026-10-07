@@ -229,7 +229,8 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
                     supervisor.ObserveBroadcast(address, new(parsed.ProductId,
                         parsed.CaseOpen is { } lid ? lid ? CaseLidState.Open : CaseLidState.Closed : CaseLidState.Unknown,
                         (EarbudPlacement)parsed.LeftPlacement, (EarbudPlacement)parsed.RightPlacement,
-                        parsed.LeftBattery, parsed.RightBattery, parsed.CaseBattery, null, null, null, args.Timestamp));
+                        parsed.LeftBattery, parsed.RightBattery, parsed.CaseBattery, null, null, null, args.Timestamp)
+                        { Color = parsed.Color });
                 }
             }
         }

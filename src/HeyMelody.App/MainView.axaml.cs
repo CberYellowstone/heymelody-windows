@@ -5,12 +5,13 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Controls;
 using System.ComponentModel;
+using Avalonia.VisualTree;
 
 namespace HeyMelodyWindows.App;
 
 public partial class MainView : UserControl
 {
-    private bool _selectingDevice, _selectingEq;
+    private bool _selectingDevice;
     private MainViewModel? _observedViewModel;
     private FAContentDialog? _settingsDialog;
     private Task? _settingsOperation;
@@ -21,19 +22,32 @@ public partial class MainView : UserControl
     private bool _modelDemo;
     internal ILauncher? LauncherOverride { get; set; }
     internal Func<Task>? ManageDevicesRequested { get; set; }
+    internal Func<Task>? RequestFitTest { get; set; }
+    internal Func<Task>? RequestHearingSetup { get; set; }
     private bool _manageDevicesRequested;
+    private bool _savingResourcePreferences;
+    private ResourcePreferenceDraft? _resourcePreferenceDraft;
+    private sealed record ResourcePreferenceDraft(UiOption Source, bool Online, string Key);
+    private readonly Dictionary<string, bool> _sectionExpansion = new(StringComparer.Ordinal);
     public DeviceVisualCatalog VisualCatalog { get; } = new();
     private MainViewModel? ViewModel => DataContext as MainViewModel;
     public MainView()
     {
         InitializeComponent();
         InitializeDeviceBar();
+        VisualCatalog.PropertyChanged += (_, _) => HeroArt.Visual = _modelDemo ? new EncoFree4ModelVisual() : VisualCatalog.ProductFor(ViewModel?.SelectedDevice);
+        UserInputCommit.Combo(HearingProfileCombo, async () =>
+        {
+            if (ViewModel is { } vm && HearingProfileCombo.SelectedItem is UiHearingProfile profile)
+                await vm.SelectHearingProfileAsync(profile);
+        });
         AddDeviceHost.IsEnabled = OperatingSystem.IsWindows();
         SizeChanged += (_, _) => UpdateLayoutMode(Bounds.Width);
         DataContextChanged += (_, _) =>
         {
             if (_observedViewModel is not null) _observedViewModel.PropertyChanged -= ViewModelPropertyChanged;
             VisualCatalog.Clear();
+            _sectionExpansion.Clear();
             _observedViewModel = ViewModel;
             if (ViewModel is { } vm)
             {
@@ -47,7 +61,8 @@ public partial class MainView : UserControl
     private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs change)
     {
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.ProductId) or nameof(MainViewModel.HasVerifiedSnapshot)
-            or nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices)) UpdateArtwork();
+            or nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices) or nameof(MainViewModel.ResourceSource)
+            or nameof(MainViewModel.ResourceRevision) or nameof(MainViewModel.DeviceColor)) UpdateArtwork();
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices)) RequestDeviceCenterIfChanged();
     }
 
@@ -63,13 +78,16 @@ public partial class MainView : UserControl
     }
     public bool IsCompact { get; private set; }
     public void ExpandAllSettings()
-    { EqualizerPanel.IsExpanded = ExperiencePanel.IsExpanded = DeviceInfoPanel.IsExpanded = true; }
+    { foreach (var section in this.GetVisualDescendants().OfType<FASettingsExpander>()) section.IsExpanded = true; }
+    internal bool SectionExpanded(string id, bool initial) => _sectionExpansion.GetValueOrDefault(id, initial);
+    internal void RememberSectionExpansion(string id, bool expanded) => _sectionExpansion[id] = expanded;
 
     private void UpdateArtwork()
     {
         var vm = ViewModel;
-        VisualCatalog.Update(vm?.Devices ?? [], vm?.SelectedDevice, vm?.ProductId);
-        HeroArt.Visual = VisualCatalog.ProductFor(vm?.SelectedDevice);
+        VisualCatalog.Update(vm?.Devices ?? [], vm?.SelectedDevice, vm?.ProductId, vm?.DeviceColor,
+            vm?.ResourceSource ?? "HeyMelody", vm?.ResourceRevision ?? 0, vm?.ArtworkService);
+        HeroArt.Visual = _modelDemo ? new EncoFree4ModelVisual() : VisualCatalog.ProductFor(vm?.SelectedDevice);
     }
 
     private void UpdateLayoutMode(double width)
@@ -105,19 +123,10 @@ public partial class MainView : UserControl
         try { await vm.SelectDeviceAsync(DevicePicker.SelectedItem as UiDevice); DevicePicker.SelectedItem = vm.SelectedDevice; }
         finally { _selectingDevice = false; RequestDeviceCenter(); }
     }
-    private async void EqEntry_SelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (_selectingEq || ViewModel is not { } vm || vm.UpdatingState || Equals(EqEntryCombo.SelectedItem, vm.SelectedEqEntry)) return;
-        _selectingEq = true;
-        try { await vm.SelectEqEntryAsync(EqEntryCombo.SelectedItem as UiEqEntry); EqEntryCombo.SelectedItem = vm.SelectedEqEntry; }
-        finally { _selectingEq = false; }
-    }
-    private async void Dual_Click(object? sender, RoutedEventArgs e)
-    { if (ViewModel is { } vm) await vm.ToggleDualCommand.ExecuteAsync(DualSwitch.IsChecked == true); }
-    private async void Game_Click(object? sender, RoutedEventArgs e)
-    { if (ViewModel is { } vm) await vm.ToggleGameCommand.ExecuteAsync(GameSwitch.IsChecked == true); }
-    private async void HiRes_Click(object? sender, RoutedEventArgs e)
-    { if (ViewModel is { } vm) await vm.ToggleHiResCommand.ExecuteAsync(HiResSwitch.IsChecked == true); }
+    private async void FitTest_Click(object? sender, RoutedEventArgs e)
+    { if (RequestFitTest is { } request) await request(); }
+    private async void HearingSetup_Click(object? sender, RoutedEventArgs e)
+    { if (RequestHearingSetup is { } request) await request(); }
 
     private async void AppSettings_Click(object? sender, RoutedEventArgs e) => await OpenSettingsDialogAsync();
 
@@ -160,8 +169,9 @@ public partial class MainView : UserControl
 
     internal async Task OpenSettingsDialogAsync()
     {
-        if (_closingWindow || _settingsOperation is not null || ViewModel is not { Closing: false } vm) return;
+        if (_closingWindow || _settingsOperation is not null || _savingResourcePreferences || ViewModel is not { Closing: false } vm) return;
         _manageDevicesRequested = false;
+        _resourcePreferenceDraft = null;
         using var cancellation = new CancellationTokenSource();
         _settingsCancellation = cancellation;
         _settingsOperation = vm.Dialogs.RunAsync(ShowAppSettingsAsync, cancellation.Token);
@@ -169,6 +179,19 @@ public partial class MainView : UserControl
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested || vm.Closing) { }
         finally { _settingsOperation = null; _settingsCancellation = null; }
         // The settings lease must be released before the EQ discard confirmation.
+        if (_resourcePreferenceDraft is { } draft && !_closingWindow && !vm.Closing)
+        {
+            _resourcePreferenceDraft = null;
+            _savingResourcePreferences = true;
+            try
+            {
+                vm.SelectedResourceSource = draft.Source;
+                vm.UseOnlineResources = draft.Online;
+                vm.CloudKey = draft.Key;
+                await vm.SaveResourcePreferencesAsync();
+            }
+            finally { _savingResourcePreferences = false; }
+        }
         if (_manageDevicesRequested && !_closingWindow && !vm.Closing && ManageDevicesRequested is { } manage)
             await manage();
     }
@@ -200,7 +223,36 @@ public partial class MainView : UserControl
         var theme = new ComboBox { ItemsSource = new[] { "跟随系统", "浅色", "深色" }, SelectedIndex = preference switch { "light" => 1, "dark" => 2, _ => 0 }, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch };
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(new TextBlock { Text = "外观", FontWeight = Avalonia.Media.FontWeight.SemiBold }); content.Children.Add(theme);
-        content.Children.Add(new TextBlock { Text = $"HeyMelody {AppVersion.Display} · 社区客户端\n通过蓝牙管理已配对的 OPPO 耳机。", TextWrapping = Avalonia.Media.TextWrapping.Wrap });
+        if (ViewModel is not { } vm) return;
+        var source = new ComboBox { ItemsSource = vm.ResourceSourceOptions, SelectedItem = vm.SelectedResourceSource,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
+            ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<UiOption>((option, _) => new TextBlock { Text = option?.Name }) };
+        var online = new ToggleSwitch { Content = "使用在线资源", IsChecked = vm.UseOnlineResources, OnContent = "", OffContent = "" };
+        var key = new TextBox { Text = vm.CloudKey, PasswordChar = '●', PlaceholderText = "自定义云端密钥", MaxLength = 1024 };
+        // Keep edits local to this dialog, with a separate key for each source.
+        var initialSource = vm.SelectedResourceSource;
+        var initialKey = vm.CloudKey;
+        var shownSource = initialSource;
+        var keys = new Dictionary<int, string> { [initialSource.Key] = initialKey };
+        source.SelectionChanged += (_, _) =>
+        {
+            if (source.SelectedItem is not UiOption next || next.Key == shownSource.Key) return;
+            keys[shownSource.Key] = key.Text ?? "";
+            if (!keys.TryGetValue(next.Key, out var nextKey))
+            {
+                nextKey = vm.ResourceKeyFor(next);
+                keys[next.Key] = nextKey;
+            }
+            shownSource = next;
+            key.Text = nextKey;
+        };
+        Avalonia.Automation.AutomationProperties.SetName(source, "资源来源");
+        Avalonia.Automation.AutomationProperties.SetName(key, "云端资源密钥");
+        content.Children.Add(new TextBlock { Text = "耳机资源", FontWeight = Avalonia.Media.FontWeight.SemiBold });
+        content.Children.Add(source); content.Children.Add(online); content.Children.Add(key);
+        content.Children.Add(new TextBlock { Text = vm.ResourceStatus, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
+        content.Children.Add(new TextBlock { Text = "关闭在线资源后，已缓存的较新版本仍可使用。", FontSize = 12, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
+        content.Children.Add(new TextBlock { Text = $"HeyMelody {AppVersion.Display} · 社区客户端\n通过蓝牙管理已配对的耳机。", TextWrapping = Avalonia.Media.TextWrapping.Wrap });
         var dialog = new FAContentDialog { Title = "应用设置", Content = content, PrimaryButtonText = "保存", CloseButtonText = "取消", DefaultButton = FAContentDialogButton.Primary };
         var manageDevices = new Button { Content = "管理设备", HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
             IsEnabled = OperatingSystem.IsWindows() && ManageDevicesRequested is not null && ViewModel is { CanManageDevices: true } };
@@ -208,6 +260,8 @@ public partial class MainView : UserControl
         content.Children.Add(manageDevices);
         if (await ShowSettingsDialogAsync(dialog, owner, token) != FAContentDialogResult.Primary || _closingWindow || token.IsCancellationRequested) return;
         var selected = theme.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" };
+        if (source.SelectedItem is UiOption resourceSource)
+            _resourcePreferenceDraft = new(resourceSource, online.IsChecked == true, key.Text ?? "");
         if (Application.Current is App app) app.ApplyTheme(selected);
         if (!ThemePreferences.Save(selected))
             await ShowSettingsDialogAsync(new FAContentDialog { Title = "外观已切换", Content = "无法保存主题偏好，下次启动将使用原来的设置。", CloseButtonText = "确定" }, owner, token);
