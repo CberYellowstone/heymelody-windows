@@ -1,6 +1,8 @@
 # HeyMelody for Windows
 
-**0.8.2** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型、Lottie 展示。
+**0.8.3** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型、Lottie 展示。
+
+0.8.3 修复降噪主模式按钮的协议编号：进入“自适应”等主模式时发送父编号，细分档位仍独立发送子编号，父态回读不会猜选首个子档。Enco X4 自适应主切换与手机端的字节差异已由两份官方 APK 复核；本检查包的提示音效果仍待用户真机确认，详见 [协议研究与 A/B 步骤](docs/research/anc-mode-prompt.md)。
 
 0.8.2 新增会话内布局 Demo：长按主界面“+”两秒即可添加，使用 Enco Free4 丹拿版官方三维模型，展示全部已实现控件。控件修改仅在本地模拟数据中生效，关闭主窗口后移除；也可通过发布包的 `Start-3D-Demo.cmd` 直接进入离线演示。
 
@@ -26,7 +28,7 @@ Demo 使用预装的 Enco Free4 丹拿版（`06C010`、色号 `3`）三维模型
 dotnet build src/HeyMelody.App/HeyMelody.App.csproj -c Release
 dotnet run --project tests/HeyMelody.Resources.Tests
 dotnet run --project tests/HeyMelody.Calibration.Tests
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.2
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.3
 ```
 
 常规构建和离线测试使用仓库中的资源包，不需要本地 APK。重新提取资源需要固定的 `research` 原件，入口是 `tools/bundle_resources.py`；运行中的软件不读取研究目录。原始资源版权与溯源保留在发布包的 notices 和资源清单中。

@@ -97,7 +97,7 @@ try
             var point = apply.TranslatePoint(new Point(apply.Bounds.Width / 2, apply.Bounds.Height / 2), window)!.Value;
             window.MouseDown(point, MouseButton.Left); window.MouseUp(point, MouseButton.Left);
             Dispatcher.UIThread.RunJobs();
-            Check(service.Submissions == 1 && service.LastAction?.Value == 0x0003, "ANC radio immediately submits exactly once");
+            Check(service.Submissions == 1 && service.LastAction is { Kind: "AncMode", Value: 0 }, "ANC radio immediately submits its parent exactly once");
             Check(vm.LastApplyAttempts is [{ BackendReceiptReceived: true, ConnectionState: ConnectionState.Connected,
                 Accepted: true, AckStatus: 0, TargetSubmitted: true, ReadbackMatches: true }]
                 && !vm.StatusWarning && vm.Status == "设置已确认，回读与请求一致。",
@@ -127,7 +127,7 @@ try
     var startupChecks = StartupTests.Run(session);
     var settingsManagementChecks = SettingsManagementTests.Run(session);
     passed += startupChecks + settingsManagementChecks;
-    Check(passed == (OperatingSystem.IsWindows() ? 51 : 48) + demoChecks, "Every UI scenario and interaction case must finish");
+    Check(passed == (OperatingSystem.IsWindows() ? 53 : 50) + demoChecks, "Every UI scenario and interaction case must finish");
     var report = new { schemaVersion = 1, version = AppVersion.Display, passed, success = true, nativeBluetoothCalls = 0,
         verificationScope = "source/mock checks; not a packaged executable or hardware execution receipt",
         screenshotScope = "headless Skia layout/content only; native titlebar and real 3D renderer pixels are not verified", screenshots = receipts };
@@ -157,7 +157,8 @@ sealed class InputTestService : IHeadsetService
     public Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token)
     {
         LastAction = action; Submissions++;
-        if (action.Kind == "Anc") _snapshot!.Anc = action.Value;
+        if (action.Kind == "Anc") { _snapshot!.Anc = action.Value; _snapshot.AncPrimary = action.Value >> 8; }
+        else if (action.Kind == "AncMode") { _snapshot!.AncPrimary = action.Value; _snapshot.Anc = null; }
         else if (action.Kind == "Feature" && action.FeatureId == "dual") _snapshot!.DualConnection = action.Value == 1;
         FeatureTestData.Decorate(_snapshot!);
         _snapshot!.ConnectionState = ConnectionState.Connected;

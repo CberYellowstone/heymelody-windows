@@ -2,12 +2,48 @@ using System.Reflection;
 using System.Text.Json;
 using HeyMelodyWindows.App;
 using HeyMelodyWindows.Daily;
+using HeyMelodyWindows.Devices;
 using HeyMelodyWindows.Host;
 
 internal static class NativeSnapshotMappingTests
 {
     internal static async Task RunAsync(Func<string, Func<Task>, Task> test, string scratch)
     {
+        await test("native ANC projection preserves a known primary without guessing its adjustment", async () =>
+        {
+            await using var service = new NativeHeadsetService(
+                () => throw new InvalidOperationException("ANC projection enumerated Bluetooth"),
+                new DeviceWhitelistStore(Path.Combine(scratch, "anc-projection.json")));
+            var map = typeof(NativeHeadsetService).GetMethod("Map", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var daily = new DailySnapshot
+            {
+                Revision = 1, Connected = true, ProfileVerified = true, ProductId = "06EC10",
+                Anc = DailyParsers.ParseAnc([0, 1, 1, 0, 8], X4Profile.Load()),
+                Capabilities = new() { Anc = true },
+                AncOptions = [new(11, 12, 11, "更少噪音"), new(11, 13, 12, "标准"), new(11, 14, 13, "更多噪音")]
+            };
+            UiSnapshot Project() => (UiSnapshot)map.Invoke(service, [daily])!;
+            var projected = Project();
+            Check(projected is { AncPrimary: 11, Anc: null, CanSetAncMode: true }
+                && projected.AncModes is [{ Key: 11, Name: "自适应降噪", IconKey: "adaptive" }],
+                "Known parent state or the parent label was replaced by a default adjustment");
+            Check(projected.AncOptions.Select(x => x.Key).SequenceEqual(new[] { 0x0B0C, 0x0B0D, 0x0B0E }),
+                "Legacy adjustment values were changed by the new parent state");
+            daily.Anc = DailyParsers.ParseAnc([0, 1, 1, 0, 0x20], X4Profile.Load()); daily.Revision++;
+            projected = Project();
+            Check(projected is { AncPrimary: 11, Anc: 0x0B0D, CanSetAnc: true, CanSetAncMode: true },
+                "The packed legacy adjustment state no longer survives projection");
+            daily.AncOptions = []; daily.Revision++;
+            Check(!Project().CanSetAncMode, "Missing active source modes enabled primary selection");
+            daily.AncOptions = [new(11, 13, 12, "标准")]; daily.Capabilities.Anc = false; daily.Revision++;
+            Check(!Project().CanSetAncMode, "Unavailable ANC capability enabled primary selection");
+            daily.Capabilities.Anc = true; daily.Connected = false; daily.Revision++;
+            Check(!Project().CanSetAncMode, "Disconnected observation retained primary selection");
+            daily.Connected = true; daily.ProfileVerified = false; daily.Revision++;
+            Check(!Project().CanSetAncMode, "Unverified profile retained primary selection");
+            daily.ProfileVerified = true; daily.Error = "unavailable"; daily.Revision++;
+            Check(!Project().CanSetAncMode, "Failed observation retained primary selection");
+        });
         await test("native UI revisions preserve metadata enrichment and stale receipt ordering without device I/O", async () =>
         {
             await using var service = new NativeHeadsetService(

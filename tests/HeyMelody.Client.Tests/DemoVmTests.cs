@@ -42,6 +42,8 @@ internal static class DemoVmTests
             await vm.ToggleHiResCommand.ExecuteAsync(false);
             Check(vm.DualConnection == false && vm.GameMode == true && vm.HiRes == false);
             await vm.SelectAncModeAsync(vm.AncModes.Last());
+            Check(vm.SelectedAncMode?.Key == vm.AncModes.Last().Key && vm.SelectedAnc is null && vm.SelectedAncSubmode is null);
+            await vm.ApplyAncSubmodeAsync(vm.SelectedAncMode!.Options.First());
             Check(vm.SelectedAnc?.Key == vm.AncModes.Last().Options.First().Key);
             var preset = vm.PresetOptions.Last();
             await vm.SelectPresetAsync(preset); Check(vm.SelectedPreset?.Key == preset.Key);

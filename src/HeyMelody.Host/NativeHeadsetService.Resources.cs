@@ -39,7 +39,8 @@ public sealed partial class NativeHeadsetService
         _client is null ? throw new InvalidOperationException("耳机连接已变化。") : Map(await _client.SetObservedColorAsync(productId, color, token));
     private IReadOnlyList<UiAncMode> BuildAncModes(DailySnapshot snapshot)
     {
-        var raw = _catalog?.Find(snapshot.ProductId)?.Functions;
+        var raw = _catalog is null ? DeviceModelResolver.FindByProductId(snapshot.ProductId ?? "")?.RawFunctions
+            : _catalog.Find(snapshot.ProductId)?.Functions;
         var definitions = raw is { ValueKind: JsonValueKind.Object } f && f.TryGetProperty("noiseReductionMode", out var modes)
             && modes.ValueKind == JsonValueKind.Array ? modes.EnumerateArray().ToArray() : [];
         return snapshot.AncOptions.GroupBy(x => x.Primary).Select(group =>

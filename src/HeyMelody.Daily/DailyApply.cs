@@ -19,8 +19,17 @@ public sealed partial class DailyClient
                 return Reject(result, "新鲜设备状态不可用，没有发送设置。", DailyApplyFailure.StateUnavailable);
             var caps = before.Capabilities;
             ushort cmd; byte[] payload; Func<DailySnapshot, bool> target;
+            Func<DailySnapshot, bool>? targetKnown = null;
             switch (kind)
             {
+                case "anc-mode":
+                    if (!caps.Anc || !before.AncOptions.Any(x => x.Primary == value))
+                        return Reject(result, "该降噪模式未通过当前型号和状态校验。");
+                    // The main selector sends the configured parent, leaving its fine adjustment to the headset.
+                    cmd = 0x0404; payload = DailyParsers.BuildAnc(value);
+                    target = s => s.Anc?.Primary == value;
+                    targetKnown = s => s.Anc?.Primary is not null;
+                    break;
                 case "anc":
                     if (!caps.Anc || !before.AncOptions.Any(x => x.Primary == value && x.Level == level))
                         return Reject(result, "该降噪档位未通过当前型号和状态校验。");
@@ -104,7 +113,7 @@ public sealed partial class DailyClient
                 result.ReadbackMatches = true; result.Success = true; result.After = latest;
                 result.Message = "当前回读已经符合请求，没有重复发送设置。"; return result;
             }
-            await SendAndObserveAsync(cmd, payload, target, result, token);
+            await SendAndObserveAsync(cmd, payload, target, result, token, targetKnown: targetKnown);
             return Finish(result);
         }
         catch (Exception)
@@ -118,7 +127,8 @@ public sealed partial class DailyClient
         finally { _gate.Release(); }
     }
     private async Task SendAndObserveAsync(ushort command, byte[] payload, Func<DailySnapshot, bool> target,
-        DailyApplyResult result, CancellationToken token, bool prerequisite = false)
+        DailyApplyResult result, CancellationToken token, bool prerequisite = false,
+        Func<DailySnapshot, bool>? targetKnown = null)
     {
         var reply = await _session!.RequestAsync(command, payload, token);
         if (prerequisite) result.PrerequisiteSubmitted |= reply.Submitted;
@@ -128,7 +138,7 @@ public sealed partial class DailyClient
         if (_session is not { Usable: true }) await DropSessionAsync();
         result.After = await ReadFreshAsync(token);
         bool identityMatches = result.After.ProfileVerified && result.After.ProductId == result.Before!.ProductId;
-        result.ReadbackMatches = identityMatches && TargetKnown(command, payload, result.After)
+        result.ReadbackMatches = identityMatches && (targetKnown?.Invoke(result.After) ?? TargetKnown(command, payload, result.After))
             ? target(result.After) : null;
         result.Success = result.AckAccepted == true && result.ReadbackVerified;
         result.FailureKind = reply.ConnectionInterrupted ? DailyApplyFailure.Disconnected :

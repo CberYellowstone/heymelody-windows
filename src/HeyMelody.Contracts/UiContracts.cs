@@ -70,12 +70,14 @@ public sealed class UiSnapshot
     public bool? RightCharging { get; set; }
     public bool? CaseCharging { get; set; }
     public int? Anc { get; set; }
+    public int? AncPrimary { get; set; }
     public int? Equalizer { get; set; }
     public int? Spatial { get; set; }
     public bool? DualConnection { get; set; }
     public bool? GameMode { get; set; }
     public bool? HiRes { get; set; }
     public bool CanSetAnc { get; set; }
+    public bool CanSetAncMode { get; set; }
     public bool CanSetEqualizer { get; set; }
     public bool CanSetCustomEqualizer { get; set; }
     public bool CanSetDualConnection { get; set; }
@@ -92,8 +94,9 @@ public sealed class UiSnapshot
     public IReadOnlyList<string> Warnings { get; set; } = Array.Empty<string>();
 }
 
-// Kind: Anc | Equalizer | CustomEqualizer | CustomSelect | DualConnection | GameMode | Spatial | HiRes.
-// Value is an explicit protocol ID or 0/1; custom EQ carries the complete entry.
+// Kind: AncMode | Anc | Equalizer | CustomEqualizer | CustomSelect | DualConnection | GameMode | Spatial | HiRes.
+// AncMode Value is the parent protocol ID; Anc retains its packed (primary << 8) | level value.
+// Other values are explicit protocol IDs or 0/1; custom EQ carries the complete entry.
 public sealed record UiAction(string Kind, int Value, UiEqEntry? EqualizerEntry = null,
     bool AllowMutexChange = false, string? FeatureId = null, string? Text = null);
 public sealed class UiApplyResult

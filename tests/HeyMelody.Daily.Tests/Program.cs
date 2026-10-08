@@ -25,7 +25,7 @@ await Test("ANC protocol tree preserves children and bitmap indices", () =>
     var p = X4Profile.Load();
     foreach (var (primary, level) in new (byte,byte)[] { (0,3),(2,8),(1,4),(1,5),(1,6),(1,7),(11,12),(11,13),(11,14) })
     {
-        var encoded = DailyParsers.BuildAnc(level); var s = DailyParsers.ParseAnc([0, .. encoded], p);
+        var s = DailyParsers.ParseAnc(Fake.AncReply(level), p);
         Check(s.Primary == primary && s.Level == level);
     }
     Check(Convert.ToHexString(DailyParsers.BuildAnc(14)) == "01010040");
@@ -230,13 +230,13 @@ await Test("smart live levels cannot invent off transparency or adaptive mode as
     var profile=X4Profile.Load();
     foreach(byte level in new byte[]{3,8,12,13,14})
     {
-        var encoded=DailyParsers.BuildAnc(level);encoded[0]=4;
+        var encoded=Fake.AncReply(level).AsSpan(1).ToArray();encoded[0]=4;
         var state=DailyParsers.ParseAnc([0,..encoded],profile);
         Check(state.Primary is null && state.Level is null && state.Kind==4 && state.RawMask.Length>0);
     }
     foreach(byte level in new byte[]{4,5,6,7})
     {
-        var encoded=DailyParsers.BuildAnc(level);encoded[0]=4;
+        var encoded=Fake.AncReply(level).AsSpan(1).ToArray();encoded[0]=4;
         var state=DailyParsers.ParseAnc([0,..encoded],profile);Check(state.Primary==1 && state.Level==7);
     }
     return Task.CompletedTask;
@@ -510,6 +510,7 @@ await Test("disposing idle persistent reader cancels the pending read", async ()
 });
 await DailyFeatureTests.Run(Test, (value, message) => Check(value, message));
 await ResourceContextTests.RunAsync(Test);
+await AncModeTests.RunAsync(Test);
 Console.WriteLine($"Daily tests: {passed} passed; no native devices accessed.");
 
 sealed class Fake : IControlConnector
@@ -541,11 +542,22 @@ sealed class Fake : IControlConnector
     public TaskCompletionSource ReleaseRequest = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public int ActiveReaders, MaximumReaders;
     public byte AncLevel = 3, Preset, Spatial, SetterStatus;
+    public byte? AncAfterSet;
+    public byte[]? AncResponseAfterSet;
     public bool ReportModern = true, SendOldSequenceFirst, EmptySetAck, FailSetSend, HideSpatialAfterHiResOff, UnsupportedProduct, NoModernSpatial;
     public bool SelectCustomOnWrite = true;
     public static CustomEqualizer Entry() => new() { Id=40,Name="EQ1",MinimumGain=-6,MaximumGain=6,Bands=Frequencies.Select(x=>new EqualizerBand(x,0)).ToList() };
     public static EqualizerEdit Edit() => new() { Id=40,Name="EQ1",MinimumGain=-6,MaximumGain=6,Bands=Frequencies.Select(x=>new EqualizerBand(x,0)).ToList() };
     public static CustomEqualizer FromEdit(EqualizerEdit edit) => new() { Id=edit.Id,Name=edit.Name,MinimumGain=edit.MinimumGain,MaximumGain=edit.MaximumGain,Bands=edit.Bands.ToList() };
+    // Independent wire fixtures: status, kind, bitmap type, mask. Never use the production ANC encoder here.
+    public static byte[] AncReply(byte index) => Convert.FromHexString(index switch
+    {
+        0 => "00010101", 1 => "00010102", 2 => "00010104", 3 => "00010108",
+        4 => "00010110", 5 => "00010120", 6 => "00010140", 7 => "00010180",
+        8 => "0001010001", 11 => "0001010008", 12 => "0001010010",
+        13 => "0001010020", 14 => "0001010040", 17 => "000101000002", 18 => "000101000004",
+        _ => throw new InvalidOperationException("No independent ANC fixture for this index.")
+    });
     public Task<IControlTransport> OpenAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested(); int id=++Opens; SequenceSets[id]=[];
@@ -582,7 +594,7 @@ sealed class Fake : IControlConnector
                     Gestures.RemoveAll(x=>x.Device==gesture.Device&&x.Button==gesture.Button&&x.Action==gesture.Action);Gestures.Add(gesture);break;
                 case 0x0406: Preset=p.Payload[0];foreach(var e in Entries)e.Selected=e.Id==Preset;break;
                 case 0x0404:
-                    AncLevel=(byte)Enumerable.Range(0,(p.Payload.Length-2)*8).Single(n=>(p.Payload[2+n/8]&(1<<(n%8)))!=0);break;
+                    AncLevel=AncAfterSet ?? (byte)Enumerable.Range(0,(p.Payload.Length-2)*8).Single(n=>(p.Payload[2+n/8]&(1<<(n%8)))!=0);break;
                 case 0x0418:
                     var encoded=p.Payload.ToArray(); if(encoded[3]==0)encoded[3]=51;
                     var parsed=DailyParsers.ParseEqualizers([0,1,0,..encoded.AsSpan(1).ToArray()]).Single();
@@ -592,6 +604,7 @@ sealed class Fake : IControlConnector
             return EmptySetAck?[]:[SetterStatus];
         }
         if (ThrowReadsAfterWrite && Writes.Count != 0) throw new IOException();
+        if (p.Command == 0x010C && Writes.Count != 0 && AncResponseAfterSet is { } ancReply) return ancReply;
         if (ReadReplies.TryGetValue(p.Command, out var overridden)) return overridden;
         return p.Command switch
         {
@@ -604,7 +617,7 @@ sealed class Fake : IControlConnector
             0x0107 => [0,3,1,0,2,0,3,0],
             0x0200 => [0,8,1,2,3,5,6,15,240,241],
             0x0205 or 0x0201 => [0],
-            0x010C => [0,..DailyParsers.BuildAnc(AncLevel)],
+            0x010C => AncReply(AncLevel),
             0x010F => [0,Preset],
             0x0122 => p.Payload.Length==0 ? EncodeEntries(Entries) : throw new Exception("GET 0122 requires empty official payload"),
             0x012A => [0,HideSpatialAfterHiResOff&&Features[0x18]==0?(byte)9:Spatial],

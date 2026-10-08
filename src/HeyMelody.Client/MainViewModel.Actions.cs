@@ -27,11 +27,12 @@ public sealed partial class MainViewModel
     {
         "Equalizer" or "CustomEqualizer" or "CustomSelect" => "Equalizer",
         "Spatial" or "HiRes" => "Audio",
+        "AncMode" => "Anc",
         _ => kind
     };
 
     private long VersionFor(string kind) => kind switch
-    { "Anc" => _ancVersion, "Equalizer" => _presetVersion, "Spatial" => _spatialVersion, "CustomEqualizer" => _eqVersion, _ => 0 };
+    { "Anc" or "AncMode" => _ancVersion, "Equalizer" => _presetVersion, "Spatial" => _spatialVersion, "CustomEqualizer" => _eqVersion, _ => 0 };
 
     private bool? PendingToggle(string kind) => _pending.TryGetValue(GroupFor(kind), out var intent) && intent.Action.Kind == kind
         ? intent.Action.Value == 1 : null;
@@ -52,7 +53,8 @@ public sealed partial class MainViewModel
             VersionFor(action.Kind), _draftIdentity, _snapshot!.EqualizerEntries.Select(x => x.Id).ToArray(), _sessionWork.Token,
             _snapshot.BackendInstanceId, _snapshot.DeviceGeneration);
         _pending.Add(intent.Group, intent);
-        if (action.Kind == "Anc") { _pendingAnc = true; _pendingAncKey = SelectedAnc?.Key ?? action.Value; }
+        if (action.Kind == "Anc") { _pendingAnc = true; _pendingAncKey = action.Value; _pendingAncPrimary = action.Value >> 8; }
+        if (action.Kind == "AncMode") { _pendingAnc = true; _pendingAncKey = null; _pendingAncPrimary = action.Value; }
         if (action.Kind == "Equalizer") { _pendingPreset = true; _pendingPresetKey = SelectedPreset?.Key ?? action.Value; }
         if (action.Kind == "Spatial") { _pendingSpatial = true; _pendingSpatialKey = SelectedSpatial?.Key ?? action.Value; }
         NotifyState();
@@ -72,6 +74,14 @@ public sealed partial class MainViewModel
         {
             _lastApplyAttempts = intent.Attempts.ToArray();
             if (_pending.TryGetValue(intent.Group, out var pending) && ReferenceEquals(pending, intent)) _pending.Remove(intent.Group);
+            // Main radios represent an observed mode after the operation ends. An interrupted
+            // or rejected request must not leave a selected radio that prevents a later retry.
+            if (intent.Action.Kind == "AncMode" && _ancVersion == intent.Version)
+            {
+                SettleDraft(intent);
+                if (_snapshot is { } observed) DisplaySnapshot(observed);
+                else { _selectedAncMode = null; _selectedAncSubmode = null; _selectedAnc = null; }
+            }
             NotifyState();
         }
     }
@@ -229,7 +239,7 @@ public sealed partial class MainViewModel
     {
         if (VersionFor(intent.Action.Kind) == intent.Version)
         {
-            if (intent.Action.Kind == "Anc") { _pendingAnc = false; _pendingAncKey = null; }
+            if (intent.Action.Kind is "Anc" or "AncMode") { _pendingAnc = false; _pendingAncKey = _pendingAncPrimary = null; }
             if (intent.Action.Kind == "Equalizer") { _pendingPreset = false; _pendingPresetKey = null; }
             if (intent.Action.Kind == "Spatial") { _pendingSpatial = false; _pendingSpatialKey = null; }
             if (intent.Action.Kind == "CustomEqualizer" && intent.DraftIdentity == _draftIdentity) SetEqDirty(false);
@@ -345,6 +355,7 @@ public sealed partial class MainViewModel
     private static bool GoalMatches(PendingAction intent, UiAction action, UiSnapshot snapshot) => action.Kind switch
     {
         "Anc" => snapshot.Anc == action.Value,
+        "AncMode" => snapshot.AncPrimary == action.Value,
         "Equalizer" => snapshot.Equalizer == action.Value,
         "Spatial" => snapshot.Spatial == action.Value,
         "DualConnection" => snapshot.DualConnection == (action.Value == 1),

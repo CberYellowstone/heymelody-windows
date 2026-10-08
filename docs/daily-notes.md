@@ -14,6 +14,7 @@
 | `RefreshAsync(DailyRefreshScope, CancellationToken)` | 指定分区 GET；在锁内合并缓存与较新的通知，保留未查询分区 |
 | `StartMonitoringAsync(CancellationToken)` | 显式开启通知监听；先确认产品与能力，0200 查询后用 0205 或逐项 0201 注册 |
 | `SnapshotChanged` / `DailySnapshot.Revision` | 发布分离的缓存快照及单调版本；通知接收独立于命令锁 |
+| `ApplyAncModeAsync(byte primary)` | 校验已配置主模式，发送父编号的位图；回读按所属主模式匹配 |
 | `ApplyAncAsync(byte primary, byte level)` | 校验原始父子编号，发送所选叶子编号的位图 |
 | `ApplyPresetAsync(byte presetId)` | 按原始内置预设 ID 发送，保留非连续编号 |
 | `SelectCustomEqualizerAsync(byte id)` | 使用刚回读的完整条目发送 0418/action2 |
@@ -62,7 +63,7 @@
 | 功能 | GET 请求 | SET 请求和回读 |
 | --- | --- | --- |
 | 电量 | 0106 / empty | status、count、component/raw 成对记录；只读取 |
-| 降噪 | 010C / 01 01 | 0404 / 01 01 + leaf 位图；回读原始模式位 |
+| 降噪 | 010C / 01 01 | 0404 / 01 01 + 位图；主模式发送父 bit，子档发送子 bit |
 | 内置 EQ | 010F / empty | 0406 / 原始预设 ID；回读该 ID |
 | 自定义 EQ | 0122 / empty | 0418 / action + min + max + ID + UTF8 名长/名称 + 段数 + (频率 LE16,增益 S8) |
 | 双连 | 010D 的明确 feature 列表 | 0403 / 11 + 0或1；回读 11 |
@@ -75,6 +76,8 @@
 电量直接依据 APK `BatteryInfo.java:104-108` 和 `commands/e.smali:1828-1975` 的 component/raw 布局，低七位为等级，高位为充电。没有 count=4 特殊布局、无数量猜测或桌面兼容 fallback。缺失组件保持 null，所有组件编号和 raw 存在 RawComponents。等级 0 和大于 100 的值不显示成已知百分比。官方列表 UI `com/heytap/headset/component/mydevicelist/a.java:379-395` 仅显示大于零的值；`repository/earphone/Q.java:350-351` 在三组件全零时返回 null。因此这里保留 Raw=0 并显示未知，不推断物理不在位或精确耗尽。
 
 降噪保留 Kind、ModeType、完整 RawMask 与原始 Primary/Level。APK `CurrentNoiseModeInfo.java:31-65` 定义 type1/type5 的位图，未知类型、多个置位或未知编号不猜选中模式。kind4 实时智能档只在 ANC 叶子 4/5/6/7 范围内归为智能切换，其余仍保留原始值并置 nullable 编号。父子配置保留 0/3 关闭、2/8 通透、1/(7,4,5,6) 智能/深/中/轻、11/(12,13,14) 更少噪音/标准/更多噪音。
+
+主模式与子档操作独立：`ApplyAncModeAsync` 对父或同组子 bit 回读确认 Primary；`ApplyAncAsync` 仍要求精确子档。仅父 bit 被回读且该父项有 children 时 Level=null，不猜默认子档。UI 独立提供 `AncPrimary` 与 `CanSetAncMode`，纯父模式可以切换；具体子档和 `CanSetAnc` 仍以已核实子项及当前状态为准。两条操作共用 ANC 待确认分组。双 APK 的点击链、精确负载及未验证的提示音因果见 [ANC 主模式研究](research/anc-mode-prompt.md)。
 
 内置 EQ 原顺序为 0 丹拿原声、7 丹拿高解析、2 纯享人声、1 清亮高音、3 澎湃低音。十段频率为 31、62、125、250、500、1000、2000、4000、8000、16000 Hz。自定义条目与内置预设属于不同 ID 空间；任何自定义选择都不会发 0406/customID。
 

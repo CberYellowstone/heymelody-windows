@@ -154,6 +154,9 @@ public sealed partial class NativeHeadsetService : IHeadsetService, IDeviceManag
         DailyApplyResult result;
         switch (action.Kind)
         {
+            case "AncMode":
+                if (action.Value is < 0 or > 255) return InvalidAction();
+                result = await _client.ApplyAncModeAsync((byte)action.Value, token); break;
             case "Anc":
                 if (action.Value is < 0 or > 65535) return InvalidAction();
                 result = await _client.ApplyAncAsync((byte)(action.Value >> 8), (byte)action.Value, token); break;
@@ -299,9 +302,11 @@ public sealed partial class NativeHeadsetService : IHeadsetService, IDeviceManag
             CaseBattery = snapshot.Battery?.Case?.Percent, LeftCharging = snapshot.Battery?.Left?.Charging,
             RightCharging = snapshot.Battery?.Right?.Charging, CaseCharging = snapshot.Battery?.Case?.Charging,
             Anc = snapshot.Anc is { Primary: { } primary, Level: { } level } ? (primary << 8) | level : null,
+            AncPrimary = snapshot.Anc?.Primary,
             Equalizer = snapshot.PresetId, Spatial = snapshot.SpatialMode,
             DualConnection = snapshot.DualConnection, GameMode = snapshot.GameMode, HiRes = snapshot.HiRes,
             CanSetAnc = valid && caps.Anc && snapshot.Anc?.Primary is not null,
+            CanSetAncMode = valid && caps.Anc && snapshot.AncOptions.Count != 0,
             CanSetEqualizer = valid && caps.Preset && snapshot.PresetId is not null,
             CanSetCustomEqualizer = valid && caps.CustomEqualizer && snapshot.CustomEqualizersRead,
             CanSetDualConnection = valid && caps.DualConnection && snapshot.DualConnection is not null,

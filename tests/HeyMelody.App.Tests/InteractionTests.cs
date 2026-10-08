@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Automation;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Threading;
@@ -17,7 +18,9 @@ internal static class InteractionTests
         Run("resource settings keep keys separate and release the dialog before EQ confirmation", ResourceSettingsAsync);
         Run("retry and alert dialogs use the required buttons", DialogButtonsAsync);
         Run("resource section expansion survives replacement definitions", ExpansionPersistenceAsync);
-        return 6;
+        Run("ANC radio sends a parent and explicit dropdown sends only a child", AncModeInteractionAsync);
+        Run("ANC parent-only pushes select the radio without selecting or writing a child", AncParentPushAsync);
+        return 8;
 
         void Run(string name, Func<Task> test)
         {
@@ -90,7 +93,7 @@ internal static class InteractionTests
             Check(service.Actions.Count == 0 && !action.IsCompleted, "An immediate option change queues behind the current wire read.");
             service.ReleaseRead.TrySetResult();
             await action.WaitAsync(TimeSpan.FromSeconds(3)); await read.WaitAsync(TimeSpan.FromSeconds(3)); Dispatcher.UIThread.RunJobs();
-            Check(service.Actions.Count == 1 && service.Actions[0] is { Kind: "Anc", Value: 0x0003 }, "Queued option sends its captured key once.");
+            Check(service.Actions.Count == 1 && service.Actions[0] is { Kind: "AncMode", Value: 0 }, "Queued main mode sends its captured parent once.");
             Check(vm.EqDirty && vm.EqName == "读取期间的草稿" && vm.Bands[0].Gain == 4, "EQ edits survive readback.");
         }
         finally { service.ReleaseRead.TrySetResult(); window.Close(); }
@@ -229,6 +232,68 @@ internal static class InteractionTests
     private static Window CreateWindow(MainView view) => new()
         { Width = 1280, Height = 900, Content = view, WindowDecorations = WindowDecorations.None };
 
+    private static void AddAdaptiveMode(UiSnapshot snapshot)
+    {
+        UiOption[] adaptive = [new(0x0B0C, "更少噪音"), new(0x0B0D, "标准"), new(0x0B0E, "更多噪音")];
+        snapshot.AncModes = snapshot.AncOptions.GroupBy(x => x.Key >> 8)
+            .Select(g => new UiAncMode(g.Key, g.First().Name, "anc", g.ToArray()))
+            .Append(new(11, "自适应降噪", "adaptive", adaptive)).ToArray();
+        snapshot.AncOptions = snapshot.AncOptions.Concat(adaptive).ToArray();
+    }
+
+    private static async Task AncModeInteractionAsync()
+    {
+        var service = new BlockingService { IncludeAdaptive = true };
+        await using var vm = new MainViewModel(service, new NoConfirm());
+        await vm.InitializeAsync(); await vm.ConnectCommand.ExecuteAsync(null);
+        var view = new MainView { DataContext = vm }; var window = CreateWindow(view);
+        try
+        {
+            window.Show(); view.ExpandAllSettings(); Dispatcher.UIThread.RunJobs();
+            var selector = view.GetVisualDescendants().OfType<AncModeSelector>().Single();
+            var adaptive = selector.GetVisualDescendants().OfType<RadioButton>()
+                .Single(x => AutomationProperties.GetName(x) == "自适应降噪");
+            Click(window, adaptive); await Task.Delay(20); Dispatcher.UIThread.RunJobs();
+            Check(service.Actions is [{ Kind: "AncMode", Value: 11 }], "Main radio submits the parent without a child write.");
+            var combo = FeatureTestData.Anc(view);
+            Check(adaptive.IsChecked == true && combo.SelectedItem is null && combo.PlaceholderText == "档位未确认" && combo.IsEnabled,
+                "A confirmed parent keeps the explicit fine adjustment available without inventing its value.");
+            // A binding/state update alone must not submit an action.
+            combo.SelectedItem = vm.SelectedAncMode!.Options.Last(); Dispatcher.UIThread.RunJobs();
+            Check(service.Actions.Count == 1, "Programmatic child selection is not an input commit.");
+            combo.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+            combo.SelectedItem = vm.SelectedAncMode.Options.Single(x => x.Key == 0x0B0D);
+            await Task.Delay(20); Dispatcher.UIThread.RunJobs();
+            Check(service.Actions is [{ Kind: "AncMode", Value: 11 }, { Kind: "Anc", Value: 0x0B0D }],
+                "Explicit dropdown input submits exactly one child action.");
+        }
+        finally { window.Close(); }
+    }
+
+    private static async Task AncParentPushAsync()
+    {
+        var service = new PushService(); await using var vm = new MainViewModel(service, new NoConfirm());
+        service.EventReceived += vm.AdoptBackendEvent; await vm.InitializeAsync();
+        var view = new MainView { DataContext = vm }; var window = CreateWindow(view);
+        try
+        {
+            window.Show(); view.ExpandAllSettings(); Dispatcher.UIThread.RunJobs();
+            var snapshot = service.Next(); AddAdaptiveMode(snapshot);
+            snapshot.AncPrimary = 11; snapshot.Anc = null;
+            service.Push(snapshot); Dispatcher.UIThread.RunJobs();
+            var selector = view.GetVisualDescendants().OfType<AncModeSelector>().Single();
+            var adaptive = selector.GetVisualDescendants().OfType<RadioButton>()
+                .Single(x => AutomationProperties.GetName(x) == "自适应降噪");
+            Check(adaptive.IsChecked == true && FeatureTestData.Anc(view).SelectedItem is null && service.Actions.Count == 0,
+                "A parent-only phone push selects the main mode without sending a fallback child.");
+            var legacy = service.Next(); legacy.CanSetAncMode = false;
+            service.Push(legacy); Dispatcher.UIThread.RunJobs();
+            Check(!adaptive.IsEnabled && FeatureTestData.Anc(view).IsEnabled,
+                "An old Host's missing main capability disables main radios while explicit children remain available.");
+        }
+        finally { window.Close(); }
+    }
+
     private static void Click(Window window, Control control)
     {
         var point = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)!.Value;
@@ -246,11 +311,17 @@ internal static class InteractionTests
         private readonly PreviewService _inner = new();
         private UiSnapshot? _snapshot;
         public bool BlockNextRead { get; set; }
+        public bool IncludeAdaptive { get; set; }
         public TaskCompletionSource ReadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ReleaseRead { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public List<UiAction> Actions { get; } = [];
         public Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken token) => _inner.EnumerateAsync(token);
-        public async Task<UiSnapshot> ConnectAsync(string identity, CancellationToken token) => _snapshot = FeatureTestData.Decorate(await _inner.ConnectAsync(identity, token));
+        public async Task<UiSnapshot> ConnectAsync(string identity, CancellationToken token)
+        {
+            _snapshot = FeatureTestData.Decorate(await _inner.ConnectAsync(identity, token));
+            if (IncludeAdaptive) AddAdaptiveMode(_snapshot);
+            return _snapshot;
+        }
         public Task DisconnectAsync(CancellationToken token) => Task.CompletedTask;
         public Task<UiSnapshot> RefreshAsync(CancellationToken token) => RefreshAsync(RefreshScope.Full, token);
         public async Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken token)
@@ -265,7 +336,8 @@ internal static class InteractionTests
         public Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token)
         {
             Actions.Add(action);
-            if (action.Kind == "Anc") _snapshot!.Anc = action.Value;
+            if (action.Kind == "Anc") { _snapshot!.Anc = action.Value; _snapshot.AncPrimary = action.Value >> 8; }
+            if (action.Kind == "AncMode") { _snapshot!.AncPrimary = action.Value; _snapshot.Anc = null; }
             return Task.FromResult(new UiApplyResult
             {
                 BackendReceiptReceived = true, Accepted = true, SubmissionAttempted = true,

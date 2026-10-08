@@ -237,6 +237,39 @@ internal static class EventVmTests
             replacement.Revision = 1; service.Push(replacement); await vm.PollAsync();
             Check(service.Actions.Count == 1 && vm.HasVerifiedSnapshot && !vm.Busy);
         });
+        await test("event VM cancels a queued main mode across generation changes and restores the observed radio", async () =>
+        {
+            var service = new EventService { RefreshBlocked = Completion<UiSnapshot>() };
+            var initial = service.Snapshots["device-a"];
+            initial.AncPrimary = 1; initial.CanSetAncMode = true;
+            initial.AncOptions = initial.AncOptions.Append(new UiOption(0x0B0D, "标准")).ToArray();
+            await using var vm = Create(service); await vm.InitializeAsync();
+            var read = vm.RefreshStateCommand.ExecuteAsync(null);
+            var queued = vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 11));
+            Check(vm.SelectedAncMode?.Key == 11 && service.Actions.Count == 0);
+            var reconnected = Next(initial); reconnected.DeviceGeneration++; reconnected.Revision = 1;
+            service.Push(reconnected);
+            await Task.WhenAll(read, queued).WaitAsync(TimeSpan.FromSeconds(3));
+            Check(vm.HasVerifiedSnapshot && vm.SelectedAncMode?.Key == 1 && vm.CanSetAncMode && service.Actions.Count == 0);
+            await vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 11));
+            Check(service.Actions.Single() is { Generation: 2, Action.Kind: "AncMode", Action.Value: 11 });
+        });
+        await test("event VM immediately replaces an old main intent with the new generation state before its receipt", async () =>
+        {
+            var service = new EventService { ApplyBlocked = Completion<UiApplyResult>() };
+            var initial = service.Snapshots["device-a"];
+            initial.AncPrimary = 1; initial.CanSetAncMode = true;
+            initial.AncOptions = initial.AncOptions.Append(new UiOption(0x0B0D, "标准")).ToArray();
+            await using var vm = Create(service); await vm.InitializeAsync();
+            var write = vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 11));
+            Check(service.Actions.Count == 1 && vm.SelectedAncMode?.Key == 11);
+            var reconnected = Next(initial); reconnected.DeviceGeneration++; reconnected.Revision = 1;
+            service.Push(reconnected);
+            Check(!write.IsCompleted && vm.SelectedAncMode?.Key == 1 && vm.SelectedAncSubmode?.Key == 0x0104);
+            var oldReceipt = Next(initial); oldReceipt.AncPrimary = 11; oldReceipt.Anc = null;
+            service.ApplyBlocked.SetResult(Confirmed(oldReceipt)); await write.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(vm.SelectedAncMode?.Key == 1 && vm.CanSetAncMode && service.Actions.Count == 1);
+        });
         await test("event VM manual button pauses only its selected peer and BLE display keeps updating", async () =>
         {
             var service = new EventService(); await using var vm = Create(service); await vm.InitializeAsync();
@@ -360,6 +393,7 @@ internal static class EventVmTests
             switch (action.Kind)
             {
                 case "Anc": after.Anc = action.Value; break;
+                case "AncMode": after.AncPrimary = action.Value; after.Anc = null; break;
                 case "Equalizer": after.Equalizer = action.Value; break;
                 case "GameMode": after.GameMode = action.Value == 1; break;
             }

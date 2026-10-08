@@ -35,7 +35,8 @@ internal static class BackendTests
             await Until(() => backend.Select(id).ControlReady);
             backend.Pause(id); backend.ObserveConnection(1, false); backend.ObserveConnection(1, true);
             await backend.RefreshCatalogAsync(default);
-            Check(backend.Select(id).MonitoringState == MonitoringState.Paused && workers.Count == 1 && !backend.Select(id).ControlReady);
+            Check(backend.Select(id).MonitoringState == MonitoringState.Paused && workers.Count == 1
+                && !backend.Select(id).ControlReady && !backend.Select(id).CanSetAncMode);
             backend.Resume(id); await Until(() => backend.Select(id).ControlReady);
             Check(workers.Count == 2);
         });
@@ -183,9 +184,10 @@ internal static class BackendTests
             await backend.InitializeAsync(default); var ids = backend.Devices().Select(d => d.Identity).ToArray();
             await Until(() => backend.Select(ids[0]).ControlReady);
             backend.Pause(ids[0]); backend.SetSuspended(true); backend.SetRadioAvailable(false);
-            Check(backend.Subscribe().Snapshots.All(s => !s.ControlReady));
+            Check(backend.Subscribe().Snapshots.All(s => !s.ControlReady && !s.CanSetAncMode));
             backend.SetRadioAvailable(true); backend.SetSuspended(false);
             await Until(() => backend.Select(ids[1]).ControlReady);
+            Check(backend.Select(ids[1]).CanSetAncMode && !backend.Select(ids[0]).CanSetAncMode);
             Check(backend.Select(ids[0]).MonitoringState == MonitoringState.Paused);
         });
         await test("named pipe has an atomic subscription baseline version errors do not kill backend and exit can be vetoed", async () =>
@@ -249,7 +251,8 @@ internal static class BackendTests
         public Task<UiSnapshot> InitializeAsync(ulong address, string identity, string name, CancellationToken token)
         {
             Address = address; _snapshot = new() { Identity = identity, DeviceName = name, Revision = 1, Connected = true,
-                ConnectionState = ConnectionState.Connected, ControlReady = InitialReady, SupportedModel = InitialSupported, CanSetGameMode = InitialReady,
+                ConnectionState = ConnectionState.Connected, ControlReady = InitialReady, SupportedModel = InitialSupported,
+                CanSetGameMode = InitialReady, CanSetAncMode = InitialReady,
                 ProductId = InitialProduct, GameMode = false, LeftBattery = 80, RightBattery = 90,
                 LeftBatteryObservationTime = InitialTime, RightBatteryObservationTime = InitialTime,
                 CaseLid = InitialLid, CaseObservationTime = InitialLid == CaseLidState.Unknown ? null : InitialTime };

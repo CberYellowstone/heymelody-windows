@@ -16,6 +16,9 @@ public sealed partial class DailyClient(IControlConnector connector,
     private int _disposeStarted;
     public Task<DailySnapshot> RefreshAsync(CancellationToken token = default) => RefreshCoreAsync(DailyRefreshScope.Full, token);
     public Task<DailySnapshot> RefreshAsync(DailyRefreshScope scope, CancellationToken token = default) => RefreshCoreAsync(scope, token);
+    /// <summary>Selects a configured main ANC mode without choosing a child adjustment.</summary>
+    public Task<DailyApplyResult> ApplyAncModeAsync(byte primary, CancellationToken token = default) =>
+        ApplyCoreAsync("anc-mode", primary, 0, null, false, token);
     public Task<DailyApplyResult> ApplyAncAsync(byte primary, byte level, CancellationToken token = default) =>
         ApplyCoreAsync("anc", primary, level, null, false, token);
     public Task<DailyApplyResult> ApplyPresetAsync(byte presetId, CancellationToken token = default) =>

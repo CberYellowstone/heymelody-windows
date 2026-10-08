@@ -486,7 +486,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
         snapshot.MonitoringState = peer.Paused ? MonitoringState.Paused : peer.State;
         if (!snapshot.ControlReady)
         {
-            snapshot.CanSetAnc = snapshot.CanSetEqualizer = snapshot.CanSetCustomEqualizer = snapshot.CanSetDualConnection = false;
+            snapshot.CanSetAncMode = snapshot.CanSetAnc = snapshot.CanSetEqualizer = snapshot.CanSetCustomEqualizer = snapshot.CanSetDualConnection = false;
             snapshot.CanSetGameMode = snapshot.CanSetSpatial = snapshot.CanSetHiRes = false;
             snapshot.CanFitTest = snapshot.CanSetupHearing = false;
             snapshot.FeatureSections = snapshot.FeatureSections.Select(s => s with { Controls = s.Controls.Select(c => c with { CanWrite = false }).ToArray() }).ToArray();

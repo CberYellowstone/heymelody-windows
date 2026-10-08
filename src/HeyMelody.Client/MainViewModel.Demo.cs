@@ -39,8 +39,8 @@ public static class DemoDeviceData
             ObservationFresh = true, CaseLid = CaseLidState.Open, LeftPlacement = EarbudPlacement.InEar,
             RightPlacement = EarbudPlacement.InEar, LeftBattery = 92, RightBattery = 89, CaseBattery = 76,
             LeftCharging = false, RightCharging = false, CaseCharging = true,
-            Anc = 0x0104, Equalizer = 0, Spatial = 0, HiRes = true, DualConnection = true, GameMode = false,
-            CanSetAnc = true, CanSetEqualizer = true, CanSetCustomEqualizer = true,
+            AncPrimary = 1, Anc = 0x0104, Equalizer = 0, Spatial = 0, HiRes = true, DualConnection = true, GameMode = false,
+            CanSetAncMode = true, CanSetAnc = true, CanSetEqualizer = true, CanSetCustomEqualizer = true,
             CanSetDualConnection = true, CanSetGameMode = true, CanSetSpatial = true, CanSetHiRes = true,
             SpatialHiResMutex = false, AncModes = ancModes, AncOptions = ancModes.SelectMany(mode => mode.Options).ToArray(),
             EqualizerOptions = [new(0, "丹拿原声"), new(7, "丹拿高解析"), new(2, "纯享人声"), new(1, "清亮高音"), new(3, "澎湃低音")],
@@ -133,7 +133,12 @@ public sealed partial class MainViewModel
         if (_demoSnapshot is not { } snapshot) return;
         switch (action.Kind)
         {
-            case "Anc": snapshot.Anc = action.Value; _pendingAnc = false; _pendingAncKey = null; break;
+            case "Anc":
+                snapshot.AncPrimary = action.Value >> 8; snapshot.Anc = action.Value;
+                _pendingAnc = false; _pendingAncKey = _pendingAncPrimary = null; break;
+            case "AncMode":
+                snapshot.AncPrimary = action.Value; snapshot.Anc = null;
+                _pendingAnc = false; _pendingAncKey = _pendingAncPrimary = null; break;
             case "Equalizer":
                 snapshot.Equalizer = action.Value;
                 snapshot.EqualizerEntries = snapshot.EqualizerEntries.Select(entry => entry with { Selected = false }).ToArray();

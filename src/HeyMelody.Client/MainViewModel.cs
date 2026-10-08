@@ -48,7 +48,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private UiDevice? _selectedDevice;
     private UiEqEntry? _selectedEqEntry;
     private UiOption? _selectedAnc, _selectedPreset, _selectedSpatial;
-    private int? _pendingAncKey, _pendingPresetKey, _pendingSpatialKey;
+    private int? _pendingAncKey, _pendingAncPrimary, _pendingPresetKey, _pendingSpatialKey;
     private IReadOnlyList<UiDevice> _devices = [];
     private IReadOnlyList<UiOption> _ancOptions = [], _presetOptions = [], _spatialOptions = [];
     private IReadOnlyList<UiEqEntry> _eqEntries = [];
@@ -100,9 +100,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ? _snapshot is null || _snapshot.MonitoringState == MonitoringState.Paused ? "连接耳机" : "断开客户端"
         : _sessionIdentity is null ? "连接耳机" : "断开客户端";
     public bool CanChooseAnc => CanWrite && _snapshot!.CanSetAnc;
+    public bool CanChooseAncMode => CanWrite && _snapshot!.CanSetAncMode;
     public bool CanChoosePreset => CanWrite && _snapshot!.CanSetEqualizer;
     public bool CanChooseSpatial => CanWrite && _snapshot!.CanSetSpatial;
     public bool CanSetAnc => CanChooseAnc && !_pending.ContainsKey("Anc");
+    public bool CanSetAncMode => CanChooseAncMode && !_pending.ContainsKey("Anc");
     public bool CanSetEqualizer => CanChoosePreset && !_pending.ContainsKey("Equalizer");
     public bool CanSetCustomEqualizer => CanEditEq && !_pending.ContainsKey("Equalizer");
     public bool CanSetSpatial => CanChooseSpatial && !_pending.ContainsKey("Audio");
@@ -135,7 +137,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public IReadOnlyList<UiOption> AncOptions => _ancOptions;
     public IReadOnlyList<UiOption> PresetOptions => _presetOptions;
     public IReadOnlyList<UiOption> SpatialOptions => _spatialOptions;
-    public UiOption? SelectedAnc { get => _selectedAnc; set { if (SetProperty(ref _selectedAnc, value)) { if (!_displaying) { _pendingAnc = true; _pendingAncKey = value?.Key; _ancVersion++; } NotifyCommands(); } } }
+    public UiOption? SelectedAnc { get => _selectedAnc; set { if (SetProperty(ref _selectedAnc, value)) { if (!_displaying) { _pendingAnc = true; _pendingAncKey = value?.Key; _pendingAncPrimary = value?.Key >> 8; _ancVersion++; } NotifyCommands(); } } }
     public UiOption? SelectedPreset { get => _selectedPreset; set { if (SetProperty(ref _selectedPreset, value)) { if (!_displaying) { _pendingPreset = true; _pendingPresetKey = value?.Key; _presetVersion++; } NotifyCommands(); } } }
     public UiOption? SelectedSpatial { get => _selectedSpatial; set { if (SetProperty(ref _selectedSpatial, value)) { if (!_displaying) { _pendingSpatial = true; _pendingSpatialKey = value?.Key; _spatialVersion++; } NotifyCommands(); } } }
     public IReadOnlyList<UiEqEntry> EqEntries => _eqEntries;
@@ -335,6 +337,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void AdvanceSession()
     {
+        if (_pendingAnc && _pendingAncKey is null && _pendingAncPrimary is not null)
+        {
+            _pendingAnc = false; _pendingAncPrimary = null;
+            _selectedAncMode = null; _selectedAncSubmode = null; _selectedAnc = null;
+        }
         _sessionEpoch++;
         _sessionWork.Cancel(); _sessionWork.Dispose(); _sessionWork = new();
         _operations.CancelQueuedWrites(); _pending.Clear();
@@ -404,6 +411,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         _pendingAnc = _pendingPreset = _pendingSpatial = false;
         _pendingAncKey = _pendingPresetKey = _pendingSpatialKey = null;
+        _pendingAncPrimary = null;
         _ancOptions = []; _presetOptions = []; _spatialOptions = []; _actionWarnings.Clear();
         _eqEntries = []; LoadEntry(null); InvalidateSnapshot();
     }
@@ -412,6 +420,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private bool Supports(UiAction action) => _snapshot is { } s && action.Kind switch
     {
         "Anc" => s.CanSetAnc && s.AncOptions.Any(x => x.Key == action.Value),
+        "AncMode" => s.CanSetAncMode && AncModes.Any(x => x.Key == action.Value),
         "Equalizer" => s.CanSetEqualizer && s.EqualizerOptions.Any(x => x.Key == action.Value),
         "Spatial" => s.CanSetSpatial && s.SpatialOptions.Any(x => x.Key == action.Value),
         "DualConnection" => s.CanSetDualConnection && s.DualConnection is not null,

@@ -47,7 +47,8 @@ public static class DailyParsers
             var leaf = primary.Children.FirstOrDefault(x => x.ProtocolIndex == selected);
             if (leaf is null && primary.ProtocolIndex != selected) continue;
             state.Primary = (byte)primary.ProtocolIndex;
-            state.Level = selected;
+            // A parent bitmap confirms the mode, but does not report one of its child adjustments.
+            state.Level = leaf is null && primary.Children.Count > 0 ? null : selected;
             // Smart response kind=4 describes its instantaneous child, not a new manual selection.
             if (state.Kind == 4) { state.Primary = 1; state.Level = 7; }
             return state;

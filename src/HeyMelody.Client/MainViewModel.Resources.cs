@@ -43,7 +43,6 @@ public sealed partial class MainViewModel
     private IReadOnlyList<UiAncMode> _ancModes = [];
     private UiAncMode? _selectedAncMode;
     private UiOption? _selectedAncSubmode;
-    private readonly Dictionary<int, int> _lastAncSubmodes = [];
     private IReadOnlyList<FeatureSectionViewModel> _featureSections = [];
     private string _featureContext = "";
     private UiOption _selectedResourceSource = new(0, "欢律");
@@ -102,9 +101,9 @@ public sealed partial class MainViewModel
         _ancModes = snapshot.AncModes.Count > 0 ? snapshot.AncModes : snapshot.AncOptions.GroupBy(x => x.Key >> 8)
             .Select(g => new UiAncMode(g.Key, g.First().Name, "anc", g.ToArray())).ToArray();
         var selected = _pendingAnc ? _pendingAncKey : snapshot.Anc;
-        _selectedAncMode = _ancModes.FirstOrDefault(x => x.Options.Any(o => o.Key == selected));
+        var primary = _pendingAnc ? _pendingAncPrimary : snapshot.AncPrimary ?? (snapshot.Anc >> 8);
+        _selectedAncMode = _ancModes.FirstOrDefault(x => x.Key == primary);
         _selectedAncSubmode = _selectedAncMode?.Options.FirstOrDefault(x => x.Key == selected);
-        if (_selectedAncMode is { } mode && _selectedAncSubmode is { } sub) _lastAncSubmodes[mode.Key] = sub.Key;
         var identity = snapshot.Identity; var generation = snapshot.DeviceGeneration; var sourceRevision = snapshot.ResourceRevision;
         string context = identity + "/" + generation + "/" + sourceRevision;
         var previous = _featureContext == context ? _featureSections.ToDictionary(s => s.Id) : new Dictionary<string, FeatureSectionViewModel>();
@@ -134,15 +133,16 @@ public sealed partial class MainViewModel
         && a.Step == b.Step && a.CanWrite == b.CanWrite && a.Description == b.Description && (a.Options ?? []).SequenceEqual(b.Options ?? []);
     public async Task SelectAncModeAsync(UiAncMode mode)
     {
-        if (_displaying || !CanSetAnc || !AncModes.Any(x => x.Key == mode.Key)) return;
-        var option = mode.Options.FirstOrDefault(x => x.Key == _lastAncSubmodes.GetValueOrDefault(mode.Key, int.MinValue)) ?? mode.Options.FirstOrDefault();
-        if (option is null) return;
-        _selectedAncMode = mode; _selectedAncSubmode = option; SelectedAnc = option;
-        NotifyState(); await ApplyOptionAsync("Anc", option);
+        if (_displaying || !CanSetAncMode || !AncModes.Any(x => x.Key == mode.Key)
+            || mode.Key == _selectedAncMode?.Key) return;
+        _pendingAnc = true; _pendingAncPrimary = mode.Key; _pendingAncKey = null; _ancVersion++;
+        _selectedAncMode = _ancModes.Single(x => x.Key == mode.Key);
+        _selectedAncSubmode = null; _selectedAnc = null;
+        NotifyState(); await ApplyAsync(new("AncMode", mode.Key));
     }
     public Task ApplyAncSubmodeAsync(UiOption option)
     {
-        if (_displaying || _selectedAncMode?.Options.Any(x => x.Key == option.Key) != true) return Task.CompletedTask;
+        if (_displaying || !CanSetAnc || _selectedAncMode?.Options.Any(x => x.Key == option.Key) != true) return Task.CompletedTask;
         SelectedAnc = option; SelectedAncSubmode = option; return ApplyOptionAsync("Anc", option);
     }
     public Task SelectPresetAsync(UiOption option)

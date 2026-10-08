@@ -34,7 +34,7 @@ public sealed class AncModeSelector : UserControl
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     { base.OnAttachedToVisualTree(e); if (_model is not null) { _model.PropertyChanged -= Changed; _model.PropertyChanged += Changed; } }
     private void Changed(object? sender, PropertyChangedEventArgs e)
-    { if (e.PropertyName is nameof(MainViewModel.AncModes) or nameof(MainViewModel.SelectedAncMode) or nameof(MainViewModel.SelectedAncSubmode) or nameof(MainViewModel.CanChooseAnc) or nameof(MainViewModel.ResourceSource) or null) Build(); }
+    { if (e.PropertyName is nameof(MainViewModel.AncModes) or nameof(MainViewModel.SelectedAncMode) or nameof(MainViewModel.SelectedAncSubmode) or nameof(MainViewModel.CanSetAnc) or nameof(MainViewModel.CanSetAncMode) or nameof(MainViewModel.ResourceSource) or null) Build(); }
     private void Build()
     {
         if (_model is not { } model) { Content = null; return; }
@@ -57,7 +57,7 @@ public sealed class AncModeSelector : UserControl
             circle.Bind(Border.BackgroundProperty, new DynamicResourceExtension(mode.Key == model.SelectedAncMode?.Key
                 ? "AccentFillColorDefaultBrush" : "ControlFillColorSecondaryBrush"));
             var radio = new RadioButton { GroupName = "anc-" + GetHashCode(), IsChecked = mode.Key == model.SelectedAncMode?.Key,
-                IsEnabled = model.CanChooseAnc, Content = new StackPanel { Spacing = 7, HorizontalAlignment = HorizontalAlignment.Center,
+                IsEnabled = model.CanSetAncMode, Content = new StackPanel { Spacing = 7, HorizontalAlignment = HorizontalAlignment.Center,
                     Children = { circle, new TextBlock { Text = mode.Name, HorizontalAlignment = HorizontalAlignment.Center } } } };
             radio.Theme = CircleTheme;
             AutomationProperties.SetName(radio, mode.Name);
@@ -68,7 +68,7 @@ public sealed class AncModeSelector : UserControl
         panel.Children.Add(modes);
         var combo = new ComboBox { Name = "AncCombo", ItemsSource = model.SelectedAncMode?.Options ?? [],
             SelectedItem = model.SelectedAncSubmode, MinWidth = 200, HorizontalAlignment = HorizontalAlignment.Center,
-            IsEnabled = model.CanChooseAnc, IsVisible = model.HasAncSubmodes,
+            IsEnabled = model.CanSetAnc, IsVisible = model.HasAncSubmodes, PlaceholderText = "档位未确认",
             ItemTemplate = new FuncDataTemplate<UiOption>((option, _) => new TextBlock { Text = option?.Name }) };
         AutomationProperties.SetName(combo, "降噪细分选项");
         UserInputCommit.Combo(combo, async () => { if (combo.SelectedItem is UiOption option) await model.ApplyAncSubmodeAsync(option); });
@@ -82,7 +82,7 @@ public sealed class AncModeSelector : UserControl
         {
             if (!_radios.TryGetValue(mode.Key, out var item)) continue;
             bool selected = mode.Key == model.SelectedAncMode?.Key;
-            item.Radio.IsEnabled = model.CanChooseAnc;
+            item.Radio.IsEnabled = model.CanSetAncMode;
             item.Radio.IsChecked = selected;
             if (Equals(item.Circle.Tag, selected)) continue;
             item.Circle.Tag = selected;
@@ -96,7 +96,7 @@ public sealed class AncModeSelector : UserControl
         if (!(_combo.ItemsSource?.Cast<UiOption>() ?? []).SequenceEqual(options)) _combo.ItemsSource = options;
         if (!Equals(_combo.SelectedItem, model.SelectedAncSubmode)) _combo.SelectedItem = model.SelectedAncSubmode;
         _combo.IsVisible = model.HasAncSubmodes;
-        _combo.IsEnabled = model.CanChooseAnc;
+        _combo.IsEnabled = model.CanSetAnc;
     }
 
     private static ControlTheme CircleTheme => new(typeof(RadioButton))
