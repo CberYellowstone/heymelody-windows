@@ -10,7 +10,7 @@
 
 上述路径是图像采用时的原始出处。2026-10-08 归档后的访问入口为 [主界面参考](../research/screenshots/main-page.png)、[设置参考](../research/screenshots/headphone-configs.png)、[X4 产品大图](../research/screenshots/x4-pods-with-earphones.png) 与 [X4 底栏图标](../research/screenshots/x4-both-earphones.png)；文件仍仅在本地保存，组织规则见 [研究资料归档](research/README.md)。
 
-外观优先按取得的实际 ProductId 判断：`06EC10` 使用 X4 素材，其他非空型号使用通用图形。尚未取得型号时，名称精确匹配 `OPPO Enco X4` 或 `Enco X4`，忽略大小写及首尾空格，选中后即可展示 X4 图片。只读 `MainViewModel.ProductId` 在快照、控制会话和当前选择的 Identity 一致时才暴露型号，`MainView` 按设备 Identity 暂存，切换或断开后继续用于外观；移出列表或更换数据上下文时清理。切换中的旧快照不会将原设备型号归到新选择。此缓存只影响显示，不授予控制能力；连接、适配及写入仍要求实际设备身份和后端状态核实。
+早期按蓝牙名称识别 X4 的规则已在 0.8.1 移除。当前外观只依据实际产品 ID 与协议颜色：来源是 Host 按设备持久化的外观提示（`UiDevice.ProductId/Color`），以及所选设备会话中的实时值，不从蓝牙名称推断。美术目录中的已知值只增不减，资源版本号前进时在后台重新解析，内容相同时保留原渲染控件；没有资源服务的预览模式仍按产品 ID 显示内嵌的 X4 PNG。外观提示只影响显示，不授予控制能力。详见 [外观资源持久化](artwork-persistence.md)；应用设置已改为设置卡片，并提供“重新下载在线资源”。
 
 `ProductArtwork` 和 `DeviceIconView` 分别作为大图与底栏图标宿主，通过 `Visual` 展示数据及 `VisualTemplate`（`IDataTemplate`）呈现内容；宿主不读取蓝牙状态，也不硬编码 X4 判断。当前实现 PNG 和通用图形模板，未来可用新的展示数据及模板接入字体字符、矢量、Lottie 或可交互 3D 控件，本轮不引入这些渲染依赖。大图保留响应式尺寸限制和输入能力，图片模板等比居中，不在宿主统一套用 Viewbox；小图保持 28×28 占位。素材延迟加载并共享 Bitmap，加载流及时关闭，应用结束时释放资源；各宿主独立创建呈现控件。视觉更新保留原有 `UiDevice` 列表及选择绑定，不重建列表或改变滚动位置。
 

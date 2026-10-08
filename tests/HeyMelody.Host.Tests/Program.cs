@@ -172,6 +172,7 @@ try
     await BackendTests.RunAsync(Test, scratch);
     await CalibrationBackendTests.RunAsync(Test, scratch);
     await ResourceBackendTests.RunAsync(Test, scratch);
+    await ResourceBackendTests.RunAppearanceAsync(Test, scratch);
     await NativeSnapshotMappingTests.RunAsync(Test, scratch);
     await AncBackendTests.RunAsync(Test, scratch);
     Console.WriteLine(JsonSerializer.Serialize(new { passed, success = true, nativeBluetoothCalls = 0 }));

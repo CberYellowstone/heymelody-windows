@@ -160,8 +160,10 @@ internal sealed partial class BackendSupervisor
     public async Task<UiArtwork?> AcquireArtworkAsync(string owner, string productId, int? color, string role, CancellationToken token)
     {
         if (_resources is null) return null;
-        if (role is not ("hero" or "model" or "case" or "left" or "right" or "lottie" or "capsule" or "detail" or "both") || _resources.Catalog.Find(productId) is null)
+        if (role is not ("hero" or "model" or "case" or "left" or "right" or "lottie" or "capsule" or "detail" or "both"))
             throw new InvalidDataException();
+        // Remembered hints can name a model the selected source does not list: it simply has no art.
+        if (_resources.Catalog.Find(productId) is null) return null;
         var source = _resources.Preferences.Source;
         var lease = await _resources.ResolveArtworkAsync(productId, color, role, token);
         if (lease is null) return null;
@@ -182,6 +184,27 @@ internal sealed partial class BackendSupervisor
             if (!_artworkLeases.TryGetValue(leaseId, out var item) || item.Owner != owner) return false;
             _artworkLeases.Remove(leaseId); item.Lease.Dispose(); return true;
         }
+    }
+    private Task<UiResourceRedownloadResult>? _redownload;
+    /// <summary>One shared re-download at a time; it continues if the requesting client disconnects.</summary>
+    public Task<UiResourceRedownloadResult> RedownloadResourcesAsync()
+    {
+        if (_resources is null) throw new InvalidOperationException("资源服务不可用。");
+        lock (_sync) return _redownload is { IsCompleted: false } running ? running : _redownload = RunRedownloadAsync();
+    }
+    private async Task<UiResourceRedownloadResult> RunRedownloadAsync()
+    {
+        await _resourceGate.WaitAsync(_lifetime.Token);
+        try
+        {
+            (string, int)[] devices;
+            lock (_sync) devices = _peers.Values.Where(p => p.Allowed && p.AppearanceProductId is not null && p.AppearanceColor is not null)
+                .Select(p => (p.AppearanceProductId!, (int)p.AppearanceColor!.Value)).Distinct().ToArray();
+            var result = await _resources!.RedownloadAsync(devices, _lifetime.Token);
+            await AdoptResourcesAsync(result.CatalogChanged, _lifetime.Token);
+            return new(ResourceSettings(), result.Failed == 0, result.Updated, result.Failed, result.Message);
+        }
+        finally { _resourceGate.Release(); }
     }
     private void DisposeResources()
     {

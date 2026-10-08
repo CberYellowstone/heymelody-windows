@@ -3,6 +3,7 @@ param(
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.8.3',
     [ValidateNotNullOrEmpty()][ValidateSet('x64', 'x86', 'arm64')][string[]]$Architectures = @('x64', 'x86', 'arm64'),
     [switch]$SkipTests,
+    [switch]$TestsOnly,
     [switch]$FinalizeOnly,
     [string]$ValidationPath
 )
@@ -17,7 +18,8 @@ if ($ValidationPath) {
     $validation = Get-Content -LiteralPath $ValidationPath -Raw | ConvertFrom-Json
     if ($validation.schemaVersion -ne 2 -or $validation.version -ne $Version -or -not $validation.success) { throw 'Validation must be a successful schema-2 receipt for this exact release version.' }
 }
-if ((Test-Path -LiteralPath $archive) -or ((Test-Path -LiteralPath $stage) -and -not $FinalizeOnly)) {
+if ($TestsOnly -and ($SkipTests -or $FinalizeOnly -or $ValidationPath)) { throw 'TestsOnly runs only the default test runners; it cannot be combined with SkipTests, FinalizeOnly or ValidationPath.' }
+if (-not $TestsOnly -and ((Test-Path -LiteralPath $archive) -or ((Test-Path -LiteralPath $stage) -and -not $FinalizeOnly))) {
     throw 'This version already has an output directory or archive. Use a new version or review the existing output.'
 }
 if ($FinalizeOnly -and -not (Test-Path -LiteralPath $stage -PathType Container)) { throw 'There is no published directory to finalize.' }
@@ -34,6 +36,10 @@ if (-not $SkipTests -and -not $FinalizeOnly) {
         & dotnet run --project (Join-Path $root ('tests/' + $project + '/' + $project + '.csproj')) -c Release '-p:CopyDebugSymbolFilesFromPackages=false' @restoreProperties
         if ($LASTEXITCODE -ne 0) { throw ('Tests failed: ' + $project) }
     }
+}
+if ($TestsOnly) {
+    Write-Host 'All default test runners passed.'
+    return
 }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 $scratch = Join-Path $releaseRoot ('build-' + [Guid]::NewGuid().ToString('N'))

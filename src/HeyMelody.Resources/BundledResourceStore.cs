@@ -19,6 +19,9 @@ public sealed record ResourceArtwork
     public long Length { get; init; }
     public string? OriginalPath { get; init; }
     public string? OriginalSha256 { get; init; }
+    // Position within an online list such as lottieResList, and its scalar vendor fields.
+    public int? Order { get; init; }
+    public Dictionary<string, string>? Metadata { get; init; }
 }
 
 /// <summary>Read-only installation assets; never a target of cache cleanup.</summary>

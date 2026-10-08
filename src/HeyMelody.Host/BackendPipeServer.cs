@@ -112,6 +112,7 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
                 case "resourceSettings": data = supervisor.ResourceSettings(); break;
                 case "saveResourceSettings":
                     data = await supervisor.SaveResourceSettingsAsync(request.Action.Deserialize<UiResourceSettings>(RpcWire.Json) ?? throw new InvalidDataException(), client.Lifetime.Token); break;
+                case "redownloadResources": data = await supervisor.RedownloadResourcesAsync().WaitAsync(client.Lifetime.Token); break;
                 case "hearingProfiles":
                     data = await supervisor.HearingProfilesAsync(Identity(), Generation(), client.Lifetime.Token); break;
                 case "selectHearing":

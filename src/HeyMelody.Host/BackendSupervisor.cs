@@ -37,6 +37,10 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
         internal UiSnapshot Published = new();
         internal IPeerWorker? Worker;
         internal BroadcastObservation? Broadcast;
+        // Display-only memory of the model and color, persisted per whitelist key.
+        internal string? AppearanceProductId;
+        internal byte? AppearanceColor;
+        internal bool AppearanceColorFromSpp;
         internal CancellationTokenSource? BroadcastExpiry;
         internal CancellationTokenSource Lifetime = new();
         internal readonly SemaphoreSlim Commands = new(1);
@@ -49,6 +53,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
     private readonly Dictionary<ulong, bool> _osConnections = [];
     private readonly Dictionary<ulong, bool> _osPresent = [];
     private readonly DeviceWhitelistStore _whitelist;
+    private readonly DeviceAppearanceStore _appearance;
     private readonly Func<CancellationToken, Task<IReadOnlyList<BluetoothCandidate>>> _enumerate;
     private readonly Func<IPeerWorker> _workerFactory;
     private readonly TimeProvider _time;
@@ -60,9 +65,11 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
 
     internal BackendSupervisor(DeviceWhitelistStore? whitelist = null,
         Func<CancellationToken, Task<IReadOnlyList<BluetoothCandidate>>>? enumerate = null,
-        Func<IPeerWorker>? workerFactory = null, TimeProvider? time = null, HeyMelodyWindows.Resources.ResourceCoordinator? resources = null)
+        Func<IPeerWorker>? workerFactory = null, TimeProvider? time = null, HeyMelodyWindows.Resources.ResourceCoordinator? resources = null,
+        DeviceAppearanceStore? appearance = null)
     {
         _whitelist = whitelist ?? DeviceWhitelistStore.CreateDefault();
+        _appearance = appearance ?? DeviceAppearanceStore.NextTo(_whitelist);
         _enumerate = enumerate ?? PeerWorker.EnumerateAsync;
         _workerFactory = workerFactory ?? (() => new PeerWorker());
         _resources = resources ?? (workerFactory is null ? new() : null);
@@ -89,7 +96,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
     public UiDeviceCatalog Catalog() { lock (_sync) return CatalogLocked(); }
     private IReadOnlyList<UiDevice> DevicesLocked() => _peers.Values.Where(p => p.Present && p.Allowed)
         .OrderByDescending(p => p.Candidate.Connected).ThenBy(p => p.Candidate.Name, StringComparer.OrdinalIgnoreCase)
-        .Select(p => new UiDevice(p.Identity, p.Candidate.Name, p.Candidate.Connected)).ToArray();
+        .Select(p => new UiDevice(p.Identity, p.Candidate.Name, p.Candidate.Connected) { ProductId = p.AppearanceProductId, Color = p.AppearanceColor }).ToArray();
     private UiDeviceCatalog CatalogLocked() => new(_peers.Values.Where(p => p.Present)
         .OrderByDescending(p => p.Candidate.Connected).ThenBy(p => p.Candidate.Name, StringComparer.OrdinalIgnoreCase)
         .Select(p => new UiDeviceCandidate(p.Identity, p.Candidate.Name, p.Candidate.Connected, p.Allowed)).ToArray(), _catalogWarning);
@@ -112,7 +119,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
                     { peer.Present = false; StopPeerLocked(peer); PublishLocked(peer); }
                 foreach (var candidate in present.Values)
                 {
-                    if (!_peers.TryGetValue(candidate.Address, out var peer)) _peers[candidate.Address] = peer = new(candidate);
+                    if (!_peers.TryGetValue(candidate.Address, out var peer)) { _peers[candidate.Address] = peer = new(candidate); LoadAppearanceLocked(peer); }
                     var wasConnected = peer.Candidate.Connected;
                     peer.Present = true;
                     peer.Candidate = _osConnections.TryGetValue(candidate.Address, out var connected)
@@ -221,6 +228,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
                 {
                     if (!snapshot.SupportedModel && snapshot.ProductId is not null)
                     { StopPeerLocked(peer); peer.Spp = Copy(snapshot); peer.VerifiedProductId = snapshot.ProductId; peer.Broadcast = null;
+                        RecordAppearanceLocked(peer, snapshot.ProductId, snapshot.Color, fromSpp: true);
                         CancelBroadcastExpiryLocked(peer);
                         peer.State = MonitoringState.Unsupported; PublishLocked(peer); }
                     else WorkerFailedLocked(peer, generation);
@@ -250,6 +258,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
         if (snapshot.ProductId is { Length: > 0 } product)
         {
             peer.VerifiedProductId = product;
+            RecordAppearanceLocked(peer, product, snapshot.Color, fromSpp: true);
             if (peer.Broadcast is { } ble && !string.Equals(ble.ProductId, product, StringComparison.OrdinalIgnoreCase))
             { peer.Broadcast = null; CancelBroadcastExpiryLocked(peer); }
         }
@@ -395,6 +404,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
             };
             PublishLocked(peer, suppressEquivalentObservation: true);
             ScheduleBroadcastExpiryLocked(peer);
+            RecordAppearanceLocked(peer, observation.ProductId, observation.Color, fromSpp: false);
         }
         if (colorPeer is not null && observation.Color is { } color)
             _ = UpdateWorkerColorAsync(colorPeer, observation.ProductId, color);
@@ -547,6 +557,34 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
         && left.LeftCharging == right.LeftCharging && left.RightCharging == right.RightCharging && left.CaseCharging == right.CaseCharging
         && left.ObservationFresh == right.ObservationFresh && left.ObservationSource == right.ObservationSource;
     private void PublishCatalogLocked() => EmitLocked(new() { Kind = "catalog", Catalog = CatalogLocked(), Devices = DevicesLocked() });
+
+    private void LoadAppearanceLocked(Peer peer)
+    {
+        if (_appearance.Find(DeviceWhitelistStore.KeyFor(peer.Candidate.Address)) is not { } stored) return;
+        peer.AppearanceProductId = stored.ProductId; peer.AppearanceColor = stored.Color; peer.AppearanceColorFromSpp = stored.ColorFromSpp;
+    }
+
+    /// <summary>
+    /// Remembers the model and color for artwork. A control-session product ID replaces any earlier
+    /// value and its color read outranks a broadcast; a verified broadcast fills only gaps. Nothing here
+    /// affects control eligibility.
+    /// </summary>
+    private void RecordAppearanceLocked(Peer peer, string? productId, byte? color, bool fromSpp)
+    {
+        if (productId is not { Length: 6 }) return;
+        string pid = productId.ToUpperInvariant();
+        string? nextProduct = peer.AppearanceProductId; byte? nextColor = peer.AppearanceColor; bool nextFromSpp = peer.AppearanceColorFromSpp;
+        if (nextProduct != pid)
+        {
+            if (!fromSpp && nextProduct is not null) return;
+            nextProduct = pid; nextColor = color; nextFromSpp = fromSpp && color is not null;
+        }
+        else if (color is not null && (fromSpp || !nextFromSpp)) { nextColor = color; nextFromSpp = fromSpp; }
+        if (nextProduct == peer.AppearanceProductId && nextColor == peer.AppearanceColor && nextFromSpp == peer.AppearanceColorFromSpp) return;
+        peer.AppearanceProductId = nextProduct; peer.AppearanceColor = nextColor; peer.AppearanceColorFromSpp = nextFromSpp;
+        _appearance.Save(DeviceWhitelistStore.KeyFor(peer.Candidate.Address), new(nextProduct, nextColor, nextFromSpp));
+        if (peer.Present && peer.Allowed) PublishCatalogLocked();
+    }
     private void EmitLocked(BackendEvent value) { value.BackendInstanceId = InstanceId; EventPublished?.Invoke(value); }
     private static UiSnapshot Copy(UiSnapshot s) => JsonSerializer.Deserialize<UiSnapshot>(JsonSerializer.Serialize(s, RpcWire.Json), RpcWire.Json)!;
 

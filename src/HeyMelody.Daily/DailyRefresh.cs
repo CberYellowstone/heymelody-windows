@@ -10,6 +10,9 @@ public sealed partial class DailyClient
     private DeviceProfile? _profile;
     private DailySnapshot? _latest;
     private readonly Dictionary<DailyRefreshScope, List<string>> _readWarnings = [];
+    private string? _colorProduct;
+    private byte? _color;
+    private DateTimeOffset? _colorObservedAtUtc;
 
     private async Task DropSessionAsync()
     {
@@ -139,6 +142,7 @@ public sealed partial class DailyClient
         byte[] cap = await GetAsync(0x0100, [], s, token) ?? throw new IOException();
         if (cap.Length < 2 || cap.Length > 512) throw new FormatException();
         _commands = CommandCapabilities.Parse(cap.AsSpan(1));
+        await ReadColorAsync(s, productId, token);
         if (_profile is null || !_profile.SupportSpp || _profile.Uuid == Guid.Empty ||
             _profile.Conditions.Evaluate(new(AndroidAppVersionMarker: _appVersionMarker)) == VersionConditionStatus.Fail)
         {
@@ -157,6 +161,23 @@ public sealed partial class DailyClient
             }))).ToList();
         _readWarnings[DailyRefreshScope.Identity] = s.Warnings.ToList();
         return s;
+    }
+    /// <summary>
+    /// Both official apps read GET 0x010B (a foundation command) and use payload[1] as the artwork color.
+    /// The color is fixed hardware metadata, so this client reads it once per product. Rejection or
+    /// silence leaves it unknown without a user warning or a dropped session.
+    /// </summary>
+    private async Task ReadColorAsync(DailySnapshot s, string productId, CancellationToken token)
+    {
+        if (_colorProduct != productId && _commands!.Supports(0x010B))
+        {
+            var reply = await _session!.RequestAsync(0x010B, [], token, TimeSpan.FromSeconds(2));
+            if (!_session.Usable) throw new IOException();
+            _colorProduct = productId; _color = null; _colorObservedAtUtc = null;
+            if (reply is { Matched: true, Status: 0, Payload: { } payload } && QueryParsers.Parse(0x010B, payload) is { Success: true } parsed)
+            { _color = (byte)parsed.Data["color"]!; _colorObservedAtUtc = DateTimeOffset.UtcNow; }
+        }
+        if (_colorProduct == productId) { s.Color = _color; s.ColorObservedAtUtc = _colorObservedAtUtc; }
     }
     private async Task ReadSectionAsync(DailySnapshot s, DailyRefreshScope scope, CancellationToken token,
         Dictionary<string, long> readVersions)
@@ -279,7 +300,8 @@ public sealed partial class DailyClient
         RightPlacementObservedAtUtc = s.RightPlacementObservedAtUtc,
         LeftBatteryObservedAtUtc = s.LeftBatteryObservedAtUtc, RightBatteryObservedAtUtc = s.RightBatteryObservedAtUtc,
         CaseBatteryObservedAtUtc = s.CaseBatteryObservedAtUtc,
-        ProductId = s.ProductId, DeviceName = s.DeviceName, FirmwareVersion = s.FirmwareVersion, CodecRaw = s.CodecRaw,
+        ProductId = s.ProductId, Color = s.Color, ColorObservedAtUtc = s.ColorObservedAtUtc,
+        DeviceName = s.DeviceName, FirmwareVersion = s.FirmwareVersion, CodecRaw = s.CodecRaw,
         CustomEqualizerCapacity = s.CustomEqualizerCapacity,
         Battery = s.Battery is null ? null : new() { Left = s.Battery.Left, Right = s.Battery.Right,
             Case = s.Battery.Case, RawComponents = new(s.Battery.RawComponents) },

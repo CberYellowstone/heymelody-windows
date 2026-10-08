@@ -281,6 +281,7 @@ public sealed partial class NativeHeadsetService : IHeadsetService, IDeviceManag
             RightBatteryObservationTime = snapshot.RightBatteryObservedAtUtc,
             CaseBatteryObservationTime = snapshot.CaseBatteryObservedAtUtc,
             ProductId = snapshot.ProductId,
+            Color = snapshot.Color, ColorObservationTime = snapshot.ColorObservedAtUtc,
             ResourceSource = _resourceSource,
             ResourceRevision = _resourceRevision,
             CustomEqualizerCapacity = snapshot.CustomEqualizerCapacity,

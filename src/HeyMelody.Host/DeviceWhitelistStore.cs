@@ -11,6 +11,8 @@ internal sealed class DeviceWhitelistStore(string path)
     private const int MaximumDevices = 4096;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
+    internal string FilePath => path;
+
     public static DeviceWhitelistStore CreateDefault() => new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HeyMelody", "devices.json"));
 

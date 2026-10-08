@@ -87,6 +87,7 @@ internal static class AncBackendTests
             return request.Command switch
             {
                 0x0103 => [0, 0x10, 0xEC, 6],
+                0x010B => [1], // This fixture declines the optional color read.
                 0x0100 => [0, 0, 1], // Only capability bit 8: ANC GET and SET.
                 0x010D => [0, 0],
                 0x0106 => [0, 1, 1, 75],

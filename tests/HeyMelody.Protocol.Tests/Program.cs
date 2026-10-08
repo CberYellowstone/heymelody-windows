@@ -77,9 +77,9 @@ Test("Bound messages and prevent FSN wrap", () =>
     try { PacketEncoder.Encode(1, 1, new byte[ushort.MaxValue + 1]); throw new Exception(); } catch (ArgumentOutOfRangeException) { }
     try { PacketEncoder.Encode(1, 1, new byte[2000], 10); throw new Exception(); } catch (ArgumentOutOfRangeException) { }
 });
-Test("All eight ACK failures ignore trailing bytes", () =>
+Test("All nine ACK failures ignore trailing bytes", () =>
 {
-    foreach (ushort command in new ushort[] { 0x0100, 0x0101, 0x0102, 0x0103, 0x0104, 0x0105, 0x0114, 0x010D })
+    foreach (ushort command in new ushort[] { 0x0100, 0x0101, 0x0102, 0x0103, 0x0104, 0x0105, 0x010B, 0x0114, 0x010D })
         foreach (byte status in new byte[] { 1, 128, 255 })
         {
             var reply = QueryParsers.Parse(command, [status, 1, 0x18, 1]);
@@ -140,6 +140,15 @@ Test("Firmware triples preserve versions and reject malformed counts", () =>
     Check(reply.Success && ((List<FirmwareEntry>)reply.Data["firmwareEntries"]!).Count == 2 && reply.Data["firmwareVersion"] is null);
     Check((string)QueryParsers.Parse(0x0105, Body("1,2,1.2.3")).Data["firmwareVersion"]! == "1.2.3");
     Check(!QueryParsers.Parse(0x0105, Body("1,2,123", 2)).Success && !QueryParsers.Parse(0x0105, Body("x,2,123")).Success && !QueryParsers.Parse(0x0105, [0, 1, 0xFF]).Success);
+});
+Test("Color reads payload byte one unsigned and rejects a missing value", () =>
+{
+    foreach (byte color in new byte[] { 0, 3, 200, 255 })
+    {
+        var reply = QueryParsers.Parse(0x010B, [0, color, 7]);
+        Check(reply.Success && (byte)reply.Data["color"]! == color);
+    }
+    Check(!QueryParsers.Parse(0x010B, [0]).Success && !QueryParsers.Parse(0x010B, []).Success);
 });
 Test("Codec byte has no cross-layer invented mapping", () =>
 {

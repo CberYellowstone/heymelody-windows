@@ -10,7 +10,11 @@ public interface IResourceSettingsService
 {
     Task<UiResourceSettings> GetResourceSettingsAsync(CancellationToken token);
     Task<UiResourceSettings> SaveResourceSettingsAsync(UiResourceSettings settings, CancellationToken token);
+    // Re-fetches the saved source's configuration and artwork; existing files stay until replacements validate.
+    Task<UiResourceRedownloadResult> RedownloadResourcesAsync(CancellationToken token) =>
+        Task.FromException<UiResourceRedownloadResult>(new NotSupportedException("当前服务不支持重新下载在线资源。"));
 }
+public sealed record UiResourceRedownloadResult(UiResourceSettings Settings, bool Success, int Updated, int Failed, string Message);
 public sealed record UiArtwork(string LeaseId, string FullPath, string Kind, string PackageRoot,
     string Sha256, long Length, string Source, long Revision);
 public interface IArtworkService

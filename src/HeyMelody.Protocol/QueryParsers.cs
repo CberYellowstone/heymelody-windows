@@ -13,14 +13,14 @@ public sealed class QueryReply
 }
 public sealed record FirmwareEntry(int DeviceType, int VersionType, string Version);
 
-/// <summary>Parses only the eight stage-one GET ACK payloads. Errors contain no received bytes.</summary>
+/// <summary>Parses the stage-one GET ACK payloads and the color GET. Errors contain no received bytes.</summary>
 public static class QueryParsers
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     public static QueryReply Parse(ushort requestCommand, ReadOnlySpan<byte> payload)
     {
         var reply = new QueryReply { Command = requestCommand };
-        if (requestCommand is not (0x0100 or 0x0101 or 0x0102 or 0x0103 or 0x0104 or 0x0105 or 0x0114 or 0x010D)) return Fail(reply, "Unsupported query command.");
+        if (requestCommand is not (0x0100 or 0x0101 or 0x0102 or 0x0103 or 0x0104 or 0x0105 or 0x010B or 0x0114 or 0x010D)) return Fail(reply, "Unsupported query command.");
         if (payload.IsEmpty) return Fail(reply, "Missing reply status.");
         reply.Status = payload[0];
         if (payload[0] != 0) return Fail(reply, "Query rejected by device.");
@@ -58,6 +58,12 @@ public static class QueryParsers
                     if (payload.Length != 4) return Invalid(reply);
                     int product = payload[1] | (payload[2] << 8) | (payload[3] << 16);
                     reply.Data["productId"] = product.ToString("X6", CultureInfo.InvariantCulture);
+                    break;
+                case 0x010B:
+                    // Both APKs' 0x810B branch checks status and length, then reads payload[1] & 0xFF
+                    // as the protocol color used by artwork requests. No color-name mapping exists.
+                    if (payload.Length < 2 || payload.Length > 512) return Invalid(reply);
+                    reply.Data["color"] = payload[1];
                     break;
                 case 0x0104:
                     // commands/m.F constructs default-charset text; no binary field layout is specified.

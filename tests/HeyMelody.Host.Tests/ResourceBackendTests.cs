@@ -143,6 +143,52 @@ internal static class ResourceBackendTests
         });
     }
 
+    internal static async Task RunAppearanceAsync(Func<string, Func<Task>, Task> test, string scratch)
+    {
+        await test("remembered appearance is published before control and restored after a Host restart", async () =>
+        {
+            string path;
+            await using (var f = await Fixture.Create(scratch))
+            {
+                path = f.Path;
+                Check(f.Backend.Devices().Single() is { ProductId: "06EC10", Color: null }, "Verified PID was not published as a hint");
+                f.Backend.ObserveBroadcast(1, Broadcast("06EC10", 1, DateTimeOffset.UtcNow));
+                await Until(() => f.Backend.Devices().Single().Color == 1);
+                f.Backend.ObserveBroadcast(1, Broadcast("063C10", 2, DateTimeOffset.UtcNow.AddSeconds(1)));
+                Check(f.Backend.Devices().Single() is { ProductId: "06EC10", Color: 1 }, "A broadcast for another product replaced the hint");
+                Check(File.ReadAllText(Path.Combine(path, "device-appearance.json")) is var json && json.Contains("\"06EC10\"", StringComparison.Ordinal)
+                    && !json.Contains("Identity", StringComparison.OrdinalIgnoreCase) && json.Contains(DeviceWhitelistStore.KeyFor(1), StringComparison.Ordinal),
+                    "Appearance file did not use only the whitelist key");
+            }
+            await using var restarted = await Fixture.Create(scratch, connected: false, path: path);
+            Check(restarted.Backend.Devices().Single() is { ProductId: "06EC10", Color: 1 } && restarted.Workers.Count == 0 && !restarted.Snapshot.ControlReady,
+                "Hints were not restored before a control session, or granted control");
+        });
+        await test("a session color outranks broadcasts and unknown products have no artwork", async () =>
+        {
+            await using var f = await Fixture.Create(scratch);
+            f.Current.ReportColor(4);
+            await Until(() => f.Backend.Devices().Single().Color == 4);
+            f.Backend.ObserveBroadcast(1, Broadcast("06EC10", 5, DateTimeOffset.UtcNow));
+            await Until(() => f.Current.Colors.Count == 1);
+            Check(f.Backend.Devices().Single().Color == 4, "A broadcast overrode the control session color");
+            Check(await f.Backend.AcquireArtworkAsync("owner", "FFFFFF", 0, "hero", default) is null, "An uncatalogued hint failed instead of having no art");
+        });
+        await test("re-download refreshes the saved source once and requires online resources", async () =>
+        {
+            await using var f = await Fixture.Create(scratch);
+            await f.EnableOnline(); int before = f.Handler.Requests;
+            var first = f.Backend.RedownloadResourcesAsync(); var second = f.Backend.RedownloadResourcesAsync();
+            Check(ReferenceEquals(first, second), "Concurrent re-downloads were not shared");
+            var result = await first;
+            Check(result.Success && result.Failed == 0 && result.Settings.UseOnlineResources && result.Message.Length != 0 && f.Handler.Requests > before
+                && f.Workers.All(worker => worker.Applies == 0), "Re-download did not report a validated result: " + result);
+            await f.Backend.SaveResourceSettingsAsync(f.Backend.ResourceSettings() with { UseOnlineResources = false }, default);
+            try { await f.Backend.RedownloadResourcesAsync(); throw new InvalidOperationException("Offline re-download was accepted"); }
+            catch (InvalidOperationException error) when (error.Message.Contains("在线资源已关闭", StringComparison.Ordinal)) { }
+        });
+    }
+
     private static BroadcastObservation Broadcast(string product, byte color, DateTimeOffset time) =>
         new(product, CaseLidState.Unknown, EarbudPlacement.Unknown, EarbudPlacement.Unknown, null, null, null, null, null, null, time) { Color = color };
     private static void Check(bool condition, string reason) { if (!condition) throw new InvalidOperationException(reason); }
@@ -158,21 +204,22 @@ internal static class ResourceBackendTests
         internal readonly List<ResourcePeer> Workers = [];
         private readonly string _product;
         internal UiSnapshot Snapshot => Backend.Select(Backend.Devices().Single().Identity);
+        internal string Path { get; }
         internal ResourcePeer Current => Workers[^1];
         // Observe the adoption gate to make queued-command races deterministic.
         internal SemaphoreSlim ResourceGate => (SemaphoreSlim)typeof(BackendSupervisor).GetField("_resourceGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Backend)!;
         private Fixture(string path, bool connected, string product)
         {
-            _product = product; Handler = new(); _http = new(Handler);
-            Coordinator = new(Path.Combine(path, "resources"), _http);
+            _product = product; Handler = new(); _http = new(Handler); Path = path;
+            Coordinator = new(System.IO.Path.Combine(path, "resources"), _http);
             var device = new BluetoothCandidate(1, "耳机", connected, true, true, 0x404);
-            var store = new DeviceWhitelistStore(Path.Combine(path, "devices.json")); store.Save([DeviceWhitelistStore.KeyFor(1)]);
+            var store = new DeviceWhitelistStore(System.IO.Path.Combine(path, "devices.json")); store.Save([DeviceWhitelistStore.KeyFor(1)]);
             Backend = new(store, _ => Task.FromResult<IReadOnlyList<BluetoothCandidate>>([device]), () =>
             { var worker = new ResourcePeer(_product); Workers.Add(worker); return worker; }, resources: Coordinator);
         }
-        internal static async Task<Fixture> Create(string scratch, bool connected = true, string product = "06EC10")
+        internal static async Task<Fixture> Create(string scratch, bool connected = true, string product = "06EC10", string? path = null)
         {
-            string path = Path.Combine(scratch, "resources-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(path);
+            path ??= System.IO.Path.Combine(scratch, "resources-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(path);
             var fixture = new Fixture(path, connected, product);
             await fixture.Coordinator.InitializeAsync();
             await fixture.Coordinator.UpdatePreferencesAsync(fixture.Coordinator.Preferences with { UseOnlineResources = false });
@@ -225,8 +272,10 @@ internal static class ResourceBackendTests
         }
         private void Emit(Action<UiSnapshot> edit)
         { _snapshot = JsonSerializer.Deserialize<UiSnapshot>(JsonSerializer.Serialize(_snapshot, RpcWire.Json), RpcWire.Json)!; _snapshot.Revision++; edit(_snapshot); SnapshotChanged?.Invoke(_snapshot); }
+        internal void ReportColor(byte color) => Emit(snapshot => snapshot.Color = color);
         public Task<UiSnapshot> SetObservedColorAsync(string productId, byte color, CancellationToken token)
-        { Colors.Add((productId, color)); Emit(snapshot => snapshot.Color = productId == product ? color : null); return Task.FromResult(_snapshot); }
+        // Like the native worker: a broadcast color tunes presets but never replaces the session's own color read.
+        { Colors.Add((productId, color)); Emit(_ => { }); return Task.FromResult(_snapshot); }
         public Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken token) { Refreshes++; return Task.FromResult(_snapshot); }
         public async Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token)
         {

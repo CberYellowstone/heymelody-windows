@@ -66,7 +66,7 @@ public partial class MainView : UserControl
     {
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.ProductId) or nameof(MainViewModel.HasVerifiedSnapshot)
             or nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices) or nameof(MainViewModel.ResourceSource)
-            or nameof(MainViewModel.ResourceRevision) or nameof(MainViewModel.DeviceColor)) UpdateArtwork();
+            or nameof(MainViewModel.ArtworkEpoch) or nameof(MainViewModel.DeviceColor)) UpdateArtwork();
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices)) RequestDeviceCenterIfChanged();
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.IsDemoSelected)) UpdateDemoPresentation();
     }
@@ -90,7 +90,7 @@ public partial class MainView : UserControl
     {
         var vm = ViewModel;
         VisualCatalog.Update(vm?.Devices ?? [], vm?.SelectedDevice, vm?.ProductId, vm?.DeviceColor,
-            vm?.ResourceSource ?? "HeyMelody", vm?.ResourceRevision ?? 0, vm?.ArtworkService);
+            vm?.ResourceSource ?? "HeyMelody", vm?.ArtworkEpoch ?? "", vm?.ArtworkService);
         UpdateHeroVisual();
     }
 
@@ -232,51 +232,17 @@ public partial class MainView : UserControl
 
     private async Task ShowAppSettingsAsync(CancellationToken token)
     {
-        if (_closingWindow || TopLevel.GetTopLevel(this) is not { } owner) return;
+        if (_closingWindow || TopLevel.GetTopLevel(this) is not { } owner || ViewModel is not { } vm) return;
         token.ThrowIfCancellationRequested();
-        var preference = ThemePreferences.Load();
-        var theme = new ComboBox { ItemsSource = new[] { "跟随系统", "浅色", "深色" }, SelectedIndex = preference switch { "light" => 1, "dark" => 2, _ => 0 }, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch };
-        var content = new StackPanel { Spacing = 12 };
-        content.Children.Add(new TextBlock { Text = "外观", FontWeight = Avalonia.Media.FontWeight.SemiBold }); content.Children.Add(theme);
-        if (ViewModel is not { } vm) return;
-        var source = new ComboBox { ItemsSource = vm.ResourceSourceOptions, SelectedItem = vm.SelectedResourceSource,
-            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
-            ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<UiOption>((option, _) => new TextBlock { Text = option?.Name }) };
-        var online = new ToggleSwitch { Content = "使用在线资源", IsChecked = vm.UseOnlineResources, OnContent = "", OffContent = "" };
-        var key = new TextBox { Text = vm.CloudKey, PasswordChar = '●', PlaceholderText = "自定义云端密钥", MaxLength = 1024 };
-        // Keep edits local to this dialog, with a separate key for each source.
-        var initialSource = vm.SelectedResourceSource;
-        var initialKey = vm.CloudKey;
-        var shownSource = initialSource;
-        var keys = new Dictionary<int, string> { [initialSource.Key] = initialKey };
-        source.SelectionChanged += (_, _) =>
-        {
-            if (source.SelectedItem is not UiOption next || next.Key == shownSource.Key) return;
-            keys[shownSource.Key] = key.Text ?? "";
-            if (!keys.TryGetValue(next.Key, out var nextKey))
-            {
-                nextKey = vm.ResourceKeyFor(next);
-                keys[next.Key] = nextKey;
-            }
-            shownSource = next;
-            key.Text = nextKey;
-        };
-        Avalonia.Automation.AutomationProperties.SetName(source, "资源来源");
-        Avalonia.Automation.AutomationProperties.SetName(key, "云端资源密钥");
-        content.Children.Add(new TextBlock { Text = "耳机资源", FontWeight = Avalonia.Media.FontWeight.SemiBold });
-        content.Children.Add(source); content.Children.Add(online); content.Children.Add(key);
-        content.Children.Add(new TextBlock { Text = vm.ResourceStatus, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
-        content.Children.Add(new TextBlock { Text = "关闭在线资源后，已缓存的较新版本仍可使用。", FontSize = 12, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
-        content.Children.Add(new TextBlock { Text = $"HeyMelody {AppVersion.Display} · 社区客户端\n通过蓝牙管理已配对的耳机。", TextWrapping = Avalonia.Media.TextWrapping.Wrap });
-        var dialog = new FAContentDialog { Title = "应用设置", Content = content, PrimaryButtonText = "保存", CloseButtonText = "取消", DefaultButton = FAContentDialogButton.Primary };
-        var manageDevices = new Button { Content = "管理设备", HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
-            IsEnabled = OperatingSystem.IsWindows() && ManageDevicesRequested is not null && ViewModel is { CanManageDevices: true } };
-        manageDevices.Click += (_, _) => { _manageDevicesRequested = true; dialog.Hide(); };
-        content.Children.Add(manageDevices);
+        FAContentDialog? dialog = null;
+        var panel = new AppSettingsPanel(vm, ThemePreferences.Load(),
+            OperatingSystem.IsWindows() && ManageDevicesRequested is not null && vm.CanManageDevices,
+            () => { _manageDevicesRequested = true; dialog?.Hide(); });
+        dialog = new FAContentDialog { Title = "应用设置", Content = panel, PrimaryButtonText = "保存", CloseButtonText = "取消", DefaultButton = FAContentDialogButton.Primary };
         if (await ShowSettingsDialogAsync(dialog, owner, token) != FAContentDialogResult.Primary || _closingWindow || token.IsCancellationRequested) return;
-        var selected = theme.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" };
-        if (source.SelectedItem is UiOption resourceSource)
-            _resourcePreferenceDraft = new(resourceSource, online.IsChecked == true, key.Text ?? "");
+        var selected = panel.SelectedTheme;
+        if (panel.SelectedSource is { } resourceSource)
+            _resourcePreferenceDraft = new(resourceSource, panel.UseOnlineResources, panel.CloudKey);
         if (Application.Current is App app) app.ApplyTheme(selected);
         if (!ThemePreferences.Save(selected))
             await ShowSettingsDialogAsync(new FAContentDialog { Title = "外观已切换", Content = "无法保存主题偏好，下次启动将使用原来的设置。", CloseButtonText = "确定" }, owner, token);

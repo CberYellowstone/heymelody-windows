@@ -4,6 +4,7 @@
 
 ## 当前实现
 
+- [外观资源持久化与重新下载](artwork-persistence.md)：0.8.3 之后的源码改动——外观提示持久化、SPP 颜色读取、缓存优先解析、产品 Lottie 规则、设置卡片中的“重新下载在线资源”，以及 Windows x64/ARM64 CI。
 - [ANC 主模式与提示音差异](research/anc-mode-prompt.md)：0.8.3 主模式父编号修复、自适应子档独立控制；检查包提示音效果待用户真机 A/B 确认。
 - [Free4 丹拿版模型与验证](research/enco-free4-dynaudio-model.md)：官方原件、色号 3 请求与渲染证据；0.8.2 的会话内 Demo 使用该模型，长按主界面“+”两秒添加。
 - [Enco X4 控制连接回归与 0.8.1 实机验证](research/enco-x4-0.8.1.md)：控制服务校验修复、型号提示及两套预装／缓存资源的只读验证。

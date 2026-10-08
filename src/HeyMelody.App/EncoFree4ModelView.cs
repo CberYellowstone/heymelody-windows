@@ -114,7 +114,13 @@ public class DeviceModelView : UserControl
     {
         base.OnAttachedToVisualTree(e);
         _attached = true;
-        _resourceLease = _visual.File.Acquire();
+        try { _resourceLease = _visual.File.Acquire(); }
+        catch (ObjectDisposedException)
+        {
+            // The catalog replaced this package; its successor arrives with the next visual.
+            Content = DeviceVisuals.DefaultTemplate.Build(_visual.Fallback);
+            return;
+        }
         _window = TopLevel.GetTopLevel(this) as Window;
         if (_window is not null) _window.PropertyChanged += OnWindowPropertyChanged;
         RefreshActivity();

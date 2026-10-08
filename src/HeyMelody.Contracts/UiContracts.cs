@@ -6,7 +6,13 @@ using System.Threading.Tasks;
 namespace HeyMelodyWindows.App;
 
 // BCL-only contracts. Identity values stay in memory and must never enter logs.
-public sealed record UiDevice(string Identity, string Name, bool Connected);
+public sealed record UiDevice(string Identity, string Name, bool Connected)
+{
+    // Appearance hints remembered from earlier verified sessions or associated broadcasts.
+    // They select artwork only and never grant control, capabilities or settings.
+    public string? ProductId { get; init; }
+    public byte? Color { get; init; }
+}
 public sealed record UiOption(int Key, string Name);
 public sealed record UiBand(int FrequencyHz, int Gain);
 public sealed record UiEqEntry(int Id, string Name, int MinimumGain, int MaximumGain,

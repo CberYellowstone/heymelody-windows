@@ -27,7 +27,8 @@ public sealed partial class DailyClient
     }
     private void ResolvePresetOptions(DailySnapshot snapshot)
     {
-        byte? color = string.Equals(snapshot.ProductId, _observedProductId, StringComparison.OrdinalIgnoreCase) ? _observedColor : null;
+        // The session's own color read is preferred; a verified broadcast for the same product fills a gap.
+        byte? color = snapshot.Color ?? (string.Equals(snapshot.ProductId, _observedProductId, StringComparison.OrdinalIgnoreCase) ? _observedColor : null);
         snapshot.Presets = _profile?.GetEffectiveEqualizerModes(new(snapshot.FirmwareVersion, _appVersionMarker), color)
             .Select(x => new PresetOption(checked((byte)x.ProtocolIndex), x.ModeType, PresetName(x.ModeType, x.ProtocolIndex))).ToList() ?? [];
     }

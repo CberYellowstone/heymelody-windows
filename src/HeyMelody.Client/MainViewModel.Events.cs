@@ -86,7 +86,7 @@ public sealed partial class MainViewModel
         if (_backendInstanceId is { } previous)
         {
             _retiredBackends.Add(previous);
-            _backendSnapshots.Clear();
+            _backendSnapshots.Clear(); _artworkRevision = 0;
             if (!IsDemoSelected) { AdvanceSession(); InvalidateSnapshot(); }
         }
         _backendInstanceId = instance;
@@ -96,7 +96,7 @@ public sealed partial class MainViewModel
     private bool CacheSnapshot(UiSnapshot snapshot)
     {
         if (DemoDeviceData.IsDemoIdentity(snapshot.Identity)) return _demoDevice is not null && ReferenceEquals(snapshot, _demoSnapshot);
-        if (EventService is null) return true;
+        if (EventService is null) { ObserveArtworkRevision(snapshot.ResourceRevision); return true; }
         if (_backendInstanceId is null && !AcceptBackend(snapshot.BackendInstanceId)) return false;
         if (snapshot.BackendInstanceId != _backendInstanceId) return false;
         if (_backendSnapshots.TryGetValue(snapshot.Identity, out var previous))
@@ -111,6 +111,7 @@ public sealed partial class MainViewModel
                 AdvanceSession();
         }
         _backendSnapshots[snapshot.Identity] = snapshot;
+        ObserveArtworkRevision(snapshot.ResourceRevision);
         return true;
     }
 

@@ -1,0 +1,100 @@
+name: Windows build
+
+on:
+  push:
+    branches: [main, "arch/**"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version (x.y.z). Empty uses the Build-Client.ps1 default.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  test:
+    name: Offline tests
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/cache@v4
+        with:
+          path: artifacts/nuget-cache
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.targets', 'NuGet.Config') }}
+          restore-keys: nuget-${{ runner.os }}-
+      # The thirteen default runners use simulated transports and in-memory services; no Bluetooth.
+      - name: Run default test runners
+        shell: pwsh
+        run: ./Build-Client.ps1 -TestsOnly
+      - name: Upload UI screenshots and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ github.sha }}
+          path: |
+            artifacts/avalonia-ui-*/
+            artifacts/calibration-ui-*/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  package:
+    name: Package ${{ matrix.architecture }}
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/cache@v4
+        with:
+          path: artifacts/nuget-cache
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.targets', 'NuGet.Config') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: Resolve package version
+        id: version
+        shell: pwsh
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          $version = $env:REQUESTED_VERSION
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            $default = Select-String -LiteralPath Build-Client.ps1 -Pattern "\[string\]\`$Version = '(\d+\.\d+\.\d+)'" | Select-Object -First 1
+            if (-not $default) { throw 'Build-Client.ps1 has no default version.' }
+            $version = $default.Matches[0].Groups[1].Value
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid version: $version" }
+          "value=$version" >> $env:GITHUB_OUTPUT
+          "commit=$($env:GITHUB_SHA.Substring(0, 7))" >> $env:GITHUB_OUTPUT
+      # Self-contained cross-publish; ARM64 is built on the x64 runner and is not executed here.
+      - name: Publish ${{ matrix.architecture }}
+        shell: pwsh
+        run: ./Build-Client.ps1 -Version '${{ steps.version.outputs.value }}' -Architectures '${{ matrix.architecture }}' -SkipTests
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: HeyMelody_Windows_${{ steps.version.outputs.value }}_${{ matrix.architecture }}_${{ steps.version.outputs.commit }}
+          path: release/HeyMelody_Windows_${{ steps.version.outputs.value }}/
+          if-no-files-found: error
+          retention-days: 30

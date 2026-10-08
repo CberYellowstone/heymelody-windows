@@ -153,6 +153,8 @@ await Test("SET IO and socket reset differ from timeout or malformed response", 
         (new InvalidDataException(), DailyApplyFailure.TransportUnknown)
     })
     {
+        // Unix maps SocketException codes to errno, so this Winsock value is meaningful only on Windows.
+        if (failure is System.Net.Sockets.SocketException && !OperatingSystem.IsWindows()) continue;
         var f = new Fake { SetReadFailure = failure }; await using var c = new DailyClient(f);
         var r = await c.ApplyPresetAsync(7);
         Check(r.FailureKind == expected && !r.Success && r.AckAccepted is null
@@ -319,7 +321,29 @@ await Test("a scoped read on a new session first verifies identity and commands"
     var f = new Fake(); await using var c = new DailyClient(f);
     var s = await c.RefreshAsync(DailyRefreshScope.Anc);
     Check(s.ProfileVerified && s.Capabilities.Anc && s.Battery is null && !s.Capabilities.CustomEqualizer);
-    Check(f.Requests.Select(x => x.Command).SequenceEqual(new ushort[] { 0x0103, 0x0100, 0x010C }));
+    Check(f.Requests.Select(x => x.Command).SequenceEqual(new ushort[] { 0x0103, 0x0100, 0x010B, 0x010C }));
+});
+await Test("color is read once per product and reaches the snapshot without a warning", async () =>
+{
+    var f = new Fake { Color = 3 }; await using var c = new DailyClient(f);
+    var s = await c.RefreshAsync();
+    Check(s.Color == 3 && s.ColorObservedAtUtc is not null && s.Warnings.Count == 0 && f.Requests.Count(x => x.Command == 0x010B) == 1);
+    var again = await c.RefreshAsync(); var scoped = await c.RefreshAsync(DailyRefreshScope.Battery);
+    Check(again.Color == 3 && scoped.Color == 3 && f.Requests.Count(x => x.Command == 0x010B) == 1 && f.Writes.Count == 0);
+});
+await Test("a rejected color read stays unknown and keeps the profile usable", async () =>
+{
+    var f = new Fake(); f.ReadReplies[0x010B] = [1]; await using var c = new DailyClient(f);
+    var s = await c.RefreshAsync();
+    Check(s.Color is null && s.ProfileVerified && s.Warnings.Count == 0 && s.Capabilities.Anc && f.Opens == 1);
+});
+await Test("an unanswered color read keeps the session and the following reads", async () =>
+{
+    var f = new Fake(); f.Silent.Add(0x010B); await using var c = new DailyClient(f);
+    var s = await c.RefreshAsync();
+    Check(s.Color is null && s.ProfileVerified && s.Connected && s.Error is null && f.Opens == 1 && s.Capabilities.Anc && s.Battery is not null);
+    var again = await c.RefreshAsync(DailyRefreshScope.Anc);
+    Check(again.Capabilities.Anc && f.Opens == 1 && f.Requests.Count(x => x.Command == 0x010B) == 1);
 });
 await Test("returned mutable snapshots cannot corrupt the scoped cache", async () =>
 {
@@ -546,6 +570,8 @@ sealed class Fake : IControlConnector
     public byte[]? AncResponseAfterSet;
     public bool ReportModern = true, SendOldSequenceFirst, EmptySetAck, FailSetSend, HideSpatialAfterHiResOff, UnsupportedProduct, NoModernSpatial;
     public bool SelectCustomOnWrite = true;
+    public byte? Color = 2;
+    public HashSet<ushort> Silent = [];
     public static CustomEqualizer Entry() => new() { Id=40,Name="EQ1",MinimumGain=-6,MaximumGain=6,Bands=Frequencies.Select(x=>new EqualizerBand(x,0)).ToList() };
     public static EqualizerEdit Edit() => new() { Id=40,Name="EQ1",MinimumGain=-6,MaximumGain=6,Bands=Frequencies.Select(x=>new EqualizerBand(x,0)).ToList() };
     public static CustomEqualizer FromEdit(EqualizerEdit edit) => new() { Id=edit.Id,Name=edit.Name,MinimumGain=edit.MinimumGain,MaximumGain=edit.MaximumGain,Bands=edit.Bands.ToList() };
@@ -609,6 +635,7 @@ sealed class Fake : IControlConnector
         return p.Command switch
         {
             0x0103 => UnsupportedProduct?[0,1,2,3]:[0,0x10,0xEC,6],
+            0x010B => Color is { } color ? [0,color] : [1],
             0x0100 => [0,..Capabilities()],
             0x0105 => [0,3,..Encoding.UTF8.GetBytes("1,2,116,2,2,116,3,2,100")],
             0x0114 => [0,8],
@@ -652,6 +679,7 @@ sealed class Fake : IControlConnector
             {
                 await Task.Yield();var p=new PacketDecoder().Feed(bytes.Span).Single();
                 owner.SequenceSets[id].Add(p.Sequence);var response=owner.Response(p);
+                if(owner.Silent.Contains(p.Command))return;
                 if(owner.PauseNextRequest==p.Command)
                 {owner.PauseNextRequest=0;owner.RequestPaused.TrySetResult();await owner.ReleaseRequest.Task.WaitAsync(token);}
                 if (p.Command >= 0x0400)

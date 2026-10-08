@@ -73,6 +73,9 @@ public sealed class DailySnapshot
     public bool Connected { get; set; }
     public bool ProfileVerified { get; set; }
     public string? ProductId { get; set; }
+    // Protocol color from GET 0x010B; unknown when the device rejects or leaves the optional read unanswered.
+    public byte? Color { get; set; }
+    public DateTimeOffset? ColorObservedAtUtc { get; set; }
     public string? DeviceName { get; set; }
     public string? FirmwareVersion { get; set; }
     public byte? CodecRaw { get; set; }

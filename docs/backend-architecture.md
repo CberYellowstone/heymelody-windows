@@ -4,8 +4,8 @@
 
 ## 进程与通信
 
-- App 与 DeviceManager 使用 schema-2 双向命名管道。端点按用户和 Windows Session ID 区分，服务端限制当前用户并检查客户端进程所在会话。公共契约只携带内存中的 opaque Identity，不携带蓝牙地址。
-- Host supervisor 管理白名单、设备目录、每台设备的控制状态和观察缓存。独立的 `--catalog-worker` 执行同步原生枚举；每台耳机使用独立的 `--worker` 执行 SDP/RFCOMM。原生调用卡住时可以结束对应 worker，托盘和其他耳机保持响应。
+- App 与 DeviceManager 使用 schema-3 双向命名管道（0.7.0 时为 schema 2）。端点按用户和 Windows Session ID 区分，服务端限制当前用户并检查客户端进程所在会话。公共契约只携带内存中的 opaque Identity，不携带蓝牙地址。
+- Host supervisor 管理白名单、设备目录、每台设备的控制状态和观察缓存。设备的产品 ID 与协议颜色按白名单键持久化在 `device-appearance.json`，只作为外观提示随设备目录发布，不授予控制（见 [外观资源持久化](artwork-persistence.md)）。独立的 `--catalog-worker` 执行同步原生枚举；每台耳机使用独立的 `--worker` 执行 SDP/RFCOMM。原生调用卡住时可以结束对应 worker，托盘和其他耳机保持响应。
 - worker 地址通过私有标准输入发送，不放在进程命令行。worker 与 Host 的 stdio 通信只在内部使用。历史 schema-1 RPC 适配器仅位于 Client.Tests，生产 ClientBridge 只使用共享管道。
 - subscribe 在后台锁内加入订阅并排入目录和缓存基线。后续事件与响应共用一个接收通道，以 ID 匹配请求。每个客户端拥有独立、有界的输出队列；普通状态更新可以合并，退出、激活和响应保留。慢客户端不会阻塞蓝牙接收。
 - Snapshot 包含 BackendInstanceId、DeviceGeneration 和单调 Revision。前端只采纳当前后台、当前连接代次的新快照；迟到的手动刷新或 Apply.After 不会覆盖较新手机通知。后台重启后的旧设置不会迁移或重放。schema 版本不匹配时停止自动重连并提示退出旧后台、重新打开完整客户端，不擅自结束仍在运行的共享后台。

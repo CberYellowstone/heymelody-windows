@@ -1,11 +1,10 @@
-using System.Buffers.Binary;
-using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace HeyMelodyWindows.Resources;
 
 public sealed record ResourceChangedEventArgs(ResourceSource Source, long Revision, bool CatalogChanged, bool ArtworkChanged);
+public sealed record ResourceRedownloadResult(bool CatalogChanged, int Updated, int Unchanged, int Failed, string Message);
 
 /// <summary>Host-owned single writer for preferences, immutable catalogs and leased art packages.</summary>
 public sealed class ResourceCoordinator : IDisposable
@@ -21,6 +20,8 @@ public sealed class ResourceCoordinator : IDisposable
     private readonly HashSet<string> _retired = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<(string ProductId, int Color, bool Model)> _artworkTargets = [];
     private readonly object _leaseGate = new();
+    private readonly Dictionary<string, Task<bool>> _artworkRefreshes = new(StringComparer.Ordinal);
+    private int _batchedChanges;
     private CancellationTokenSource _sourceCancellation = new();
     private readonly CancellationTokenSource _lifetime = new();
     private Task? _autoRefresh;
@@ -31,6 +32,8 @@ public sealed class ResourceCoordinator : IDisposable
     public long Revision { get; private set; } = 1;
     public string? LastError { get; private set; }
     public DateTimeOffset? LastSuccessfulCheck { get; private set; }
+    /// <summary>How long a first artwork request waits for its download before falling back.</summary>
+    public TimeSpan FirstDownloadWait { get; set; } = TimeSpan.FromSeconds(10);
     public event EventHandler<ResourceChangedEventArgs>? Changed;
 
     public ResourceCoordinator(string? storageDirectory = null, HttpClient? httpClient = null, string? bundleDirectory = null)
@@ -61,7 +64,7 @@ public sealed class ResourceCoordinator : IDisposable
             }
             if (!ValidKey(Preferences.CacheEncryptionKey)) Preferences = Preferences with { CacheEncryptionKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)) };
             await SavePreferencesAsync(token).ConfigureAwait(false);
-            foreach (ResourceSource source in Enum.GetValues<ResourceSource>()) LoadCachedCatalog(source);
+            foreach (ResourceSource source in Enum.GetValues<ResourceSource>()) { LoadCachedCatalog(source); SweepArtwork(source); }
             _initialized = true;
         }
         finally { _gate.Release(); }
@@ -94,21 +97,25 @@ public sealed class ResourceCoordinator : IDisposable
     public string ExportEffectiveCatalogJson() => Catalog.Raw.GetRawText();
 
     public async Task<bool> RefreshAsync(bool force = false, CancellationToken token = default)
+        => await RefreshConfigurationAsync(force, false, token).ConfigureAwait(false) == RefreshOutcome.Updated;
+
+    private async Task<RefreshOutcome> RefreshConfigurationAsync(bool force, bool redownload, CancellationToken token)
     {
         await InitializeAsync(token).ConfigureAwait(false);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _sourceCancellation.Token, _lifetime.Token);
         await _gate.WaitAsync(linked.Token).ConfigureAwait(false);
-        bool updated = false;
+        var outcome = RefreshOutcome.Skipped;
         try
         {
-            if (!Preferences.UseOnlineResources) return false;
+            if (!Preferences.UseOnlineResources) return RefreshOutcome.Skipped;
             var source = Preferences.Source; string check = SourceName(source) + "/config";
-            if (!force && _checks.TryGetValue(check, out var next) && next > DateTimeOffset.UtcNow) return false;
+            if (!force && _checks.TryGetValue(check, out var next) && next > DateTimeOffset.UtcNow) return RefreshOutcome.Skipped;
             try
             {
+                outcome = RefreshOutcome.Unchanged;
                 var metadata = await _vendor.GetConfigurationMetadataAsync(source, ActiveKey(source), linked.Token).ConfigureAwait(false);
                 bool cacheValid = CachedCatalogExists(source);
-                if (!_fileVersions.TryGetValue(source, out var saved) || saved != metadata.FileVersion || !cacheValid)
+                if (redownload || !_fileVersions.TryGetValue(source, out var saved) || saved != metadata.FileVersion || !cacheValid)
                 {
                     byte[] bytes = await _vendor.DownloadAsync(metadata.DownloadUrl, ResourceLimits.ConfigBytes, linked.Token).ConfigureAwait(false);
                     if (metadata.Size is long expected && bytes.LongLength != expected) throw new InvalidDataException("Configuration length differs from metadata.");
@@ -116,12 +123,12 @@ public sealed class ResourceCoordinator : IDisposable
                     if (candidate.ContentVersion > _catalogs[source].ContentVersion)
                     {
                         await SaveCatalogAsync(source, candidate, bytes, linked.Token).ConfigureAwait(false);
-                        _catalogs[source] = candidate; Revision++; updated = true;
+                        _catalogs[source] = candidate; Revision++; outcome = RefreshOutcome.Updated;
                         CleanupCatalogs(source, candidate.Sha256);
                     }
-                    else if (!cacheValid && _catalogs[source].IsOnline)
+                    else if (_catalogs[source].IsOnline && (!cacheValid || redownload && candidate.Sha256 == _catalogs[source].Sha256))
                     {
-                        // Repair the persisted current snapshot without adopting an equal/older response.
+                        // Repair or rewrite the persisted current snapshot without adopting an equal/older response.
                         var retained = _catalogs[source];
                         await SaveCatalogAsync(source, retained, retained.OriginalBytes, linked.Token).ConfigureAwait(false);
                         CleanupCatalogs(source, retained.Sha256);
@@ -131,13 +138,15 @@ public sealed class ResourceCoordinator : IDisposable
                 }
                 _checks[check] = DateTimeOffset.UtcNow.AddMinutes(10); LastSuccessfulCheck = DateTimeOffset.UtcNow; LastError = null;
             }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception error) when (error is HttpRequestException or IOException or InvalidDataException or JsonException or CryptographicException or ArgumentException)
-            { _checks[check] = DateTimeOffset.UtcNow.AddSeconds(30); LastError = "在线资源更新失败，继续使用当前有效资源。"; }
+            catch (OperationCanceledException) when (linked.IsCancellationRequested) { throw; }
+            // An HttpClient timeout is an ordinary failure, not a caller cancellation.
+            catch (Exception error) when (error is OperationCanceledException or HttpRequestException or IOException or InvalidDataException or JsonException
+                or CryptographicException or ArgumentException or UnauthorizedAccessException)
+            { _checks[check] = DateTimeOffset.UtcNow.AddSeconds(30); LastError = "在线资源更新失败，继续使用当前有效资源。"; outcome = RefreshOutcome.Failed; }
         }
         finally { _gate.Release(); }
-        if (updated) Changed?.Invoke(this, new(Preferences.Source, Revision, true, false));
-        return updated;
+        if (outcome == RefreshOutcome.Updated && Volatile.Read(ref _batchedChanges) == 0) Changed?.Invoke(this, new(Preferences.Source, Revision, true, false));
+        return outcome;
     }
 
     public void StartAutoRefresh()
@@ -162,6 +171,10 @@ public sealed class ResourceCoordinator : IDisposable
         }, _lifetime.Token);
     }
 
+    /// <summary>
+    /// Returns installed art without waiting for the network. Online checks run in the background and
+    /// announce replacements through <see cref="Changed"/>. Only a first download is awaited, briefly.
+    /// </summary>
     public async Task<ResourceArtworkLease?> ResolveArtworkAsync(string productId, int? color, string role = "hero", CancellationToken token = default)
     {
         await InitializeAsync(token).ConfigureAwait(false);
@@ -175,44 +188,76 @@ public sealed class ResourceCoordinator : IDisposable
             if (model && profile.Functions.ValueKind == JsonValueKind.Object && profile.Functions.TryGetProperty("support3DModel", out var support)
                 && support.ValueKind == JsonValueKind.Number && support.TryGetInt32(out int enabled) && enabled > 0)
             {
-                await RefreshArtworkAsync(productId, color.Value, true, false, token).ConfigureAwait(false);
-                if (source != Preferences.Source) return null;
-                var found = AcquireCachedArtwork(source, productId, color.Value, true, role); if (found is not null) return found;
-                found = Bundled.Acquire(Bundled.FindAsset(source, productId, color, "model"), Revision); if (found is not null) return found;
+                var found = await CachedOrDownloadedAsync(source, productId, color.Value, true, role,
+                    () => Bundled.Acquire(Bundled.FindAsset(source, productId, color, "model"), Revision), token).ConfigureAwait(false);
+                if (found is not null) return found;
             }
             if (role != "model")
             {
-                await RefreshArtworkAsync(productId, color.Value, false, false, token).ConfigureAwait(false);
-                if (source != Preferences.Source) return null;
-                var found = AcquireCachedArtwork(source, productId, color.Value, false, role); if (found is not null) return found;
+                var found = await CachedOrDownloadedAsync(source, productId, color.Value, false, role, null, token).ConfigureAwait(false);
+                if (found is not null) return found;
             }
         }
+        if (source != Preferences.Source) return null;
         return Bundled.Acquire(Bundled.FindAsset(source, productId, color, role), Revision)
             ?? Bundled.Acquire(Bundled.FindAsset(source, productId, color, "detail"), Revision)
             ?? Bundled.Acquire(Bundled.FindGenericAsset(source, profile.Type, role), Revision);
     }
 
+    private async Task<ResourceArtworkLease?> CachedOrDownloadedAsync(ResourceSource source, string productId, int color, bool model, string role,
+        Func<ResourceArtworkLease?>? installed, CancellationToken token)
+    {
+        var refresh = ScheduleArtworkRefresh(source, productId, color, model);
+        var found = AcquireCachedArtwork(source, productId, color, model, role) ?? installed?.Invoke();
+        if (found is not null || !Preferences.UseOnlineResources) return found;
+        // First use of this slot: wait for the shared download, then fall back. A late package still
+        // raises Changed, and clients resolve again.
+        try { await refresh.WaitAsync(FirstDownloadWait, token).ConfigureAwait(false); }
+        catch (TimeoutException) { return null; }
+        return source == Preferences.Source ? AcquireCachedArtwork(source, productId, color, model, role) : null;
+    }
+
+    private Task<bool> ScheduleArtworkRefresh(ResourceSource source, string productId, int color, bool model)
+    {
+        if (!Preferences.UseOnlineResources || source != Preferences.Source) return Task.FromResult(false);
+        string key = SourceName(source) + "/" + ArtworkSlot(productId, color, model);
+        lock (_artworkRefreshes)
+        {
+            if (_artworkRefreshes.TryGetValue(key, out var running) && !running.IsCompleted) return running;
+            var refresh = Task.Run(async () =>
+            {
+                try { return await RefreshArtworkAsync(productId, color, model, token: _lifetime.Token).ConfigureAwait(false); }
+                catch (Exception) { return false; }
+            });
+            _artworkRefreshes[key] = refresh;
+            return refresh;
+        }
+    }
+
     public async Task<bool> RefreshArtworkAsync(string productId, int color, bool model = false, bool force = false, CancellationToken token = default)
+        => await RefreshArtworkCoreAsync(productId, color, model, force, false, token).ConfigureAwait(false) == RefreshOutcome.Updated;
+
+    private async Task<RefreshOutcome> RefreshArtworkCoreAsync(string productId, int color, bool model, bool force, bool redownload, CancellationToken token)
     {
         await InitializeAsync(token).ConfigureAwait(false);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _sourceCancellation.Token, _lifetime.Token);
         await _gate.WaitAsync(linked.Token).ConfigureAwait(false);
-        bool updated = false;
+        var outcome = RefreshOutcome.Skipped;
         try
         {
-            if (!Preferences.UseOnlineResources || Catalog.Find(productId) is null) return false;
+            if (!Preferences.UseOnlineResources || Catalog.Find(productId) is null) return RefreshOutcome.Skipped;
             lock (_leaseGate) _artworkTargets.Add((productId, color, model));
             var source = Preferences.Source; string key = SourceName(source) + "/" + ArtworkSlot(productId, color, model);
-            if (!force && _checks.TryGetValue(key, out var next) && next > DateTimeOffset.UtcNow) return false;
+            if (!force && _checks.TryGetValue(key, out var next) && next > DateTimeOffset.UtcNow) return RefreshOutcome.Skipped;
             try
             {
+                outcome = RefreshOutcome.Unchanged;
                 var metadata = await _vendor.GetArtworkMetadataAsync(source, ActiveKey(source), productId, color, model, linked.Token).ConfigureAwait(false);
                 if (metadata is not null)
                 {
                     string slot = ArtworkRoot(source, productId, color, model);
-                    string package = Path.Combine(slot, metadata.Sha256);
                     var current = ReadArtworkPointer(slot);
-                    if (current != metadata.Sha256 || !ValidArtworkPackage(package))
+                    if (redownload || current is null || PackageDigest(current) != metadata.Sha256 || !ValidArtworkPackage(Path.Combine(slot, current)))
                     {
                         byte[] archive = await _vendor.DownloadAsync(metadata.DownloadUrl, ResourceLimits.ArchiveBytes, linked.Token).ConfigureAwait(false);
                         if (Convert.ToHexStringLower(SHA256.HashData(archive)) != metadata.Sha256) throw new InvalidDataException("Resource digest mismatch.");
@@ -220,36 +265,108 @@ public sealed class ResourceCoordinator : IDisposable
                         Directory.CreateDirectory(temporary);
                         try
                         {
-                            var entries = ExtractArtwork(archive, temporary, source, productId, color);
+                            var entries = ArtworkPackageExtractor.Extract(archive, temporary, source, productId, color);
                             if (entries.Length == 0) throw new InvalidDataException("Resource package has no usable artwork.");
                             await ResourceFiles.AtomicWriteAsync(Path.Combine(temporary, "artwork.json"), JsonSerializer.SerializeToUtf8Bytes(entries, ResourceJson.Options), linked.Token).ConfigureAwait(false);
+                            await ResourceFiles.AtomicWriteAsync(Path.Combine(temporary, ArtworkPackageExtractor.MarkerFile),
+                                JsonSerializer.SerializeToUtf8Bytes(new { schemaVersion = ArtworkPackageExtractor.SchemaVersion, sha256 = metadata.Sha256 }), linked.Token).ConfigureAwait(false);
                             linked.Token.ThrowIfCancellationRequested();
-                            if (Directory.Exists(package))
+                            string name = metadata.Sha256, package = Path.Combine(slot, name);
+                            lock (_leaseGate)
                             {
-                                lock (_leaseGate)
+                                if (Directory.Exists(package))
                                 {
-                                    if (_leases.ContainsKey(package)) throw new IOException("Resource package is still in use.");
-                                    ResourcePaths.DeleteOwnedDirectory(_online, package);
+                                    // A renderer still reads this digest's previous extraction; publish beside it.
+                                    if (_leases.ContainsKey(package)) { name += "-" + Guid.NewGuid().ToString("N")[..8]; package = Path.Combine(slot, name); }
+                                    else ResourcePaths.DeleteOwnedDirectory(_online, package);
                                 }
+                                Directory.Move(temporary, package);
+                                _retired.Remove(package);
                             }
-                            if (Directory.Exists(package)) throw new IOException("Resource package is still in use.");
-                            Directory.Move(temporary, package);
-                            await ResourceFiles.AtomicWriteAsync(Path.Combine(slot, "current.json"), JsonSerializer.SerializeToUtf8Bytes(metadata.Sha256), linked.Token).ConfigureAwait(false);
+                            await ResourceFiles.AtomicWriteAsync(Path.Combine(slot, "current.json"), JsonSerializer.SerializeToUtf8Bytes(name), linked.Token).ConfigureAwait(false);
                             foreach (string old in Directory.EnumerateDirectories(slot)) if (old != package) Retire(old);
-                            Revision++; updated = true;
+                            Revision++; outcome = RefreshOutcome.Updated;
                         }
                         finally { if (Directory.Exists(temporary)) ResourcePaths.DeleteOwnedDirectory(_online, temporary); }
                     }
                 }
                 _checks[key] = DateTimeOffset.UtcNow.AddMinutes(10); LastError = null;
             }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception error) when (error is HttpRequestException or IOException or InvalidDataException or JsonException or CryptographicException or ArgumentException)
-            { _checks[key] = DateTimeOffset.UtcNow.AddSeconds(30); LastError = "在线美术资源更新失败，继续使用当前有效资源。"; }
+            catch (OperationCanceledException) when (linked.IsCancellationRequested) { throw; }
+            catch (Exception error) when (error is OperationCanceledException or HttpRequestException or IOException or InvalidDataException or JsonException
+                or CryptographicException or ArgumentException or UnauthorizedAccessException)
+            { _checks[key] = DateTimeOffset.UtcNow.AddSeconds(30); LastError = "在线美术资源更新失败，继续使用当前有效资源。"; outcome = RefreshOutcome.Failed; }
         }
         finally { _gate.Release(); }
-        if (updated) Changed?.Invoke(this, new(Preferences.Source, Revision, false, true));
-        return updated;
+        if (outcome == RefreshOutcome.Updated && Volatile.Read(ref _batchedChanges) == 0) Changed?.Invoke(this, new(Preferences.Source, Revision, false, true));
+        return outcome;
+    }
+
+    /// <summary>
+    /// Re-fetches the selected source's configuration and every known artwork slot. Replacements are
+    /// validated before they are published; on failure the existing files stay in use.
+    /// </summary>
+    public async Task<ResourceRedownloadResult> RedownloadAsync(IEnumerable<(string ProductId, int Color)> devices, CancellationToken token = default)
+    {
+        await InitializeAsync(token).ConfigureAwait(false);
+        if (!Preferences.UseOnlineResources) throw new InvalidOperationException("在线资源已关闭，开启后才能重新下载。");
+        // Stop background checks of the outgoing state before taking the writer.
+        _sourceCancellation.Cancel();
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        ResourceSource source;
+        try
+        {
+            _sourceCancellation.Dispose(); _sourceCancellation = new();
+            source = Preferences.Source; _checks.Clear(); LastError = null;
+        }
+        finally { _gate.Release(); }
+        long before = Revision; int updated = 0, unchanged = 0, failed = 0;
+        Interlocked.Increment(ref _batchedChanges);
+        bool catalogChanged;
+        try
+        {
+            var configuration = await RefreshConfigurationAsync(true, true, token).ConfigureAwait(false);
+            catalogChanged = configuration == RefreshOutcome.Updated;
+            if (configuration == RefreshOutcome.Failed) failed++;
+            foreach (var target in RedownloadTargets(source, devices))
+            {
+                if (source != Preferences.Source) break;
+                switch (await RefreshArtworkCoreAsync(target.ProductId, target.Color, target.Model, true, true, token).ConfigureAwait(false))
+                {
+                    case RefreshOutcome.Updated: updated++; break;
+                    case RefreshOutcome.Failed: failed++; break;
+                    case RefreshOutcome.Unchanged: unchanged++; break;
+                }
+            }
+        }
+        finally { Interlocked.Decrement(ref _batchedChanges); }
+        LastError = failed == 0 ? null : "部分在线资源重新下载失败，已保留原有资源。";
+        if (Revision != before) Changed?.Invoke(this, new(source, Revision, catalogChanged, true));
+        string message = failed != 0 ? $"{failed} 项在线资源重新下载失败，已保留原有资源。"
+            : updated == 0 ? "已重新下载在线资源，配置与美术资源均已核对。" : $"已重新下载在线资源，更新了 {updated} 项美术资源。";
+        return new(catalogChanged, updated, unchanged, failed, message);
+    }
+
+    private (string ProductId, int Color, bool Model)[] RedownloadTargets(ResourceSource source, IEnumerable<(string ProductId, int Color)> devices)
+    {
+        var targets = new HashSet<(string ProductId, int Color, bool Model)>();
+        lock (_leaseGate) targets.UnionWith(_artworkTargets);
+        string root = Path.Combine(SourceRoot(source), "artwork");
+        if (Directory.Exists(root))
+            foreach (string slot in Directory.EnumerateDirectories(root))
+                if (System.Text.RegularExpressions.Regex.Match(Path.GetFileName(slot), "^([0-9A-F]{6})_([0-9]{1,3})_(14|control)$") is { Success: true } match
+                    && int.TryParse(match.Groups[2].Value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int color) && color <= 255)
+                    targets.Add((match.Groups[1].Value, color, match.Groups[3].Value == "14"));
+        foreach (var (productId, color) in devices)
+        {
+            if (_catalogs[source].Find(productId) is not { } profile) continue;
+            targets.Add((productId, color, false));
+            if (profile.Functions.ValueKind == JsonValueKind.Object && profile.Functions.TryGetProperty("support3DModel", out var support)
+                && support.ValueKind == JsonValueKind.Number && support.TryGetInt32(out int enabled) && enabled > 0)
+                targets.Add((productId, color, true));
+        }
+        return targets.Where(target => _catalogs[source].Find(target.ProductId) is not null)
+            .OrderBy(target => target.ProductId, StringComparer.Ordinal).ThenBy(target => target.Color).ThenBy(target => target.Model).ToArray();
     }
 
     private ResourceArtworkLease? AcquireCachedArtwork(ResourceSource source, string productId, int color, bool model, string role)
@@ -262,8 +379,7 @@ public sealed class ResourceCoordinator : IDisposable
             try
             {
                 var entries = JsonSerializer.Deserialize<ResourceArtwork[]>(File.ReadAllBytes(Path.Combine(package, "artwork.json")), ResourceJson.Options) ?? [];
-                var entry = entries.FirstOrDefault(e => e.Source == source && e.ProductIds.Contains(productId, StringComparer.Ordinal) && e.Color == color && BundledResourceStore.MatchesRole(e.Role, role));
-                if (entry is null && role == "hero") entry = entries.FirstOrDefault(e => e.Role is "model" or "detail" or "lottie");
+                var entry = SelectPackageEntry(entries.Where(e => e.Source == source && e.ProductIds.Contains(productId, StringComparer.Ordinal) && e.Color == color), role);
                 if (entry is null) return null;
                 string path = ResourcePaths.Resolve(package, entry.Path);
                 if (!File.Exists(path) || new FileInfo(path).Length != entry.Length || Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path))) != entry.Sha256) return null;
@@ -272,6 +388,21 @@ public sealed class ResourceCoordinator : IDisposable
             }
             catch (Exception error) when (error is IOException or InvalidDataException or JsonException or ArgumentException) { return null; }
         }
+    }
+
+    /// <summary>
+    /// Product display preference inside one downloaded package: a model, then the first entry of the
+    /// main lottieResList (its detail image stays the static fallback), then the detail image.
+    /// Side lists (lottie-left/right) are never the hero. This is the single place to tune once the
+    /// official playback rules are confirmed on hardware.
+    /// </summary>
+    internal static ResourceArtwork? SelectPackageEntry(IEnumerable<ResourceArtwork> candidates, string role)
+    {
+        var entries = candidates.ToArray();
+        if (role != "hero") return entries.Where(e => BundledResourceStore.MatchesRole(e.Role, role)).OrderBy(e => e.Order ?? 0).FirstOrDefault();
+        return entries.FirstOrDefault(e => e.Role == "model")
+            ?? entries.Where(e => e.Role == "lottie").OrderBy(e => e.Order ?? 0).FirstOrDefault()
+            ?? entries.FirstOrDefault(e => e.Role == "detail");
     }
 
     private void Release(string package)
@@ -288,105 +419,6 @@ public sealed class ResourceCoordinator : IDisposable
     {
         try { ResourcePaths.DeleteOwnedDirectory(_online, package); _retired.Remove(package); }
         catch (Exception error) when (error is IOException or InvalidDataException) { /* Retain for the next cleanup attempt; never invalidate the new pointer. */ }
-    }
-
-    private static ResourceArtwork[] ExtractArtwork(byte[] bytes, string root, ResourceSource source, string productId, int color)
-    {
-        using var memory = new MemoryStream(bytes); using var zip = new ZipArchive(memory, ZipArchiveMode.Read);
-        if (zip.Entries.Count > ResourceLimits.Members || zip.Entries.Sum(e => e.Length) > ResourceLimits.ExpandedBytes) throw new InvalidDataException("Resource archive exceeds limit.");
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var entry in zip.Entries)
-        {
-            if (entry.FullName.EndsWith('/')) continue;
-            if (!names.Add(entry.FullName) || entry.Length > ResourceLimits.MemberBytes || ((entry.ExternalAttributes >> 16) & 0xf000) == 0xa000) throw new InvalidDataException("Invalid resource archive member.");
-            string path = ResourcePaths.Resolve(root, entry.FullName); Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            using var input = entry.Open(); using var output = File.Create(path);
-            byte[] buffer = new byte[81920]; int read; long total = 0;
-            while ((read = input.Read(buffer)) > 0) { total += read; if (total > ResourceLimits.MemberBytes || total > entry.Length) throw new InvalidDataException("Archive member exceeds declared length."); output.Write(buffer, 0, read); }
-            if (total != entry.Length) throw new InvalidDataException("Truncated archive member.");
-        }
-        string configPath = Path.Combine(root, "config.json");
-        if (!File.Exists(configPath)) throw new InvalidDataException("Resource package lacks config.json.");
-        using var json = JsonDocument.Parse(File.ReadAllBytes(configPath), new JsonDocumentOptions { MaxDepth = 64 });
-        ResourceJson.ValidateUniqueProperties(json.RootElement);
-        if (json.RootElement.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Resource configuration must be an object.");
-        var result = new List<ResourceArtwork>();
-        foreach (var property in json.RootElement.EnumerateObject())
-        {
-            string role = property.Name switch { "capsuleImageRes" => "capsule", "detailImageRes" => "detail", "leftImageRes" => "left", "rightImageRes" => "right", "boxImageRes" => "box", "model3D" => "model", _ when property.Name.Contains("lottie", StringComparison.OrdinalIgnoreCase) => "lottie", _ => "" };
-            if (role.Length == 0) continue;
-            Walk(property.Value, role);
-        }
-        return result.ToArray();
-        void Walk(JsonElement node, string role)
-        {
-            if (node.ValueKind == JsonValueKind.Array) { foreach (var item in node.EnumerateArray()) Walk(item, role); return; }
-            if (node.ValueKind != JsonValueKind.Object) return;
-            if (!node.TryGetProperty("path", out var value) || value.ValueKind != JsonValueKind.String) return;
-            string relative = value.GetString()!, path = ResourcePaths.Resolve(root, relative);
-            if (!File.Exists(path)) throw new InvalidDataException("Missing configured resource.");
-            string extension = Path.GetExtension(path).ToLowerInvariant(); string kind;
-            if (extension == ".vfxms")
-            {
-                byte[] container = File.ReadAllBytes(path);
-                if (container.Length < 40) throw new InvalidDataException("Invalid model container.");
-                int start = BinaryPrimitives.ReadInt32BigEndian(container.AsSpan(8, 4)), length = BinaryPrimitives.ReadInt32BigEndian(container.AsSpan(12, 4));
-                if (start < 40 || length < 12 || (long)start + length > container.Length || !container.AsSpan(start, 4).SequenceEqual("glTF"u8)) throw new InvalidDataException("Invalid model segment.");
-                relative = "model.glb"; path = Path.Combine(root, relative); File.WriteAllBytes(path, container.AsSpan(start, length).ToArray()); kind = "model";
-            }
-            else if (extension == ".glb") kind = "model";
-            else if (extension == ".json" && role == "lottie")
-            {
-                using var animation = JsonDocument.Parse(File.ReadAllBytes(path));
-                if (animation.RootElement.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Invalid animation configuration.");
-                if (animation.RootElement.TryGetProperty("assets", out var images))
-                {
-                    if (images.ValueKind != JsonValueKind.Array) throw new InvalidDataException("Invalid animation assets.");
-                    foreach (var image in images.EnumerateArray())
-                    {
-                        if (image.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Invalid animation asset.");
-                        if (image.TryGetProperty("p", out var imagePath) && imagePath.ValueKind == JsonValueKind.String && !imagePath.GetString()!.StartsWith("data:", StringComparison.Ordinal))
-                        {
-                            if (image.TryGetProperty("u", out var u) && u.ValueKind is not (JsonValueKind.String or JsonValueKind.Null)) throw new InvalidDataException("Invalid animation image directory.");
-                            string prefix = image.TryGetProperty("u", out u) ? u.GetString() ?? "" : "";
-                            string imageFile = ResourcePaths.Resolve(Path.GetDirectoryName(path)!, prefix + imagePath.GetString());
-                            if (!File.Exists(imageFile)) throw new InvalidDataException("Missing animation image.");
-                        }
-                    }
-                }
-                kind = "lottie";
-            }
-            else if (extension is ".png" or ".webp" or ".jpg" or ".jpeg") kind = "bitmap";
-            else return;
-            var raw = File.ReadAllBytes(path);
-            if (kind == "model") ValidateGlb(raw);
-            result.Add(new() { Source = source, ProductIds = [productId], Color = color, Kind = kind, Role = role, Path = relative, Sha256 = Convert.ToHexStringLower(SHA256.HashData(raw)), Length = raw.Length });
-        }
-    }
-
-    private static void ValidateGlb(byte[] bytes)
-    {
-        if (bytes.Length < 20 || !bytes.AsSpan(0, 4).SequenceEqual("glTF"u8)
-            || BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4, 4)) != 2
-            || BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(8, 4)) != bytes.Length
-            || !bytes.AsSpan(16, 4).SequenceEqual("JSON"u8)) throw new InvalidDataException("Invalid GLB structure.");
-        uint length = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(12, 4));
-        if (length > ResourceLimits.ConfigBytes || 20L + length > bytes.Length) throw new InvalidDataException("Invalid GLB JSON segment.");
-        using var json = JsonDocument.Parse(bytes.AsMemory(20, checked((int)length)), new JsonDocumentOptions { MaxDepth = 96 });
-        ResourceJson.ValidateUniqueProperties(json.RootElement);
-        if (json.RootElement.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Invalid GLB JSON structure.");
-        // The existing desktop GLB loader consumes self-contained models only.
-        foreach (string field in new[] { "buffers", "images" })
-            if (json.RootElement.TryGetProperty(field, out var rows))
-            {
-                if (rows.ValueKind != JsonValueKind.Array) throw new InvalidDataException("Invalid GLB resources.");
-                foreach (var row in rows.EnumerateArray())
-                {
-                    if (row.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Invalid GLB resource.");
-                    if (row.TryGetProperty("uri", out var uri) && (uri.ValueKind != JsonValueKind.String || !uri.GetString()!.StartsWith("data:", StringComparison.Ordinal)))
-                        throw new InvalidDataException("External model URI is not supported.");
-                }
-            }
     }
 
     private void LoadCachedCatalog(ResourceSource source)
@@ -441,16 +473,24 @@ public sealed class ResourceCoordinator : IDisposable
     private string ArtworkRoot(ResourceSource source, string productId, int color, bool model) => Path.Combine(SourceRoot(source), "artwork", ArtworkSlot(productId, color, model));
     private static bool ValidKey(string value) { try { return Convert.FromBase64String(value).Length == 32; } catch (FormatException) { return false; } }
     private static bool IsHash(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
+    // "<sha256>" or "<sha256>-<8 hex>" when the digest was re-extracted while its first copy was leased.
+    private static bool IsPackageName(string? value) => value is { Length: 64 } ? IsHash(value)
+        : value is { Length: 73 } && value[64] == '-' && IsHash(value[..64]) && value[65..].All(Uri.IsHexDigit);
+    private static string PackageDigest(string name) => name[..64];
     private static string? ReadArtworkPointer(string slot)
     {
-        try { var value = JsonSerializer.Deserialize<string>(File.ReadAllBytes(Path.Combine(slot, "current.json"))); return IsHash(value) ? value : null; }
-        catch (Exception error) when (error is IOException or JsonException) { return null; }
+        try { var value = JsonSerializer.Deserialize<string>(File.ReadAllBytes(Path.Combine(slot, "current.json"))); return IsPackageName(value) ? value : null; }
+        catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) { return null; }
     }
     private static bool ValidArtworkPackage(string package)
     {
         try
         {
             if (!File.Exists(Path.Combine(package, "config.json"))) return false;
+            // Packages indexed by an older extractor are re-downloaded once and served until then.
+            using (var marker = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(package, ArtworkPackageExtractor.MarkerFile))))
+                if (!marker.RootElement.TryGetProperty("schemaVersion", out var schema) || !schema.TryGetInt32(out int version)
+                    || version != ArtworkPackageExtractor.SchemaVersion) return false;
             var entries = JsonSerializer.Deserialize<ResourceArtwork[]>(File.ReadAllBytes(Path.Combine(package, "artwork.json")), ResourceJson.Options);
             if (entries is null || entries.Length == 0) return false;
             return entries.All(entry =>
@@ -461,5 +501,28 @@ public sealed class ResourceCoordinator : IDisposable
         }
         catch (Exception error) when (error is IOException or InvalidDataException or JsonException or ArgumentException) { return false; }
     }
+    /// <summary>Removes interrupted downloads and superseded packages left by an earlier Host process.</summary>
+    private void SweepArtwork(ResourceSource source)
+    {
+        string root = Path.Combine(SourceRoot(source), "artwork");
+        if (!Directory.Exists(root)) return;
+        foreach (string slot in Directory.EnumerateDirectories(root))
+        {
+            try
+            {
+                var current = ReadArtworkPointer(slot);
+                foreach (string directory in Directory.EnumerateDirectories(slot))
+                {
+                    string name = Path.GetFileName(directory);
+                    if (name.StartsWith(".download-", StringComparison.Ordinal) || current is not null && name != current
+                        && Directory.Exists(Path.Combine(slot, current)) && IsPackageName(name)) Retire(directory);
+                }
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
+    private enum RefreshOutcome { Skipped, Unchanged, Updated, Failed }
+
     public void Dispose() { _lifetime.Cancel(); _sourceCancellation.Cancel(); _vendor.Dispose(); }
 }

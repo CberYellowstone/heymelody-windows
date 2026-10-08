@@ -49,6 +49,9 @@ public sealed partial class MainViewModel
     private bool _useOnlineResources = true;
     private string _cloudKey = "", _resourceStatus = "";
     private string _configuredResourceSource = "HeyMelody";
+    private bool _configuredOnline = true, _redownloadingResources, _redownloadFailed;
+    private string _redownloadMessage = "";
+    private long _artworkRevision;
     private readonly Dictionary<int, string> _sourceKeys = new() { [0] = "", [1] = "" };
     private bool _presentingResources, _resourcePreferencesDirty;
     private bool _savingResources, _hearingPending;
@@ -69,8 +72,19 @@ public sealed partial class MainViewModel
     public string CloudKey { get => _cloudKey; set { if (SetProperty(ref _cloudKey, value) && !_presentingResources) _resourcePreferencesDirty = true; } }
     public string ResourceKeyFor(UiOption source) => source.Key == SelectedResourceSource.Key ? CloudKey : _sourceKeys.GetValueOrDefault(source.Key, "");
     public string ResourceStatus => _resourceStatus;
-    public string ResourceSource => _snapshot?.ResourceSource ?? (_selectedResourceSource.Key == 0 ? "HeyMelody" : "WirelessEarphones");
+    // Host-confirmed values only: a settings draft never redirects artwork requests.
+    public string ResourceSource => _snapshot?.ResourceSource ?? _configuredResourceSource;
     public long ResourceRevision => _snapshot?.ResourceRevision ?? 0;
+    /// <summary>Changes when the backend instance or its published resource revision advances; never on a cleared snapshot.</summary>
+    public string ArtworkEpoch => (_backendInstanceId ?? "local") + ":" + _artworkRevision.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    public string ConfiguredResourceSourceName => _configuredResourceSource == "WirelessEarphones" ? "无线耳机" : "欢律";
+    public bool CanRedownloadResources => _service is IResourceSettingsService && _configuredOnline && !_redownloadingResources
+        && !_savingResources && !Closing;
+    public bool IsRedownloadingResources => _redownloadingResources;
+    public bool ResourceServiceAvailable => _service is IResourceSettingsService;
+    public bool OnlineResourcesConfigured => _configuredOnline;
+    public string RedownloadMessage => _redownloadMessage;
+    public bool RedownloadFailed => _redownloadFailed;
     public byte? DeviceColor => _snapshot?.Color;
     public string? SelectedDeviceIdentity => _sessionIdentity;
     public IArtworkService? ArtworkService => _service as IArtworkService;
@@ -155,9 +169,10 @@ public sealed partial class MainViewModel
         try { PresentResourceSettings(await resources.GetResourceSettingsAsync(_lifetime.Token)); }
         catch { _resourceStatus = "资源设置暂不可用"; NotifyState(); }
     }
+    private void ObserveArtworkRevision(long revision) { if (revision > _artworkRevision) _artworkRevision = revision; }
     private void PresentResourceSettings(UiResourceSettings settings, bool replaceDraft = false)
     {
-        _configuredResourceSource = settings.Source;
+        _configuredResourceSource = settings.Source; _configuredOnline = settings.UseOnlineResources;
         if (!_resourcePreferencesDirty || replaceDraft)
         {
             _presentingResources = true;
@@ -190,6 +205,27 @@ public sealed partial class MainViewModel
         }
         catch { SetStatus("无法保存资源设置，请重试。", true); }
         finally { _savingResources = false; }
+    }
+    /// <summary>Re-fetches the saved source's online resources; the result stays visible after the dialog closes.</summary>
+    public async Task RedownloadResourcesAsync()
+    {
+        if (!CanRedownloadResources || _service is not IResourceSettingsService resources) return;
+        _redownloadingResources = true; _redownloadFailed = false; _redownloadMessage = ""; NotifyState();
+        try
+        {
+            var result = await resources.RedownloadResourcesAsync(_lifetime.Token);
+            _redownloadFailed = !result.Success; _redownloadMessage = Sanitize(result.Message);
+            PresentResourceSettings(result.Settings);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { return; }
+        catch (Exception error)
+        {
+            _redownloadFailed = true;
+            _redownloadMessage = error is IOException or NotSupportedException or InvalidOperationException && error.Message.Length is > 0 and <= 180
+                ? Sanitize(error.Message) : "无法重新下载在线资源，请检查网络后重试。";
+        }
+        finally { _redownloadingResources = false; NotifyState(); }
+        Log("在线资源：" + _redownloadMessage);
     }
     public async Task SelectHearingProfileAsync(UiHearingProfile profile)
     {

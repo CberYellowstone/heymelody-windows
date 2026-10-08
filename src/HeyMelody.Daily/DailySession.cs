@@ -32,7 +32,8 @@ internal sealed class DailySession : IAsyncDisposable
         // Wire consumers before starting so the first unsolicited packet cannot be lost.
         _reader = Task.Run(ReadPumpAsync);
     }
-    public async Task<DailyResponse> RequestAsync(ushort command, byte[] payload, CancellationToken token)
+    /// <param name="optionalTimeout">Set only for reads whose silence means "unknown"; such a timeout keeps the session.</param>
+    public async Task<DailyResponse> RequestAsync(ushort command, byte[] payload, CancellationToken token, TimeSpan? optionalTimeout = null)
     {
         if (!Usable || !_sequences.TryTake(out byte seq)) throw new IOException("Daily session unavailable.");
         var completion = new TaskCompletionSource<Packet>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -43,16 +44,23 @@ internal sealed class DailySession : IAsyncDisposable
             _key = new(command, seq); _reply = completion;
         }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
-        timeout.CancelAfter(TimeSpan.FromSeconds(4));
-        bool submitted = false;
+        timeout.CancelAfter(optionalTimeout ?? TimeSpan.FromSeconds(4));
+        bool submitted = false, sent = false;
         try
         {
             submitted = true;
             await _transport.SendAsync(PacketEncoder.Encode(command, seq, payload), timeout.Token).WaitAsync(timeout.Token);
+            sent = true;
             Packet packet = await completion.Task.WaitAsync(timeout.Token);
             byte? status = packet.Payload.Length == 0 ? null : packet.Payload[0];
             if (status is null) Stop(new FormatException("Missing response status."));
             return new(submitted, true, status, packet.Payload);
+        }
+        catch (OperationCanceledException) when (optionalTimeout is not null && sent && Usable
+            && !token.IsCancellationRequested && !_lifetime.IsCancellationRequested)
+        {
+            // A late reply cannot match a later request key and is not a notification command.
+            return new(submitted, false, null, null);
         }
         catch (Exception failure)
         {

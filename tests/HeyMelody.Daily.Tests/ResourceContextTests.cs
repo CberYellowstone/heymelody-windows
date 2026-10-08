@@ -33,7 +33,7 @@ internal static class ResourceContextTests
             functions["equalizerModeByVersion"] = JsonNode.Parse("""[{"protocolIndex":5,"modeType":28,"order":0,"minAppVersion":17006003}]""");
             functions["equalizerModeByColor"] = JsonNode.Parse("""[{"protocolIndex":7,"modeType":46,"order":2,"colorId":2,"minFirmVersion":118}]""");
             var profile = DeviceProfile.FromResource(JsonSerializer.SerializeToElement(source), "HeyMelody");
-            var fake = new Fake();
+            var fake = new Fake { Color = null }; // the session itself reports no color here
             await using var client = new DailyClient(fake, _ => profile, 17006004);
             var initial = await client.RefreshAsync();
             Check(initial.Presets.Select(x => x.ProtocolId).SequenceEqual(new byte[] {5,9,0}));
@@ -52,6 +52,21 @@ internal static class ResourceContextTests
             var other = new Fake();
             await using var oem = new DailyClient(other, _ => profile, 17006002);
             Check((await oem.RefreshAsync()).Presets.Select(x => x.ProtocolId).SequenceEqual(new byte[] {9,0}));
+        });
+        await test("the session color selects color-conditioned presets without a broadcast", async () =>
+        {
+            var source = JsonNode.Parse(X4Profile.Load().RawSource.GetRawText())!.AsObject();
+            var functions = source["function"]!.AsObject();
+            functions["equalizerMode"] = JsonNode.Parse("""[{"protocolIndex":0,"modeType":42,"order":3}]""");
+            functions["equalizerModeCompat"] = JsonNode.Parse("[]");
+            functions["equalizerModeByVersion"] = JsonNode.Parse("[]");
+            functions["equalizerModeByColor"] = JsonNode.Parse("""[{"protocolIndex":7,"modeType":46,"order":2,"colorId":2}]""");
+            var profile = DeviceProfile.FromResource(JsonSerializer.SerializeToElement(source), "HeyMelody");
+            var fake = new Fake { Color = 2 }; await using var client = new DailyClient(fake, _ => profile, 17006004);
+            var snapshot = await client.RefreshAsync();
+            Check(snapshot.Color == 2 && snapshot.Presets.Any(x => x.ProtocolId == 7) && fake.Writes.Count == 0);
+            var other = new Fake { Color = 1 }; await using var different = new DailyClient(other, _ => profile, 17006004);
+            Check((await different.RefreshAsync()).Presets.All(x => x.ProtocolId != 7));
         });
     }
     private static void Check(bool condition)

@@ -24,6 +24,14 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Hash failures and unsafe archives retain current art", UnsafeArtwork),
     ("Known color and source are required for model artwork", ArtworkIdentity),
     ("Model metadata without PID is bound to request and validates GLB", ModelPackages),
+    ("Cached art is served before any network check and refreshed in the background", CachedFirst),
+    ("HTTP timeouts fall back to installed art and are throttled like failures", TimeoutFallback),
+    ("A first download is awaited briefly and its late package is announced", FirstDownload),
+    ("Lottie lists index folder images and skip broken items; the main list is the hero", LottieLists),
+    ("Re-extraction publishes beside a leased copy of the same digest", LeasedRepublish),
+    ("Packages from an older extractor are re-downloaded once and served until then", ExtractorUpgrade),
+    ("Re-download validates replacements, keeps files on failure and requires online use", Redownload),
+    ("Startup removes interrupted downloads and superseded packages", StartupSweep),
 };
 int failed = 0;
 foreach (var test in tests)
@@ -204,6 +212,143 @@ static async Task ModelPackages()
     BinaryPrimitives.WriteUInt32LittleEndian(glb.AsSpan(8, 4), (uint)glb.Length); BinaryPrimitives.WriteUInt32LittleEndian(glb.AsSpan(12, 4), (uint)json.Length); "JSON"u8.CopyTo(glb.AsSpan(16)); json.CopyTo(glb, 20);
     fixture.Handler.Artwork = ModelZip(glb); Check(!await coordinator.RefreshArtworkAsync("068C10", 1, model: true, force: true), "External model URI accepted"); Check(File.Exists(lease.FullPath), "Rejected model removed previous valid package");
 }
+static async Task CachedFirst()
+{
+    using var fixture = new Fixture();
+    using (var first = fixture.Coordinator()) { await first.InitializeAsync(); fixture.Handler.Artwork = ArtZip(1); Check(await first.RefreshArtworkAsync("06EC10", 0, force: true), "Initial art failed"); }
+    fixture.Handler.Gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
+    int before = fixture.Handler.Requests;
+    using var art = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail").WaitAsync(TimeSpan.FromSeconds(5));
+    Check(art is not null && art.FullPath.Contains(Path.Combine("online", "heymelody"), StringComparison.Ordinal), "Cached online art was not served first");
+    for (int attempt = 0; fixture.Handler.Pending == 0 && attempt < 200; attempt++) await Task.Delay(10);
+    Check(fixture.Handler.Pending == 1 && fixture.Handler.Requests == before + 1, "Background check did not start");
+    fixture.Handler.Gate.TrySetResult();
+}
+static async Task TimeoutFallback()
+{
+    using var fixture = new Fixture(); using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
+    fixture.Handler.Failure = new TaskCanceledException("The request timed out.");
+    using var art = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail");
+    Check(art is not null && art.Kind == "bitmap" && !art.FullPath.Contains(Path.Combine("online", "heymelody"), StringComparison.Ordinal), "Timeout skipped installed fallback");
+    Check(coordinator.LastError is not null, "Timeout was not reported as a failure");
+    int requests = fixture.Handler.Requests;
+    Check(!await coordinator.RefreshArtworkAsync("06EC10", 0) && fixture.Handler.Requests == requests, "Timeout was not throttled");
+}
+static async Task FirstDownload()
+{
+    using var fixture = new Fixture(); using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
+    coordinator.FirstDownloadWait = TimeSpan.FromMilliseconds(200);
+    var changed = new TaskCompletionSource<ResourceChangedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+    coordinator.Changed += (_, args) => changed.TrySetResult(args);
+    fixture.Handler.Artwork = ArtZip(1); fixture.Handler.Gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    using (var fallback = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail").WaitAsync(TimeSpan.FromSeconds(5)))
+        Check(fallback is not null && !fallback.FullPath.Contains(Path.Combine("online", "heymelody"), StringComparison.Ordinal), "Pending download blocked the installed fallback");
+    fixture.Handler.Gate.TrySetResult();
+    var args = await changed.Task.WaitAsync(TimeSpan.FromSeconds(10)); Check(args.ArtworkChanged, "Late package was not announced");
+    using var online = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail");
+    Check(online is not null && online.FullPath.Contains(Path.Combine("online", "heymelody"), StringComparison.Ordinal), "Announced package was not served");
+}
+static async Task LottieLists()
+{
+    using var fixture = new Fixture(); using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
+    fixture.Handler.Artwork = LottieZip();
+    Check(await coordinator.RefreshArtworkAsync("06EC10", 0, force: true), "Lottie package rejected");
+    using var hero = await coordinator.ResolveArtworkAsync("06EC10", 0, "hero");
+    Check(hero is not null && hero.Kind == "lottie" && hero.FullPath.EndsWith("data.heymelody.json", StringComparison.Ordinal), "Main Lottie list is not the hero");
+    using (var derived = JsonDocument.Parse(File.ReadAllBytes(hero!.FullPath)))
+    {
+        var image = derived.RootElement.GetProperty("assets")[0];
+        Eq("images/", image.GetProperty("u").GetString()); Eq("img_0.png", image.GetProperty("p").GetString());
+    }
+    var entries = JsonSerializer.Deserialize<ResourceArtwork[]>(File.ReadAllBytes(Path.Combine(hero.PackageRoot, "artwork.json")), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+    var main = entries.Single(e => e.Role == "lottie" && e.Order == 1);
+    Check(main.OriginalPath == "res/lottie/main/data.json" && main.OriginalSha256 is { Length: 64 } && main.Metadata?["imagePath"] == "res/lottie/main/images", "Derived animation lost provenance");
+    Check(entries.Any(e => e.Role == "lottie" && e.Order == 2 && e.OriginalPath is null) && entries.Any(e => e.Role == "lottie-left"), "Valid list entries missing");
+    Check(!entries.Any(e => e.Role == "lottie" && e.Order == 0) && !entries.Any(e => e.Path.Contains("boot", StringComparison.Ordinal)), "Broken or unrelated entries indexed");
+    Check(File.Exists(Path.Combine(hero.PackageRoot, "res/lottie/main/data.json")), "Original animation bytes were not kept");
+    using var detail = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail");
+    Check(detail is not null && detail.Kind == "bitmap" && detail.PackageRoot == hero.PackageRoot, "Static detail fallback missing");
+}
+static async Task LeasedRepublish()
+{
+    using var fixture = new Fixture(); using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
+    fixture.Handler.Artwork = ArtZip(1); Check(await coordinator.RefreshArtworkAsync("06EC10", 0, force: true), "Initial art failed");
+    var leased = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail"); string old = leased!.PackageRoot;
+    fixture.Handler.Configuration = Config(117006004); // equal to the installed catalog: not adopted
+    var result = await coordinator.RedownloadAsync([]);
+    Check(result.Failed == 0 && result.Updated == 1, "Re-download did not replace the leased digest: " + result);
+    using var replacement = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail");
+    Check(replacement!.PackageRoot != old && Path.GetFileName(replacement.PackageRoot).StartsWith(Path.GetFileName(old) + "-", StringComparison.Ordinal), "Leased digest was not published beside its copy");
+    Check(Directory.Exists(old), "Active renderer lost its package"); leased.Dispose(); Check(!Directory.Exists(old), "Released copy was not cleaned");
+}
+static async Task ExtractorUpgrade()
+{
+    using var fixture = new Fixture(); string root;
+    using (var first = fixture.Coordinator())
+    {
+        await first.InitializeAsync(); fixture.Handler.Artwork = ArtZip(1); Check(await first.RefreshArtworkAsync("06EC10", 0, force: true), "Initial art failed");
+        using var art = await first.ResolveArtworkAsync("06EC10", 0, "detail"); root = art!.PackageRoot;
+    }
+    File.Delete(Path.Combine(root, "package.json"));
+    using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
+    var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); coordinator.Changed += (_, _) => changed.TrySetResult();
+    using (var served = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail")) Check(served?.PackageRoot == root, "Old extraction was not served while upgrading");
+    await changed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    using var upgraded = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail");
+    Check(File.Exists(Path.Combine(upgraded!.PackageRoot, "package.json")), "Old extraction was not re-indexed");
+}
+static async Task Redownload()
+{
+    using var fixture = new Fixture(); using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
+    fixture.Handler.Configuration = Config(117006010); fixture.Handler.Artwork = ArtZip(1);
+    Check(await coordinator.RefreshAsync(true) && await coordinator.RefreshArtworkAsync("06EC10", 0, force: true), "Initial resources failed");
+    string catalog = coordinator.Catalog.Sha256; int requests = fixture.Handler.Requests;
+    var unchanged = await coordinator.RedownloadAsync([("06EC10", 0)]);
+    Check(unchanged.Failed == 0 && !unchanged.CatalogChanged && fixture.Handler.Requests >= requests + 4 && coordinator.Catalog.Sha256 == catalog, "Re-download did not re-fetch equal content: " + unchanged);
+    using var before = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail");
+    fixture.Handler.Failure = new HttpRequestException("offline");
+    var failed = await coordinator.RedownloadAsync([("06EC10", 0)]);
+    Check(failed.Failed > 0 && coordinator.LastError is not null && File.Exists(before!.FullPath), "Failed re-download removed working files: " + failed);
+    using var after = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail"); Eq(before!.PackageRoot, after!.PackageRoot);
+    fixture.Handler.Failure = null;
+    await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { UseOnlineResources = false });
+    try { await coordinator.RedownloadAsync([]); throw new InvalidOperationException("Offline re-download was accepted"); }
+    catch (InvalidOperationException error) when (error.Message.Contains("在线资源已关闭", StringComparison.Ordinal)) { }
+}
+static async Task StartupSweep()
+{
+    using var fixture = new Fixture(); string root, slot;
+    using (var first = fixture.Coordinator())
+    {
+        await first.InitializeAsync(); fixture.Handler.Artwork = ArtZip(1); Check(await first.RefreshArtworkAsync("06EC10", 0, force: true), "Initial art failed");
+        using var art = await first.ResolveArtworkAsync("06EC10", 0, "detail"); root = art!.PackageRoot; slot = Path.GetDirectoryName(root)!;
+    }
+    string interrupted = Path.Combine(slot, ".download-" + Guid.NewGuid().ToString("N")), superseded = Path.Combine(slot, new string('a', 64));
+    Directory.CreateDirectory(interrupted); Directory.CreateDirectory(superseded);
+    using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
+    Check(!Directory.Exists(interrupted) && !Directory.Exists(superseded) && Directory.Exists(root), "Startup sweep removed the wrong directories");
+}
+static byte[] LottieZip()
+{
+    byte[] png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6yAAAAABJRU5ErkJggg==");
+    static string Animation(string image) => "{\"v\":\"5.7.4\",\"fr\":30,\"ip\":0,\"op\":60,\"w\":64,\"h\":64,\"assets\":[" + image + "],\"layers\":[]}";
+    var members = new Dictionary<string, byte[]>
+    {
+        ["config.json"] = Encoding.UTF8.GetBytes("{\"detailImageRes\":{\"path\":\"res/image/detail.png\"},\"lottieResList\":[{\"path\":\"res/lottie/missing.json\"},"
+            + "{\"path\":\"res/lottie/main\",\"imagePath\":\"res/lottie/main/images\",\"type\":1},{\"path\":\"res/lottie/second.json\"}],"
+            + "\"leftLottieResList\":[{\"path\":\"res/lottie/left.json\"}],\"discoveryStates\":{\"connectedState\":{\"bgVideoRes\":{\"path\":\"res/video/boot\"}}}}"),
+        ["res/image/detail.png"] = png,
+        ["res/lottie/main/data.json"] = Encoding.UTF8.GetBytes(Animation("{\"id\":\"img\",\"w\":1,\"h\":1,\"u\":\"\",\"p\":\"img_0.png\",\"e\":0}")),
+        ["res/lottie/main/images/img_0.png"] = png,
+        ["res/lottie/second.json"] = Encoding.UTF8.GetBytes(Animation("")),
+        ["res/lottie/left.json"] = Encoding.UTF8.GetBytes(Animation("")),
+    };
+    using var memory = new MemoryStream();
+    using (var archive = new ZipArchive(memory, ZipArchiveMode.Create, true))
+        foreach (var (name, bytes) in members) using (var stream = archive.CreateEntry(name).Open()) stream.Write(bytes);
+    return memory.ToArray();
+}
 static byte[] ModelZip(byte[] glb)
 {
     using var memory = new MemoryStream();
@@ -247,9 +392,19 @@ sealed class FakeVendorHandler : HttpMessageHandler
     public byte[] Artwork { get; set; } = [];
     public bool WrongHash { get; set; }
     public string? LastVerifiedKey { get; private set; }
+    public TaskCompletionSource? Gate { get; set; }
+    public Exception? Failure { get; set; }
+    public int Pending => _pending;
+    private int _pending;
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
     {
         Requests++; byte[] bytes;
+        if (Gate is { Task.IsCompleted: false } gate)
+        {
+            Interlocked.Increment(ref _pending);
+            try { await gate.Task.WaitAsync(token); } finally { Interlocked.Decrement(ref _pending); }
+        }
+        if (Failure is { } failure) throw failure;
         if (request.Method == HttpMethod.Post)
         {
             byte[] body = await request.Content!.ReadAsByteArrayAsync(token); string signed = request.Headers.GetValues("sign").Single();

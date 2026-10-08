@@ -26,11 +26,20 @@ public sealed partial class ClientBridge
             Action = JsonSerializer.SerializeToElement(input, RpcWire.Json) }, TimeSpan.FromSeconds(45), token);
     public Task<UiCalibrationState> CancelCalibrationAsync(string handle, CancellationToken token) =>
         RequestAsync<UiCalibrationState>(new() { Operation = "cancelCalibration", CalibrationHandle = handle }, TimeSpan.FromSeconds(30), token);
+    public Task<UiResourceRedownloadResult> RedownloadResourcesAsync(CancellationToken token) =>
+        RequestAsync<UiResourceRedownloadResult>(new() { Operation = "redownloadResources" }, TimeSpan.FromSeconds(300), token);
     public async Task<UiArtwork?> AcquireArtworkAsync(string productId, int? color, string role, CancellationToken token)
     {
-        var result = await RequestAsync<ArtworkResponse>(new() { Operation = "acquireArtwork",
-            Action = JsonSerializer.SerializeToElement(new { productId, color, role }, RpcWire.Json) }, TimeSpan.FromSeconds(90), token);
-        return result.Artwork;
+        // The Host leases the package even if this caller stops waiting, so a late reply is still released.
+        var request = RequestAsync<ArtworkResponse>(new() { Operation = "acquireArtwork",
+            Action = JsonSerializer.SerializeToElement(new { productId, color, role }, RpcWire.Json) }, TimeSpan.FromSeconds(90), CancellationToken.None);
+        try { return (await request.WaitAsync(token)).Artwork; }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { _ = ReleaseLateAsync(request); throw; }
+    }
+    private async Task ReleaseLateAsync(Task<ArtworkResponse> request)
+    {
+        try { if ((await request).Artwork is { } late) await ReleaseArtworkAsync(late.LeaseId, CancellationToken.None); }
+        catch (Exception) { /* The Host also releases a disconnected client's leases. */ }
     }
     public async Task ReleaseArtworkAsync(string leaseId, CancellationToken token) =>
         _ = await RequestAsync<bool>(new() { Operation = "releaseArtwork", Action = JsonSerializer.SerializeToElement(new { leaseId }, RpcWire.Json) }, TimeSpan.FromSeconds(15), token);

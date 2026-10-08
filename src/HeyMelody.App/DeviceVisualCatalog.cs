@@ -5,155 +5,278 @@ using Avalonia.Threading;
 
 namespace HeyMelodyWindows.App;
 
-// Appearance hints stay in this view's lifetime and never grant device capabilities.
+// Appearance hints never grant device capabilities. A product ID comes from the Host's remembered
+// verified observations or the selected device's live snapshot, never from a Bluetooth name.
 public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
 {
-    private readonly Dictionary<string, string> _productIds = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, object> _heroes = new(StringComparer.Ordinal), _icons = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, SharedArtworkLease> _leases = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, int?> _colors = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _pending = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _resolved = new(StringComparer.Ordinal);
-    private CancellationTokenSource _loads = new();
+    private static readonly string[] Roles = ["hero", "icon"];
+    private readonly Dictionary<string, Appearance> _appearances = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Slot> _slots = new(StringComparer.Ordinal);
+    // identity/role -> slot whose visual is displayed; replaced only once the desired slot is ready.
+    private readonly Dictionary<string, string> _shown = new(StringComparer.Ordinal);
+    private readonly DispatcherTimer _retry = new();
     private string _source = "";
-    private long _resourceRevision;
+    private string _epoch = "";
     private IArtworkService? _artwork;
+    private bool _disposed;
     public int Revision { get; private set; }
     public event PropertyChangedEventHandler? PropertyChanged;
+    internal IReadOnlyList<TimeSpan> RetryDelays { get; init; } =
+        [TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15), TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5)];
+
+    public DeviceVisualCatalog() => _retry.Tick += (_, _) => RetryDue();
+
+    private sealed record Appearance(string ProductId, int? Color);
+    private sealed class Slot(string key, string role, string productId, int? color)
+    {
+        public string Key { get; } = key;
+        public string Role { get; } = role;
+        public string ProductId { get; } = productId;
+        public int? Color { get; } = color;
+        public object? Visual;
+        public string? Content;
+        public SharedArtworkLease? Lease, FallbackLease;
+        public CancellationTokenSource? Loading;
+        public string ResolvedEpoch = "";
+        public int Failures;
+        public DateTime? RetryAt;
+        public void Release()
+        {
+            Loading?.Cancel(); Loading?.Dispose(); Loading = null;
+            Lease?.Dispose(); FallbackLease?.Dispose(); Lease = FallbackLease = null;
+        }
+    }
 
     internal void Clear()
     {
-        ResetArtwork();
-        _productIds.Clear();
-        _colors.Clear();
+        ResetSlots();
+        _appearances.Clear();
         Changed();
     }
 
     internal void Update(IReadOnlyList<UiDevice> devices, UiDevice? selected, string? productId,
-        int? color = null, string source = "HeyMelody", long revision = 0, IArtworkService? artwork = null)
+        int? color = null, string source = "HeyMelody", string epoch = "", IArtworkService? artwork = null)
     {
-        if (_source != source || _resourceRevision != revision || !ReferenceEquals(_artwork, artwork))
-        { ResetArtwork(); _source = source; _resourceRevision = revision; _artwork = artwork; }
-        var identities = devices.Select(device => device.Identity).ToHashSet(StringComparer.Ordinal);
-        var changed = false;
-        foreach (var identity in _productIds.Keys.Where(identity => !identities.Contains(identity)).ToArray())
-        { changed |= _productIds.Remove(identity); _colors.Remove(identity); RemoveArtwork(identity); }
-        // The client only exposes ProductId from a snapshot matched to its active session.
-        // Unsupported and unknown product IDs also override a misleading Bluetooth name.
-        if (selected is not null && !MainViewModel.IsDemoDevice(selected) && identities.Contains(selected.Identity) && !string.IsNullOrWhiteSpace(productId))
+        if (_disposed) return;
+        bool changed = false;
+        if (!StringComparer.OrdinalIgnoreCase.Equals(_source, source) || !ReferenceEquals(_artwork, artwork))
         {
-            var actual = productId.Trim();
-            if (!_productIds.TryGetValue(selected.Identity, out var previous) || !StringComparer.Ordinal.Equals(previous, actual))
-            {
-                RemoveArtwork(selected.Identity);
-                _productIds[selected.Identity] = actual;
-                changed = true;
-            }
-            if (!_colors.TryGetValue(selected.Identity, out var previousColor) || previousColor != color)
-            {
-                _colors[selected.Identity] = color;
-                RemoveArtwork(selected.Identity);
-                changed = true;
-            }
+            // Another source or backend owns different packages: its responses must never be displayed.
+            changed = _slots.Count != 0;
+            ResetSlots(); _source = source; _artwork = artwork;
         }
-        // A PID or colour change must also cancel requests still in flight. Their
-        // completion must not mark the replacement request as already resolved.
-        if (changed) ResetArtwork();
+        if (_epoch != epoch)
+        {
+            // A restarted Host or newly published resources make a pending retry worth trying now.
+            _epoch = epoch;
+            foreach (var slot in _slots.Values) slot.RetryAt = null;
+        }
+        var identities = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var device in devices)
+        {
+            if (MainViewModel.IsDemoDevice(device)) continue;
+            identities.Add(device.Identity);
+            changed |= Remember(device.Identity, device.ProductId, device.Color);
+        }
+        // The client only exposes ProductId from a snapshot matched to its active session.
+        if (selected is not null && identities.Contains(selected.Identity)) changed |= Remember(selected.Identity, productId, color);
+        foreach (string removed in _appearances.Keys.Where(identity => !identities.Contains(identity)).ToArray())
+        { _appearances.Remove(removed); changed = true; }
+        foreach (string removed in _shown.Keys.Where(key => !identities.Contains(key[..key.LastIndexOf('/')])).ToArray())
+            _shown.Remove(removed);
         if (_artwork is not null)
-            foreach (var device in devices)
-                if (!MainViewModel.IsDemoDevice(device) && _productIds.TryGetValue(device.Identity, out var pid))
-                { Resolve(device.Identity, pid, _colors.GetValueOrDefault(device.Identity), "hero"); Resolve(device.Identity, pid, _colors.GetValueOrDefault(device.Identity), "icon"); }
+            foreach (var (identity, appearance) in _appearances)
+                foreach (string role in Roles)
+                {
+                    var slot = Ensure(role, appearance);
+                    if (NeedsResolve(slot)) Resolve(slot);
+                    changed |= Show(identity, slot);
+                }
+        Collect();
         if (changed) Changed();
     }
 
-    internal bool IsX4(UiDevice? device)
-    {
-        if (device is null) return false;
-        if (_productIds.TryGetValue(device.Identity, out var productId))
-            return StringComparer.OrdinalIgnoreCase.Equals(productId, "06EC10");
-        return false;
-    }
-
     internal object ProductFor(UiDevice? device) => MainViewModel.IsDemoDevice(device) ? new EncoFree4DynaudioModelVisual()
-        : device is not null && _heroes.TryGetValue(device.Identity, out var hero) ? hero
-        : _artwork is null && IsX4(device) ? DeviceVisuals.X4Product : DeviceVisuals.GenericProduct;
+        : Displayed(device, "hero") ?? (_artwork is null && IsX4(device) ? DeviceVisuals.X4Product : DeviceVisuals.GenericProduct);
     internal object IconFor(UiDevice? device) => MainViewModel.IsDemoDevice(device) ? DeviceVisuals.GenericIcon
-        : device is not null && _icons.TryGetValue(device.Identity, out var icon) ? icon
-        : _artwork is null && IsX4(device) ? DeviceVisuals.X4Icon : DeviceVisuals.GenericIcon;
+        : Displayed(device, "icon") ?? (_artwork is null && IsX4(device) ? DeviceVisuals.X4Icon : DeviceVisuals.GenericIcon);
 
-    private void Resolve(string identity, string pid, int? color, string role)
+    internal bool IsX4(UiDevice? device) => device is not null && _appearances.TryGetValue(device.Identity, out var appearance)
+        && StringComparer.OrdinalIgnoreCase.Equals(appearance.ProductId, "06EC10");
+
+    private object? Displayed(UiDevice? device, string role) => device is not null && _shown.TryGetValue(device.Identity + "/" + role, out var key)
+        && _slots.TryGetValue(key, out var slot) ? slot.Visual : null;
+
+    /// <summary>Learned values only accumulate: an unknown value never clears a known one.</summary>
+    private bool Remember(string identity, string? productId, int? color)
     {
-        var key = identity + "/" + role;
-        if (_resolved.Contains(key) || _leases.ContainsKey(key) || !_pending.Add(key)) return;
-        _ = ResolveAsync(identity, pid, color, role, key, _loads.Token, _artwork!);
+        if (string.IsNullOrWhiteSpace(productId)) return false;
+        string actual = productId.Trim().ToUpperInvariant();
+        if (!_appearances.TryGetValue(identity, out var old) || old.ProductId != actual)
+        {
+            // Another model must not keep borrowing the previous model's artwork while its own loads.
+            if (old is not null) foreach (string role in Roles) _shown.Remove(identity + "/" + role);
+            _appearances[identity] = new(actual, color);
+            return true;
+        }
+        if (color is null || old.Color == color) return false;
+        _appearances[identity] = old with { Color = color };
+        return true;
     }
-    private async Task ResolveAsync(string identity, string pid, int? color, string role, string key, CancellationToken token, IArtworkService service)
+
+    private static string KeyFor(string role, Appearance appearance) =>
+        role + "/" + appearance.ProductId + "/" + (appearance.Color?.ToString(CultureInfo.InvariantCulture) ?? "-");
+    private Slot Ensure(string role, Appearance appearance)
     {
-        UiArtwork? artwork = null;
-        UiArtwork? staticArtwork = null;
+        string key = KeyFor(role, appearance);
+        if (!_slots.TryGetValue(key, out var slot)) _slots[key] = slot = new(key, role, appearance.ProductId, appearance.Color);
+        return slot;
+    }
+    private bool Show(string identity, Slot desired)
+    {
+        string place = identity + "/" + desired.Role;
+        // Until the desired slot is ready, keep showing the previous one (e.g. art resolved before the color was known).
+        if (desired.Visual is null || _shown.TryGetValue(place, out var shown) && shown == desired.Key) return false;
+        _shown[place] = desired.Key;
+        return true;
+    }
+    private bool NeedsResolve(Slot slot) => slot.Loading is null && slot.RetryAt is null
+        && (slot.Visual is null || slot.ResolvedEpoch != _epoch);
+
+    private void Resolve(Slot slot)
+    {
+        var loading = new CancellationTokenSource();
+        slot.Loading = loading;
+        _ = ResolveAsync(slot, _epoch, _source, _artwork!, loading.Token);
+    }
+
+    private async Task ResolveAsync(Slot slot, string epoch, string source, IArtworkService service, CancellationToken token)
+    {
+        UiArtwork? main = null, fallback = null;
         try
         {
-            artwork = await service.AcquireArtworkAsync(pid, color, role == "icon" ? "capsule" : role, token);
-            if (artwork is null) return;
-            if (role == "hero" && artwork.Kind.ToLowerInvariant() is "model" or "glb" or "lottie")
+            main = await service.AcquireArtworkAsync(slot.ProductId, slot.Color, slot.Role == "icon" ? "capsule" : "hero", token);
+            if (slot.Role == "hero" && main?.Kind.ToLowerInvariant() is "model" or "glb" or "lottie")
             {
-                try { staticArtwork = await service.AcquireArtworkAsync(pid, color, "detail", token); } catch { }
-                if (staticArtwork is not null && (staticArtwork.Sha256 == artwork.Sha256 || staticArtwork.Kind.ToLowerInvariant() is "model" or "glb" or "lottie"))
-                { new BackendArtworkLease(service, staticArtwork.LeaseId).Dispose(); staticArtwork = null; }
+                try { fallback = await service.AcquireArtworkAsync(slot.ProductId, slot.Color, "detail", token); }
+                catch (Exception error) when (error is not OperationCanceledException) { }
+                if (fallback is not null && (fallback.Sha256 == main.Sha256 || fallback.Kind.ToLowerInvariant() is "model" or "glb" or "lottie"))
+                { Release(service, fallback); fallback = null; }
             }
-            var owned = artwork;
-            var ownedStatic = staticArtwork;
-            var lease = new SharedArtworkLease(new BackendArtworkLease(service, artwork.LeaseId));
-            var staticLease = staticArtwork is null ? null : new SharedArtworkLease(new BackendArtworkLease(service, staticArtwork.LeaseId));
-            artwork = null;
-            staticArtwork = null;
-            await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                if (token.IsCancellationRequested || !_productIds.TryGetValue(identity, out var actual) || actual != pid
-                    || _colors.GetValueOrDefault(identity) != color || !StringComparer.OrdinalIgnoreCase.Equals(owned.Source, _source)) { lease.Dispose(); staticLease?.Dispose(); return; }
-                var file = new ArtworkFile(new Uri(owned.FullPath), owned.PackageRoot, owned.Sha256, lease.Acquire);
-                object fallback = role == "hero" ? DeviceVisuals.GenericProduct : DeviceVisuals.GenericIcon;
-                if (ownedStatic is not null && staticLease is not null && StringComparer.OrdinalIgnoreCase.Equals(ownedStatic.Source, _source))
-                {
-                    fallback = new FileBitmapVisual(new ArtworkFile(new Uri(ownedStatic.FullPath), ownedStatic.PackageRoot, ownedStatic.Sha256, staticLease.Acquire), fallback);
-                    _leases[key + "/fallback"] = staticLease;
-                }
-                else staticLease?.Dispose();
-                object visual = owned.Kind.ToLowerInvariant() switch
-                {
-                    "model" or "glb" => new DeviceModelVisual(file, fallback),
-                    "lottie" => new LottieVisual(file, fallback),
-                    _ => new FileBitmapVisual(file, fallback)
-                };
-                _leases[key] = lease;
-                (role == "hero" ? _heroes : _icons)[identity] = visual;
-                Changed();
-            });
+            var (ownedMain, ownedFallback) = (main, fallback);
+            main = fallback = null;
+            await Dispatcher.UIThread.InvokeAsync(() => Complete(slot, epoch, source, service, ownedMain, ownedFallback));
         }
-        catch (Exception) { }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception) { await Dispatcher.UIThread.InvokeAsync(() => Fail(slot, token)); }
         finally
         {
-            if (artwork is not null) new BackendArtworkLease(service, artwork.LeaseId).Dispose();
-            if (staticArtwork is not null) new BackendArtworkLease(service, staticArtwork.LeaseId).Dispose();
-            await Dispatcher.UIThread.InvokeAsync(() => { if (!token.IsCancellationRequested) { _pending.Remove(key); _resolved.Add(key); } });
+            if (main is not null) Release(service, main);
+            if (fallback is not null) Release(service, fallback);
         }
     }
-    private void RemoveArtwork(string identity)
+
+    private void Complete(Slot slot, string epoch, string source, IArtworkService service, UiArtwork? main, UiArtwork? fallback)
     {
-        _heroes.Remove(identity); _icons.Remove(identity);
-        foreach (var role in new[] { "hero", "hero/fallback", "icon" })
+        bool current = !_disposed && ReferenceEquals(service, _artwork) && StringComparer.OrdinalIgnoreCase.Equals(source, _source)
+            && _slots.TryGetValue(slot.Key, out var live) && ReferenceEquals(live, slot) && slot.Loading is { IsCancellationRequested: false };
+        if (!current) { Release(service, main); Release(service, fallback); return; }
+        slot.Loading!.Dispose(); slot.Loading = null;
+        if (main is not null && !StringComparer.OrdinalIgnoreCase.Equals(main.Source, _source))
         {
-            _resolved.Remove(identity + "/" + role);
-            if (_leases.Remove(identity + "/" + role, out var lease)) lease.Dispose();
+            // The Host changed source while answering; ask again rather than show the other source.
+            Release(service, main); Release(service, fallback); ScheduleRetry(slot);
+            return;
         }
+        if (fallback is not null && !StringComparer.OrdinalIgnoreCase.Equals(fallback.Source, _source)) { Release(service, fallback); fallback = null; }
+        slot.Failures = 0; slot.RetryAt = null; slot.ResolvedEpoch = epoch;
+        // Equal digests mean equal bytes; a republished or bundled copy needs no new renderer.
+        string content = main is null ? "none" : main.Kind.ToLowerInvariant() + "|" + main.Sha256 + "|" + fallback?.Sha256;
+        if (slot.Visual is not null && slot.Content == content)
+        {
+            // Identical package: keep the attached renderer instead of reloading the model or restarting an animation.
+            Release(service, main); Release(service, fallback);
+            return;
+        }
+        var lease = main is null ? null : new SharedArtworkLease(new BackendArtworkLease(service, main.LeaseId));
+        var fallbackLease = fallback is null ? null : new SharedArtworkLease(new BackendArtworkLease(service, fallback.LeaseId));
+        object placeholder = slot.Role == "hero" ? DeviceVisuals.GenericProduct : DeviceVisuals.GenericIcon;
+        object visual = placeholder;
+        if (main is not null)
+        {
+            var file = new ArtworkFile(new Uri(main.FullPath), main.PackageRoot, main.Sha256, lease!.Acquire);
+            object staticVisual = fallback is null ? placeholder : new FileBitmapVisual(
+                new ArtworkFile(new Uri(fallback.FullPath), fallback.PackageRoot, fallback.Sha256, fallbackLease!.Acquire), placeholder);
+            visual = main.Kind.ToLowerInvariant() switch
+            {
+                "model" or "glb" => new DeviceModelVisual(file, staticVisual),
+                "lottie" => new LottieVisual(file, staticVisual),
+                _ => new FileBitmapVisual(file, placeholder)
+            };
+        }
+        // Renderers hold their own lease references, so replacing these cannot delete files in use.
+        slot.Lease?.Dispose(); slot.FallbackLease?.Dispose();
+        slot.Visual = visual; slot.Content = content; slot.Lease = lease; slot.FallbackLease = fallbackLease;
+        foreach (var (identity, appearance) in _appearances)
+            if (KeyFor(slot.Role, appearance) == slot.Key) Show(identity, slot);
+        Collect();
+        Changed();
     }
-    private void ResetArtwork()
+
+    private void Fail(Slot slot, CancellationToken token)
     {
-        _loads.Cancel(); _loads.Dispose(); _loads = new();
-        _pending.Clear(); _resolved.Clear(); _heroes.Clear(); _icons.Clear();
-        foreach (var lease in _leases.Values) lease.Dispose(); _leases.Clear();
+        if (token.IsCancellationRequested || _disposed || !_slots.TryGetValue(slot.Key, out var live) || !ReferenceEquals(live, slot)) return;
+        slot.Loading?.Dispose(); slot.Loading = null;
+        ScheduleRetry(slot);
     }
-    public void Dispose() { ResetArtwork(); _loads.Dispose(); }
+
+    private void ScheduleRetry(Slot slot)
+    {
+        var delay = RetryDelays[Math.Min(slot.Failures, RetryDelays.Count - 1)];
+        slot.Failures++;
+        slot.RetryAt = DateTime.UtcNow + delay;
+        RestartRetryTimer();
+    }
+
+    private void RetryDue()
+    {
+        _retry.Stop();
+        if (_disposed || _artwork is null) return;
+        var now = DateTime.UtcNow;
+        foreach (var slot in _slots.Values.Where(slot => slot.RetryAt <= now).ToArray())
+        { slot.RetryAt = null; Resolve(slot); }
+        RestartRetryTimer();
+    }
+
+    private void RestartRetryTimer()
+    {
+        _retry.Stop();
+        var next = _slots.Values.Where(slot => slot.RetryAt is not null).Select(slot => slot.RetryAt!.Value).DefaultIfEmpty().Min();
+        if (next == default) return;
+        _retry.Interval = TimeSpan.FromMilliseconds(Math.Max(1, (next - DateTime.UtcNow).TotalMilliseconds));
+        _retry.Start();
+    }
+
+    /// <summary>Releases slots that no device wants or still displays.</summary>
+    private void Collect()
+    {
+        var wanted = _appearances.Values.SelectMany(appearance => Roles.Select(role => KeyFor(role, appearance)))
+            .Concat(_shown.Values).ToHashSet(StringComparer.Ordinal);
+        foreach (var slot in _slots.Values.Where(slot => !wanted.Contains(slot.Key)).ToArray())
+        { slot.Release(); _slots.Remove(slot.Key); }
+    }
+
+    private void ResetSlots()
+    {
+        foreach (var slot in _slots.Values) slot.Release();
+        _slots.Clear(); _shown.Clear(); _retry.Stop();
+    }
+
+    public void Dispose() { _disposed = true; ResetSlots(); }
+
+    private static void Release(IArtworkService service, UiArtwork? artwork)
+    { if (artwork is not null) new BackendArtworkLease(service, artwork.LeaseId).Dispose(); }
+
     private sealed class BackendArtworkLease(IArtworkService service, string id) : IDisposable
     {
         private int _released;

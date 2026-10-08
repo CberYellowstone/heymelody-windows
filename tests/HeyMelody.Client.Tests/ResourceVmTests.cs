@@ -69,6 +69,48 @@ internal static class ResourceVmTests
         });
     }
     private static void Check(bool value) { if (!value) throw new InvalidOperationException("Resource VM regression failed."); }
+    internal static async Task RunArtworkAsync(Func<string, Func<Task>, Task> test)
+    {
+        await test("re-download shows progress, keeps drafts and reports partial failures", async () =>
+        {
+            var service = new RedownloadService(); await using var vm = new MainViewModel(service, new Confirmation());
+            await vm.InitializeAsync(); vm.CloudKey = "  草稿  ";
+            Check(vm.CanRedownloadResources && !vm.IsRedownloadingResources && vm.ConfiguredResourceSourceName == "欢律");
+            var run = vm.RedownloadResourcesAsync();
+            Check(vm.IsRedownloadingResources && !vm.CanRedownloadResources && service.Redownloads == 1);
+            await vm.RedownloadResourcesAsync(); Check(service.Redownloads == 1);
+            service.Pending.SetResult(new(new UiResourceSettings(CloudKey: "hey-key", Status: "使用已下载的在线资源")
+                { HeyMelodyKey = "hey-key", WirelessEarphonesKey = "wireless-key" }, false, 1, 2, "2 项在线资源重新下载失败，已保留原有资源。"));
+            await run;
+            Check(!vm.IsRedownloadingResources && vm.RedownloadFailed && vm.RedownloadMessage.StartsWith("2 项", StringComparison.Ordinal)
+                && vm.CloudKey == "  草稿  " && vm.ResourceStatus == "使用已下载的在线资源" && vm.LogText.Contains("2 项", StringComparison.Ordinal));
+            service.Failure = new IOException("蓝牙后台暂时不可用，请等待重连。");
+            await vm.RedownloadResourcesAsync();
+            Check(vm.RedownloadFailed && vm.RedownloadMessage == "蓝牙后台暂时不可用，请等待重连。" && vm.CanRedownloadResources);
+        });
+        await test("re-download is disabled while online resources are off or unsupported", async () =>
+        {
+            var service = new RedownloadService { Online = false }; await using var vm = new MainViewModel(service, new Confirmation());
+            await vm.InitializeAsync();
+            Check(!vm.CanRedownloadResources && !vm.OnlineResourcesConfigured);
+            await vm.RedownloadResourcesAsync(); Check(service.Redownloads == 0);
+            await using var preview = new MainViewModel(new PreviewService(), new Confirmation());
+            await preview.InitializeAsync(); Check(!preview.CanRedownloadResources && !preview.ResourceServiceAvailable);
+        });
+        await test("artwork follows the Host-confirmed source and an epoch that only advances", async () =>
+        {
+            var service = new Service(); await using var vm = new MainViewModel(service, new Confirmation());
+            await vm.InitializeAsync(); vm.SelectedResourceSource = vm.ResourceSourceOptions[1];
+            Check(vm.ResourceSource == "HeyMelody");
+            var events = new EventService(); await using var pushed = new MainViewModel(events, new Confirmation());
+            await pushed.InitializeAsync(); Check(pushed.ArtworkEpoch == "resource-test:0");
+            void Push(string backend, long revision, long resources) => pushed.AdoptBackendEvent(new() { Kind = "snapshot", BackendInstanceId = backend,
+                Snapshot = new UiSnapshot { Identity = "other", BackendInstanceId = backend, DeviceGeneration = 1, Revision = revision, ResourceRevision = resources } });
+            Push("resource-test", 1, 5); Check(pushed.ArtworkEpoch == "resource-test:5");
+            Push("resource-test", 2, 3); Check(pushed.ArtworkEpoch == "resource-test:5");
+            Push("restarted", 1, 1); Check(pushed.ArtworkEpoch == "restarted:1");
+        });
+    }
     private sealed class Confirmation : IConfirmationService
     { internal int Count; public Task<bool> ConfirmAsync(string title, string message, CancellationToken token) { Count++; return Task.FromResult(true); } }
     private class Service : IHeadsetService, IResourceSettingsService, ICalibrationService
@@ -106,6 +148,15 @@ internal static class ResourceVmTests
         public Task<UiCalibrationState> AdvanceCalibrationAsync(string handle, long revision, UiCalibrationInput input, CancellationToken token) => throw new NotSupportedException();
         public Task<UiCalibrationState> CancelCalibrationAsync(string handle, CancellationToken token) => throw new NotSupportedException();
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+    private sealed class RedownloadService : Service, IResourceSettingsService
+    {
+        internal int Redownloads; internal bool Online = true; internal Exception? Failure;
+        internal TaskCompletionSource<UiResourceRedownloadResult> Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public new Task<UiResourceSettings> GetResourceSettingsAsync(CancellationToken token) => Task.FromResult(
+            new UiResourceSettings(UseOnlineResources: Online, CloudKey: "hey-key") { HeyMelodyKey = "hey-key", WirelessEarphonesKey = "wireless-key" });
+        public Task<UiResourceRedownloadResult> RedownloadResourcesAsync(CancellationToken token)
+        { Redownloads++; return Failure is { } failure ? Task.FromException<UiResourceRedownloadResult>(failure) : Pending.Task; }
     }
     private sealed class EventService : Service, IHeadsetEventService
     {
