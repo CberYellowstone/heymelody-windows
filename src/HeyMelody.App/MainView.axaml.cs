@@ -244,8 +244,9 @@ public partial class MainView : UserControl
         if (panel.SelectedSource is { } resourceSource)
             _resourcePreferenceDraft = new(resourceSource, panel.UseOnlineResources, panel.CloudKey);
         if (Application.Current is App app) app.ApplyTheme(selected);
-        if (!ThemePreferences.Save(selected))
-            await ShowSettingsDialogAsync(new FAContentDialog { Title = "外观已切换", Content = "无法保存主题偏好，下次启动将使用原来的设置。", CloseButtonText = "确定" }, owner, token);
+        ModelRenderingPreferences.Apply(panel.UseModelGpuAcceleration);
+        if (!ThemePreferences.Save(selected, panel.UseModelGpuAcceleration))
+            await ShowSettingsDialogAsync(new FAContentDialog { Title = "外观已切换", Content = "无法保存外观偏好，下次启动将使用原来的设置。", CloseButtonText = "确定" }, owner, token);
 
     }
 

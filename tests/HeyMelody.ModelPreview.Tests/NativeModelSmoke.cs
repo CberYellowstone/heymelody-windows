@@ -113,8 +113,9 @@ internal static class NativeModelSmoke
             var hwnd = handle!.Handle;
             _state.Check(model.Viewport.Info.Triangles > 0 && model.Viewport.Info.SceneItems > 0,
                 "Renderer submits the loaded model geometry");
-            _state.Check(model.Viewport.Info.Triangles == 93_875 && model.Viewport.Info.SceneItems == 28,
-                "Native renderer receives all 28 expected mesh items and 93,875 triangles");
+            _state.Check(model.Viewport.Scene!.EnumerateMeshes().Sum(mesh => mesh.Node.Mesh?.TriangleCount ?? 0) == 93_875
+                && model.Viewport.Info.SceneItems == 28 && model.Viewport.Info.Triangles is > 0 and <= 93_875,
+                "Native scene retains all 28 expected mesh items and 93,875 source triangles");
             _state.Check(string.IsNullOrEmpty(model.Viewport.Info.Error), "Renderer reports no error");
 
             using (var asset = AssetLoader.Open(new Uri("avares://HeyMelody/Assets/Devices/EncoFree4/model.glb")))

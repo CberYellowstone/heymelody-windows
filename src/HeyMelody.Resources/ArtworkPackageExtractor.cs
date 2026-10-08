@@ -14,7 +14,7 @@ namespace HeyMelodyWindows.Resources;
 /// </summary>
 internal static class ArtworkPackageExtractor
 {
-    internal const int SchemaVersion = 2;
+    internal const int SchemaVersion = 3;
     internal const string MarkerFile = "package.json";
     internal const int AnimationBytes = 24 * 1024 * 1024;
     private static readonly string[] ImageExtensions = [".png", ".webp", ".jpg", ".jpeg"];
@@ -43,7 +43,7 @@ internal static class ArtworkPackageExtractor
     internal static string? RoleFor(string name) => name switch
     {
         "capsuleImageRes" => "capsule", "detailImageRes" => "detail", "leftImageRes" => "left", "rightImageRes" => "right",
-        "boxImageRes" => "box", "model3D" => "model",
+        "boxImageRes" => "box", "model3D" => "model", "modelWebp" => "model-animation",
         "lottieResList" => "lottie", "leftLottieResList" => "lottie-left", "rightLottieResList" => "lottie-right",
         _ when name.Contains("lottie", StringComparison.OrdinalIgnoreCase) => "lottie-extra",
         _ => null
@@ -110,7 +110,7 @@ internal static class ArtworkPackageExtractor
         if (declared is not null && !File.Exists(declared))
             path = Path.GetExtension(declared).Length == 0 ? ImageExtensions.Select(extension => declared + extension).FirstOrDefault(File.Exists) : null;
         if (path is null) return;
-        string kind;
+        string? kind;
         switch (Path.GetExtension(path).ToLowerInvariant())
         {
             case ".vfxms":
@@ -126,10 +126,39 @@ internal static class ArtworkPackageExtractor
                 try { ValidateGlb(File.ReadAllBytes(path)); } catch (Exception error) when (error is InvalidDataException or JsonException) { return; }
                 kind = "model";
                 break;
-            case ".png" or ".webp" or ".jpg" or ".jpeg": kind = "bitmap"; break;
+            case ".webp":
+                kind = WebpKind(File.ReadAllBytes(path));
+                if (kind is null) return;
+                break;
+            case ".png" or ".jpg" or ".jpeg": kind = "bitmap"; break;
             default: return;
         }
         package.Add(new() { Kind = kind, Role = role }, path);
+    }
+
+    // WebP is a RIFF container: treating an ANIM/ANMF file as a bitmap freezes it on frame zero.
+    // Check container boundaries here; the renderer validates and decodes the frame payloads.
+    private static string? WebpKind(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < 12 || !bytes[..4].SequenceEqual("RIFF"u8) || !bytes.Slice(8, 4).SequenceEqual("WEBP"u8)
+            || BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(4, 4)) + 8L != bytes.Length) return null;
+        bool animated = false, header = false, frames = false, image = false;
+        int offset = 12;
+        while (offset < bytes.Length)
+        {
+            if (bytes.Length - offset < 8) return null;
+            var tag = bytes.Slice(offset, 4);
+            uint length = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 4, 4));
+            long end = offset + 8L + length + (length & 1);
+            if (end > bytes.Length) return null;
+            if (tag.SequenceEqual("VP8X"u8))
+            { if (length != 10) return null; animated = (bytes[offset + 8] & 2) != 0; }
+            else if (tag.SequenceEqual("ANIM"u8)) { if (length != 6) return null; header = true; }
+            else if (tag.SequenceEqual("ANMF"u8)) { if (length <= 16) return null; frames = true; }
+            else if (tag.SequenceEqual("VP8 "u8) || tag.SequenceEqual("VP8L"u8)) image = true;
+            offset = (int)end;
+        }
+        return animated && header && frames ? "animated-webp" : !animated && !header && !frames && image ? "bitmap" : null;
     }
 
     private static void AddAnimations(Package package, string listName, JsonElement node, string role)

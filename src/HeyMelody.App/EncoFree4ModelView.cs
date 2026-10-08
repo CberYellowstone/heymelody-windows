@@ -38,6 +38,8 @@ public class DeviceModelView : UserControl
 
     public Ava3DView Viewport { get; } = new()
     {
+        // Set before the control is attached, so the default never initializes a model GPU backend.
+        PreferredBackend = RenderBackendKind.Software,
         AutoFit = false,
         IsOrbitEnabled = false, IsZoomEnabled = false, IsPanEnabled = false,
         IsPickingEnabled = false, IsAnimationEnabled = false,
@@ -53,6 +55,7 @@ public class DeviceModelView : UserControl
     public DeviceModelView(DeviceModelVisual visual)
     {
         _visual = visual;
+        ApplyRenderingPreference();
         ClipToBounds = true;
         Content = new Grid { Children = { Viewport, _status } };
         AutomationProperties.SetName(this, "耳机三维模型，可用鼠标拖动旋转");
@@ -112,6 +115,8 @@ public class DeviceModelView : UserControl
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        ApplyRenderingPreference();
+        ModelRenderingPreferences.Changed += OnRenderingPreferenceChanged;
         base.OnAttachedToVisualTree(e);
         _attached = true;
         try { _resourceLease = _visual.File.Acquire(); }
@@ -129,6 +134,7 @@ public class DeviceModelView : UserControl
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        ModelRenderingPreferences.Changed -= OnRenderingPreferenceChanged;
         _attached = false;
         ++_loadGeneration;
         if (_window is not null) _window.PropertyChanged -= OnWindowPropertyChanged;
@@ -193,6 +199,11 @@ public class DeviceModelView : UserControl
             Viewport.InvalidateScene();
         }
     }
+
+    private void OnRenderingPreferenceChanged(object? sender, EventArgs e) => ApplyRenderingPreference();
+
+    private void ApplyRenderingPreference() => Viewport.PreferredBackend = ModelRenderingPreferences.UseGpuAcceleration
+        ? RenderBackendKind.Automatic : RenderBackendKind.Software;
 
     private void FitCamera()
     {

@@ -4,4 +4,5 @@
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../../src/HeyMelody.App/HeyMelody.App.csproj" /></ItemGroup>
+  <ItemGroup><Content Include="Fixtures/*.webp;Fixtures/*.png" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

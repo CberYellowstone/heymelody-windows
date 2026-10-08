@@ -78,7 +78,7 @@ public sealed class BundledResourceStore
 
     public string FullPath(ResourceArtwork artwork) => ResourcePaths.Resolve(_directory, artwork.Path);
     private bool IsAvailable(ResourceArtwork artwork) => File.Exists(FullPath(artwork));
-    internal static bool MatchesRole(string candidate, string requested) => candidate == requested || requested == "both" && candidate == "capsule" || requested == "hero" && candidate is "detail" or "model";
+    internal static bool MatchesRole(string candidate, string requested) => candidate == requested || requested == "both" && candidate == "capsule" || requested == "hero" && candidate is "detail" or "model" or "model-animation";
     private static byte[] ReadEmbedded(string filename)
     {
         using var stream = typeof(BundledResourceStore).Assembly.GetManifestResourceStream("HeyMelody.Resources.Bundles." + filename)

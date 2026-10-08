@@ -1,16 +1,17 @@
 # HeyMelody for Windows
 
-**0.8.3** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型、Lottie 展示。
+**0.8.4** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型和动画展示。
 
-0.8.3 之后的源码（尚未发布新版本号）让耳机外观在第一次取得后持续可用：
+0.8.4 修正 Enco X4 的产品动画，并让耳机外观在第一次取得后持续可用：
 
 - 后台按设备记住产品 ID 与颜色，未连接、重启或重新打开界面时都会立即显示图片、模型或动画；只有资源真正变化时才更换。
 - 控制连接会只读读取一次颜色（GET `0x010B`），失败时只记为未知；这比此前实机记录多 1 次 GET，需要在 X4 上复验。
-- 在线 control 包中的 Lottie 列表可以作为产品展示，按标记分段播放或播放一次后停帧，并裁去画布留白；没有取得真实 X4 包，具体效果待真机确认。
+- 两种来源均使用官方模块 14 的动态 WebP 播放 X4 产品旋转，保留原始帧时长与局部帧合成；control 包中的捏柄、滑动 Lottie 保持教程角色，主图回退到该型号的 detail 图片。
+- 新增“三维模型 GPU 加速”开关，默认关闭；关闭时仍以软件后端显示完整三维模型，并保留拖动与自动旋转。设置保存后即时应用。
 - 应用设置改为 FluentAvalonia 设置卡片，新增“重新下载在线资源”。
 - 新增 GitHub Actions，构建 Windows x64 与 ARM64 包。
 
-详见 [外观资源持久化](docs/artwork-persistence.md)。
+详见 [外观资源持久化](docs/artwork-persistence.md)、[X4 美术复核](docs/research/enco-x4-artwork-audit.md) 与 [三维模型渲染设置](docs/model-rendering.md)。
 
 0.8.3 修复降噪主模式按钮的协议编号：进入“自适应”等主模式时发送父编号，细分档位仍独立发送子编号，父态回读不会猜选首个子档。Enco X4 自适应主切换与手机端的字节差异已由两份官方 APK 复核；本检查包的提示音效果仍待用户真机确认，详见 [协议研究与 A/B 步骤](docs/research/anc-mode-prompt.md)。
 
@@ -28,7 +29,7 @@
 
 布局调试：在主界面按住设备添加键“+”满 2 秒，添加并选中一台临时 demo；重复长按不会添加第二台，短击仍打开 Windows 蓝牙设置。Demo 展示全部已实现的主界面控件，开关、选项、滑块、文本和 EQ 仅修改内存中的模拟数据，测试按钮不会启动真实测试。关闭主窗口即移除 demo，托盘后台不会保存它。正常启动仍要求有效白名单；无需真实设备时可运行 `Run-3D-Demo.ps1`、`Run-3D-Demo.cmd` 或发布包的 `Start-3D-Demo.cmd`，也可直接传入 `--3d-demo`。
 
-Demo 使用预装的 Enco Free4 丹拿版（`06C010`、色号 `3`）三维模型，来源及原始文件校验见 [模型验证记录](docs/research/enco-free4-dynaudio-model.md)。模拟功能集合用于检查全部已实现控件的布局，不代表该型号的实际能力。模型支持拖动旋转、惯性及空闲自转，添加 demo 不需要联网。
+Demo 使用预装的 Enco Free4 丹拿版（`06C010`、色号 `3`）三维模型，来源及原始文件校验见 [模型验证记录](docs/research/enco-free4-dynaudio-model.md)。模拟功能集合用于检查全部已实现控件的布局，不代表该型号的实际能力。模型支持拖动旋转、惯性及空闲自转，默认使用软件渲染；添加 demo 不需要联网。
 
 耳机设置和手机推送共用每台设备的持续接收通道。回执、设备确认和观测状态分别处理，丢失回执不自动重放操作；未提交的 EQ 草稿保留。校准期间限制同一设备的冲突写入，其他设备继续工作；关闭、断连、休眠和切换资源来源会终止当前校准并回读状态。
 
@@ -38,7 +39,7 @@ Demo 使用预装的 Enco Free4 丹拿版（`06C010`、色号 `3`）三维模型
 dotnet build src/HeyMelody.App/HeyMelody.App.csproj -c Release
 dotnet run --project tests/HeyMelody.Resources.Tests
 dotnet run --project tests/HeyMelody.Calibration.Tests
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.3
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.4
 ```
 
 常规构建和离线测试使用仓库中的资源包，不需要本地 APK。重新提取资源需要 `research/apps/` 和 `research/screenshots/` 中的固定输入及各专题保留的原件，入口是 `tools/bundle_resources.py`；目录组织、提交边界与历史路径映射见 [研究资料归档](docs/research/README.md)。运行中的软件不读取研究目录。原始资源版权与溯源保留在发布包的 notices 和资源清单中。

@@ -24,15 +24,18 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Hash failures and unsafe archives retain current art", UnsafeArtwork),
     ("Known color and source are required for model artwork", ArtworkIdentity),
     ("Model metadata without PID is bound to request and validates GLB", ModelPackages),
+    ("Model WebP is obtained without a 3D flag, stays animated offline and rejects damaged replacements", AnimatedModelPackages),
     ("Cached art is served before any network check and refreshed in the background", CachedFirst),
     ("HTTP timeouts fall back to installed art and are throttled like failures", TimeoutFallback),
     ("A first download is awaited briefly and its late package is announced", FirstDownload),
-    ("Lottie lists index folder images and skip broken items; the main list is the hero", LottieLists),
+    ("Lottie tutorials retain provenance and never replace the product hero", LottieLists),
     ("Re-extraction publishes beside a leased copy of the same digest", LeasedRepublish),
     ("Packages from an older extractor are re-downloaded once and served until then", ExtractorUpgrade),
     ("Re-download validates replacements, keeps files on failure and requires online use", Redownload),
     ("Startup removes interrupted downloads and superseded packages", StartupSweep),
 };
+if (args is ["--verify-x4-artwork", var controlPackage, var modelPackage])
+    tests = [.. tests, ("Real X4 packages resolve animated product art and static fallback in both sources", () => RealX4Artwork(controlPackage, modelPackage))];
 int failed = 0;
 foreach (var test in tests)
 {
@@ -225,6 +228,39 @@ static async Task CachedFirst()
     Check(fixture.Handler.Pending == 1 && fixture.Handler.Requests == before + 1, "Background check did not start");
     fixture.Handler.Gate.TrySetResult();
 }
+static async Task AnimatedModelPackages()
+{
+    byte[] animation = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "two-frame.webp"));
+    foreach (ResourceSource source in Enum.GetValues<ResourceSource>())
+    {
+        using var fixture = new Fixture();
+        fixture.Handler.Artwork = LottieZip(); fixture.Handler.ModelArtwork = ModelWebpZip(animation);
+        string root;
+        using (var coordinator = fixture.Coordinator())
+        {
+            await coordinator.InitializeAsync();
+            await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { Source = source });
+            Check(!coordinator.Catalog.Find("06EC10")!.Functions.TryGetProperty("support3DModel", out _), "Fixture no longer exercises an appearance without the 3D flag");
+            using var hero = await coordinator.ResolveArtworkAsync("06EC10", 1, "hero");
+            Check(hero is { Kind: "animated-webp" } && hero.Source == source, "Module 14 WebP was skipped or frozen as a bitmap");
+            root = hero!.PackageRoot;
+            using var detail = await coordinator.ResolveArtworkAsync("06EC10", 1, "detail");
+            Check(detail is { Kind: "bitmap" } && detail.PackageRoot != root, "Control package did not provide the static fallback");
+            var broken = (byte[])animation.Clone(); broken[4] ^= 1; // RIFF size no longer matches the downloaded member.
+            fixture.Handler.ModelArtwork = ModelWebpZip(broken);
+            Check(!await coordinator.RefreshArtworkAsync("06EC10", 1, model: true, force: true), "Malformed animated container replaced valid art");
+            using var retained = await coordinator.ResolveArtworkAsync("06EC10", 1, "hero");
+            Eq(root, retained!.PackageRoot);
+            await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { UseOnlineResources = false });
+        }
+        int requests = fixture.Handler.Requests;
+        using var restarted = fixture.Coordinator(); await restarted.InitializeAsync();
+        using var offline = await restarted.ResolveArtworkAsync("06EC10", 1, "hero");
+        Check(offline is { Kind: "animated-webp" } && offline.PackageRoot == root && fixture.Handler.Requests == requests, "Animated cache was lost on offline restart");
+        using var otherColor = await restarted.ResolveArtworkAsync("06EC10", 0, "hero");
+        Check(otherColor?.Kind != "animated-webp", "Animation crossed protocol colors");
+    }
+}
 static async Task TimeoutFallback()
 {
     using var fixture = new Fixture(); using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
@@ -255,13 +291,15 @@ static async Task LottieLists()
     fixture.Handler.Artwork = LottieZip();
     Check(await coordinator.RefreshArtworkAsync("06EC10", 0, force: true), "Lottie package rejected");
     using var hero = await coordinator.ResolveArtworkAsync("06EC10", 0, "hero");
-    Check(hero is not null && hero.Kind == "lottie" && hero.FullPath.EndsWith("data.heymelody.json", StringComparison.Ordinal), "Main Lottie list is not the hero");
-    using (var derived = JsonDocument.Parse(File.ReadAllBytes(hero!.FullPath)))
+    Check(hero is not null && hero.Kind == "bitmap" && hero.FullPath.EndsWith("detail.png", StringComparison.Ordinal), "Gesture tutorial replaced the product hero");
+    using var tutorial = await coordinator.ResolveArtworkAsync("06EC10", 0, "lottie");
+    Check(tutorial is not null && tutorial.Kind == "lottie" && tutorial.FullPath.EndsWith("data.heymelody.json", StringComparison.Ordinal), "Explicit tutorial request failed");
+    using (var derived = JsonDocument.Parse(File.ReadAllBytes(tutorial!.FullPath)))
     {
         var image = derived.RootElement.GetProperty("assets")[0];
         Eq("images/", image.GetProperty("u").GetString()); Eq("img_0.png", image.GetProperty("p").GetString());
     }
-    var entries = JsonSerializer.Deserialize<ResourceArtwork[]>(File.ReadAllBytes(Path.Combine(hero.PackageRoot, "artwork.json")), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+    var entries = JsonSerializer.Deserialize<ResourceArtwork[]>(File.ReadAllBytes(Path.Combine(hero!.PackageRoot, "artwork.json")), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
     var main = entries.Single(e => e.Role == "lottie" && e.Order == 1);
     Check(main.OriginalPath == "res/lottie/main/data.json" && main.OriginalSha256 is { Length: 64 } && main.Metadata?["imagePath"] == "res/lottie/main/images", "Derived animation lost provenance");
     Check(entries.Any(e => e.Role == "lottie" && e.Order == 2 && e.OriginalPath is null) && entries.Any(e => e.Role == "lottie-left"), "Valid list entries missing");
@@ -269,6 +307,35 @@ static async Task LottieLists()
     Check(File.Exists(Path.Combine(hero.PackageRoot, "res/lottie/main/data.json")), "Original animation bytes were not kept");
     using var detail = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail");
     Check(detail is not null && detail.Kind == "bitmap" && detail.PackageRoot == hero.PackageRoot, "Static detail fallback missing");
+}
+static async Task RealX4Artwork(string controlPath, string modelPath)
+{
+    byte[] control = File.ReadAllBytes(controlPath), model = File.ReadAllBytes(modelPath);
+    Eq("c3f1b327c3ad31d57e47250dad3ccf9e1fc25f3cba0dd170df8388e03f3f5411", Convert.ToHexStringLower(SHA256.HashData(control)));
+    Eq("1bb49ddc6d0ffe4f1ab9e6282bc72962d15629bd5ef0dc7480ea4903d51ba6e0", Convert.ToHexStringLower(SHA256.HashData(model)));
+    foreach (ResourceSource source in Enum.GetValues<ResourceSource>())
+    {
+        using var fixture = new Fixture();
+        fixture.Handler.Artwork = control; fixture.Handler.ModelArtwork = model;
+        string modelRoot;
+        using (var coordinator = fixture.Coordinator())
+        {
+            await coordinator.InitializeAsync();
+            await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { Source = source });
+            Check(await coordinator.RefreshArtworkAsync("06EC10", 1, force: true), "Real control package rejected");
+            Check(await coordinator.RefreshArtworkAsync("06EC10", 1, model: true, force: true), "Real modelWebp package rejected");
+            using var hero = await coordinator.ResolveArtworkAsync("06EC10", 1, "hero");
+            Check(hero is { Kind: "animated-webp" } && hero.Source == source, "Real animated product art was not selected");
+            modelRoot = hero!.PackageRoot;
+            using var detail = await coordinator.ResolveArtworkAsync("06EC10", 1, "detail");
+            Check(detail is { Kind: "bitmap" } && detail.Source == source && detail.FullPath.EndsWith("img_detail.png", StringComparison.Ordinal), "Real static fallback missing");
+            await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { UseOnlineResources = false });
+        }
+        int requests = fixture.Handler.Requests;
+        using var restarted = fixture.Coordinator(); await restarted.InitializeAsync();
+        using var restored = await restarted.ResolveArtworkAsync("06EC10", 1, "hero");
+        Check(restored is { Kind: "animated-webp" } && restored.PackageRoot == modelRoot && fixture.Handler.Requests == requests, "Real animation was not restored offline");
+    }
 }
 static async Task LeasedRepublish()
 {
@@ -359,6 +426,16 @@ static byte[] ModelZip(byte[] glb)
     }
     return memory.ToArray();
 }
+static byte[] ModelWebpZip(byte[] webp)
+{
+    using var memory = new MemoryStream();
+    using (var archive = new ZipArchive(memory, ZipArchiveMode.Create, true))
+    {
+        using (var writer = new StreamWriter(archive.CreateEntry("config.json").Open())) writer.Write("{\"modelWebp\":{\"path\":\"res/raw/detail_model.webp\"}}");
+        using (var model = archive.CreateEntry("res/raw/detail_model.webp").Open()) model.Write(webp);
+    }
+    return memory.ToArray();
+}
 static byte[] ArtZip(int revision, string? unsafeName = null)
 {
     byte[] png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6yAAAAABJRU5ErkJggg==");
@@ -390,6 +467,7 @@ sealed class FakeVendorHandler : HttpMessageHandler
     public byte[] Configuration { get; set; } = Encoding.UTF8.GetBytes("{\"versionCode\":117006010,\"whiteList\":[]}");
     public string FileVersion { get; set; } = "initial";
     public byte[] Artwork { get; set; } = [];
+    public byte[]? ModelArtwork { get; set; }
     public bool WrongHash { get; set; }
     public string? LastVerifiedKey { get; private set; }
     public TaskCompletionSource? Gate { get; set; }
@@ -414,12 +492,13 @@ sealed class FakeVendorHandler : HttpMessageHandler
                 bytes = JsonSerializer.SerializeToUtf8Bytes(new { code = 0, data = new { version = FileVersion, size = Configuration.Length.ToString(), downloadUrl = "https://iot-earbuds-cn.heytapimage.com/config" } });
             else
             {
-                string hash = WrongHash ? new string('0', 64) : Convert.ToHexStringLower(SHA256.HashData(Artwork));
-                if (request.RequestUri.AbsolutePath.EndsWith("/fetch")) bytes = JsonSerializer.SerializeToUtf8Bytes(new { code = 0, data = new { sha256 = hash, resourceUrl = "https://iot-earbuds-cn.heytapimage.com/art", fileName = "model.zip" } });
+                bool model = request.RequestUri.AbsolutePath.EndsWith("/fetch");
+                string hash = WrongHash ? new string('0', 64) : Convert.ToHexStringLower(SHA256.HashData(model ? ModelArtwork ?? Artwork : Artwork));
+                if (model) bytes = JsonSerializer.SerializeToUtf8Bytes(new { code = 0, data = new { sha256 = hash, resourceUrl = "https://iot-earbuds-cn.heytapimage.com/model-art", fileName = "model.zip" } });
                 else bytes = JsonSerializer.SerializeToUtf8Bytes(new { code = 0, data = new { productId = "06EC10", sha256 = hash, cartoonUrl = "https://iot-earbuds-cn.heytapimage.com/art" } });
             }
         }
-        else bytes = request.RequestUri!.AbsolutePath == "/config" ? Configuration : Artwork;
+        else bytes = request.RequestUri!.AbsolutePath == "/config" ? Configuration : request.RequestUri.AbsolutePath == "/model-art" ? ModelArtwork ?? Artwork : Artwork;
         return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes), RequestMessage = request };
     }
     private static void CheckHeader(HttpRequestMessage request, string name, string value)

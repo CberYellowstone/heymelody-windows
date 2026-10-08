@@ -30,6 +30,7 @@ public partial class AppSettingsPanel : UserControl
         _keys[_shownSource.Key] = viewModel.CloudKey;
         KeyBox.Text = viewModel.CloudKey;
         OnlineSwitch.IsChecked = viewModel.UseOnlineResources;
+        ModelGpuSwitch.IsChecked = ModelRenderingPreferences.UseGpuAcceleration;
         SourceChoice.SelectionChanged += (_, _) => SwitchSourceKey();
         ManageDevicesButton.IsEnabled = canManageDevices;
         ManageDevicesButton.Click += (_, _) => manageDevices();
@@ -42,6 +43,7 @@ public partial class AppSettingsPanel : UserControl
     internal string SelectedTheme => ThemeChoice.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" };
     internal UiOption? SelectedSource => SourceChoice.SelectedItem as UiOption;
     internal bool UseOnlineResources => OnlineSwitch.IsChecked == true;
+    internal bool UseModelGpuAcceleration => ModelGpuSwitch.IsChecked == true;
     internal string CloudKey => KeyBox.Text ?? "";
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

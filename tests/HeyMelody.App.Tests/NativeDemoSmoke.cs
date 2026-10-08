@@ -40,7 +40,7 @@ internal static class NativeDemoSmoke
             headsetOrArtworkCalls = _state.Service.ForbiddenCalls, initialMockEnumerations = _state.Service.Enumerations,
             modelSha256 = DynaudioModelTests.ExpectedSha256, _state.FirstRenderedTriangles, _state.FirstRenderedSceneItems,
             screenshots = _state.Screenshots,
-            scope = "real Win32 demo startup, model scene and animation, themes, responsive layout, local action guards and dirty close; optional native Ava3D GPU model-frame captures; no Bluetooth backend",
+            scope = "real Win32 demo startup, model scene and animation, themes, responsive layout, local action guards and dirty close; optional native Ava3D model-frame captures; no Bluetooth backend",
             failure = _state.Failure
         };
         Console.WriteLine(JsonSerializer.Serialize(report));
@@ -101,8 +101,9 @@ internal static class NativeDemoSmoke
             _state.FirstRenderedTriangles = model.Viewport.Info.Triangles;
             _state.FirstRenderedSceneItems = model.Viewport.Info.SceneItems;
             Check(model is EncoFree4DynaudioModelView && _state.FirstRenderedSceneItems == 20
-                && _state.FirstRenderedTriangles == DynaudioModelTests.ExpectedTriangles && string.IsNullOrEmpty(model.Viewport.Info.Error),
-                "The first native render submits all 20 Dynaudio meshes and 94,927 triangles without a renderer error.");
+                && model.Viewport.Scene!.EnumerateMeshes().Sum(mesh => mesh.Node.Mesh?.TriangleCount ?? 0) == DynaudioModelTests.ExpectedTriangles
+                && _state.FirstRenderedTriangles is > 0 and <= DynaudioModelTests.ExpectedTriangles && string.IsNullOrEmpty(model.Viewport.Info.Error),
+                "The first native scene retains all 20 Dynaudio meshes and 94,927 source triangles without a renderer error.");
             await DynaudioModelTests.VerifyAsync();
             Check(_state.Service.Enumerations == 1 && _state.Service.ForbiddenCalls == 0,
                 "First-load Dynaudio model integrity and Opaque correction require no headset or artwork request.");
@@ -137,11 +138,11 @@ internal static class NativeDemoSmoke
                         if (Math.Abs(pixels[pixel] - background) > 12 || Math.Abs(pixels[pixel + 1] - background) > 12
                             || Math.Abs(pixels[pixel + 2] - background) > 12) foreground++;
                     Check(pixels.Length == captureSize.Width * captureSize.Height * 4 && foreground > 1000,
-                        "Native GPU readback contains visible Dynaudio geometry rather than a blank model frame.");
+                        "Native renderer capture contains visible Dynaudio geometry rather than a blank model frame.");
                     await capture.SaveAsync(path, captureTimeout.Token);
                     _state.Screenshots.Add(new { theme = dark ? "dark" : "light", requestedWidth = size.Width, requestedHeight = size.Height,
                         width = captureSize.Width, height = captureSize.Height, foregroundPixels = foreground, file = name,
-                        source = "native Ava3D GPU model frame; complete UI layout is covered separately by headless screenshots",
+                        source = "native Ava3D model frame; complete UI layout is covered separately by headless screenshots",
                         sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant(),
                         model.Viewport.Info.Triangles, model.Viewport.Info.SceneItems, model.Viewport.Info.FramesRendered,
                         backend = model.Viewport.Info.ActiveBackend.ToString() });

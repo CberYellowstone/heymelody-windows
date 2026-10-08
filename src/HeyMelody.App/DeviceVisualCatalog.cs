@@ -156,11 +156,11 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         try
         {
             main = await service.AcquireArtworkAsync(slot.ProductId, slot.Color, slot.Role == "icon" ? "capsule" : "hero", token);
-            if (slot.Role == "hero" && main?.Kind.ToLowerInvariant() is "model" or "glb" or "lottie")
+            if (slot.Role == "hero" && main?.Kind.ToLowerInvariant() is "model" or "glb" or "lottie" or "animated-webp")
             {
                 try { fallback = await service.AcquireArtworkAsync(slot.ProductId, slot.Color, "detail", token); }
                 catch (Exception error) when (error is not OperationCanceledException) { }
-                if (fallback is not null && (fallback.Sha256 == main.Sha256 || fallback.Kind.ToLowerInvariant() is "model" or "glb" or "lottie"))
+                if (fallback is not null && (fallback.Sha256 == main.Sha256 || fallback.Kind.ToLowerInvariant() is "model" or "glb" or "lottie" or "animated-webp"))
                 { Release(service, fallback); fallback = null; }
             }
             var (ownedMain, ownedFallback) = (main, fallback);
@@ -211,6 +211,7 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
             {
                 "model" or "glb" => new DeviceModelVisual(file, staticVisual),
                 "lottie" => new LottieVisual(file, staticVisual),
+                "animated-webp" => new AnimatedWebpVisual(file, staticVisual),
                 _ => new FileBitmapVisual(file, placeholder)
             };
         }

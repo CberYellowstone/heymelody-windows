@@ -1,10 +1,12 @@
 # 文档索引
 
-当前版本为 0.8.3。除 Markdown 链接外，文档中的 `src/`、`tests/`、`docs/research/`、`reference/`、`artifacts/` 和 `release/` 路径均相对于仓库根目录。研究结论和工具位于 `docs/research/`，原始材料位于根目录 `research/`，具体位置见 [研究资料归档](research/README.md)。构建、发布和验证入口见 [REPOSITORY.md](../REPOSITORY.md)。
+当前版本为 0.8.4。除 Markdown 链接外，文档中的 `src/`、`tests/`、`docs/research/`、`reference/`、`artifacts/` 和 `release/` 路径均相对于仓库根目录。研究结论和工具位于 `docs/research/`，原始材料位于根目录 `research/`，具体位置见 [研究资料归档](research/README.md)。构建、发布和验证入口见 [REPOSITORY.md](../REPOSITORY.md)。
 
 ## 当前实现
 
-- [外观资源持久化与重新下载](artwork-persistence.md)：0.8.3 之后的源码改动——外观提示持久化、SPP 颜色读取、缓存优先解析、产品 Lottie 规则、设置卡片中的“重新下载在线资源”，以及 Windows x64/ARM64 CI。
+- [外观资源持久化与重新下载](artwork-persistence.md)：0.8.4 的外观提示持久化、SPP 颜色读取、缓存优先解析、X4 动态 WebP、教程与产品主图分离、设置卡片中的“重新下载在线资源”，以及 Windows x64/ARM64 CI。
+- [X4 美术复核](research/enco-x4-artwork-audit.md)：两来源官方旋转 WebP、控制 Lottie 教程的角色区分、模块获取与实际帧验证。
+- [三维模型渲染设置](model-rendering.md)：0.8.4 默认关闭 GPU 加速，软件渲染、设置持久化与即时切换，以及原生窗口验证。
 - [ANC 主模式与提示音差异](research/anc-mode-prompt.md)：0.8.3 主模式父编号修复、自适应子档独立控制；检查包提示音效果待用户真机 A/B 确认。
 - [Free4 丹拿版模型与验证](research/enco-free4-dynaudio-model.md)：官方原件、色号 3 请求与渲染证据；0.8.2 的会话内 Demo 使用该模型，长按主界面“+”两秒添加。
 - [Enco X4 控制连接回归与 0.8.1 实机验证](research/enco-x4-0.8.1.md)：控制服务校验修复、型号提示及两套预装／缓存资源的只读验证。

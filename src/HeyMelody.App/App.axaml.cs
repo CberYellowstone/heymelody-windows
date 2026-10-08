@@ -15,6 +15,7 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             ApplyTheme(ThemePreferences.Load());
+            ModelRenderingPreferences.Reload();
             if (Program.IsModelDemo)
             {
                 var window = new MainWindow(new UnsupportedPlatformService(), preview: true)

@@ -185,11 +185,19 @@ public sealed class ResourceCoordinator : IDisposable
         if (color.HasValue)
         {
             bool model = role is "model" or "hero";
-            if (model && profile.Functions.ValueKind == JsonValueKind.Object && profile.Functions.TryGetProperty("support3DModel", out var support)
-                && support.ValueKind == JsonValueKind.Number && support.TryGetInt32(out int enabled) && enabled > 0)
+            // Appearance module 14 can contain either GLB or animated WebP. X4 declares customDress
+            // without support3DModel in the installed catalogs, but still supplies modelWebp.
+            if (model && HasAppearanceModule(profile))
             {
                 var found = await CachedOrDownloadedAsync(source, productId, color.Value, true, role,
                     () => Bundled.Acquire(Bundled.FindAsset(source, productId, color, "model"), Revision), token).ConfigureAwait(false);
+                if (found is not null) return found;
+            }
+            else if (model)
+            {
+                // A retained package stays usable even if a later catalog omits its download flag.
+                var found = AcquireCachedArtwork(source, productId, color.Value, true, role)
+                    ?? Bundled.Acquire(Bundled.FindAsset(source, productId, color, "model"), Revision);
                 if (found is not null) return found;
             }
             if (role != "model")
@@ -202,6 +210,15 @@ public sealed class ResourceCoordinator : IDisposable
         return Bundled.Acquire(Bundled.FindAsset(source, productId, color, role), Revision)
             ?? Bundled.Acquire(Bundled.FindAsset(source, productId, color, "detail"), Revision)
             ?? Bundled.Acquire(Bundled.FindGenericAsset(source, profile.Type, role), Revision);
+    }
+
+    // Desktop query eligibility, not a claim that these are the complete OEM request conditions.
+    private static bool HasAppearanceModule(ResourceDeviceProfile profile)
+    {
+        bool Flag(string name) => profile.Functions.ValueKind == JsonValueKind.Object
+            && profile.Functions.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out int enabled) && enabled > 0;
+        return Flag("support3DModel") || Flag("customDress");
     }
 
     private async Task<ResourceArtworkLease?> CachedOrDownloadedAsync(ResourceSource source, string productId, int color, bool model, string role,
@@ -361,8 +378,7 @@ public sealed class ResourceCoordinator : IDisposable
         {
             if (_catalogs[source].Find(productId) is not { } profile) continue;
             targets.Add((productId, color, false));
-            if (profile.Functions.ValueKind == JsonValueKind.Object && profile.Functions.TryGetProperty("support3DModel", out var support)
-                && support.ValueKind == JsonValueKind.Number && support.TryGetInt32(out int enabled) && enabled > 0)
+            if (HasAppearanceModule(profile))
                 targets.Add((productId, color, true));
         }
         return targets.Where(target => _catalogs[source].Find(target.ProductId) is not null)
@@ -379,7 +395,9 @@ public sealed class ResourceCoordinator : IDisposable
             try
             {
                 var entries = JsonSerializer.Deserialize<ResourceArtwork[]>(File.ReadAllBytes(Path.Combine(package, "artwork.json")), ResourceJson.Options) ?? [];
-                var entry = SelectPackageEntry(entries.Where(e => e.Source == source && e.ProductIds.Contains(productId, StringComparer.Ordinal) && e.Color == color), role);
+                var candidates = entries.Where(e => e.Source == source && e.ProductIds.Contains(productId, StringComparer.Ordinal) && e.Color == color
+                    && (!model || role != "hero" || e.Role is "model" or "model-animation"));
+                var entry = SelectPackageEntry(candidates, role);
                 if (entry is null) return null;
                 string path = ResourcePaths.Resolve(package, entry.Path);
                 if (!File.Exists(path) || new FileInfo(path).Length != entry.Length || Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path))) != entry.Sha256) return null;
@@ -391,17 +409,15 @@ public sealed class ResourceCoordinator : IDisposable
     }
 
     /// <summary>
-    /// Product display preference inside one downloaded package: a model, then the first entry of the
-    /// main lottieResList (its detail image stays the static fallback), then the detail image.
-    /// Side lists (lottie-left/right) are never the hero. This is the single place to tune once the
-    /// official playback rules are confirmed on hardware.
+    /// Official product display fields: model3D, modelWebp, then detailImageRes.
+    /// Lottie lists contain gesture tutorials and must never become the product hero.
     /// </summary>
     internal static ResourceArtwork? SelectPackageEntry(IEnumerable<ResourceArtwork> candidates, string role)
     {
         var entries = candidates.ToArray();
         if (role != "hero") return entries.Where(e => BundledResourceStore.MatchesRole(e.Role, role)).OrderBy(e => e.Order ?? 0).FirstOrDefault();
         return entries.FirstOrDefault(e => e.Role == "model")
-            ?? entries.Where(e => e.Role == "lottie").OrderBy(e => e.Order ?? 0).FirstOrDefault()
+            ?? entries.FirstOrDefault(e => e.Role == "model-animation")
             ?? entries.FirstOrDefault(e => e.Role == "detail");
     }
 
