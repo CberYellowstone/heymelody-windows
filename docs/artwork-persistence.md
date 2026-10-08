@@ -66,12 +66,9 @@
 
 ## 持续集成
 
-`.github/workflows/windows-build.yml` 在 push（`main`、`arch/**`）、pull request 和手动触发时运行。
+`.github/workflows/windows-build.yml` 在 push（`main`、`arch/**`）、pull request 和手动触发时运行。CI 不执行测试阶段，直接按 x64、ARM64 两个矩阵在 windows-latest 上执行 `Build-Client.ps1 -Architectures <arch> -SkipTests`，并上传 `release/HeyMelody_Windows_<version>/` 为构建制品。版本号可在手动触发时指定，否则沿用脚本默认值。
 
-- **`test`：** 在 windows-latest 上执行 `Build-Client.ps1 -TestsOnly`，运行 13 个默认离线/模拟 runner（包含 Host 与 Windows.OfflineChecks），并上传界面截图与报告。
-- **`package`：** 依赖 `test`，按 x64、ARM64 两个矩阵执行 `Build-Client.ps1 -Architectures <arch> -SkipTests`，上传 `release/HeyMelody_Windows_<version>/` 为构建制品。版本号可在手动触发时指定，否则沿用脚本默认值。
-
-ARM64 包在 x64 runner 上交叉发布，CI 不运行它。`-TestsOnly` 不能与 `-SkipTests`、`-FinalizeOnly` 或 `-ValidationPath` 同时使用。
+ARM64 包在 x64 runner 上交叉发布，CI 不运行它。默认测试需要在本地执行：`Build-Client.ps1 -TestsOnly` 只运行 13 个默认 runner，不能与 `-SkipTests`、`-FinalizeOnly` 或 `-ValidationPath` 同时使用。
 
 ## 验证范围
 

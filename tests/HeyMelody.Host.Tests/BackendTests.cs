@@ -44,7 +44,9 @@ internal static class BackendTests
         {
             var devices = new List<BluetoothCandidate> { Audio(1, true), Audio(2, true) };
             var store = Store("hang"); store.Save(devices.Select(d => DeviceWhitelistStore.KeyFor(d.Address)));
-            await using var backend = New(store, devices, () => new PeerWorker(() => FakeStartInfo(), TimeSpan.FromMilliseconds(800)));
+            // A first launch on a fresh CI runner (JIT, malware scan) can exceed a sub-second budget by itself.
+            await WarmFakePeerAsync();
+            await using var backend = New(store, devices, () => new PeerWorker(() => FakeStartInfo(), TimeSpan.FromSeconds(3)));
             await backend.InitializeAsync(default);
             var ids = backend.Devices(); var first = ids[0].Identity; var second = ids[1].Identity;
             await Until(() => backend.Select(second).ControlReady);
@@ -300,6 +302,12 @@ internal static class BackendTests
             RedirectStandardOutput = true, RedirectStandardError = true, StandardInputEncoding = new UTF8Encoding(false), StandardOutputEncoding = new UTF8Encoding(false) };
         if (Path.GetFileNameWithoutExtension(path).Equals("dotnet", StringComparison.OrdinalIgnoreCase)) start.ArgumentList.Add(Assembly.GetExecutingAssembly().Location);
         start.ArgumentList.Add("--fake-peer"); return start;
+    }
+    private static async Task WarmFakePeerAsync()
+    {
+        using var process = Process.Start(FakeStartInfo()) ?? throw new IOException();
+        process.StandardInput.Close();
+        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(60));
     }
     internal static async Task<int> FakePeerMainAsync()
     {

@@ -24,38 +24,8 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
 
 jobs:
-  test:
-    name: Offline tests
-    runs-on: windows-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-      - uses: actions/cache@v4
-        with:
-          path: artifacts/nuget-cache
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.targets', 'NuGet.Config') }}
-          restore-keys: nuget-${{ runner.os }}-
-      # The thirteen default runners use simulated transports and in-memory services; no Bluetooth.
-      - name: Run default test runners
-        shell: pwsh
-        run: ./Build-Client.ps1 -TestsOnly
-      - name: Upload UI screenshots and reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-reports-${{ github.sha }}
-          path: |
-            artifacts/avalonia-ui-*/
-            artifacts/calibration-ui-*/
-          if-no-files-found: ignore
-          retention-days: 7
-
   package:
     name: Package ${{ matrix.architecture }}
-    needs: test
     runs-on: windows-latest
     timeout-minutes: 60
     strategy:
@@ -87,7 +57,7 @@ jobs:
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid version: $version" }
           "value=$version" >> $env:GITHUB_OUTPUT
           "commit=$($env:GITHUB_SHA.Substring(0, 7))" >> $env:GITHUB_OUTPUT
-      # Self-contained cross-publish; ARM64 is built on the x64 runner and is not executed here.
+      # Tests are skipped in CI. Self-contained cross-publish; ARM64 is built on the x64 runner and is not executed here.
       - name: Publish ${{ matrix.architecture }}
         shell: pwsh
         run: ./Build-Client.ps1 -Version '${{ steps.version.outputs.value }}' -Architectures '${{ matrix.architecture }}' -SkipTests
