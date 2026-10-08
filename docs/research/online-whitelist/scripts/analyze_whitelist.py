@@ -14,6 +14,11 @@ import math
 import re
 from collections import Counter
 from pathlib import Path
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "earbud-artwork/scripts"))
+from research_runtime import research_path
 
 
 SOURCES = ("com.heytap.headset", "com.oplus.melody")
@@ -367,6 +372,7 @@ def compare(label, left, right):
 
 
 def analyze_run(run):
+    run = research_path(run)
     results_path = run / "results.json"
     results = read_json(results_path)[0] if results_path.is_file() else {}
     report = {"format_version": 1, "scope": "Offline research; does not grant control permissions or alter application modules.",
@@ -438,14 +444,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", required=True, type=Path, help="Existing local acquisition run directory")
     args = parser.parse_args()
-    run = args.run.resolve(strict=True)
-    research_root = Path(__file__).resolve().parents[1]
+    run = research_path(args.run).resolve(strict=True)
+    research_root = Path(__file__).resolve().parents[4] / "research/online-whitelist"
     if not run.is_relative_to(research_root):
         parser.error("--run must remain under research/online-whitelist")
     if not run.is_dir():
         parser.error("--run must be a directory")
     output = run / "analysis.json"
-    if not output.resolve().is_relative_to(research_root):
+    output = research_path(output)
+    if not output.is_relative_to(research_root):
         parser.error("analysis output must remain under research/online-whitelist")
     output.write_text(json.dumps(analyze_run(run), ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     print(f"Wrote {output}")

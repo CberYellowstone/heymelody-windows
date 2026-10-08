@@ -14,9 +14,9 @@ from pathlib import Path
 import re
 import zipfile
 
-from research_runtime import bootstrap
+from research_runtime import bootstrap, research_path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[4] / "research/earbud-artwork"
 INPUTS = {
     "com.heytap.headset": ("欢律.apk", "eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4"),
     "com.oplus.melody": ("无线耳机_17.6.3.apk", "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059"),
@@ -32,7 +32,7 @@ def local_path(relative: str) -> Path:
     candidate = Path(relative)
     if candidate.is_absolute():
         raise ValueError("Manifest paths must be relative")
-    result = (ROOT / candidate).resolve()
+    result = research_path(candidate, ROOT)
     if not result.is_relative_to(ROOT):
         raise ValueError("Manifest path leaves the research directory")
     return result
@@ -152,12 +152,12 @@ def validate(assets: list, models: dict, check_gallery: bool) -> dict:
     for record in load("evidence/server-probes.json").get("probes", []):
         relative = record.get("resource_get", {}).get("saved_package")
         if relative:
-            relative = relative.replace("\\", "/").removeprefix("research/earbud-artwork/")
+            relative = relative.replace("\\", "/").removeprefix("research/earbud-artwork/").removeprefix("docs/research/earbud-artwork/")
             probe_archives.setdefault(relative, []).append(record)
     with ExitStack() as stack:
         apks = {}
         for package, (filename, expected) in INPUTS.items():
-            content = (ROOT.parent / filename).read_bytes()
+            content = (ROOT.parent / "apps" / filename).read_bytes()
             if digest(content) != expected:
                 raise ValueError("Supplied APK changed: " + filename)
             apks[package] = stack.enter_context(zipfile.ZipFile(io.BytesIO(content)))

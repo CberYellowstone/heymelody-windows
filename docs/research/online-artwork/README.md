@@ -1,10 +1,10 @@
 # Enco X3 / Enco Free4 云端 3D 资源获取
 
-**2026-10-08 补充：Free4 丹拿版也已取得。** 精确请求 `06C010 / color=3 / moduleId=14` 在欢律与无线耳机下都成功，原 ZIP SHA256 `efe7c68b71fe92a3b6c8e5901603cd889ac3e5f8737e612e3e42f3f6054b1a99`，GLB SHA256 `7f85c66d397ee45163246ff745c37e52a70059e739be0af2283a30bfb689c2f6`。见 [研究报告](../../docs/research/enco-free4-dynaudio-model.md)、[整理后的模型](enco-free4-dynaudio/model.glb)、[原件 manifest](enco-free4-dynaudio/manifest.json) 和 [独立验证](runs/20261008T051703.741040Z/verification.json)。下文保留 2026-10-07 历史范围；当时丹拿版只查到色号 2，不能据此推断模型不存在。本次没有应用功能变更，也无需 root AVD。
+**2026-10-08 补充：Free4 丹拿版也已取得。** 精确请求 `06C010 / color=3 / moduleId=14` 在欢律与无线耳机下都成功，原 ZIP SHA256 `efe7c68b71fe92a3b6c8e5901603cd889ac3e5f8737e612e3e42f3f6054b1a99`，GLB SHA256 `7f85c66d397ee45163246ff745c37e52a70059e739be0af2283a30bfb689c2f6`。见 [研究报告](../enco-free4-dynaudio-model.md)、[整理后的模型](../../../research/online-artwork/enco-free4-dynaudio/model.glb)、[原件 manifest](../../../research/online-artwork/enco-free4-dynaudio/manifest.json) 和 [独立验证](../../../research/online-artwork/runs/20261008T051703.741040Z/verification.json)。下文保留 2026-10-07 历史范围；当时丹拿版只查到色号 2，不能据此推断模型不存在。本次没有应用功能变更，也无需 root AVD。
 
-本页保留资源获取阶段记录。后续已完成 X3 渲染验证，并将 Free4 模型迁入 0.7.1；当前范围见 [美术交接](../../docs/research/cloud-device-artwork.md) 和 [Free4 实现](../../docs/research/enco-free4-0.7.1.md)。对已保存样本优先运行 `python -B -X utf8 tools/research/accept_cloud_research.py`，它只离线复验并另存报告。
+本页保留资源获取阶段记录。后续已完成 X3 渲染验证，并将 Free4 模型迁入 0.7.1；当前范围见 [美术交接](../cloud-device-artwork.md) 和 [Free4 实现](../enco-free4-0.7.1.md)。对已保存样本优先运行 `python -B -X utf8 tools/research/accept_cloud_research.py`，它只离线复验并另存报告。
 
-2026-10-07 已实际取得 **Enco X3 与 Enco Free4 的官方 3D 资源包**。每个型号分别通过欢律和无线耳机的请求认证查询，两种来源返回的包 SHA256 相同；每份包只下载一次。研究使用现有 Python 环境和 `http://127.0.0.1:59991` 代理，不需要 AVD、root 或手机辅助。全部产物留在本目录，没有接入桌面应用或实现渲染。
+2026-10-07 已实际取得 **Enco X3 与 Enco Free4 的官方 3D 资源包**。每个型号分别通过欢律和无线耳机的请求认证查询，两种来源返回的包 SHA256 相同；每份包只下载一次。研究使用现有 Python 环境和 `http://127.0.0.1:59991` 代理，不需要 AVD、root 或手机辅助。当时全部产物保存在 `research/online-artwork/`，没有接入桌面应用或实现渲染。
 
 ## 已取得资源
 
@@ -17,8 +17,8 @@
 
 直接查看导出模型与原包：
 
-- X3：[model.glb](runs/20261007T101708.195649Z/model-inspection/b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf/extracted/res/raw/detail_model/model.glb)、[原 ZIP](runs/20261007T101708.195649Z/packages/b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf/resource.zip)、[结构报告](runs/20261007T101708.195649Z/model-inspection/report.json)。
-- Free4：[model.glb](runs/20261007T101352.199515Z/model-inspection/068676a8bb633f35e741f2d0dc7eb919afcb03e89f5c6839b41adbec53287bb1/extracted/res/raw/detail_model/model.glb)、[原 ZIP](runs/20261007T101352.199515Z/packages/068676a8bb633f35e741f2d0dc7eb919afcb03e89f5c6839b41adbec53287bb1/resource.zip)、[结构报告](runs/20261007T101352.199515Z/model-inspection/report.json)。
+- X3：[model.glb](../../../research/online-artwork/runs/20261007T101708.195649Z/model-inspection/b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf/extracted/res/raw/detail_model/model.glb)、[原 ZIP](../../../research/online-artwork/runs/20261007T101708.195649Z/packages/b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf/resource.zip)、[结构报告](../../../research/online-artwork/runs/20261007T101708.195649Z/model-inspection/report.json)。
+- Free4：[model.glb](../../../research/online-artwork/runs/20261007T101352.199515Z/model-inspection/068676a8bb633f35e741f2d0dc7eb919afcb03e89f5c6839b41adbec53287bb1/extracted/res/raw/detail_model/model.glb)、[原 ZIP](../../../research/online-artwork/runs/20261007T101352.199515Z/packages/068676a8bb633f35e741f2d0dc7eb919afcb03e89f5c6839b41adbec53287bb1/resource.zip)、[结构报告](../../../research/online-artwork/runs/20261007T101352.199515Z/model-inspection/report.json)。
 
 原 ZIP 的 SHA256 与元数据完全一致：
 
@@ -74,14 +74,14 @@ UTF-8 场景 JSON → GLB → IBL KTX → 可选 skybox KTX
 
 检查覆盖容器边界、GLB chunk/JSON、KTX header 和所有面/级别边界；没有运行像素解码器、完整 glTF accessor 验证器、模型加载引擎或渲染器，因此这不是渲染效果验收。
 
-静态依据见 [model-format-contract.json](evidence/model-format-contract.json)；两来源目标能力与资源字段见 [target-profiles.json](evidence/target-profiles.json)。
+静态依据见 [model-format-contract.json](../../../research/online-artwork/evidence/model-format-contract.json)；两来源目标能力与资源字段见 [target-profiles.json](../../../research/online-artwork/evidence/target-profiles.json)。
 
 ## 文件及复现
 
-- [配色 1 请求与 Free4 下载记录](runs/20261007T101352.199515Z/results.json)
-- [配色 0 空响应记录](runs/20261007T101533.954104Z/results.json)
-- [配色 2/-1 请求与 X3 下载记录](runs/20261007T101708.195649Z/results.json)
-- 独立原件复核：[Free4](runs/20261007T101352.199515Z/verification.json)、[X3](runs/20261007T101708.195649Z/verification.json)。
+- [配色 1 请求与 Free4 下载记录](../../../research/online-artwork/runs/20261007T101352.199515Z/results.json)
+- [配色 0 空响应记录](../../../research/online-artwork/runs/20261007T101533.954104Z/results.json)
+- [配色 2/-1 请求与 X3 下载记录](../../../research/online-artwork/runs/20261007T101708.195649Z/results.json)
+- 独立原件复核：[Free4](../../../research/online-artwork/runs/20261007T101352.199515Z/verification.json)、[X3](../../../research/online-artwork/runs/20261007T101708.195649Z/verification.json)。
 
 两份独立原件复核均通过，包括服务端摘要、ZIP 实际成员字节、提取原件、请求与资源文件名映射及模型容器结构。空响应的检查只证明记录自洽，不表示该查询取得了模型。
 
@@ -91,8 +91,8 @@ UTF-8 场景 JSON → GLB → IBL KTX → 可选 skybox KTX
 
 ```powershell
 $artworkPython = 'python'
-& $artworkPython -B -X utf8 research/online-artwork/scripts/fetch_artwork.py --online --targets x3 --colors 2 --proxy http://127.0.0.1:59991
-& $artworkPython -B -X utf8 research/online-artwork/scripts/fetch_artwork.py --online --targets free4 --colors 1 --proxy http://127.0.0.1:59991
+& $artworkPython -B -X utf8 docs/research/online-artwork/scripts/fetch_artwork.py --online --targets x3 --colors 2 --proxy http://127.0.0.1:59991
+& $artworkPython -B -X utf8 docs/research/online-artwork/scripts/fetch_artwork.py --online --targets free4 --colors 1 --proxy http://127.0.0.1:59991
 ```
 
 默认查询两种 App 来源；`--packages` 可只选一种。获取器默认离线，`--offline` 仅复核 APK 与认证材料，不访问网络。在线退出码 0 代表流程完成，应查看各 case 的 `status` 和 `unique_verified_packages`；空资源响应会明确记录，不等于已下载模型。
@@ -101,8 +101,13 @@ $artworkPython = 'python'
 
 ```powershell
 $artworkRun = 'research/online-artwork/runs/20261007T101708.195649Z'
-& $artworkPython -B -X utf8 research/online-artwork/scripts/inspect_models.py $artworkRun
-& $artworkPython -B -X utf8 research/online-artwork/scripts/verify_artwork.py --run $artworkRun --output artifacts/artwork-review-new/verification.json
+& $artworkPython -B -X utf8 docs/research/online-artwork/scripts/inspect_models.py $artworkRun
+& $artworkPython -B -X utf8 docs/research/online-artwork/scripts/verify_artwork.py --run $artworkRun --output artifacts/artwork-review-new/verification.json
 ```
 
 两个模型目录中的 `model.glb`、`ibl.ktx`、可选 `skybox.ktx` 和场景配置可供下一阶段研究使用；本阶段没有调整 Avalonia 界面或添加 3D 渲染能力。
+
+
+## 2026-10-08 归档位置与提交范围
+
+研究说明和复现脚本保存在本目录；原件、配置、静态取证、运行记录及派生数据保存在 [`research/online-artwork/`](../../../research/online-artwork/)。历史 JSON 内的采样路径与摘要保持原值，文档链接和工具入口指向当前位置。目录总览见 [研究资料索引](../README.md)。

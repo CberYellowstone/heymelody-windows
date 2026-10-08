@@ -55,3 +55,5 @@ dotnet build tests/HeyMelody.ModelPreview.Tests -r win-x64 -p:SelfContained=fals
 dotnet run --project tests/HeyMelody.ModelPreview.Tests --no-build -r win-x64 -- --native-smoke --output-dir artifacts/model-occlusion-rerun
 # 仅检查遮挡时将 --native-smoke 换为 --native-occlusion。
 ```
+
+**资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。

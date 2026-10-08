@@ -1,6 +1,6 @@
 # 日常控制的协议证据与适配边界
 
-本页记录 2026-10-08 为通用设置新增的静态协议核对。证据来自本工作区 `research/无线耳机_17.6.3.apk` 的 `classes.dex`（SDK）和 `classes2.dex`（界面、配置与 repository）。DEX 偏移均为该样本的文件偏移。没有运行 Android、连接真实耳机或新增网络请求；测试使用内存 transport，不代表各型号实机验收。
+本页记录 2026-10-08 为通用设置新增的静态协议核对。证据来自本工作区 `research/apps/无线耳机_17.6.3.apk` 的 `classes.dex`（SDK）和 `classes2.dex`（界面、配置与 repository）。DEX 偏移均为该样本的文件偏移。没有运行 Android、连接真实耳机或新增网络请求；测试使用内存 transport，不代表各型号实机验收。
 
 实现入口为 [DailyFeatures.cs](../../src/HeyMelody.Daily/DailyFeatures.cs)、[DailyFeatureCodecs.cs](../../src/HeyMelody.Protocol/DailyFeatureCodecs.cs)，验收入口为 [DailyFeatureTests.cs](../../tests/HeyMelody.Daily.Tests/DailyFeatureTests.cs)。资源来源沿用完整配置选择，不能将无线耳机界面的分支规则直接套到欢律。
 
@@ -92,3 +92,5 @@ OEM `HeadsetCoreService.m0 @ 5736B0` 的 `0500..051D` switch 中，`0508` 分支
 本次没有从该 `0500..051D` 分发链确认提示音音量、游戏音效类型列表、手势赋值的专用通知布局；不能据此声称所有 APK/固件都没有这些通知。上述状态由已证 GET 刷新；没有猜测新的通知 ID、事件订阅或 SET。游戏音效启用状态的 `0503` 不等于完整类型列表推送。
 
 所有新设置写前重新读取身份、命令能力、固件/来源条件与当前状态。ACK 缺失、拒绝或传输中断均不重发 SET；即使回读吻合也不会把未知/拒绝 ACK 报作成功。当前日常测试合计 **85 项通过**，其中新增通用控制测试覆盖字段顺序、未知版本、范围变更、两源互斥差异、推送竞争、非法资源和 ACK 不确定性。其他设备与固件仍需真实硬件验证。
+
+**资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。

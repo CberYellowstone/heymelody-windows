@@ -24,9 +24,9 @@
 本次新增 2 次模型元数据 POST、1 次 CDN GET，全部串行并沿用现有请求间隔。下载前要求唯一资源记录，下载后校验服务端 SHA256，再验证 ZIP 路径、成员大小和 CRC。两来源记录见 [获取 run](../../research/online-artwork/runs/20261008T051703.741040Z/results.json)，独立离线复核见 [verification.json](../../research/online-artwork/runs/20261008T051703.741040Z/verification.json)。
 
 ```powershell
-python -B -X utf8 research/online-artwork/scripts/fetch_artwork.py --online --targets free4-dyna --colors 3 --proxy http://127.0.0.1:59991
-python -B -X utf8 research/online-artwork/scripts/inspect_models.py research/online-artwork/runs/20261008T051703.741040Z
-python -B -X utf8 research/online-artwork/scripts/verify_artwork.py --run research/online-artwork/runs/20261008T051703.741040Z --output research/online-artwork/enco-free4-dynaudio/verification-new.json
+python -B -X utf8 docs/research/online-artwork/scripts/fetch_artwork.py --online --targets free4-dyna --colors 3 --proxy http://127.0.0.1:59991
+python -B -X utf8 docs/research/online-artwork/scripts/inspect_models.py research/online-artwork/runs/20261008T051703.741040Z
+python -B -X utf8 docs/research/online-artwork/scripts/verify_artwork.py --run research/online-artwork/runs/20261008T051703.741040Z --output research/online-artwork/enco-free4-dynaudio/verification-new.json
 ```
 
 第一条会创建一个新 run，后两条只离线检查本次已保存原件。本机可用 Python 为 `C:/Users/LOZAP/AppData/Local/Programs/conda-forge/python.exe`；复现时将 `python` 换为已有解释器路径即可，无需安装依赖。
@@ -57,7 +57,7 @@ python -B -X utf8 research/online-artwork/scripts/verify_artwork.py --run resear
 
 两 APK 请求代码仍使用模块 14，颜色整数直接转为请求字符串，没有限定只能使用 0–2。`-1` 才进入默认色解析；非 `-1` 值（包括 3）透传。请求及模型路径调用证据见 [DEX 引用](../../research/online-artwork/evidence/dyna-request-refs-20261008.json)、[调用链](../../research/online-artwork/evidence/dyna-request-chain-20261008.json)。[新目标汇总](../../research/online-artwork/evidence/target-profiles-20261008.json) 从实际已验证请求动态得到丹拿成功色号 `[3]`；旧 `target-profiles.json` 保留为历史原件，研究脚本原先固定空丹拿结论也已改为读取记录。
 
-颜色读取的独立静态审计见 [身份/颜色说明](../../research/online-artwork/free4-identity-color-audit.md) 与 [DEX 证据](../../research/online-artwork/evidence/free4-identity-color-audit.json)。SPP GET `0x010B` 的 ACK `0x810B` 将 payload 的颜色字节以 `& 0xFF` 读为 unsigned 值；OEM BLE 广告的 `flags & 0x0020` 颜色字段也原样读取。两路径没有 0–2 限制或丹拿到普通版的重映射。OEM 同时硬编码两款 PID 的名单实际用于诊断序列号裁剪，不是模型共享映射。
+颜色读取的独立静态审计见 [身份/颜色说明](online-artwork/free4-identity-color-audit.md) 与 [DEX 证据](../../research/online-artwork/evidence/free4-identity-color-audit.json)。SPP GET `0x010B` 的 ACK `0x810B` 将 payload 的颜色字节以 `& 0xFF` 读为 unsigned 值；OEM BLE 广告的 `flags & 0x0020` 颜色字段也原样读取。两路径没有 0–2 限制或丹拿到普通版的重映射。OEM 同时硬编码两款 PID 的名单实际用于诊断序列号裁剪，不是模型共享映射。
 
 ## Windows 原生渲染验证
 
@@ -72,3 +72,5 @@ python -B -X utf8 research/online-artwork/scripts/verify_artwork.py --run resear
 | 背面 | [渲染图](../../research/online-artwork/dynaudio-native-preview-20261008/rear-original-blend-3d.png) | [渲染图](../../research/online-artwork/dynaudio-native-preview-20261008/rear-research-opaque-3d.png) |
 
 目检确认内存 Opaque 版本外壳遮挡正常、三个角度模型完整且未裁切。原始 BLEND 正面可见耳机柄和内部零件覆盖外壳，和该材质关闭深度写入一致；alpha 证据支持对这个精确模型采用 Opaque。研究场景使用 Ava3D studio 光照，未加载 OEM KTX，因此验证的是当前引擎可加载和绘制原件，不是复刻手机端光照效果或完成 App 接入。
+
+**资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。

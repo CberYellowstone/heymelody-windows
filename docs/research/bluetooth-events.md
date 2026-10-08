@@ -4,8 +4,8 @@
 
 ## 输入与证据定位
 
-- `research/无线耳机_17.6.3.apk`：OPPO 系统组件，包名 `com.oplus.melody`，版本 17.6.3。
-- `research/欢律.apk`：欢律，包名 `com.heytap.headset`，版本 17.6.5。
+- `research/apps/无线耳机_17.6.3.apk`：OPPO 系统组件，包名 `com.oplus.melody`，版本 17.6.3。
+- `research/apps/欢律.apk`：欢律，包名 `com.heytap.headset`，版本 17.6.5。
 - 产品配置提取方法和 APK 白名单来源见 [oppo-device-support.md](oppo-device-support.md)。
 
 以下位置是 APK 中原始 DEX 的字节偏移，并非仓库源码行号。通过内存中的 DEX 方法表与指令读取核对；无需将整个 APK 反编译结果提交到仓库。
@@ -133,3 +133,5 @@ OEM `J.h` 为首次打开的目标地址记录 `elapsedRealtime`；已记录的�
 - RFCOMM 使用 `WSAEventSelect` 的 FD_READ/WRITE/CONNECT/CLOSE 与单次 managed wait 注册。`WSAEnumNetworkEvents` 原子读取并复位事件；不能分别注册两个 WSAEventSelect 来监听读写，因为后者会替换前者。收到就绪后仍需处理 WouldBlock，关闭时唤醒并结束待处理操作。[WSAEventSelect](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsaeventselect)、[WSAEnumNetworkEvents](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-wsaenumnetworkevents)。
 
 LE Audio 和 LC3 与厂商 BLE 盒盖广播监听独立。flags `0x0100` 只声明支持 LE Audio，不能证明当前在使用 LC3，也不表示必须启用 LE Audio 才能读取广播。[Bluetooth SIG LE Audio](https://www.bluetooth.com/learn-about-bluetooth/feature-enhancements/le-audio/)。
+
+**资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。

@@ -1,6 +1,6 @@
-> 本页及 `models.json` 保留 2D/功能美术阶段库存，X3/Free4 的旧未获取状态已由后续 `online-artwork` 成功记录更新。当前成果与资源使用方法见 [美术交接](../../docs/research/cloud-device-artwork.md)。统一离线验收入口是 `python -B -X utf8 tools/research/accept_cloud_research.py`；下文完整重建流程还需本地历史脚本，会重写研究产物，不是只读验收入口。
+> 本页及 `models.json` 保留 2D/功能美术阶段库存，X3/Free4 的旧未获取状态已由后续 `online-artwork` 成功记录更新。当前成果与资源使用方法见 [美术交接](../cloud-device-artwork.md)。统一离线验收入口是 `python -B -X utf8 tools/research/accept_cloud_research.py`；下文完整重建流程还需本地历史脚本，会重写研究产物，不是只读验收入口。
 
-本目录记录 2026-10-06 至 2026-10-07 的耳机外观与功能美术研究，覆盖 OPPO、OnePlus、realme 耳机，音箱只保留型号索引。早期外观研究使用了提供的欢律与系统无线耳机 APK、获准使用的一加 15 只读 ADB 信息及服务器资源；**本次功能美术追加只读取本地已有的两份 APK，没有联网或操作手机**。产物只存在于 `research/earbud-artwork/`，没有接入 Avalonia/WPF 项目，没有修改输入 APK，也没有执行 APK 代码。
+本目录记录 2026-10-06 至 2026-10-07 的耳机外观与功能美术研究，覆盖 OPPO、OnePlus、realme 耳机，音箱只保留型号索引。早期外观研究使用了提供的欢律与系统无线耳机 APK、获准使用的一加 15 只读 ADB 信息及服务器资源；**本次功能美术追加只读取本地已有的两份 APK，没有联网或操作手机**。原始材料与派生产物保存在 `research/earbud-artwork/`，没有接入 Avalonia/WPF 项目，没有修改输入 APK，也没有执行 APK 代码。
 
 本次新增 **471 个按原始字节去重的本地资产**，补充 Hi-Res、无损音质、杜比、降噪、自适应、通透、聆听，以及音效、空间音频、游戏、电量、设备查找、听力、健康、翻译、连接和操作引导等资源。当前共 **695 个资产、538 个图像预览**，其中 **512 个带功能标签**；图册增加了功能筛选、中文搜索词及 **19 页功能美术接触表**。图片、矢量、Lottie 和绘制配置均保留原件，不把颜色或背景配置当作独立图标。
 
@@ -32,36 +32,36 @@
 | realme | `C70A6D` | Buds Wireless 2 Neo | 1 | 5 |
 | realme | `E3009F` | Buds Wireless Pro | 1 | 5 |
 
-Enco W11 与 W31 Lite 的三张 PNG 字节相同；这项共享来自两次响应及各自资源包的证据，没有按外观相似度推断。型号代表图可以直接查看 [confirmed-models-001.png](contact-sheets/confirmed-models-001.png)。全部远程成员的独立复核结果见 [remote-verification.json](evidence/remote-verification.json)。
+Enco W11 与 W31 Lite 的三张 PNG 字节相同；这项共享来自两次响应及各自资源包的证据，没有按外观相似度推断。型号代表图可以直接查看 [confirmed-models-001.png](../../../research/earbud-artwork/contact-sheets/confirmed-models-001.png)。全部远程成员的独立复核结果见 [remote-verification.json](../../../research/earbud-artwork/evidence/remote-verification.json)。
 
-入口与文件用途如下。图册直接双击 `index.html` 即可打开，不依赖本地服务器或网络；搜索、功能、类别、来源和类型筛选使用内嵌数据。
+入口与文件用途如下。图册直接双击 `research/earbud-artwork/index.html` 即可打开，不依赖本地服务器或网络；搜索、功能、类别、来源和类型筛选使用内嵌数据。
 
 | 文件 | 用途 |
 | --- | --- |
-| [index.html](index.html) | 离线图册；按功能筛选，查看透明底预览、尺寸、型号状态、配色编号及来源，跳转原件 |
-| [assets.json](assets.json) | 按 SHA256 去重的资产、全部来源、功能标签及绘制依赖关联 |
-| [models.csv](models.csv) / [models.json](models.json) | 143 个产品 ID、品牌、市场别名、默认色声明、3D 声明、取得状态及资产关联 |
-| [inventory.csv](inventory.csv) / [inventory.json](inventory.json) | 全量候选库存，含未选中的通用 UI 与非耳机资源 |
-| [sources.json](sources.json) | APK 版本、条目与资源种类数量、处理前后哈希 |
-| [contact-sheets/](contact-sheets/) | PNG 总览、型号专图及功能美术接触表；功能美术优先展示音质与降噪 |
+| [index.html](../../../research/earbud-artwork/index.html) | 离线图册；按功能筛选，查看透明底预览、尺寸、型号状态、配色编号及来源，跳转原件 |
+| [assets.json](../../../research/earbud-artwork/assets.json) | 按 SHA256 去重的资产、全部来源、功能标签及绘制依赖关联 |
+| [models.csv](../../../research/earbud-artwork/models.csv) / [models.json](../../../research/earbud-artwork/models.json) | 143 个产品 ID、品牌、市场别名、默认色声明、3D 声明、取得状态及资产关联 |
+| [inventory.csv](../../../research/earbud-artwork/inventory.csv) / [inventory.json](../../../research/earbud-artwork/inventory.json) | 全量候选库存，含未选中的通用 UI 与非耳机资源 |
+| [sources.json](../../../research/earbud-artwork/sources.json) | APK 版本、条目与资源种类数量、处理前后哈希 |
+| [contact-sheets/](../../../research/earbud-artwork/contact-sheets) | PNG 总览、型号专图及功能美术接触表；功能美术优先展示音质与降噪 |
 | `originals/` | APK 原始位图、二进制 Android XML、Lottie、SVG、配置与待识别资源 |
 | `previews/` | PNG/SVG 派生预览；二进制 XML 的 `decoded.xml` 位于对应原件目录 |
-| [remote/](remote/) | 服务端资源包、提取成员及独立远程资产清单 |
-| [evidence/validation.json](evidence/validation.json) | 最终原件、来源、型号关联、图像与离线图册校验结果 |
-| [feature-extraction.json](evidence/feature-extraction.json) | 本地功能提取统计、逐条选择依据及 XML 引用闭包 |
-| [音质美术证据](evidence/feature-audio-quality.md) / [JSON](evidence/feature-audio-quality.json) | Hi-Res 渐变、无损、杜比、丹拿与空间音频的资源路径和引用 |
-| [降噪美术证据](evidence/feature-noise-control.md) / [JSON](evidence/feature-noise-control.json) | 模式语义、状态、主题、语言变体及代码引用 |
+| [remote/](../../../research/earbud-artwork/remote) | 服务端资源包、提取成员及独立远程资产清单 |
+| [evidence/validation.json](../../../research/earbud-artwork/evidence/validation.json) | 最终原件、来源、型号关联、图像与离线图册校验结果 |
+| [feature-extraction.json](../../../research/earbud-artwork/evidence/feature-extraction.json) | 本地功能提取统计、逐条选择依据及 XML 引用闭包 |
+| [音质美术证据](../../../research/earbud-artwork/evidence/feature-audio-quality.md) / [JSON](../../../research/earbud-artwork/evidence/feature-audio-quality.json) | Hi-Res 渐变、无损、杜比、丹拿与空间音频的资源路径和引用 |
+| [降噪美术证据](../../../research/earbud-artwork/evidence/feature-noise-control.md) / [JSON](../../../research/earbud-artwork/evidence/feature-noise-control.json) | 模式语义、状态、主题、语言变体及代码引用 |
 
 两份输入文件的身份与扫描结果如下。条目数不是型号数；Lottie 内嵌图和 UPK 内资源另计入库存，资产则按原始字节的 SHA256 去重。
 
 | 来源 | 包名 / 版本 | ZIP 条目 | PNG + WebP | Lottie | vector / animated-vector | 型号条目 |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| `../欢律.apk` | `com.heytap.headset` / 17.6.5，117006005 | 3008 | 274 + 159 = 433 | 46 | 480 / 38 | 85 |
-| `../无线耳机_17.6.3.apk` | `com.oplus.melody` / 17.6.3，17006003 | 2823 | 250 + 124 = 374 | 32 | 500 / 24 | 143 |
+| `research/apps/欢律.apk` | `com.heytap.headset` / 17.6.5，117006005 | 3008 | 274 + 159 = 433 | 46 | 480 / 38 | 85 |
+| `research/apps/无线耳机_17.6.3.apk` | `com.oplus.melody` / 17.6.3，17006003 | 2823 | 250 + 124 = 374 | 32 | 500 / 24 | 143 |
 
 欢律 SHA256 为 `eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4`；无线耳机 SHA256 为 `c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059`。提取前后及最终校验均与这两项吻合。美术候选库存由初次扫描的 2065 条扩展为 **2197 条**，增加了相关组合 drawable 与颜色文件；扫描处理错误为 0。该库存包含未选中的通用 UI，不表示 APK 的所有 XML 都已提取。
 
-型号表从两包经过 APK 证书摘要绑定的 AES-GCM 认证、gzip 解压的原配置恢复：欢律为 `res/30.json` 的 `compatWhiteList`，系统包为 `res/AQ.json` 的 `whiteList`。两个来源按产品 ID 合并，85 项欢律配置均在系统包中。并集为 OPPO 58、OnePlus 34、realme 51；realme 中 3 个是 Cobble、Pocket、Brick 音箱，耳机范围实际为 140 个产品 ID。别名保留为名称关联，不把名称相近的不同 ID 推断为共享美术。[本地与 ADB 复核](evidence/local-adb-review.md)记录了比对口径。
+型号表从两包经过 APK 证书摘要绑定的 AES-GCM 认证、gzip 解压的原配置恢复：欢律为 `res/30.json` 的 `compatWhiteList`，系统包为 `res/AQ.json` 的 `whiteList`。两个来源按产品 ID 合并，85 项欢律配置均在系统包中。并集为 OPPO 58、OnePlus 34、realme 51；realme 中 3 个是 Cobble、Pocket、Brick 音箱，耳机范围实际为 140 个产品 ID。别名保留为名称关联，不把名称相近的不同 ID 推断为共享美术。[本地与 ADB 复核](../../../research/earbud-artwork/evidence/local-adb-review.md)记录了比对口径。
 
 APK 中可直接拿到多种耳机外观，但没有发现把这些内置外观可靠地绑定到某个产品 ID 的配置。具有参考价值的通用原件包括：
 
@@ -78,7 +78,7 @@ APK 中可直接拿到多种耳机外观，但没有发现把这些内置外观�
 
 具体映射以 `assets.json` 的所有 `origins` 为准，表中的 ZIP entry 是当前 APK 版本的名称，不是稳定接口。相同 Android 资源名可能包含密度、夜间模式和不同尺寸的变体；保留原件及所有来源，避免只复制一个同名文件而遗漏变体。耳机形状相似或渲染质感像 3D，都不能证明它属于某个型号或是可旋转的 3D 模型。
 
-本次功能美术的重点原件如下，完整默认、night、密度与语言变体以各资产的 `origins` 为准。可直接查看 [功能美术第一页](contact-sheets/features-001.png)，或在图册使用功能筛选。
+本次功能美术的重点原件如下，完整默认、night、密度与语言变体以各资产的 `origins` 为准。可直接查看 [功能美术第一页](../../../research/earbud-artwork/contact-sheets/features-001.png)，或在图册使用功能筛选。
 
 | 功能 | Android 资源名 / 示例 APK entry | 已取得内容 |
 | --- | --- | --- |
@@ -98,37 +98,42 @@ Hi-Res 的渐变来自 `$melody_app_hi_res_tag__0` 和 `$melody_ui_hi_res_audio_
 
 最终离线校验通过：逐项核验所有原件 SHA256、730 条 APK 来源、634 条功能选择记录及 76 条绘制依赖；538 张预览和 52 页接触表均可解码，19 页功能表完整覆盖 370 项功能预览，图册内嵌资产数据与主清单一致。两个输入 APK 哈希不变，既有 19 个型号的代表图与来源关联通过复核。图册搜索 LHDC 可定位准确的 5 项资产；功能筛选中的自适应降噪、通透和聆听分别保留独立标签。
 
-服务器资源通过 APK 静态调用链找到。基础服务为 `https://iot-earbuds-cn.heytapmobi.com/`，元数据是 POST 请求，包名决定 channel（系统包 1、欢律 2），body 带 platform、versionCode、productId、color。普通外观入口为 `v1/earphone/resource/control`，使用响应中的 `cartoonUrl` 与 SHA256 下载 ZIP；外观模块入口为 `v1/earphone/resource/fetch`，额外带 `moduleId=14`，涉及 `model3D`、`modelWebp` 及外观配置。[resource-contract.json](evidence/resource-contract.json)保存接口、DTO、缓存路径和 DEX 类/方法/偏移证据。
+服务器资源通过 APK 静态调用链找到。基础服务为 `https://iot-earbuds-cn.heytapmobi.com/`，元数据是 POST 请求，包名决定 channel（系统包 1、欢律 2），body 带 platform、versionCode、productId、color。普通外观入口为 `v1/earphone/resource/control`，使用响应中的 `cartoonUrl` 与 SHA256 下载 ZIP；外观模块入口为 `v1/earphone/resource/fetch`，额外带 `moduleId=14`，涉及 `model3D`、`modelWebp` 及外观配置。[resource-contract.json](../../../research/earbud-artwork/evidence/resource-contract.json)保存接口、DTO、缓存路径和 DEX 类/方法/偏移证据。
 
 元数据请求需要签名。已确认的调用链使用 APK 本地加密应用材料及其公开签名证书，不依赖手机账号或设备标识；复现脚本仅在内存中解密并计算请求签名，不把密钥、签名、nonce、认证头或完整下载 URL 写入研究证据。资源下载只接受厂商 `heytapimage.com` 域下的 HTTPS，禁止跳转，校验服务端给出的 SHA256，并校验 control 响应的产品 ID 与请求一致。ZIP 原包保留，成员有路径及大小限制，未运行其中内容。
 
 首次可确认的结果是 `060410`（OPPO Enco Free）、配色编号 0 的 control 包，SHA256 为 `9ef29c1995fc87d31df0ff608ee6f352a0ac1065f9cac8baa4c67e0ff92eadbf`。包中有 `config.json` 与 5 张透明 PNG：整体外观 780 × 780、左右耳各 408 × 660、盒图 216 × 216、连接卡片图 114 × 114。请求、响应产品 ID、白名单名称及包哈希构成型号关联证据；编号 0 不自动命名为白色。
 
-扩大查询前，已核验应用的默认配色解析：输入不为 -1 时原样返回；输入 -1 优先用配置中的 `defaultColor`；否则 realme 的 `supportSpp=true` 返回 0，false/缺失返回 1；没有显式默认色的 OPPO/OnePlus 保持未知值 -1。DTO 的 `supportSpp` 是 primitive boolean，构造默认 false，普通 Gson 解析缺失字段仍为 false，不需要手机运行状态。选择清单见 [default-color-selection.json](evidence/default-color-selection.json)：57 个有依据的默认配色候选（9 个显式默认、48 个 realme 耳机），跳过 83 个默认配色未确认的耳机及 3 个音箱。每型号只查一个默认配色，已有观察复用，无未知配色或模块扫描。
+扩大查询前，已核验应用的默认配色解析：输入不为 -1 时原样返回；输入 -1 优先用配置中的 `defaultColor`；否则 realme 的 `supportSpp=true` 返回 0，false/缺失返回 1；没有显式默认色的 OPPO/OnePlus 保持未知值 -1。DTO 的 `supportSpp` 是 primitive boolean，构造默认 false，普通 Gson 解析缺失字段仍为 false，不需要手机运行状态。选择清单见 [default-color-selection.json](../../../research/earbud-artwork/evidence/default-color-selection.json)：57 个有依据的默认配色候选（9 个显式默认、48 个 realme 耳机），跳过 83 个默认配色未确认的耳机及 3 个音箱。每型号只查一个默认配色，已有观察复用，无未知配色或模块扫描。
 
-请求记录见 [server-probes.json](evidence/server-probes.json)。批次单并发，所有网络请求含 CDN GET 速率不超过每秒 1 次；遇 HTTP 403/429 停止，下载和解压大小受限。`HTTP 200 / code 0` 但没有资源地址只代表该次请求没有提供包；请求失败也不能推断该型号没有美术。`models.json` 对未取得型号保留具体状态与原因。服务端内容可能随时间、地区、版本或配色变化，本次仅确认已取得的包和已查询条件。
+请求记录见 [server-probes.json](../../../research/earbud-artwork/evidence/server-probes.json)。批次单并发，所有网络请求含 CDN GET 速率不超过每秒 1 次；遇 HTTP 403/429 停止，下载和解压大小受限。`HTTP 200 / code 0` 但没有资源地址只代表该次请求没有提供包；请求失败也不能推断该型号没有美术。`models.json` 对未取得型号保留具体状态与原因。服务端内容可能随时间、地区、版本或配色变化，本次仅确认已取得的包和已查询条件。
 
 本轮未取得经确认的 3D 网格文件。两份白名单各有 16 个产品 ID 声明 `support3DModel=1`；该字段是能力声明，不是模型原件。计划阶段曾观察到 Enco X3（`067410`）与 X4（`06EC10`）在配色 0、module 14 下的签名请求返回成功但无资源数据，这几次仅有简要观察记录，未保存精确时间和原响应，没有为补证重新发送。不能据此排除其他配色或条件存在模型。
 
 静态代码还引用下载包内 `res/raw/detail_model.vfxms`，但没有取得该文件，格式未确认。`res/iD.json` 的 image dress 配置与 `res/Hx.json` 的 video 配置包含 `connected_box.png`、`connected_buds.png`、背景及视频目录等相对路径，所指成员没有打包在这两个 APK 中。GLSL `res/29.glsl`、`res/kO.glsl` 用于 RGB/alpha 双区视频合成，也不是网格。`assets/melody.bin` 保留为未知二进制，未声称是模型；这些线索及配置原件可供下一轮研究使用。
 
-手机侧只读研究见 [adb-readonly.json](evidence/adb-readonly.json)。这台一加 15 报告为 PLK110、Android 17 / SDK 37，shell UID 2000、SELinux Enforcing。已在内存读取两包安装 APK，字节与本地输入完全一致；两包都不可调试，`run-as ... id` 失败，应用私有下载目录访问被拒。系统包默认使用设备保护存储，候选目录是 `/data/user_de/0/com.oplus.melody/files/melody-model-download/`；欢律为 `/data/user/0/com.heytap.headset/files/melody-model-download/`。指定进程的现有日志样本与深度受限的共享 cache 查询没有提供可用下载信息，不能推断手机从未缓存资源。
+手机侧只读研究见 [adb-readonly.json](../../../research/earbud-artwork/evidence/adb-readonly.json)。这台一加 15 报告为 PLK110、Android 17 / SDK 37，shell UID 2000、SELinux Enforcing。已在内存读取两包安装 APK，字节与本地输入完全一致；两包都不可调试，`run-as ... id` 失败，应用私有下载目录访问被拒。系统包默认使用设备保护存储，候选目录是 `/data/user_de/0/com.oplus.melody/files/melody-model-download/`；欢律为 `/data/user/0/com.heytap.headset/files/melody-model-download/`。指定进程的现有日志样本与深度受限的共享 cache 查询没有提供可用下载信息，不能推断手机从未缓存资源。
 
 额外读取了手机预装 `com.oplus.wirelesssettings` 的 WirelessSettings APK，仅在内存检查，未另存 APK；其中有通用耳机图标和指向 `com.oplus.melody` 的入口，没有找到型号专图或模型。没有启动/停止应用、调用 provider/service、安装 APK、清除/修改日志、修改手机文件或请求 root。没有保存账号、序列号、蓝牙地址、日志正文或认证材料。本次取得线上资源的突破来自 APK 调用链，ADB 提供了包身份和可访问性验证。
 
-复现时先进入仓库根目录。脚本默认输出均在本研究目录；它们复用本机已有 Python/Pillow/cryptography 与 ImageMagick，不会自动安装依赖。以下流程只重建研究文件，`--offline` 不联网，也不连接手机；重新提取会重建本地资产清单，随后合并既有已校验的远程包。
+复现时先进入仓库根目录。脚本默认输出均在 `research/earbud-artwork/`；它们复用本机已有 Python/Pillow/cryptography 与 ImageMagick，不会自动安装依赖。以下流程只重建研究文件，`--offline` 不联网，也不连接手机；重新提取会重建本地资产清单，随后合并既有已校验的远程包。
 
 ```powershell
-$py = 'C:\Users\LOZAP\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\python.exe'
-& $py -B research/earbud-artwork/scripts/extract_artwork.py --apk research/欢律.apk --apk research/无线耳机_17.6.3.apk
-& $py -B research/earbud-artwork/scripts/build_model_index.py
-& $py -B research/earbud-artwork/scripts/probe_resources.py --offline
-& $py -B research/earbud-artwork/scripts/merge_and_verify.py --merge
-& $py -B research/earbud-artwork/scripts/extract_feature_artwork.py
-& $py -B research/earbud-artwork/scripts/build_gallery.py
-& $py -B research/earbud-artwork/scripts/merge_and_verify.py --check-gallery
+$py = 'python'
+& $py -B docs/research/earbud-artwork/scripts/extract_artwork.py --apk research/apps/欢律.apk --apk research/apps/无线耳机_17.6.3.apk
+& $py -B docs/research/earbud-artwork/scripts/build_model_index.py
+& $py -B docs/research/earbud-artwork/scripts/probe_resources.py --offline
+& $py -B docs/research/earbud-artwork/scripts/merge_and_verify.py --merge
+& $py -B docs/research/earbud-artwork/scripts/extract_feature_artwork.py
+& $py -B docs/research/earbud-artwork/scripts/build_gallery.py
+& $py -B docs/research/earbud-artwork/scripts/merge_and_verify.py --check-gallery
 ```
 
 如需复现网络查询，显式运行 `probe_resources.py --known-defaults`；已有同型号、同配色观察会复用，不补查未知配色。单个命名样本可用 `--probe --case enco-free-control`，该参数会发起新的实际请求。ADB 采样单独由 `capture_adb.py --transport <已连接的transport整数>` 触发，不在离线重建流程内；transport 以当时 `adb devices -l` 的已授权连接为准。本次研究已完成所需采样，不需要为阅读成果再次操作手机。
 
 现有资源及复现脚本只整理为研究成果，尚未应用到项目中。
+
+
+## 2026-10-08 归档位置与提交范围
+
+研究说明和复现脚本保存在本目录；原件、配置、静态取证、运行记录及派生数据保存在 [`research/earbud-artwork/`](../../../research/earbud-artwork/)。历史 JSON 内的采样路径与摘要保持原值，文档链接和工具入口指向当前位置。目录总览见 [研究资料索引](../README.md)。

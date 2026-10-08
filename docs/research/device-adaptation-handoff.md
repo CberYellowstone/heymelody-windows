@@ -4,7 +4,7 @@
 
 本页整理截至 **2026-10-07** 完成的欢律、无线耳机云端配置和美术研究，供新会话依次开展设备操作适配、设备美术适配。**获取、认证材料恢复、内置配置解密、云配置选择和美术完整性已有可复现证据；各型号 Windows 控制能力仍须逐项适配。** 本次只做离线整理验收，没有新网络请求、手机操作或应用功能变更。
 
-从本页开始，依次阅读 [设备配置交接](cloud-device-configuration.md)、[设备美术交接](cloud-device-artwork.md)。两页分别列出原件路径、摘要、DEX 定位、处理规则及已验证范围。路径相对仓库根目录；本地研究原件链接需要保留当前工作区才能打开。
+从本页开始，依次阅读 [设备配置交接](cloud-device-configuration.md)、[设备美术交接](cloud-device-artwork.md)。两页分别列出原件路径、摘要、DEX 定位、处理规则及已验证范围。除 Markdown 链接外，路径相对仓库根目录。
 
 ## 当前基线与既有要求
 
@@ -64,19 +64,19 @@ python -B -X utf8 tools/research/accept_cloud_research.py --output-dir artifacts
 
 | 必须保留 | 原因 |
 |---|---|
-| `research/欢律.apk`、`research/无线耳机_17.6.3.apk` | 证书、认证材料入口、内置密文、静态代码和资源出处；指纹见专题文档 |
-| `research/online-whitelist/runs/20261007T095049.319796Z/` | 两源内置/云配置、下载原字节、元数据、缓存样本、分析和历史验收 |
-| `research/online-artwork/runs/` 与 `evidence/` | 原 ZIP、传输字节、VFXMS、场景 JSON、GLB/KTX 及成功/空响应记录 |
-| `research/earbud-artwork/` | 原 ZIP、APK 美术原件、型号/功能/变体关联、绘制依赖、图册、预览与历史工具 |
-| 研究脚本、脱敏静态契约、本页及专题交接 | 可复现规则；DEX 小工具迁至 `tools/research/event_dex_audit.py` |
+| `research/apps/欢律.apk`、`research/apps/无线耳机_17.6.3.apk` | 证书、认证材料入口、内置密文、静态代码和资源出处；指纹见专题文档 |
+| `research/online-whitelist/runs/20261007T095049.319796Z` | 两源内置/云配置、下载原字节、元数据、缓存样本、分析和历史验收 |
+| `research/online-artwork/runs` 与 `evidence/` | 原 ZIP、传输字节、VFXMS、场景 JSON、GLB/KTX 及成功/空响应记录 |
+| `research/earbud-artwork/` | 原 ZIP、APK 美术原件、型号/功能/变体关联、绘制依赖、图册与预览 |
+| 研究脚本、静态契约、本页及专题交接 | 可复现规则；DEX 小工具迁至 `tools/research/event_dex_audit.py` |
 | 本轮新 `artifacts` 验收报告及 manifest | 本次验收、历史报告未变的证据和备份核对索引 |
 | `artifacts/apk-research/` | 早期白名单、反汇编及事件链索引；本页的新结论优先于旧报告中的已纠正解释 |
 
-同工作区切换会话可直接使用。**Git 保存文档、指定脚本和脱敏契约，不包含 APK、完整厂商配置、原 ZIP、运行报告或整套图册。克隆仓库不能恢复这些原件；清理忽略目录或迁移电脑前须按 manifest 备份。** 本轮不复制大体积原件；manifest 是索引，不是备份包。
+研究文档和复现脚本保存在 `docs/research/`；原始输入、取证文件和派生产物保存在根目录 `research/`。`retention-manifest.json` 用于核对文件路径、大小和摘要。
 
-保存的最小脚本闭包保证现有成果读取、验收及两云接口复现：选定 `online-whitelist/scripts`、`online-artwork/scripts` 工具，以及 `earbud-artwork/scripts/{probe_resources,android_resources,research_runtime,merge_and_verify}.py`。旧图册 README 的完整重建流程还需本地提取/图册生成等历史脚本；克隆后的最小闭包不保证从 APK 重建全部图册。仅复制 fetcher 或 GLB 也会丢失复验出处。本轮依赖版本见 [cloud-research-requirements.txt](../../tools/research/cloud-research-requirements.txt)，验收摘要记录实际加载版本；旧 [requirements.txt](../../tools/research/requirements.txt) 是另一套 APK 研究环境要求。
+获取、分析、验证和图册工具保存在 `docs/research/{online-whitelist,online-artwork,earbud-artwork}/scripts/`。各专题 README 给出相应复现流程。本轮依赖版本见 [cloud-research-requirements.txt](../../tools/research/cloud-research-requirements.txt)，验收摘要记录实际加载版本；旧 [requirements.txt](../../tools/research/requirements.txt) 是另一套 APK 研究环境要求。
 
-认证材料、真实签名/nonce/认证头、完整临时下载 URL 和缓存测试 key 均不纳入交接。测试 key 未保留，不能在新进程再次解密旧测试密文；验收检查旧字节和记录，并用新内存 key 重做加解密、错误 key 与篡改拒绝测试。部分旧远程配置是脱敏派生文件，原 ZIP 才是原字节权威。
+当时保存的取证文件没有记录认证材料、真实签名/nonce/认证头、完整临时下载 URL 或缓存测试 key。测试 key 未保留，不能在新进程再次解密旧测试密文；验收检查旧字节和记录，并用新内存 key 重做加解密、错误 key 与篡改拒绝测试。部分旧远程配置是脱敏派生文件，原 ZIP 才是原字节权威。
 
 ## 接下来如何使用成果
 
@@ -89,3 +89,5 @@ python -B -X utf8 tools/research/accept_cloud_research.py --output-dir artifacts
 新会话可直接使用以下说明：
 
 > 先读 docs/research/device-adaptation-handoff.md 及设备配置/美术交接，在当前 arch/modular-devices 的 0.7.1 基线上继续。本轮先做设备操作适配，保留欢律/无线耳机整体来源切换要求。旧模块方案已撤销，不恢复旧 stash。优先固定样本和离线验收，无需重复批量云端查询；按已核实协议与固件条件逐项实现，随后再做美术适配。
+
+**资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。

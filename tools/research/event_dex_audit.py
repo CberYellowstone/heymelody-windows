@@ -65,7 +65,7 @@ def read_dex(data):
 
 if __name__=='__main__':
     pattern=re.compile(sys.argv[1],re.I)
-    for apk in Path('research').glob('*.apk'):
+    for apk in Path('research/apps').glob('*.apk'):
         print('\nAPK',apk.name)
         with zipfile.ZipFile(apk) as z:
             for dn in z.namelist():

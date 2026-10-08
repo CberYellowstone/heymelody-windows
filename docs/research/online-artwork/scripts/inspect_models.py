@@ -17,7 +17,10 @@ import struct
 import sys
 
 sys.dont_write_bytecode = True
-RESEARCH = Path(__file__).resolve().parents[1]
+DOCUMENTATION_ROOT = Path(__file__).resolve().parents[2]
+RESEARCH = Path(__file__).resolve().parents[4] / "research/online-artwork"
+sys.path.insert(0, str(DOCUMENTATION_ROOT / "earbud-artwork/scripts"))
+from research_runtime import research_path
 MAX_MODEL_BYTES = 256 * 1024 * 1024
 MAX_JSON_BYTES = 8 * 1024 * 1024
 KTX1 = b"\xabKTX 11\xbb\r\n\x1a\n"
@@ -30,7 +33,7 @@ def digest(data: bytes) -> str:
 
 
 def inside(path: Path, root: Path) -> Path:
-    resolved = path.resolve()
+    resolved = research_path(path)
     if resolved == root or root not in resolved.parents:
         raise ValueError("Path must be strictly inside " + str(root))
     return resolved

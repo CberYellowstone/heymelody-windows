@@ -31,8 +31,8 @@ dotnet run --project tests/HeyMelody.Calibration.Tests
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.3
 ```
 
-常规构建和离线测试使用仓库中的资源包，不需要本地 APK。重新提取资源需要固定的 `research` 原件，入口是 `tools/bundle_resources.py`；运行中的软件不读取研究目录。原始资源版权与溯源保留在发布包的 notices 和资源清单中。
+常规构建和离线测试使用仓库中的资源包，不需要本地 APK。重新提取资源需要 `research/apps/` 和 `research/screenshots/` 中的固定输入及各专题保留的原件，入口是 `tools/bundle_resources.py`；目录组织、提交边界与历史路径映射见 [研究资料归档](docs/research/README.md)。运行中的软件不读取研究目录。原始资源版权与溯源保留在发布包的 notices 和资源清单中。
 
 本轮没有把静态解析、模拟协议或 UI 测试当作所有型号的实机验证。新增型号、校准流程、手机并发操作、休眠恢复和 ARM64 行为仍需对应硬件验证；历史 X4 证据只证明记录中的版本与设备。OTA、录音、翻译、健康功能、macOS/Linux 后台及 2.3 Mbps 无损链路保持后续范围。
 
-完整模块、构建和验证说明见 [REPOSITORY.md](REPOSITORY.md)，协议与资源依据见 [研究交接](docs/research/device-adaptation-handoff.md)，历史记录见 [文档入口](docs/README.md)。发布包、研究原件和生成报告不随 Git 提交。
+完整模块、构建和验证说明见 [REPOSITORY.md](REPOSITORY.md)，协议与资源依据见 [研究交接](docs/research/device-adaptation-handoff.md)，历史记录见 [文档入口](docs/README.md)。研究结论和复现工具保存在 `docs/research/`，原始输入、上游仓库、厂商资源和采样记录保存在 `research/`。

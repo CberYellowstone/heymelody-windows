@@ -17,7 +17,10 @@ import stat
 import struct
 import zipfile
 
-ROOT = Path(__file__).resolve().parents[1]
+DOCUMENTATION_ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[4] / "research/online-artwork"
+sys.path.insert(0, str(DOCUMENTATION_ROOT / "earbud-artwork/scripts"))
+from research_runtime import research_path
 MAX_DOWNLOAD = 64 * 1024 * 1024
 MAX_MEMBER = 64 * 1024 * 1024
 MAX_EXPANDED = 256 * 1024 * 1024
@@ -34,7 +37,7 @@ def digest(raw):
 
 
 def scoped(base, relative):
-    path = (base / relative).resolve()
+    path = research_path(relative, base)
     if not path.is_relative_to(base):
         raise ValueError("Path escaped its verification scope")
     return path
@@ -355,7 +358,7 @@ def main():
     run = args.run
     if not run.is_absolute() and run.parts and run.parts[0] == "runs":
         run = ROOT / run
-    run = run.resolve()
+    run = research_path(run)
     if not run.is_relative_to(ROOT / "runs") or run == ROOT / "runs" or not run.is_dir():
         parser.error("Run must be an existing research/online-artwork/runs subdirectory")
     output = scoped(run, "verification.json")
@@ -375,7 +378,7 @@ def main():
     for package, source in results["sources"].items():
         checks = Checks()
         filename, expected, _, version = SOURCES[package]
-        current = digest((ROOT.parent / filename).read_bytes())
+        current = digest((ROOT.parent / "apps" / filename).read_bytes())
         checks.add("current_apk_hash_unchanged", current == expected == source.get("apk_sha256"))
         checks.add("application_metadata_version", str(source.get("app_metadata_version_code")) == version)
         report["sources"][package] = {"passed": checks.passed, "checks": checks.rows, "apk_sha256": current}

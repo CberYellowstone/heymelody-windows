@@ -1,6 +1,6 @@
 # 文档索引
 
-当前版本为 0.8.3。除 Markdown 链接外，文档中的 `src/`、`tests/`、`research/`、`reference/`、`artifacts/` 和 `release/` 路径均相对于仓库根目录。构建、发布和验证入口见 [REPOSITORY.md](../REPOSITORY.md)。
+当前版本为 0.8.3。除 Markdown 链接外，文档中的 `src/`、`tests/`、`docs/research/`、`reference/`、`artifacts/` 和 `release/` 路径均相对于仓库根目录。研究结论和工具位于 `docs/research/`，原始材料位于根目录 `research/`，具体位置见 [研究资料归档](research/README.md)。构建、发布和验证入口见 [REPOSITORY.md](../REPOSITORY.md)。
 
 ## 当前实现
 
@@ -16,6 +16,8 @@
 
 ## 研究与历史
 
+- [研究资料归档与提交边界](research/README.md)：专题目录、原始输入与上游仓库、新旧路径映射及本地保全规则。
+- [两个 OppoPods 项目的适配调查](research/oppopods-comparison-2026-10-08/README.md)：官方型号表、协议与系统集成对照，证据位置及值得继续验证的经验。
 - [设备适配研究交接与验收入口](research/device-adaptation-handoff.md)：下一会话的阅读入口、离线复现与原件保全清单。
 - [云端设备配置](research/cloud-device-configuration.md)、[云端设备美术](research/cloud-device-artwork.md)：认证、解密、配置选择、模型/2D 原件与未证明范围。
 - [X3 三维模型验证](research/enco-x3-3d-validation.md)、[X3 外壳遮挡修复](research/enco-x3-opaque-occlusion.md)：Free4 之前的独立实验记录，保留对应版本的证据。
@@ -24,4 +26,4 @@
 - [阶段 1](history/phase1-notes.md)、[阶段 2](history/phase2-notes.md)、[阶段 3/4](history/phase34-notes.md)：旧 CLI 和本机实验记录。
 - [阶段 5](history/phase5-notes.md)、[协议证据](history/phase5-protocol-evidence.md)、[集成审阅](history/integration-review.md)：WPF 0.5.0 证据与 0.6.x 后续说明。
 
-历史证据保留原始时间、版本、范围和源码定位；新的复核另存报告，不覆盖原件。当前离线/模拟测试和静态包校验不证明真实耳机广播、手机并发、休眠恢复或 ARM64 实机行为。指定研究脚本与脱敏契约随源码保留，APK、完整厂商配置、图册原件、发布包、运行报告、抓包和构建输出由 `.gitignore` 保留在本地。
+历史证据保留原始时间、版本、范围和源码定位；新的复核另存报告，不覆盖原件。资料迁移仅更新访问链接及工具入口，历史报告和 manifest 的旧路径保留。当前离线/模拟测试和静态包校验不证明真实耳机广播、手机并发、休眠恢复或 ARM64 实机行为。研究结论与复现脚本保存在 `docs/research/`；原始输入、上游仓库、厂商配置、图册和采样记录保存在根目录 `research/`。发布包与构建输出仍使用原有目录。

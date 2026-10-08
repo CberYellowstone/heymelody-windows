@@ -25,7 +25,7 @@ REPO = "Lcom/oplus/melody/model/repository/earphone/"
 CORE = "Lcom/oplus/melody/btsdk/multidevice/HeadsetCoreService;"
 SAMPLES = (
     {
-        "apk": "research/无线耳机_17.6.3.apk",
+        "apk": "research/apps/无线耳机_17.6.3.apk",
         "sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
         "ui_dex": "classes2.dex", "sdk_dex": "classes.dex",
         "child": "LBa/m;", "repository": REPO + "J;",
@@ -36,7 +36,7 @@ SAMPLES = (
         "core_args": [0, 4, 1, 5],
     },
     {
-        "apk": "research/欢律.apk",
+        "apk": "research/apps/欢律.apk",
         "sha256": "eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4",
         "ui_dex": "classes3.dex", "sdk_dex": "classes3.dex",
         "child": "LZb/g;", "repository": REPO + "O;",

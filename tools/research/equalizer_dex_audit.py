@@ -59,8 +59,8 @@ def audit(apk, member, selections):
 if __name__ == "__main__":
     function = "Lcom/oplus/melody/common/data/WhitelistConfigDTO$Function;"
     for apk, digest, dto_member, ui_member, ui_owner, utility, getter, initializer in [
-        ("research/无线耳机_17.6.3.apk", "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059", "classes.dex", "classes2.dex", "Lca/F;", "Lcom/oplus/melody/common/util/O;", "g", "p"),
-        ("research/欢律.apk", "eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4", "classes3.dex", "classes3.dex", "LAb/y0;", "Lcom/oplus/melody/common/util/S;", "i", "r"),
+        ("research/apps/无线耳机_17.6.3.apk", "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059", "classes.dex", "classes2.dex", "Lca/F;", "Lcom/oplus/melody/common/util/O;", "g", "p"),
+        ("research/apps/欢律.apk", "eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4", "classes3.dex", "classes3.dex", "LAb/y0;", "Lcom/oplus/melody/common/util/S;", "i", "r"),
     ]:
         with Path(apk).open("rb") as file:
             if hashlib.file_digest(file, "sha256").hexdigest() != digest:

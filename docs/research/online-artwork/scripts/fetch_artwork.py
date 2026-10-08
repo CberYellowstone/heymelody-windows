@@ -27,7 +27,9 @@ import urllib.request
 import uuid
 import zipfile
 
-ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_ROOT = Path(__file__).resolve().parents[1]
+DOCUMENTATION_ROOT = SCRIPTS_ROOT.parent
+ROOT = Path(__file__).resolve().parents[4] / "research/online-artwork"
 RESEARCH = ROOT.parent
 ENDPOINT = "v1/earphone/resource/fetch"
 MAX_DOWNLOAD = 64 * 1024 * 1024
@@ -50,7 +52,7 @@ def helper(name, path):
     return module
 
 
-whitelist = helper("artwork_whitelist", RESEARCH / "online-whitelist/scripts/fetch_whitelist.py")
+whitelist = helper("artwork_whitelist", DOCUMENTATION_ROOT / "online-whitelist/scripts/fetch_whitelist.py")
 legacy = whitelist.legacy
 
 

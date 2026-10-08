@@ -11,7 +11,7 @@ import zipfile
 
 from event_dex_audit import instructions, read_dex
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "research/earbud-artwork/scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "docs/research/earbud-artwork/scripts"))
 from android_resources import resource_table
 
 
@@ -85,8 +85,8 @@ def mapper(apk, member, owner):
 
 if __name__ == "__main__":
     for apk, digest, member, owner in [
-        ("research/无线耳机_17.6.3.apk", "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059", "classes2.dex", "Lca/y;"),
-        ("research/欢律.apk", "eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4", "classes3.dex", "LAb/h0;"),
+        ("research/apps/无线耳机_17.6.3.apk", "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059", "classes2.dex", "Lca/y;"),
+        ("research/apps/欢律.apk", "eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4", "classes3.dex", "LAb/h0;"),
     ]:
         with Path(apk).open("rb") as file:
             if hashlib.file_digest(file, "sha256").hexdigest() != digest:

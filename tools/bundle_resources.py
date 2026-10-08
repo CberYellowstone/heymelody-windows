@@ -35,12 +35,12 @@ def copy_asset(path):
     return "data/" + name, digest(raw), len(raw)
 
 def main():
-    spec = importlib.util.spec_from_file_location("bundle_auth", ROOT / "research/online-whitelist/scripts/fetch_whitelist.py")
+    spec = importlib.util.spec_from_file_location("bundle_auth", ROOT / "docs/research/online-whitelist/scripts/fetch_whitelist.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     keys, provenance, assets = {}, [], []
     for package, (source, name, apk_name, apk_hash, version) in SOURCES.items():
-        apk = ROOT / "research" / apk_name
+        apk = ROOT / "research/apps" / apk_name
         if digest(apk.read_bytes()) != apk_hash: raise ValueError("Pinned APK hash mismatch")
         with zipfile.ZipFile(apk) as archive:
             key, _ = module.authenticate_material(archive, module.SPECS[package])
@@ -80,7 +80,7 @@ def main():
                 source_path = animation_file.relative_to(DEST).as_posix()
                 source_hash, source_length = original_hash, original_size
                 data = json.loads(original.read_text(encoding="utf-8"))
-                with zipfile.ZipFile(ROOT / "research" / SOURCES[package][2]) as archive:
+                with zipfile.ZipFile(ROOT / "research/apps" / SOURCES[package][2]) as archive:
                     for image in data.get("assets", []):
                         relative = str(image.get("u", "")) + str(image.get("p", ""))
                         if not relative or relative.startswith("data:"): continue
@@ -107,7 +107,7 @@ def main():
             assets.append({"source": source, "productIds": [product], "color": color, "kind": "model", "role": "model",
                            "title": product + " official model", "androidName": "", "night": False, "path": path, "sha256": sha, "length": length})
     for name, role in [("x4-pods-with-earphones.png", "detail"), ("x4-both-earphones.png", "capsule")]:
-        path, sha, length = copy_asset(ROOT / "research" / name)
+        path, sha, length = copy_asset(ROOT / "research/screenshots" / name)
         for source in (0, 1):
             assets.append({"source": source, "productIds": ["06EC10"], "color": None, "kind": "bitmap", "role": role,
                            "title": "OPPO Enco X4", "androidName": "", "night": False, "path": path, "sha256": sha, "length": length})

@@ -10,7 +10,7 @@
 
 | 入口 | 能直接使用的成果 | 使用范围 |
 |---|---|---|
-| [online-artwork/README.md](../../research/online-artwork/README.md) 与本文 | X3、普通 Free4 两份官方模型 ZIP，原容器及原字节导出 | 精确产品 ID、请求色号、App 来源与下载哈希绑定 |
+| [online-artwork/README.md](online-artwork/README.md) 与本文 | X3、普通 Free4 两份官方模型 ZIP，原容器及原字节导出 | 精确产品 ID、请求色号、App 来源与下载哈希绑定 |
 | [earbud-artwork/index.html](../../research/earbud-artwork/index.html) | 离线图册，按来源、类型、功能和中文关键词筛选 | 查看外观、Hi-Res、降噪、EQ、空间音频等美术 |
 | [earbud-artwork/assets.json](../../research/earbud-artwork/assets.json) | 原件路径、SHA256、全部 `origins`、主题/密度变体、功能标签和绘制依赖 | 使用原件时保留来源及依赖，不以 PNG 预览替代原矢量或动画 |
 | [earbud-artwork/models.json](../../research/earbud-artwork/models.json) | 143 个内置产品 ID，140 个耳机、3 个音箱；市场别名与型号关联 | 历史内置索引，不是当前云端白名单全量索引 |
@@ -94,7 +94,7 @@ X3s `06BC10`、X3i `066810` 都不是 X3；普通 Free4 也不是丹拿版。不
 X3 原件目录：
 
 ```text
-research/online-artwork/runs/20261007T101708.195649Z/
+research/online-artwork/runs/20261007T101708.195649Z
   packages/b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf/
     resource.zip
     download.transport.bin
@@ -108,7 +108,7 @@ research/online-artwork/runs/20261007T101708.195649Z/
 Free4 原件目录：
 
 ```text
-research/online-artwork/runs/20261007T101352.199515Z/
+research/online-artwork/runs/20261007T101352.199515Z
   packages/068676a8bb633f35e741f2d0dc7eb919afcb03e89f5c6839b41adbec53287bb1/
     resource.zip
     download.transport.bin
@@ -176,4 +176,6 @@ Android vector 原件是二进制 XML，PNG/SVG 仅是研究预览；主题属�
 
 不要为阅读成果默认执行 online 获取或 `--merge`/重新提取操作。原在线 fetcher 默认离线，只有显式 `--online` 才请求资源；复现需要已经安装的 Python 3.11、cryptography，图册检查还需要 Pillow，脚本不会安装依赖。模型获取器依赖 `online-whitelist/scripts/fetch_whitelist.py`，后者又依赖 `earbud-artwork/scripts/probe_resources.py` 与 `android_resources.py`；保存研究时需要连同辅助脚本及两份输入 APK 保留，不只复制 GLB。
 
-本次没有发现正式模型、主清单原件、派生预览或报告失效路径；这是对本地保存产物的结论，未检查当时 CDN 链接现在是否仍有效。`research/` 及 `artifacts/` 的大量研究产物没有自动进入 Git，切换会话但保留工作区即可使用；迁移电脑或清理忽略目录前应同时保全原件、脚本、清单、报告和依赖入口，不能仅凭本文恢复未提交的二进制资源。
+原验收没有发现正式模型、主清单原件、派生预览或报告失效路径；这是对当时本地保存产物的结论，未检查当时 CDN 链接现在是否仍有效。原 `research/` 产物现按专题归档于 `docs/research/`；其中原始输入、完整厂商资源、生成图册与运行报告，以及 `artifacts/` 证据仍仅在本地保留，具体提交边界见 [资料归档入口](README.md)。迁移电脑或清理忽略目录前应同时保全原件、脚本、清单、报告和依赖入口，不能仅凭本文恢复未提交的二进制资源。
+
+**资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。

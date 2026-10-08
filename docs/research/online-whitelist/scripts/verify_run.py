@@ -25,7 +25,9 @@ import re
 import zipfile
 from datetime import datetime, timezone
 
-ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_ROOT = Path(__file__).resolve().parents[1]
+DOCUMENTATION_ROOT = SCRIPTS_ROOT.parent
+ROOT = Path(__file__).resolve().parents[4] / "research/online-whitelist"
 RESEARCH = ROOT.parent
 MAX_CONFIG_BYTES = 8 * 1024 * 1024
 MAX_REPORT_BYTES = 64 * 1024 * 1024
@@ -54,7 +56,7 @@ def load_helper(name, path):
     return module
 
 
-runtime = load_helper("verify_runtime", RESEARCH / "earbud-artwork/scripts/research_runtime.py")
+runtime = load_helper("verify_runtime", DOCUMENTATION_ROOT / "earbud-artwork/scripts/research_runtime.py")
 runtime.bootstrap("cryptography")
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.serialization import pkcs7, Encoding
@@ -69,7 +71,7 @@ def run_path(value):
     candidate = Path(value)
     if not candidate.is_absolute() and candidate.parts and candidate.parts[0] == "runs":
         candidate = ROOT / candidate
-    candidate = candidate.resolve()
+    candidate = runtime.research_path(candidate)
     if not candidate.is_relative_to(ROOT / "runs") or candidate == ROOT / "runs":
         raise ValueError("Run must be under research/online-whitelist/runs")
     if not candidate.is_dir():
@@ -275,7 +277,7 @@ def semantic_tests(analyzer, fetcher, run):
 def verify_package(run, package, source, analysis, fetcher):
     checks = Checks()
     spec = SPECS[package]
-    apk_raw = (RESEARCH / spec["apk"]).read_bytes()
+    apk_raw = (RESEARCH / "apps" / spec["apk"]).read_bytes()
     apk_digest = sha256(apk_raw)
     checks.add("apk_current_hash_unchanged", apk_digest == spec["sha256"] == source.get("apk_sha256"), sha256=apk_digest)
     if not checks.passed:
@@ -355,8 +357,8 @@ def main():
     results_raw = read_saved(run, "results.json", MAX_REPORT_BYTES)
     analysis_raw = read_saved(run, "analysis.json", MAX_REPORT_BYTES)
     results, analysis = strict_json(results_raw), strict_json(analysis_raw)
-    fetcher = load_helper("verify_fetcher", ROOT / "scripts/fetch_whitelist.py")
-    analyzer = load_helper("verify_analyzer", ROOT / "scripts/analyze_whitelist.py")
+    fetcher = load_helper("verify_fetcher", SCRIPTS_ROOT / "scripts/fetch_whitelist.py")
+    analyzer = load_helper("verify_analyzer", SCRIPTS_ROOT / "scripts/analyze_whitelist.py")
     report = {"schema_version": 1, "verified_at": datetime.now(timezone.utc).isoformat(),
               "run": run.relative_to(ROOT).as_posix(), "network_requested": False,
               "keys_or_authentication_headers_written": False, "python_version": sys.version.split()[0],

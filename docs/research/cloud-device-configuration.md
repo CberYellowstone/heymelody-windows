@@ -8,13 +8,13 @@
 
 后续设备操作适配应从 [新会话交接入口](device-adaptation-handoff.md) 进入，再读本页、[OPPO 静态协议与平台条件研究](oppo-device-support.md) 和 [现有实机协议证据](../history/phase5-protocol-evidence.md)。配置原文按以下**显式运行目录**读取，不依据可能已更新的 `latest-run.json`：
 
-`research/online-whitelist/runs/20261007T095049.319796Z/`
+`research/online-whitelist/runs/20261007T095049.319796Z`
 
 | 内容 | 同机路径或入口 |
 |---|---|
-| 认证、解密、获取器 | [fetch_whitelist.py](../../research/online-whitelist/scripts/fetch_whitelist.py) |
-| 兼容转换、差异、型号清单分析器 | [analyze_whitelist.py](../../research/online-whitelist/scripts/analyze_whitelist.py) |
-| 独立离线验证器 | [verify_run.py](../../research/online-whitelist/scripts/verify_run.py) |
+| 认证、解密、获取器 | [fetch_whitelist.py](online-whitelist/scripts/fetch_whitelist.py) |
+| 兼容转换、差异、型号清单分析器 | [analyze_whitelist.py](online-whitelist/scripts/analyze_whitelist.py) |
+| 独立离线验证器 | [verify_run.py](online-whitelist/scripts/verify_run.py) |
 | 静态契约快照 | [static-contract.json](../../research/online-whitelist/evidence/static-contract.json) |
 | 正式获取记录 | [results.json](../../research/online-whitelist/runs/20261007T095049.319796Z/results.json) |
 | 配置比较及具体 JSONPath | [analysis.json](../../research/online-whitelist/runs/20261007T095049.319796Z/analysis.json) |
@@ -22,14 +22,14 @@
 
 每个正式运行的 `com.heytap.headset/`、`com.oplus.melody/` 子目录保存 `builtin.encrypted.bin`、`builtin.json`、`cloud.download.bin`、`cloud.json`、`cloud.metadata.redacted.json`，以及 `builtin/cloud.local-cache.encrypted.gz` 和 `builtin/cloud.cache-decrypted.json`。`cloud.download.bin` 是传输原字节，`cloud.json` 是按 HTTP Content-Encoding 处理后的原文；此次两者字节完全相同。
 
-安全研究脚本和脱敏契约可以纳入 Git；APK、完整厂商配置、缓存测试密文和运行报告仍是本地证据，必须在当前机器保留或另行备份。仅克隆仓库不会重新获得这些样本。脚本还依赖同目录树下 `research/earbud-artwork/scripts/probe_resources.py`、`android_resources.py`、`research_runtime.py`，不可只拷贝三个白名单脚本而漏掉这些依赖。
+研究脚本保存在 `docs/research/`；APK 位于 `research/apps/`，配置、静态契约、缓存测试样本和运行报告位于 `research/online-whitelist/`。脚本依赖 `docs/research/earbud-artwork/scripts/probe_resources.py`、`android_resources.py`、`research_runtime.py`，不可只拷贝三个白名单脚本而漏掉这些依赖。
 
 ## 固定输入与实测结果
 
 | 源 | APK 本地路径 | 安装版本 / versionName | SHA256 |
 |---|---|---|---|
-| 欢律 | `research/欢律.apk` | `117006005` / `17.6.5` | `eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4` |
-| 无线耳机 | `research/无线耳机_17.6.3.apk` | `17006003` / `17.6.3` | `c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059` |
+| 欢律 | `research/apps/欢律.apk` | `117006005` / `17.6.5` | `eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4` |
+| 无线耳机 | `research/apps/无线耳机_17.6.3.apk` | `17006003` / `17.6.3` | `c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059` |
 
 两 APK 当前仍可用，指纹与原研究一致。下表是 2026-10-07 09:50 UTC 的实际响应，不是对未来服务端结果的预测。
 
@@ -141,18 +141,18 @@ python -B -X utf8 tools/research/accept_cloud_research.py
 python -B -X utf8 tools/research/accept_cloud_research.py --output-dir artifacts/research-acceptance-next-session
 
 # 离线复核固定的正式成功 run；输出目标必须是 artifacts 下尚不存在的文件。
-python -B -X utf8 research/online-whitelist/scripts/verify_run.py --run research/online-whitelist/runs/20261007T095049.319796Z --output artifacts/config-review-new/verification.json
+python -B -X utf8 docs/research/online-whitelist/scripts/verify_run.py --run research/online-whitelist/runs/20261007T095049.319796Z --output artifacts/config-review-new/verification.json
 
 # 仅恢复 APK 认证材料、解密内置配置并生成新的离线 run。
-python -B -X utf8 research/online-whitelist/scripts/fetch_whitelist.py --offline
+python -B -X utf8 docs/research/online-whitelist/scripts/fetch_whitelist.py --offline
 
 # 获取两个配置源，创建新的在线 run；需要请求时才运行。
-python -B -X utf8 research/online-whitelist/scripts/fetch_whitelist.py --online --proxy http://127.0.0.1:59991
+python -B -X utf8 docs/research/online-whitelist/scripts/fetch_whitelist.py --online --proxy http://127.0.0.1:59991
 
 # 手动填入新产生的 run，不对历史正式 run 原位重写分析/验证报告。
-$configRun = 'research/online-whitelist/runs/<新的运行目录>'
-python -B -X utf8 research/online-whitelist/scripts/analyze_whitelist.py --run $configRun
-python -B -X utf8 research/online-whitelist/scripts/verify_run.py --run $configRun
+$configRun = 'research/online-whitelist/runs<新的运行目录>'
+python -B -X utf8 docs/research/online-whitelist/scripts/analyze_whitelist.py --run $configRun
+python -B -X utf8 docs/research/online-whitelist/scripts/verify_run.py --run $configRun
 ```
 
 `--packages com.oplus.melody` 或 `--packages com.heytap.headset` 可选择单源获取。分析/验证器要求完整两源云样本，不能把单源或 offline-only run 当作正式两源云获取验收。无 `--proxy` 时忽略系统代理环境，直接连接；HTTP 403/429 会停止后续网络请求。默认正常 TLS 证书验证，未复刻 Android TLS pinning。
@@ -160,3 +160,5 @@ python -B -X utf8 research/online-whitelist/scripts/verify_run.py --run $configR
 分析/验证 CLI 默认写 `RUN/analysis.json`、`RUN/verification.json`；验证器新增 `--output` 可写入 artifacts 内的新文件，并拒绝覆盖已有文件。本次先通过模块函数生成新的 artifacts 报告，保护历史原件。获取器还会更新 `latest-run.json` 和静态契约，因此正式证据应按固定 run 读取。8 MiB 解压限制、1 MiB 元数据限制、域名限制和禁止重定向是研究工具的约束，不是已证明的官方 App 规则。
 
 旧 [inspect_oppo_apk.py](../../tools/research/inspect_oppo_apk.py) 的名单选择曾用 truthy `compatWhiteList`；它可复现当时两份非空内置名单，但不能验证空兼容名单的官方语义。后续解析与验收以本页所指新分析器的非 null 规则为准。完整美术资源的获取另见 [云端美术资源交接](cloud-device-artwork.md)：白名单没有模型 URL，`support3DModel` 声明不能替代 product ID、颜色、module ID 与实际资源响应的关联。
+
+**资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。

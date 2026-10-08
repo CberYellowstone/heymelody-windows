@@ -8,6 +8,8 @@
 
 参考 `research/main-page.png` 和 `research/headphone-configs.png`，默认窗口 1280×900，最小 900×640：左侧展示产品，右侧显示身份、电量和设置，底部固定设备选择区。宽度小于 1080 时改为上下布局，设置区域单独滚动。X4 产品大图使用用户提供的 `research/x4-pods-with-earphones.png`，底栏 X4 图标使用 `research/x4-both-earphones.png`；两张原始 1440×1440 透明 PNG 复制到 App 的 `Assets/Devices/EncoX4` 并作为 Avalonia 资源嵌入，运行时不依赖 `research` 目录。其他设备沿用通用图形。
 
+上述路径是图像采用时的原始出处。2026-10-08 归档后的访问入口为 [主界面参考](../research/screenshots/main-page.png)、[设置参考](../research/screenshots/headphone-configs.png)、[X4 产品大图](../research/screenshots/x4-pods-with-earphones.png) 与 [X4 底栏图标](../research/screenshots/x4-both-earphones.png)；文件仍仅在本地保存，组织规则见 [研究资料归档](research/README.md)。
+
 外观优先按取得的实际 ProductId 判断：`06EC10` 使用 X4 素材，其他非空型号使用通用图形。尚未取得型号时，名称精确匹配 `OPPO Enco X4` 或 `Enco X4`，忽略大小写及首尾空格，选中后即可展示 X4 图片。只读 `MainViewModel.ProductId` 在快照、控制会话和当前选择的 Identity 一致时才暴露型号，`MainView` 按设备 Identity 暂存，切换或断开后继续用于外观；移出列表或更换数据上下文时清理。切换中的旧快照不会将原设备型号归到新选择。此缓存只影响显示，不授予控制能力；连接、适配及写入仍要求实际设备身份和后端状态核实。
 
 `ProductArtwork` 和 `DeviceIconView` 分别作为大图与底栏图标宿主，通过 `Visual` 展示数据及 `VisualTemplate`（`IDataTemplate`）呈现内容；宿主不读取蓝牙状态，也不硬编码 X4 判断。当前实现 PNG 和通用图形模板，未来可用新的展示数据及模板接入字体字符、矢量、Lottie 或可交互 3D 控件，本轮不引入这些渲染依赖。大图保留响应式尺寸限制和输入能力，图片模板等比居中，不在宿主统一套用 Viewbox；小图保持 28×28 占位。素材延迟加载并共享 Bitmap，加载流及时关闭，应用结束时释放资源；各宿主独立创建呈现控件。视觉更新保留原有 `UiDevice` 列表及选择绑定，不重建列表或改变滚动位置。

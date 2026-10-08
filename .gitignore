@@ -27,3 +27,6 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# Research reports and reproduction scripts live in docs/research.
+# Binary inputs, raw evidence and upstream checkouts live in the ignored research directory.

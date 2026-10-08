@@ -32,7 +32,7 @@ ZIP 大小 **117,726,072 字节（约 112.3 MiB）**，SHA256 为 `830d7787664fb
 应用在校验原件长度与哈希后加载新的独立场景，通过公开 API 将该已知资产的唯一材质设为 Opaque 并开启 DepthWrite。保持全部纹理、几何和原有正向缩放，相机按 SDK 的世界 bounds 适配。使用原有桌面光照，不声称已完整移植 OEM 的 IBL 或 skybox。
 
 - [模型控件](../../src/HeyMelody.App/EncoFree4ModelView.cs)
-- [资源获取记录](../../research/online-artwork/README.md)
+- [资源获取记录](online-artwork/README.md)
 - [Free4 原件审计](../../research/3d-validation/free4-material-audit/README.md)
 
 ## 迁移前独立工作区验证
@@ -85,3 +85,5 @@ python tools/verify_release.py --package release/HeyMelody_Windows_0.7.1 --outpu
 - [主仓库离线套件汇总](../../artifacts/3d-migration-071/source-tests.json)
 - [主仓库界面回归](../../artifacts/3d-migration-071/app-ui/validation.json)
 - [根目录启动验证](../../artifacts/3d-migration-071/root-launcher-window.json)
+
+**资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。

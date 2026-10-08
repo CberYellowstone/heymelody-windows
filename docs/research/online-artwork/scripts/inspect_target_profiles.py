@@ -9,10 +9,14 @@ import runpy
 import struct
 import zipfile
 from pathlib import Path
+import sys
 
 
-ROOT = Path(__file__).resolve().parents[3]
-OUTPUT_ROOT = ROOT / "research" / "online-artwork"
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / "docs/research/earbud-artwork/scripts"))
+from research_runtime import research_path
+OUTPUT_ROOT = ROOT / "research/online-artwork"
 TARGETS = {"067410": "OPPO Enco X3", "068C10": "OPPO Enco Free4",
            "06C010": "OPPO Enco Free4（丹拿版）"}
 SOURCES = {"com.heytap.headset": ("欢律.apk", "classes3.dex"),
@@ -113,7 +117,7 @@ def saved_observations():
                     "color_meaning": "Request protocol number; no marketing-color or default-color mapping."}
             artifact = case.get("package_artifact")
             if case.get("status") == "verified" and isinstance(artifact, str):
-                package_root = (OUTPUT_ROOT / artifact).resolve()
+                package_root = research_path(artifact, OUTPUT_ROOT)
                 if OUTPUT_ROOT.resolve() not in package_root.parents:
                     raise ValueError("Package artifact escapes research directory")
                 resource_zip = package_root / "resource.zip"
@@ -137,7 +141,7 @@ def saved_observations():
 
 
 def inspect(run):
-    prior = ROOT / "research" / "earbud-artwork" / "evidence"
+    prior = ROOT / "research/earbud-artwork/evidence"
     contract = json.loads((prior / "resource-contract.json").read_text(encoding="utf-8"))
     report = {"format_version": 1, "scope": "Offline target research only; APK code is parsed, never executed.",
               "exact_targets": TARGETS, "excluded_near_names": {"06BC10": "OPPO Enco X3s", "066810": "OPPO Enco X3i"},
@@ -188,7 +192,7 @@ def inspect(run):
                 "target_specific_model_path_present": False}
         if set(source_report["profiles"]) != set(TARGETS):
             raise ValueError("A named target is absent from the selected cloud list")
-        apk_path = ROOT / "research" / apk_name
+        apk_path = ROOT / "research/apps" / apk_name
         source_report["apk_sha256"] = sha(apk_path.read_bytes())
         with zipfile.ZipFile(apk_path) as archive:
             names = set(archive.namelist())
@@ -250,16 +254,16 @@ def inspect(run):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run", type=Path, default=ROOT / "research" / "online-whitelist" / "runs" / "20261007T095049.319796Z")
+    parser.add_argument("--run", type=Path, default=ROOT / "research/online-whitelist/runs/20261007T095049.319796Z")
     parser.add_argument("--output", type=Path, help="Write a new evidence file while preserving the historical report")
     args = parser.parse_args()
-    output = args.output.resolve() if args.output else OUTPUT_ROOT / "evidence" / "target-profiles.json"
+    output = research_path(args.output) if args.output else OUTPUT_ROOT / "evidence" / "target-profiles.json"
     if not output.resolve().is_relative_to(OUTPUT_ROOT.resolve()):
         parser.error("Output must remain below research/online-artwork")
     if args.output and output.exists():
         parser.error("Output already exists; choose a new report path")
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(inspect(args.run.resolve()), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    output.write_text(json.dumps(inspect(research_path(args.run)), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("Wrote " + str(output))
 
 

@@ -1,6 +1,6 @@
 # EQ 兼容、颜色与 App/Firmware 条件
 
-2026-10-08 已逐指令检查用户提供的两份 APK，以下分支由 DEX 直接恢复，未运行 APK、请求网络或操作耳机。固定输入为 `research/欢律.apk`（SHA256 `eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4`）与 `research/无线耳机_17.6.3.apk`（SHA256 `c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059`）。
+2026-10-08 已逐指令检查用户提供的两份 APK，以下分支由 DEX 直接恢复，未运行 APK、请求网络或操作耳机。固定输入为 `research/apps/欢律.apk`（SHA256 `eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4`）与 `research/apps/无线耳机_17.6.3.apk`（SHA256 `c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059`）。
 
 只读复现工具 [equalizer_dex_audit.py](../../tools/research/equalizer_dex_audit.py) 先检查 APK 指纹，再输出指令、调用目标、字段、分支目标。运行 `python -B -X utf8 tools/research/equalizer_dex_audit.py`；附加 `--app-markers` 可一并输出 App 版本来源。不生成或改写研究样本。
 
@@ -75,3 +75,5 @@ Windows API 位于 [DeviceProfile.cs](../../src/HeyMelody.Devices/DeviceProfile.
 | 23 | 澎湃爽朗 | 46 | 清亮高音 |
 
 modeType 1/2/3 在 `equalizer` 功能版本等于 2，或设备名称为 `OPPO Enco R` / `OPPO Enco Air2` 时，分别改为“纯粹原音 / 脉冲低音 / 悠扬人声”；modeType 4 仅在设备名称为 `OPPO Enco R` 时改为“微醺柔音”。这里名称只参与已识别 profile 的显示文本选择，不能用来解析未知设备身份。
+
+**资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。

@@ -15,8 +15,8 @@
 
 | 文件 | 包名 | versionName | versionCode | SHA-256 |
 |---|---|---|---|---|
-| `research/欢律.apk` | `com.heytap.headset` | 17.6.5 | 117006005 | `EACB314E092CFB6C2F075EEE834498412255CADF184978F3DC16400F6E1DD5D4` |
-| `research/无线耳机_17.6.3.apk` | `com.oplus.melody` | 17.6.3 | 17006003 | `C1149DF9E24ED85BF84F7C81C712CEE794299D2B95057C6E221FB547F2717059` |
+| `research/apps/欢律.apk` | `com.heytap.headset` | 17.6.5 | 117006005 | `EACB314E092CFB6C2F075EEE834498412255CADF184978F3DC16400F6E1DD5D4` |
+| `research/apps/无线耳机_17.6.3.apk` | `com.oplus.melody` | 17.6.3 | 17006003 | `C1149DF9E24ED85BF84F7C81C712CEE794299D2B95057C6E221FB547F2717059` |
 
 包名和版本来自 `AndroidManifest.xml` 的二进制 XML 属性，不依据文件名推断。两个 APK 均 compileSdkVersion=36。
 
@@ -24,7 +24,7 @@
 
 ```powershell
 python -m pip install -r tools/research/requirements.txt
-python tools/research/inspect_oppo_apk.py research/欢律.apk research/无线耳机_17.6.3.apk --output artifacts/apk-research --include-plaintext
+python tools/research/inspect_oppo_apk.py research/apps/欢律.apk research/apps/无线耳机_17.6.3.apk --output artifacts/apk-research --include-plaintext
 ```
 
 工具不执行 Android 代码，不调用网络/蓝牙，不解包可执行程序到应用目录。它读取资源表和签名证书，在内存验证 GCM，输出本地 evidence JSON、型号 CSV，以及显式请求后的完整原始 JSON。输出位于已忽略的 `artifacts/`，不成为应用运行依赖。APK、完整厂商配置和厂商艺术资源不随仓库重新分发。
@@ -163,7 +163,7 @@ OEM `classes2.dex` 中 `HiQualityAudioItem$a.a(Function)` 只有下面四个条�
 可选保存这些类的本地逐指令证据：
 
 ```powershell
-python tools/research/inspect_oppo_apk.py research/无线耳机_17.6.3.apk --output artifacts/apk-research --dump-class 'Lcom/oplus/melody/ui/component/detail/tonequality/HiQualityAudioItem$a;' --dump-class 'Lcom/oplus/melody/common/util/O;' --dump-class 'Le9/b;' --dump-class 'LA9/f;'
+python tools/research/inspect_oppo_apk.py research/apps/无线耳机_17.6.3.apk --output artifacts/apk-research --dump-class 'Lcom/oplus/melody/ui/component/detail/tonequality/HiQualityAudioItem$a;' --dump-class 'Lcom/oplus/melody/common/util/O;' --dump-class 'Le9/b;' --dump-class 'LA9/f;'
 ```
 
 evidence JSON 同时保存所读 DEX 的 SHA-256，反汇编包含方法描述符和指令字节偏移，避免依赖不可复现的反编译行号。
@@ -194,3 +194,5 @@ evidence JSON 同时保存所读 DEX 的 SHA-256，反汇编包含方法描述�
 第一批候选选择现代 UUID A 的 X3/X3s/Free4，它们都有预设 EQ、自定义 EQ、高品质模式与双连声明，但配置未必包含 X4 的十段频率；第二批可选 Air4 Pro/Air3 Pro，它们以 EQ 版本 2、不同自定义能力检验 UI 是否真正由能力驱动。每批先离线 replay、身份/能力/状态 GET，再在有实机与明确验证范围时开放每项 SET。
 
 本文是静态互操作研究，不复制厂商 Android 实现到应用；原件和完整逆向输出仅保留本地。已有协议事实及实机边界继续参阅 [phase5-protocol-evidence.md](../history/phase5-protocol-evidence.md)。
+
+**资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。

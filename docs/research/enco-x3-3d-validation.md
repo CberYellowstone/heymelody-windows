@@ -2,7 +2,7 @@
 
 这是 X3 独立实验的历史记录，结论与截图对应其当时的源码。后续已换成 Free4 模型并迁入 `arch/modular-devices`；当前源码入口与验证范围见 [Free4 记录](enco-free4-0.7.1.md)。本文中的本地历史证据仍位于 `research/3d-validation/worktree`。
 
-本实验基于 `dd14bbe2531914c3bed295eecc33b7f9e2daa0ca`，该提交的应用版本号为 **0.7.0**，没有对应 tag。独立分支为 `experiment/enco-x3-3d`，worktree 位于主仓库的 `research/3d-validation/worktree`。
+本实验基于 `dd14bbe2531914c3bed295eecc33b7f9e2daa0ca`，该提交的应用版本号为 **0.7.0**，没有对应 tag。独立分支为 `experiment/enco-x3-3d`，独立 worktree 保存在仓库根 `research/3d-validation/worktree`。
 
 目标是在现有 Avalonia / FluentAvalonia 界面中，将左侧 X4 主示意图替换为 X3 GLB，验证鼠标拖拽、松手惯性及闲置水平自转。`--3d-demo` 使用演示状态，不连接 Bluetooth。实验只涉及主示意图及其交互，不改变设备控制逻辑或模块架构；X3 实验当时仅保留在独立分支。
 
@@ -20,7 +20,7 @@
 
 ## 模型来源
 
-使用此前研究中取得的 OPPO Enco X3 资源：产品 ID `067410`、请求配色值 `2`、资源模块 `14`。欢律与无线耳机两种认证来源返回相同包摘要；配色值仅是本次成功的协议值，不认定为默认色或商品颜色名称。请求详情和完整归属边界见 [资源研究记录](../../research/online-artwork/README.md)。
+使用此前研究中取得的 OPPO Enco X3 资源：产品 ID `067410`、请求配色值 `2`、资源模块 `14`。欢律与无线耳机两种认证来源返回相同包摘要；配色值仅是本次成功的协议值，不认定为默认色或商品颜色名称。请求详情和完整归属边界见 [资源研究记录](online-artwork/README.md)。
 
 | 原件或导出 | 字节数 | SHA256 |
 |---|---:|---|
@@ -30,10 +30,10 @@
 
 GLB 是按容器边界直接复制的原始段，没有重编码。它为 GLB 2.0，含 31 个 mesh、39 个 node、1 个 material，没有外部 URI 或内置 glTF animation。容器内原场景 JSON 与 IBL KTX 仍保留；本实验并不声称复刻官方完整光照和材质效果。结构验证见 [报告](../../research/online-artwork/runs/20261007T101708.195649Z/model-inspection/report.json)。
 
-原始导出路径（相对于主仓库）：
+导出原件的当前归档路径（相对于主仓库；原 `research/` 前缀保留在历史报告中）：
 
 ```text
-research/online-artwork/runs/20261007T101708.195649Z/model-inspection/
+research/online-artwork/runs/20261007T101708.195649Z/model-inspection
   b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf/
   extracted/res/raw/detail_model/model.glb
 ```
@@ -59,7 +59,7 @@ X3 验证提交 `e7db26b` 中的应用副本位于 `src/HeyMelody.App/Assets/Dev
 
 ## 运行与验证状态
 
-以下为当时 X3 源码的运行命令，对应提交 `e7db26b`。当前分支与独立工作区最新源码均已改为 Free4，直接运行最新入口会显示 Free4：
+以下按归档后的目录给出当时 X3 源码的运行入口，对应提交 `e7db26b`；原执行位置为 `research/3d-validation/worktree`。当前分支与独立工作区最新源码均已改为 Free4，直接运行最新入口会显示 Free4：
 
 ```powershell
 Set-Location research/3d-validation/worktree
@@ -102,3 +102,5 @@ dotnet run --project tests/HeyMelody.ModelPreview.Tests --no-build -r win-x64 --
 实际渲染诊断的短采样约 0.8–0.9 ms/帧，仅代表本机 GPU 渲染阶段，不是整个应用性能保证。空闲请求 30 fps，拖动和惯性时请求 60 fps，按需绘制；实际帧率受 Avalonia、驱动与调度影响。尚未验证其他 GPU、软件回退后端，光照也未完整移植 OEM Filament 的 IBL KTX。这是效果验证分支，库为闭源 preview，不能视为正式集成与跨设备兼容性验收。
 
 接入时还验证了两个具体 API 边界：Ava3D 的 class handler 会释放指针捕获，应用必须在 tunnel 阶段先结束拖动才能保留惯性；`Camera.Fit(bounds, margin)` 第二参数是安全边距，默认 1.25，并不是宽高比。验证版使用具名 `margin` 参数，并按真实 viewport 布局适配，避免紧凑窗口将模型意外缩小。
+
+**资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。

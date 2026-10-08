@@ -1,6 +1,6 @@
 # 欢律 / 无线耳机云端白名单获取验证
 
-后续会话从 [设备适配交接](../../docs/research/device-adaptation-handoff.md) 和 [配置专题](../../docs/research/cloud-device-configuration.md) 开始。读取固定成功样本可运行 `python -B -X utf8 tools/research/accept_cloud_research.py`，新报告写入 `artifacts`，不覆盖本页原始证据。下文保留原获取阶段记录；重新获取会创建新 run 并更新 latest 指针。
+后续会话从 [设备适配交接](../device-adaptation-handoff.md) 和 [配置专题](../cloud-device-configuration.md) 开始。读取固定成功样本可运行 `python -B -X utf8 tools/research/accept_cloud_research.py`，新报告写入 `artifacts`，不覆盖本页原始证据。下文保留原获取阶段记录；重新获取会创建新 run 并更新 latest 指针。
 
 本轮于 **2026-10-07 09:50 UTC（香港时间 17:50）**实际请求了两个 App 的白名单服务。两路元数据 POST 与两路配置 GET 全部返回 HTTP 200；元数据业务码均为 0。使用 `http://127.0.0.1:59991` 代理，串行请求、请求间隔至少一秒，没有访问手机、运行 APK 或修改桌面应用代码。现有 Python 环境足够，**不需要 AVD、root 或 ADB**。
 
@@ -81,7 +81,7 @@ GCM tag 为 128 位，位于密文末尾。官方缓存 key 是每次安装本�
 | 内置版本覆盖 | `classes3.dex A9/a.get`，`0x108684–0x1086ba` | `classes.dex M6/h.get`，`0x1e895a–0x1e8962` |
 | 兼容字段转换 | `classes3.dex WhitelistContentDO.compatToContent`，`0x2522d4` | `classes.dex` 同方法，`0x58db58` |
 
-实际获取目录：[本轮完整结果](runs/20261007T095049.319796Z/results.json)、[名单与版本分析](runs/20261007T095049.319796Z/analysis.json)、[独立离线复核](runs/20261007T095049.319796Z/verification.json)。完整静态契约见 [static-contract.json](evidence/static-contract.json)。
+实际获取目录：[本轮完整结果](../../../research/online-whitelist/runs/20261007T095049.319796Z/results.json)、[名单与版本分析](../../../research/online-whitelist/runs/20261007T095049.319796Z/analysis.json)、[独立离线复核](../../../research/online-whitelist/runs/20261007T095049.319796Z/verification.json)。完整静态契约见 [static-contract.json](../../../research/online-whitelist/evidence/static-contract.json)。
 
 独立离线复核共 **52 项全部通过**，包括 APK 指纹、内置解密字节一致性、云端文件与记录一致性、元数据大小、缓存记录、新密钥内存加解密、兼容字段优先级、版本选择及 gzip 解压上限。元数据 HTTP 原文未保留，无法再次计算其传输摘要；保存的临时缓存密文也因 key 未保留而不能跨进程再次解密。这两项限制在验证报告中明确列出。
 
@@ -93,19 +93,24 @@ GCM tag 为 128 位，位于密文末尾。官方缓存 key 是每次安装本�
 
 ```powershell
 $whitelistPython = 'python'
-& $whitelistPython -B -X utf8 research/online-whitelist/scripts/fetch_whitelist.py --offline
+& $whitelistPython -B -X utf8 docs/research/online-whitelist/scripts/fetch_whitelist.py --offline
 ```
 
 重新在线获取两个配置源：
 
 ```powershell
-& $whitelistPython -B -X utf8 research/online-whitelist/scripts/fetch_whitelist.py --online --proxy http://127.0.0.1:59991
+& $whitelistPython -B -X utf8 docs/research/online-whitelist/scripts/fetch_whitelist.py --online --proxy http://127.0.0.1:59991
 $whitelistLatest = Get-Content research/online-whitelist/latest-run.json -Raw | ConvertFrom-Json
-$whitelistRun = Join-Path research/online-whitelist $whitelistLatest.run
-& $whitelistPython -B -X utf8 research/online-whitelist/scripts/analyze_whitelist.py --run $whitelistRun
-& $whitelistPython -B -X utf8 research/online-whitelist/scripts/verify_run.py --run $whitelistRun
+$whitelistRun = Join-Path docs/research/online-whitelist $whitelistLatest.run
+& $whitelistPython -B -X utf8 docs/research/online-whitelist/scripts/analyze_whitelist.py --run $whitelistRun
+& $whitelistPython -B -X utf8 docs/research/online-whitelist/scripts/verify_run.py --run $whitelistRun
 ```
 
 不传 `--proxy` 时直接连接，并忽略系统环境中的代理变量。`--packages` 可以只选择其中一个包名。获取器默认离线，只有 `--online` 才访问网络；HTTP 403/429 后停止后续网络请求。
 
 研究工具额外限制输出目录、响应大小和重定向，正常验证 TLS 证书；没有复刻尚未核实的 Android TLS pinning 或所有 OkHttp 行为。这些限制是研究工具规则，不是官方 App 行为。研究没有将配置接入桌面应用，没有实现设置中的配置源切换，也没有操作耳机。
+
+
+## 2026-10-08 归档位置与提交范围
+
+研究说明和复现脚本保存在本目录；原件、配置、静态取证、运行记录及派生数据保存在 [`research/online-whitelist/`](../../../research/online-whitelist/)。历史 JSON 内的采样路径与摘要保持原值，文档链接和工具入口指向当前位置。目录总览见 [研究资料索引](../README.md)。

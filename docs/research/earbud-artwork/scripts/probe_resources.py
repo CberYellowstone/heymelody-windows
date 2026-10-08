@@ -31,7 +31,7 @@ import uuid
 import zipfile
 from datetime import datetime, timezone
 
-HERE = Path(__file__).resolve().parents[1]
+HERE = Path(__file__).resolve().parents[4] / "research/earbud-artwork"
 RESEARCH = HERE.parent
 API_BASE = "https://iot-earbuds-cn.heytapmobi.com/"
 MAX_BYTES = 32 * 1024 * 1024
@@ -178,7 +178,7 @@ def write_json(path, value):
 
 def verified_apk(package):
     spec = APK_SPEC[package]
-    path = RESEARCH / spec["filename"]
+    path = RESEARCH / "apps" / spec["filename"]
     data = path.read_bytes()
     if sha256(data) != spec["sha256"]:
         raise ValueError("APK hash mismatch: " + path.name)
@@ -569,8 +569,8 @@ def export_saved_artwork(records):
         if candidate.is_absolute():
             raise ValueError("Evidence archive path must be relative")
         # Accept the first feasibility probe's repo-relative path as an import.
-        if str(candidate).replace("\\", "/").startswith("research/earbud-artwork/"):
-            candidate = Path(str(candidate).replace("\\", "/").split("research/earbud-artwork/", 1)[1])
+        for prefix in ("research/earbud-artwork/", "docs/research/earbud-artwork/"):
+            candidate = Path(str(candidate).replace("\\", "/").removeprefix(prefix))
         path = (HERE / candidate).resolve()
         if not path.is_relative_to(HERE / "remote"):
             raise ValueError("Archive outside research remote directory")

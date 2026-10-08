@@ -6,8 +6,8 @@
 
 | 样本 | 包名 / 安装版本 | APK SHA256 |
 |---|---|---|
-| `research/无线耳机_17.6.3.apk` | `com.oplus.melody` / 17.6.3 | `c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059` |
-| `research/欢律.apk` | `com.heytap.headset` / 17.6.5 | `eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4` |
+| `research/apps/无线耳机_17.6.3.apk` | `com.oplus.melody` / 17.6.3 | `c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059` |
+| `research/apps/欢律.apk` | `com.heytap.headset` / 17.6.5 | `eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4` |
 
 [anc_dex_audit.py](../../tools/research/anc_dex_audit.py) 使用 Python 3.11+ 标准库及既有 DEX 审计 helper，只读 APK，输出到 stdout。运行：
 
@@ -74,3 +74,5 @@ X4 两份型号配置一致。下表只列 `0404` payload，不含 SPP 帧头和
 4. 在每个主模式已选中的状态再次点击其主按钮，确认不产生额外 SET；再在关闭与通透间交替切换，确认无待确认分组残留或子档默认写入。直控耳机进入自适应可作为听感参考，记录它与手机/Windows 的听感是否一致。
 
 声音验收要求三种起始模式进入自适应均产生与手机参考相符的提示音，其他主模式与子档声音行为也相符；若回读正确而声音仍不符，保留该差异作为未解决现象，继续根据运行时捕获研究，不将本次字节修复报告为实机声音成功。
+
+**资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。

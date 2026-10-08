@@ -56,11 +56,13 @@ def load_helper(name: str, path: Path):
 
 def retention_files() -> list[Path]:
     required = [
-        ROOT / "research/欢律.apk", ROOT / "research/无线耳机_17.6.3.apk",
-        ROOT / "research/online-whitelist",
-        ROOT / "research/online-artwork/runs", ROOT / "research/online-artwork/scripts",
-        ROOT / "research/online-artwork/evidence", ROOT / "research/online-artwork/README.md",
-        ROOT / "research/earbud-artwork", ROOT / "artifacts/apk-research",
+        ROOT / "research/apps/欢律.apk", ROOT / "research/apps/无线耳机_17.6.3.apk",
+        ROOT / "research/online-whitelist", ROOT / "docs/research/online-whitelist/scripts",
+        ROOT / "docs/research/online-whitelist/README.md",
+        ROOT / "research/online-artwork/runs", ROOT / "docs/research/online-artwork/scripts",
+        ROOT / "research/online-artwork/evidence", ROOT / "docs/research/online-artwork/README.md",
+        ROOT / "research/earbud-artwork", ROOT / "docs/research/earbud-artwork/scripts",
+        ROOT / "docs/research/earbud-artwork/README.md", ROOT / "artifacts/apk-research",
         ROOT / "artifacts/research-handoff-whitelist", ROOT / "artifacts/cloud-research-acceptance",
         ROOT / "src/HeyMelody.App/Assets/Devices/EncoFree4/model.glb",
         ROOT / "tools/research/accept_cloud_research.py", ROOT / "tools/research/event_dex_audit.py",
@@ -123,13 +125,13 @@ def verifier(out: Path, label: str, script: Path, run: Path) -> dict:
 
 
 def authentication_and_analysis(out: Path) -> dict:
-    scripts = ROOT / "research/online-whitelist/scripts"
+    scripts = ROOT / "docs/research/online-whitelist/scripts"
     fetcher = load_helper("accept_whitelist_fetcher", scripts / "fetch_whitelist.py")
     analyzer = load_helper("accept_whitelist_analyzer", scripts / "analyze_whitelist.py")
     results = read_json(WHITELIST_RUN / "results.json")
     rows = {}
     for package, spec in fetcher.SPECS.items():
-        apk = ROOT / "research" / fetcher.legacy.APK_SPEC[package]["filename"]
+        apk = ROOT / "research/apps" / fetcher.legacy.APK_SPEC[package]["filename"]
         material = None
         try:
             with zipfile.ZipFile(apk) as archive:
@@ -153,7 +155,7 @@ def authentication_and_analysis(out: Path) -> dict:
 
 
 def containers(out: Path) -> dict:
-    inspector = load_helper("accept_model_inspector", ROOT / "research/online-artwork/scripts/inspect_models.py")
+    inspector = load_helper("accept_model_inspector", ROOT / "docs/research/online-artwork/scripts/inspect_models.py")
     models = {}
     for label, (run_name, package_hash) in MODEL_RUNS.items():
         run = ROOT / "research/online-artwork/runs" / run_name
@@ -181,7 +183,7 @@ def containers(out: Path) -> dict:
 
 
 def gallery(out: Path) -> dict:
-    scripts = ROOT / "research/earbud-artwork/scripts"
+    scripts = ROOT / "docs/research/earbud-artwork/scripts"
     sys.path.insert(0, str(scripts))
     module = load_helper("accept_artwork_gallery", scripts / "merge_and_verify.py")
     report = module.validate(module.load("assets.json")["assets"], module.load("models.json"), True)
@@ -225,12 +227,12 @@ def main() -> int:
         save(out / "retention-manifest.json", manifest)
         summary["retention_manifest_sha256"] = sha(out / "retention-manifest.json")
         summary["retention_file_count"] = len(before)
-        runtime = load_helper("accept_research_runtime", ROOT / "research/earbud-artwork/scripts/research_runtime.py")
+        runtime = load_helper("accept_research_runtime", ROOT / "docs/research/earbud-artwork/scripts/research_runtime.py")
         runtime.bootstrap("cryptography", "PIL")
-        step("whitelist", lambda: verifier(out, "whitelist", ROOT / "research/online-whitelist/scripts/verify_run.py", WHITELIST_RUN))
+        step("whitelist", lambda: verifier(out, "whitelist", ROOT / "docs/research/online-whitelist/scripts/verify_run.py", WHITELIST_RUN))
         for label, (run_name, _) in MODEL_RUNS.items():
             step("artwork_" + label, lambda label=label, run_name=run_name: verifier(
-                out, "artwork-" + label, ROOT / "research/online-artwork/scripts/verify_artwork.py",
+                out, "artwork-" + label, ROOT / "docs/research/online-artwork/scripts/verify_artwork.py",
                 ROOT / "research/online-artwork/runs" / run_name))
         step("authentication_and_analysis", lambda: authentication_and_analysis(out))
         step("model_containers", lambda: containers(out))
