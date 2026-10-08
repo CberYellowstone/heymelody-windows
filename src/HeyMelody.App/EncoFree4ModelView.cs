@@ -32,6 +32,8 @@ public class DeviceModelView : UserControl
     private Window? _window;
     private IPointer? _pointer;
     private GltfModel? _model;
+    private SoftwareModelMaterials? _materials;
+    private bool? _softwareProfile;
     private bool _attached;
     private int _loadGeneration;
     private double _lastTick;
@@ -70,6 +72,7 @@ public class DeviceModelView : UserControl
         Viewport.PropertyChanged += (_, change) =>
         {
             if (change.Property == BoundsProperty) FitCamera();
+            if (change.Property == Ava3DView.InfoProperty) ApplySceneRenderingProfile();
         };
         Viewport.PointerPressed += OnPointerPressed;
         Viewport.PointerMoved += OnPointerMoved;
@@ -142,6 +145,8 @@ public class DeviceModelView : UserControl
         ReleasePointer();
         RefreshActivity();
         _model = null;
+        _materials = null;
+        _softwareProfile = null;
         Viewport.Scene = null;
         ModelReady = false;
         Interlocked.Exchange(ref _resourceLease, null)?.Dispose();
@@ -167,12 +172,13 @@ public class DeviceModelView : UserControl
         {
             using var loadingLease = _visual.File.Acquire();
             var model = await LoadModelAsync(_visual);
+            // Decode and sample the maps once, away from the UI/render threads.
+            var materials = await Task.Run(() => new SoftwareModelMaterials(model));
             if (!_attached || generation != _loadGeneration) return;
             _model = model;
-            model.Scene.Environment = EnvironmentLight.Studio(1.2f);
-            model.Scene.Light.Direction = Vector3.Normalize(new Vector3(-1, -2, -3));
-            model.Scene.Light.Intensity = 2;
-            model.Scene.Light.Ambient = .15f;
+            _materials = materials;
+            _softwareProfile = null;
+            ApplySceneRenderingProfile();
             model.Scene.ShadowMapSize = 1024;
             Viewport.Scene = model.Scene;
             ApplyBackground();
@@ -202,8 +208,34 @@ public class DeviceModelView : UserControl
 
     private void OnRenderingPreferenceChanged(object? sender, EventArgs e) => ApplyRenderingPreference();
 
-    private void ApplyRenderingPreference() => Viewport.PreferredBackend = ModelRenderingPreferences.UseGpuAcceleration
-        ? RenderBackendKind.Automatic : RenderBackendKind.Software;
+    private void ApplyRenderingPreference()
+    {
+        Viewport.PreferredBackend = ModelRenderingPreferences.UseGpuAcceleration
+            ? RenderBackendKind.Automatic : RenderBackendKind.Software;
+        ApplySceneRenderingProfile();
+    }
+
+    private void ApplySceneRenderingProfile()
+    {
+        if (_model is null || _materials is null) return;
+        // Automatic can also fall back to software. Ignore stale diagnostics while
+        // changing the requested backend, then follow the actual renderer once known.
+        var info = Viewport.Info;
+        var software = Viewport.PreferredBackend == RenderBackendKind.Software
+            || (info.FramesRendered > 0 && info.PreferredBackend == Viewport.PreferredBackend
+                && info.ActiveBackend == RenderBackendKind.Software);
+        if (_softwareProfile == software) return;
+        _softwareProfile = software;
+        _materials.Apply(software);
+        var scene = _model.Scene;
+        // CPU lighting is tone-mapped before its base-colour map is multiplied in.
+        // A bright uniform environment clips that lighting and erases curvature.
+        scene.Environment = EnvironmentLight.Studio(software ? .06f : 1.2f);
+        scene.Light.Direction = Vector3.Normalize(software ? new Vector3(-4, -2, -1) : new Vector3(-1, -2, -3));
+        scene.Light.Intensity = software ? 1.5f : 2;
+        scene.Light.Ambient = software ? .02f : .15f;
+        Viewport.InvalidateScene();
+    }
 
     private void FitCamera()
     {

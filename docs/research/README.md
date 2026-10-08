@@ -12,6 +12,7 @@
 | [online-whitelist/](online-whitelist/README.md) | 内置／云配置、认证与版本规则及验证脚本 |
 | [online-artwork/](online-artwork/README.md) | 云模型、格式、材质与验证脚本 |
 | [Enco X4 美术复核](enco-x4-artwork-audit.md) | 官方动态 WebP、操作 Lottie 角色与帧合成验证 |
+| [软件模型材质研究](software-model-materials.md) | 0.8.5 软件材质代表值与光照修正、固定依赖证据和限制 |
 | [Free4 身份与色号审计](online-artwork/free4-identity-color-audit.md) | 产品身份、色号与请求链审计结论 |
 | [3D 验证](3d-validation/README.md) | 历史实验工作树与验证入口 |
 | [OppoPods 对照研究](oppopods-comparison-2026-10-08/README.md) | 两个项目的官方资料使用程度、协议经验与局限 |

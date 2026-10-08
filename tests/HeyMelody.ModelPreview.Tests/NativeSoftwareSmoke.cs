@@ -39,7 +39,7 @@ internal static class NativeSoftwareSmoke
         }) { IsBackground = true, Name = "HeyMelody CPU model validation" };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        if (!thread.Join(TimeSpan.FromSeconds(50))) throw new TimeoutException("Native CPU model validation did not close within fifty seconds.");
+        if (!thread.Join(TimeSpan.FromSeconds(85))) throw new TimeoutException("Native CPU model validation did not close within eighty-five seconds.");
         File.WriteAllText(Path.Combine(output, "native-software-receipts.json"), JsonSerializer.Serialize(new
         { success = _state.Failure is null, _state.Closed, _state.Receipt, failure = _state.Failure?.ToString() },
             new JsonSerializerOptions { WriteIndented = true }));
@@ -90,15 +90,7 @@ internal static class NativeSoftwareSmoke
                 && model.Viewport.Info.Triangles is > 0 and <= 94_927,
                 $"CPU scene retains all 20 meshes and 94,927 source triangles; visible triangles={model.Viewport.Info.Triangles}");
             _state.Check(string.IsNullOrEmpty(model.Viewport.Info.Error), "CPU renderer reports no error");
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-            using var frame = await model.Viewport.CaptureAsync(new CaptureRequest { Format = CaptureFormat.Rgba8 }, timeout.Token);
-            var pixels = frame.Pixels.ToArray();
-            var colors = new HashSet<int>();
-            for (var offset = 0; offset + 3 < pixels.Length; offset += 4)
-                colors.Add(pixels[offset] << 24 | pixels[offset + 1] << 16 | pixels[offset + 2] << 8 | pixels[offset + 3]);
-            _state.Check(pixels.Length == frame.Size.Width * frame.Size.Height * 4 && colors.Count > 32,
-                "CPU frame contains complete visible model pixels");
-            await frame.SaveAsync(Path.Combine(_state.Output, "dynaudio-software.png"), timeout.Token);
+            var lighting = await NativeSoftwareLightingChecks.RunAsync(model, _state.Output, _state.Check);
             var beforeYaw = model.Motion.Yaw;
             var beforeUpdates = model.CameraUpdateCount;
             var rotationWait = System.Diagnostics.Stopwatch.StartNew();
@@ -112,7 +104,7 @@ internal static class NativeSoftwareSmoke
                 model.Viewport.Info.Context, model.Viewport.Info.Device, model.Viewport.Info.Triangles,
                 model.Viewport.Info.SceneItems, model.Viewport.Info.Error, model.Viewport.Info.FramesRendered,
                 sourceTriangles,
-                width = frame.Size.Width, height = frame.Size.Height, distinctColors = colors.Count,
+                lighting,
                 scope = "Real Win32 compositor and CPU Ava3D pixels, x64 host; ARM64 hardware not available"
             };
             window.Content = null;
@@ -124,7 +116,7 @@ internal static class NativeSoftwareSmoke
 
     private static async Task WatchdogAsync(Window window, IClassicDesktopStyleApplicationLifetime desktop)
     {
-        await Task.Delay(45000);
+        await Task.Delay(80000);
         if (_state.Closed) return;
         _state.Failure ??= new TimeoutException("Native CPU renderer watchdog elapsed.");
         window.Close(); desktop.Shutdown();

@@ -16,7 +16,8 @@ internal static class GpuRenderingTests
         Run("model GPU acceleration defaults off and survives preference updates", PreferencesAsync);
         Run("model rendering applies saved choices to existing, new and reattached views", ViewsAsync);
         Run("model GPU settings cancel drafts and save the software choice immediately", SettingsAsync);
-        return 3;
+        Run("software materials use each atlas region and restore original GPU materials", SoftwareMaterialTests.AtlasAsync);
+        return 4;
 
         void Run(string name, Func<Task> action)
         {
