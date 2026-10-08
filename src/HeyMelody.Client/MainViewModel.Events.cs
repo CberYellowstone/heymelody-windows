@@ -18,9 +18,10 @@ public sealed partial class MainViewModel
         { PresentResourceSettings(resources); return; }
         if (notification.Kind == "unavailable")
         {
-            AdvanceSession();
             _subscribed = false;
             _backendSnapshots.Clear();
+            if (IsDemoSelected) return;
+            AdvanceSession();
             InvalidateSnapshot();
             SetStatus(string.IsNullOrWhiteSpace(notification.Message)
                 ? "蓝牙后台连接已中断，请刷新或重新打开主界面。" : Sanitize(notification.Message), true);
@@ -28,6 +29,7 @@ public sealed partial class MainViewModel
         }
         if (notification.Kind == "stopping")
         {
+            if (IsDemoSelected) return;
             AdvanceSession();
             InvalidateSnapshot();
             SetStatus("后台正在退出…");
@@ -40,14 +42,14 @@ public sealed partial class MainViewModel
         }
         if (notification.Kind is not ("catalog" or "snapshot" or "caseOpen" or "health")) return;
         if (!AcceptBackend(notification.BackendInstanceId)) return;
-        if (notification.Kind == "health" && !string.IsNullOrWhiteSpace(notification.Message))
+        if (notification.Kind == "health" && !IsDemoSelected && !string.IsNullOrWhiteSpace(notification.Message))
             SetStatus(Sanitize(notification.Message), true);
         if (notification.Kind == "catalog" && notification.Devices is { } devices)
         {
-            _devices = devices;
+            _devices = ComposeDevices(devices);
             if (!_managingDevices)
             {
-                var selected = devices.FirstOrDefault(device => device.Identity == _selectedDevice?.Identity);
+                var selected = _devices.FirstOrDefault(device => device.Identity == _selectedDevice?.Identity);
                 if (_selectedDevice is not null && selected is null)
                 {
                     AdvanceSession();
@@ -84,9 +86,8 @@ public sealed partial class MainViewModel
         if (_backendInstanceId is { } previous)
         {
             _retiredBackends.Add(previous);
-            AdvanceSession();
             _backendSnapshots.Clear();
-            InvalidateSnapshot();
+            if (!IsDemoSelected) { AdvanceSession(); InvalidateSnapshot(); }
         }
         _backendInstanceId = instance;
         return true;
@@ -94,6 +95,7 @@ public sealed partial class MainViewModel
 
     private bool CacheSnapshot(UiSnapshot snapshot)
     {
+        if (DemoDeviceData.IsDemoIdentity(snapshot.Identity)) return _demoDevice is not null && ReferenceEquals(snapshot, _demoSnapshot);
         if (EventService is null) return true;
         if (_backendInstanceId is null && !AcceptBackend(snapshot.BackendInstanceId)) return false;
         if (snapshot.BackendInstanceId != _backendInstanceId) return false;
@@ -114,6 +116,7 @@ public sealed partial class MainViewModel
 
     private async Task AttachSelectedBackendAsync()
     {
+        if (IsDemoSelected) { AttachDemo(); return; }
         if (EventService is not { } events || _selectedDevice is not { } selected) return;
         _sessionIdentity = selected.Identity;
         var snapshot = await events.SelectAsync(selected.Identity, _lifetime.Token);
@@ -135,7 +138,7 @@ public sealed partial class MainViewModel
             && snapshot.DeviceGeneration == intent.DeviceGeneration && snapshot.ControlReady;
 
     private Task<UiSnapshot> ReadSelectedAsync(RefreshScope scope, CancellationToken token) =>
-        EventService is { } events && _sessionIdentity is { } identity
+        IsDemoSelected && _demoSnapshot is { } demo ? Task.FromResult(demo) : EventService is { } events && _sessionIdentity is { } identity
             ? events.RefreshAsync(identity, scope, token) : _service.RefreshAsync(scope, token);
 
     public async Task<bool> ConfirmBackendExitAsync()
@@ -146,7 +149,7 @@ public sealed partial class MainViewModel
         _closeDialogRunning = true;
         try
         {
-            _backendExitApproved = !EqDirty || _preview
+            _backendExitApproved = !EqDirty || IsDemoSelected || _preview
                 || await ConfirmAsync("关闭客户端", "均衡器还有未保存的调整，确定关闭吗？");
             return _backendExitApproved;
         }

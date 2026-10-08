@@ -16,6 +16,7 @@ namespace HeyMelodyWindows.App;
 /// <summary>A bitmap resource description; loading is deferred until it is displayed.</summary>
 public sealed record BitmapVisual(Uri Source);
 public sealed record EncoFree4ModelVisual;
+public sealed record EncoFree4DynaudioModelVisual;
 public sealed record GenericProductVisual;
 public sealed record GenericDeviceIconVisual;
 
@@ -80,7 +81,7 @@ public static class DeviceVisuals
 
     private sealed class DeviceVisualTemplate : IDataTemplate
     {
-        public bool Match(object? data) => data is BitmapVisual or FileBitmapVisual or DeviceModelVisual or LottieVisual or EncoFree4ModelVisual or GenericProductVisual or GenericDeviceIconVisual;
+        public bool Match(object? data) => data is BitmapVisual or FileBitmapVisual or DeviceModelVisual or LottieVisual or EncoFree4ModelVisual or EncoFree4DynaudioModelVisual or GenericProductVisual or GenericDeviceIconVisual;
 
         public Control? Build(object? data) => data switch
         {
@@ -89,6 +90,7 @@ public static class DeviceVisuals
             DeviceModelVisual model => new DeviceModelView(model),
             LottieVisual animation => new DeviceLottieView(animation),
             EncoFree4ModelVisual => new EncoFree4ModelView(),
+            EncoFree4DynaudioModelVisual => new EncoFree4DynaudioModelView(),
             GenericProductVisual => CreateGenericProduct(),
             GenericDeviceIconVisual => CreateGenericIcon(),
             _ => null

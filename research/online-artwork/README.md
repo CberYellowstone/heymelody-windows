@@ -1,5 +1,7 @@
 # Enco X3 / Enco Free4 云端 3D 资源获取
 
+**2026-10-08 补充：Free4 丹拿版也已取得。** 精确请求 `06C010 / color=3 / moduleId=14` 在欢律与无线耳机下都成功，原 ZIP SHA256 `efe7c68b71fe92a3b6c8e5901603cd889ac3e5f8737e612e3e42f3f6054b1a99`，GLB SHA256 `7f85c66d397ee45163246ff745c37e52a70059e739be0af2283a30bfb689c2f6`。见 [研究报告](../../docs/research/enco-free4-dynaudio-model.md)、[整理后的模型](enco-free4-dynaudio/model.glb)、[原件 manifest](enco-free4-dynaudio/manifest.json) 和 [独立验证](runs/20261008T051703.741040Z/verification.json)。下文保留 2026-10-07 历史范围；当时丹拿版只查到色号 2，不能据此推断模型不存在。本次没有应用功能变更，也无需 root AVD。
+
 本页保留资源获取阶段记录。后续已完成 X3 渲染验证，并将 Free4 模型迁入 0.7.1；当前范围见 [美术交接](../../docs/research/cloud-device-artwork.md) 和 [Free4 实现](../../docs/research/enco-free4-0.7.1.md)。对已保存样本优先运行 `python -B -X utf8 tools/research/accept_cloud_research.py`，它只离线复验并另存报告。
 
 2026-10-07 已实际取得 **Enco X3 与 Enco Free4 的官方 3D 资源包**。每个型号分别通过欢律和无线耳机的请求认证查询，两种来源返回的包 SHA256 相同；每份包只下载一次。研究使用现有 Python 环境和 `http://127.0.0.1:59991` 代理，不需要 AVD、root 或手机辅助。全部产物留在本目录，没有接入桌面应用或实现渲染。

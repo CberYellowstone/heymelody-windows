@@ -17,9 +17,10 @@ public partial class App : Application
             ApplyTheme(ThemePreferences.Load());
             if (Program.IsModelDemo)
             {
-                var window = new MainWindow(new PreviewService(), preview: true)
+                var window = new MainWindow(new UnsupportedPlatformService(), preview: true)
                 {
-                    Title = "HeyMelody 0.7.1 · Enco Free4 三维模型验证"
+                    Title = "HeyMelody · Enco Free4 布局演示",
+                    StartWithDemo = true
                 };
                 window.FindControl<MainView>("Page")?.SetModelDemo();
                 desktop.MainWindow = window;

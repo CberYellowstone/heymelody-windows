@@ -234,10 +234,13 @@ def inspect(run):
         "known_numeric_inputs": {"-1": "Unknown color; retained for these OPPO profiles.",
                                  "0": "Explicit historical X3 probe input; not an official default or validated available variant.",
                                  "1": "Free4 successfully returned a verified module14 package for this explicit number.",
-                                 "2": "X3 successfully returned a verified module14 package for this explicit number."},
-        "free4_confirmed_resource_color_codes": [1] if any(case["productId"] == "068C10" and case["status"] == "verified" for case in observations) else [],
-        "x3_confirmed_resource_color_codes": [2] if any(case["productId"] == "067410" and case["status"] == "verified" for case in observations) else [],
-        "free4_dynaudio_confirmed_resource_color_codes": [],
+                                 "2": "X3 successfully returned a verified module14 package for this explicit number.",
+                                 "3": "Free4 Dynaudio successfully returned a verified module14 package for this explicit number; no default or marketing-color mapping is inferred."},
+        **{label: sorted({int(case["color"]) for case in observations
+                         if case["productId"] == product and case["status"] == "verified"})
+           for label, product in (("free4_confirmed_resource_color_codes", "068C10"),
+                                  ("x3_confirmed_resource_color_codes", "067410"),
+                                  ("free4_dynaudio_confirmed_resource_color_codes", "06C010"))},
         "generic_dress_configs": "iD/Hx are shared image/video dress templates; their paths do not identify these products or a 3D mesh.",
         "module_selection": "Module 14 selects the model resource download; downloaded config exposes model3D and modelWebp separately.",
         "model_retrieval": "Offline analysis references saved request results and independently checks saved ZIP/model bytes; it makes no network requests.",
@@ -248,8 +251,13 @@ def inspect(run):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", type=Path, default=ROOT / "research" / "online-whitelist" / "runs" / "20261007T095049.319796Z")
+    parser.add_argument("--output", type=Path, help="Write a new evidence file while preserving the historical report")
     args = parser.parse_args()
-    output = OUTPUT_ROOT / "evidence" / "target-profiles.json"
+    output = args.output.resolve() if args.output else OUTPUT_ROOT / "evidence" / "target-profiles.json"
+    if not output.resolve().is_relative_to(OUTPUT_ROOT.resolve()):
+        parser.error("Output must remain below research/online-artwork")
+    if args.output and output.exists():
+        parser.error("Output already exists; choose a new report path")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(inspect(args.run.resolve()), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("Wrote " + str(output))

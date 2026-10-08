@@ -16,6 +16,7 @@ public partial class MainWindow : FAAppWindow
     private Task? _exitVote;
     private Task? _calibrationOperation;
     private bool _closing, _closed, _opened, _managing;
+    internal bool StartWithDemo { get; init; }
 
     public MainWindow() : this(HeadsetServiceFactory.Create(), false,
         OperatingSystem.IsWindows() ? new DeviceManagerProcess() : null) { }
@@ -60,6 +61,7 @@ public partial class MainWindow : FAAppWindow
                 if (devices is null) { if (!_closing) Close(); return; }
                 await _viewModel.InitializeAsync(devices);
             }
+            if (!_closing && StartWithDemo) await _viewModel.AddDemoDeviceAsync();
             if (!_closing) { StartupOverlay.IsVisible = false; Page.IsEnabled = true; }
         }
         catch (OperationCanceledException) when (_managerLifetime.IsCancellationRequested) { }
@@ -203,6 +205,11 @@ public partial class MainWindow : FAAppWindow
     private async Task LaunchCalibrationAsync(string kind, ICalibrationService service)
     {
         if (_closing || _calibrationOperation is not null) return;
+        if (_viewModel.IsDemoSelected)
+        {
+            _viewModel.ShowDemoFeedback(kind == "fit" ? "耳塞贴合度测试" : "设置黄金听感");
+            return;
+        }
         var operation = RunCalibrationAsync(kind, service);
         _calibrationOperation = operation;
         try { await operation; }

@@ -178,7 +178,7 @@ public sealed partial class MainViewModel
         if (_savingResources || Closing || _service is not IResourceSettingsService resources) return;
         string source = SelectedResourceSource.Key == 0 ? "HeyMelody" : "WirelessEarphones";
         bool discardDraft = EqDirty && source != _configuredResourceSource;
-        if (discardDraft && !await ConfirmAsync("切换资源", "切换资源将丢弃未保存的均衡器调整。继续吗？", _lifetime.Token)) return;
+        if (discardDraft && !IsDemoSelected && !await ConfirmAsync("切换资源", "切换资源将丢弃未保存的均衡器调整。继续吗？", _lifetime.Token)) return;
         _savingResources = true;
         try
         {
@@ -193,7 +193,18 @@ public sealed partial class MainViewModel
     }
     public async Task SelectHearingProfileAsync(UiHearingProfile profile)
     {
-        if (_displaying || !CanSelectHearingProfile || !profile.CanApply || _service is not ICalibrationService calibration) return;
+        if (_displaying || !CanSelectHearingProfile || !profile.CanApply) return;
+        if (IsDemoSelected && _demoSnapshot is { } demo)
+        {
+            if (!_hearingProfiles.Any(candidate => candidate.Uid == profile.Uid)) return;
+            demo.HearingEnabled = profile.Uid.HasValue;
+            demo.HearingProfiles = demo.HearingProfiles.Select(candidate => candidate with { Current = candidate.Uid == profile.Uid }).ToArray();
+            demo.Revision++;
+            DisplaySnapshot(demo);
+            ShowDemoFeedback("已选择演示听感");
+            return;
+        }
+        if (_service is not ICalibrationService calibration) return;
         var target = _snapshot!; _hearingPending = true; NotifyState();
         try
         {
@@ -206,6 +217,7 @@ public sealed partial class MainViewModel
     }
     public Task<UiCalibrationState> CreateCalibrationAsync(string kind)
     {
+        if (IsDemoSelected) throw new InvalidOperationException("演示设备只用于布局检查，不会启动耳塞贴合度测试或黄金听感流程。");
         if (_service is not ICalibrationService calibration || _snapshot is not { } snapshot ||
             kind == "fit" && !CanFitTest || kind == "hearing" && !CanSetupHearing)
             throw new InvalidOperationException("当前设备无法启动该测试。");

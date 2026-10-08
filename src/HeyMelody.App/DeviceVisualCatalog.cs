@@ -40,7 +40,7 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         { changed |= _productIds.Remove(identity); _colors.Remove(identity); RemoveArtwork(identity); }
         // The client only exposes ProductId from a snapshot matched to its active session.
         // Unsupported and unknown product IDs also override a misleading Bluetooth name.
-        if (selected is not null && identities.Contains(selected.Identity) && !string.IsNullOrWhiteSpace(productId))
+        if (selected is not null && !MainViewModel.IsDemoDevice(selected) && identities.Contains(selected.Identity) && !string.IsNullOrWhiteSpace(productId))
         {
             var actual = productId.Trim();
             if (!_productIds.TryGetValue(selected.Identity, out var previous) || !StringComparer.Ordinal.Equals(previous, actual))
@@ -61,7 +61,7 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         if (changed) ResetArtwork();
         if (_artwork is not null)
             foreach (var device in devices)
-                if (_productIds.TryGetValue(device.Identity, out var pid))
+                if (!MainViewModel.IsDemoDevice(device) && _productIds.TryGetValue(device.Identity, out var pid))
                 { Resolve(device.Identity, pid, _colors.GetValueOrDefault(device.Identity), "hero"); Resolve(device.Identity, pid, _colors.GetValueOrDefault(device.Identity), "icon"); }
         if (changed) Changed();
     }
@@ -74,9 +74,11 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         return false;
     }
 
-    internal object ProductFor(UiDevice? device) => device is not null && _heroes.TryGetValue(device.Identity, out var hero) ? hero
+    internal object ProductFor(UiDevice? device) => MainViewModel.IsDemoDevice(device) ? new EncoFree4DynaudioModelVisual()
+        : device is not null && _heroes.TryGetValue(device.Identity, out var hero) ? hero
         : _artwork is null && IsX4(device) ? DeviceVisuals.X4Product : DeviceVisuals.GenericProduct;
-    internal object IconFor(UiDevice? device) => device is not null && _icons.TryGetValue(device.Identity, out var icon) ? icon
+    internal object IconFor(UiDevice? device) => MainViewModel.IsDemoDevice(device) ? DeviceVisuals.GenericIcon
+        : device is not null && _icons.TryGetValue(device.Identity, out var icon) ? icon
         : _artwork is null && IsX4(device) ? DeviceVisuals.X4Icon : DeviceVisuals.GenericIcon;
 
     private void Resolve(string identity, string pid, int? color, string role)
@@ -171,4 +173,12 @@ public sealed class DeviceIconVisualConverter : IMultiValueConverter
     public object Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
         => values.Count >= 2 && values[0] is UiDevice device && values[1] is DeviceVisualCatalog catalog
             ? catalog.IconFor(device) : DeviceVisuals.GenericIcon;
+}
+
+public sealed class DemoDeviceCaptionConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => MainViewModel.IsDemoDevice(value as UiDevice) ? "演示设备" : "已配对";
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
 }

@@ -140,6 +140,7 @@ try
     await SharedBridgeTests.RunAsync(Test);
     await EventVmTests.RunAsync(Test);
     await ResourceVmTests.RunAsync(Test);
+    await DemoVmTests.RunAsync(Test);
     Console.WriteLine(JsonSerializer.Serialize(new { passed, success = true, architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(), nativeBluetoothCalls = 0 }, RpcWire.Json));
     return 0;
 }

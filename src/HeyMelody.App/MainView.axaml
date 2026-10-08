@@ -8,6 +8,7 @@
              Background="{DynamicResource ApplicationPageBackgroundThemeBrush}">
   <UserControl.Resources>
     <local:DeviceIconVisualConverter x:Key="DeviceIconVisualConverter" />
+    <local:DemoDeviceCaptionConverter x:Key="DemoDeviceCaptionConverter" />
     <ControlTheme x:Key="DeviceCardTheme" TargetType="ListBoxItem">
       <Setter Property="Width" Value="300" />
       <Setter Property="Height" Value="64" />
@@ -100,6 +101,10 @@
           <ProgressBar IsIndeterminate="True" IsVisible="{Binding HasActivity}" Height="3" Margin="0,0,0,12" />
           <fa:FAInfoBar x:Name="PlatformNotice" Severity="Informational" IsClosable="False" IsOpen="False" IsVisible="False"
                         Title="此平台的蓝牙后台尚未实现" Message="可以预览界面；真实耳机控制目前支持 Windows。" Margin="0,0,0,12" />
+          <fa:FAInfoBar x:Name="DemoNotice" Severity="Informational" IsClosable="False"
+                        IsOpen="{Binding IsDemoSelected}" IsVisible="{Binding IsDemoSelected}"
+                        Title="布局演示" Message="所有控件仅模拟交互。外观使用 Enco Free4 丹拿版的三维模型；关闭窗口后演示设备自动移除。"
+                        Margin="0,0,0,12" />
           <fa:FAInfoBar Severity="Warning" IsClosable="False" IsOpen="{Binding StatusWarning}" IsVisible="{Binding StatusWarning}"
                         Message="{Binding Status}" Margin="0,0,0,12" />
           <fa:FAInfoBar Severity="Informational" IsClosable="False" IsOpen="{Binding HasWarnings}" IsVisible="{Binding HasWarnings}"
@@ -125,7 +130,7 @@
               </StackPanel>
             </Grid>
           </Border>
-          <fa:FASettingsExpander Header="降噪" Description="调整你听见的环境声音" IsExpanded="True">
+          <fa:FASettingsExpander x:Name="AncPanel" Header="降噪" Description="调整你听见的环境声音" IsExpanded="True">
             <fa:FASettingsExpander.IconSource><fa:FASymbolIconSource Symbol="Audio" /></fa:FASettingsExpander.IconSource>
             <local:AncModeSelector />
           </fa:FASettingsExpander>
@@ -167,7 +172,7 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-          <fa:FASettingsExpander Header="黄金听感" Description="选择已有配置，或建立适合自己的听感">
+          <fa:FASettingsExpander x:Name="HearingPanel" Header="黄金听感" Description="选择已有配置，或建立适合自己的听感">
             <Border Padding="20,16">
               <StackPanel Spacing="12">
                 <ComboBox x:Name="HearingProfileCombo" ItemsSource="{Binding HearingProfiles}"
@@ -231,7 +236,7 @@
                       <StackPanel x:Name="DeviceText" Grid.Column="1" Spacing="4" MaxWidth="220">
                         <TextBlock x:Name="DeviceNameText" Text="{Binding Name}" FontWeight="SemiBold"
                                    TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
-                        <TextBlock Text="已配对" Classes="caption" />
+                        <TextBlock Text="{Binding ., Converter={StaticResource DemoDeviceCaptionConverter}}" Classes="caption" />
                       </StackPanel>
                     </Grid>
                   </DataTemplate>
@@ -243,7 +248,7 @@
             <Border x:Name="AddDeviceHost" VerticalAlignment="Center">
               <Button x:Name="AddDeviceButton" Width="64" Height="64" Click="AddDevice_Click"
                       IsEnabled="{Binding !Closing}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                      ToolTip.Tip="添加设备" AutomationProperties.Name="添加设备">
+                      ToolTip.Tip="添加设备；长按 2 秒添加演示设备" AutomationProperties.Name="添加设备">
                 <fa:FASymbolIcon Symbol="Add" FontSize="24" />
               </Button>
             </Border>

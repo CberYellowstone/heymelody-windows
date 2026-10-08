@@ -96,7 +96,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool CanConnect => !Closing && !_lifecyclePending && SelectedDevice is not null;
     public bool CanRefreshDevices => !Closing && !_lifecyclePending;
     public bool CanRefreshState => !Closing && !_lifecyclePending && _sessionIdentity is not null;
-    public string ConnectButtonText => EventService is not null
+    public string ConnectButtonText => IsDemoSelected ? "演示设备" : EventService is not null
         ? _snapshot is null || _snapshot.MonitoringState == MonitoringState.Paused ? "连接耳机" : "断开客户端"
         : _sessionIdentity is null ? "连接耳机" : "断开客户端";
     public bool CanChooseAnc => CanWrite && _snapshot!.CanSetAnc;
@@ -144,7 +144,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<EqBandViewModel> Bands { get; }
     public bool EqDirty => _eqDirty;
     public string EqDirtyText => EqDirty ? "有未保存的调整" : "";
-    public string EqHint => _snapshot?.CanSetCustomEqualizer == true ? "调节各频段，然后将整组设置写入耳机。" : "连接支持自定义 EQ 的耳机后可编辑。";
+    public string EqHint => IsDemoSelected ? "调节各频段查看布局，演示均衡器只保留到关闭界面。"
+        : _snapshot?.CanSetCustomEqualizer == true ? "调节各频段，然后将整组设置写入耳机。" : "连接支持自定义 EQ 的耳机后可编辑。";
 
     public IAsyncRelayCommand RefreshDevicesCommand { get; }
     public IAsyncRelayCommand ConnectCommand { get; }
@@ -200,16 +201,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private Task EnumerateAsync(IReadOnlyList<UiDevice>? initialDevices = null) => RunAsync("正在查找已配对耳机…", async () =>
     {
-        var devices = initialDevices ?? await _service.EnumerateAsync(_lifetime.Token);
+        var devices = ComposeDevices(initialDevices ?? await _service.EnumerateAsync(_lifetime.Token));
         var selected = devices.FirstOrDefault(d => d.Identity == SelectedDevice?.Identity) ?? devices.FirstOrDefault();
         if (selected?.Identity != SelectedDevice?.Identity)
         {
             AdvanceSession();
-            if (EventService is null && _sessionIdentity is not null) await _service.DisconnectAsync(_lifetime.Token);
+            if (EventService is null && _sessionIdentity is not null && !IsDemoSelected) await _service.DisconnectAsync(_lifetime.Token);
             _sessionIdentity = null; ResetSelection();
         }
         _devices = devices; _selectedDevice = selected; _title = selected?.Name ?? "选择一副耳机";
-        if (EventService is not null) { await AttachSelectedBackendAsync(); NotifyState(); return; }
+        if (EventService is not null || IsDemoSelected) { await AttachSelectedBackendAsync(); NotifyState(); return; }
         SetStatus(_service is UnsupportedPlatformService ? UnsupportedPlatformService.Message : devices.Count == 0 ? "未发现已配对耳机" : _snapshot is { Connected: true } ? "设备列表已刷新 · 耳机保持连接" : "选择耳机后连接", _service is UnsupportedPlatformService);
         NotifyState();
     });
@@ -218,18 +219,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         await RunAsync("正在查找已配对耳机…", async () =>
         {
-            if (EqDirty && !await ConfirmAsync("刷新设备", "刷新设备后，若连接变化，未保存的均衡器调整会被丢弃。继续刷新吗？")) return;
+            if (EqDirty && !IsDemoSelected && !await ConfirmAsync("刷新设备", "刷新设备后，若连接变化，未保存的均衡器调整会被丢弃。继续刷新吗？")) return;
             // Enumerate directly because the operation gate is already held.
-            var devices = await _service.EnumerateAsync(_lifetime.Token);
+            var devices = ComposeDevices(await _service.EnumerateAsync(_lifetime.Token));
             var selected = devices.FirstOrDefault(d => d.Identity == SelectedDevice?.Identity) ?? devices.FirstOrDefault();
             if (selected?.Identity != SelectedDevice?.Identity)
             {
                 AdvanceSession();
-                if (EventService is null && _sessionIdentity is not null) await _service.DisconnectAsync(_lifetime.Token);
+                if (EventService is null && _sessionIdentity is not null && !IsDemoSelected) await _service.DisconnectAsync(_lifetime.Token);
                 _sessionIdentity = null; ResetSelection();
             }
             _devices = devices; _selectedDevice = selected; _title = selected?.Name ?? "选择一副耳机";
-            if (EventService is not null) { await AttachSelectedBackendAsync(); NotifyState(); return; }
+            if (EventService is not null || IsDemoSelected) { await AttachSelectedBackendAsync(); NotifyState(); return; }
             SetStatus(_service is UnsupportedPlatformService ? UnsupportedPlatformService.Message : devices.Count == 0 ? "未发现已配对耳机" : _snapshot is { Connected: true } ? "设备列表已刷新 · 耳机保持连接" : "选择耳机后连接", _service is UnsupportedPlatformService);
             NotifyState();
         });
@@ -242,6 +243,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private Task ConnectOrDisconnectAsync() => RunAsync("正在连接耳机并读取状态…", async () =>
     {
+        if (IsDemoSelected) { AttachDemo(); return; }
         if (EventService is { } events)
         {
             if (SelectedDevice is not { } selected) return;
@@ -284,7 +286,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         try
         {
-            var scopes = EventService is not null ? new[] { RefreshScope.Full }
+            var scopes = EventService is not null || IsDemoSelected ? new[] { RefreshScope.Full }
                 : new[] { RefreshScope.Identity, RefreshScope.Features, RefreshScope.Anc,
                     RefreshScope.Equalizer, RefreshScope.Battery, RefreshScope.Information };
             foreach (var scope in scopes)
@@ -311,6 +313,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (snapshot.Identity != _sessionIdentity || _sessionIdentity != SelectedDevice?.Identity)
         { InvalidateSnapshot(); SetStatus("连接设备已变化，请重新选择并连接耳机。", true); return false; }
         if (!DisplaySnapshot(snapshot)) return HasVerifiedSnapshot;
+        if (IsDemoSelected) { ShowDemoFeedback(""); return true; }
         if (EventService is not null)
         {
             var message = snapshot.MonitoringState switch
@@ -346,7 +349,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _snapshot = snapshot; _displaying = true;
         UpdateResourcePresentation(snapshot);
         _title = snapshot.DeviceName;
-        _subtitle = IsVerifiedControl(snapshot)
+        _subtitle = IsDemoSelected ? "布局演示 · 全部控件 · 关闭界面后自动移除" : IsVerifiedControl(snapshot)
             ? $"已连接{(snapshot.Firmware is null ? "" : $" · 固件 {snapshot.Firmware}")}"
             : snapshot.MonitoringState switch
             {
@@ -429,7 +432,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var epoch = _sessionEpoch; var token = _sessionWork.Token;
         try
         {
-            if (EqDirty && !await ConfirmAsync("切换均衡器", "要丢弃尚未保存的均衡器调整吗？", token)) return;
+            if (EqDirty && !IsDemoSelected && !await ConfirmAsync("切换均衡器", "要丢弃尚未保存的均衡器调整吗？", token)) return;
             if (Closing || epoch != _sessionEpoch) return;
             var latest = entry is null ? null : EqEntries.FirstOrDefault(x => x.Id == entry.Id);
             if (entry is not null && latest is null) return;
@@ -445,7 +448,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var epoch = _sessionEpoch; var token = _sessionWork.Token;
         try
         {
-            if (EqDirty && !await ConfirmAsync("新建均衡器", "新建均衡器会丢弃尚未保存的调整。继续吗？", token)) return;
+            if (EqDirty && !IsDemoSelected && !await ConfirmAsync("新建均衡器", "新建均衡器会丢弃尚未保存的调整。继续吗？", token)) return;
             if (Closing || epoch != _sessionEpoch) return;
             LoadEntry(null); SetEqDirty(true);
         }
@@ -511,7 +514,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         SuspendActionsForClose(); _closeDialogRunning = true;
         try
         {
-            if (EqDirty && !_preview && !_backendExitApproved && !await ConfirmAsync("关闭客户端", "均衡器还有未保存的调整，确定关闭吗？")) return false;
+            if (EqDirty && !IsDemoSelected && !_preview && !_backendExitApproved && !await ConfirmAsync("关闭客户端", "均衡器还有未保存的调整，确定关闭吗？")) return false;
             _closing = true; _lifetime.Cancel(); NotifyState();
             await DisposeAsync(); return true;
         }
@@ -531,6 +534,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         try { await _service.DisposeAsync(); } catch { }
         await _operations.WhenIdle;
         ClearDeviceManagement();
+        _devices = _devices.Where(device => !IsDemoDevice(device)).ToArray();
+        if (IsDemoSelected) { _selectedDevice = null; _sessionIdentity = null; ResetSelection(); }
+        _demoDevice = null; _demoSnapshot = null; _demoEqDraft = null;
         foreach (var band in Bands) band.PropertyChanged -= BandChanged;
         NotifyState();
     }

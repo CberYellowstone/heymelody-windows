@@ -40,7 +40,7 @@ try {
     }
     $demoProcess = Start-Process -FilePath $demoExecutable -ArgumentList '--3d-demo' `
         -WorkingDirectory $demoRoot -WindowStyle Normal -PassThru
-    Write-Host ('3D demo started (PID ' + $demoProcess.Id + '). Free4 artwork uses simulated X4 controls.')
+    Write-Host ('Layout demo started (PID ' + $demoProcess.Id + '). Enco Free4 Dynaudio artwork and all controls use session-only simulated state.')
 } catch {
     Write-Error -Message $_.Exception.Message -ErrorAction Continue
     exit 1

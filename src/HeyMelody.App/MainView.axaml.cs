@@ -35,7 +35,8 @@ public partial class MainView : UserControl
     {
         InitializeComponent();
         InitializeDeviceBar();
-        VisualCatalog.PropertyChanged += (_, _) => HeroArt.Visual = _modelDemo ? new EncoFree4ModelVisual() : VisualCatalog.ProductFor(ViewModel?.SelectedDevice);
+        InitializeDemoDeviceInteraction();
+        VisualCatalog.PropertyChanged += (_, _) => UpdateHeroVisual();
         UserInputCommit.Combo(HearingProfileCombo, async () =>
         {
             if (ViewModel is { } vm && HearingProfileCombo.SelectedItem is UiHearingProfile profile)
@@ -45,15 +46,18 @@ public partial class MainView : UserControl
         SizeChanged += (_, _) => UpdateLayoutMode(Bounds.Width);
         DataContextChanged += (_, _) =>
         {
+            CancelAddDeviceHold();
             if (_observedViewModel is not null) _observedViewModel.PropertyChanged -= ViewModelPropertyChanged;
             VisualCatalog.Clear();
             _sectionExpansion.Clear();
+            _demoPresentationInitialized = false;
             _observedViewModel = ViewModel;
             if (ViewModel is { } vm)
             {
                 vm.PropertyChanged += ViewModelPropertyChanged;
             }
             UpdateArtwork();
+            UpdateDemoPresentation();
             RequestDeviceCenter();
         };
     }
@@ -64,6 +68,7 @@ public partial class MainView : UserControl
             or nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices) or nameof(MainViewModel.ResourceSource)
             or nameof(MainViewModel.ResourceRevision) or nameof(MainViewModel.DeviceColor)) UpdateArtwork();
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices)) RequestDeviceCenterIfChanged();
+        if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.IsDemoSelected)) UpdateDemoPresentation();
     }
 
     public void SetPlatformNotice(bool visible) => PlatformNotice.IsOpen = PlatformNotice.IsVisible = visible;
@@ -71,23 +76,22 @@ public partial class MainView : UserControl
     {
         _modelDemo = true;
         AddDeviceHost.IsEnabled = false;
-        PlatformNotice.Title = "Enco Free4 三维模型验证";
-        PlatformNotice.Message = "拖动模型旋转，松手后观察惯性与阻尼；空闲时自动旋转。右侧为 X4 模拟数据，设定不会写入真实耳机。";
-        PlatformNotice.IsOpen = PlatformNotice.IsVisible = true;
-        HeroCaption.Text = "Enco Free4 外观 · X4 模拟控制界面";
+        PlatformNotice.IsOpen = PlatformNotice.IsVisible = false;
+        HeroCaption.Text = "Enco Free4 丹拿版 · 布局演示";
+        UpdateHeroVisual();
     }
     public bool IsCompact { get; private set; }
     public void ExpandAllSettings()
     { foreach (var section in this.GetVisualDescendants().OfType<FASettingsExpander>()) section.IsExpanded = true; }
-    internal bool SectionExpanded(string id, bool initial) => _sectionExpansion.GetValueOrDefault(id, initial);
-    internal void RememberSectionExpansion(string id, bool expanded) => _sectionExpansion[id] = expanded;
+    internal bool SectionExpanded(string id, bool initial) => _sectionExpansion.GetValueOrDefault(ExpansionKey(id), ViewModel?.IsDemoSelected == true || initial);
+    internal void RememberSectionExpansion(string id, bool expanded) => _sectionExpansion[ExpansionKey(id)] = expanded;
 
     private void UpdateArtwork()
     {
         var vm = ViewModel;
         VisualCatalog.Update(vm?.Devices ?? [], vm?.SelectedDevice, vm?.ProductId, vm?.DeviceColor,
             vm?.ResourceSource ?? "HeyMelody", vm?.ResourceRevision ?? 0, vm?.ArtworkService);
-        HeroArt.Visual = _modelDemo ? new EncoFree4ModelVisual() : VisualCatalog.ProductFor(vm?.SelectedDevice);
+        UpdateHeroVisual();
     }
 
     private void UpdateLayoutMode(double width)
@@ -124,13 +128,23 @@ public partial class MainView : UserControl
         finally { _selectingDevice = false; RequestDeviceCenter(); }
     }
     private async void FitTest_Click(object? sender, RoutedEventArgs e)
-    { if (RequestFitTest is { } request) await request(); }
+    {
+        if (ViewModel is { IsDemoSelected: true } demo) { demo.ShowDemoFeedback("耳塞贴合度测试"); return; }
+        if (RequestFitTest is { } request) await request();
+    }
     private async void HearingSetup_Click(object? sender, RoutedEventArgs e)
-    { if (RequestHearingSetup is { } request) await request(); }
+    {
+        if (ViewModel is { IsDemoSelected: true } demo) { demo.ShowDemoFeedback("设置黄金听感"); return; }
+        if (RequestHearingSetup is { } request) await request();
+    }
 
     private async void AppSettings_Click(object? sender, RoutedEventArgs e) => await OpenSettingsDialogAsync();
 
-    private async void AddDevice_Click(object? sender, RoutedEventArgs e) => await OpenBluetoothSettingsAsync();
+    private async void AddDevice_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_suppressAddDeviceClick) { _suppressAddDeviceClick = false; return; }
+        await OpenBluetoothSettingsAsync();
+    }
 
     internal async Task OpenBluetoothSettingsAsync()
     {
@@ -199,6 +213,7 @@ public partial class MainView : UserControl
     public async Task DismissSettingsDialogAsync()
     {
         _closingWindow = true;
+        CancelAddDeviceHold();
         AddDeviceHost.IsEnabled = false;
         _bluetoothSettingsCancellation?.Cancel();
         _settingsCancellation?.Cancel();

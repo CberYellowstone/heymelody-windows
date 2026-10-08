@@ -17,6 +17,8 @@ if (args is ["--native-smoke"]) return NativeSmoke.Run();
 if (args is ["--native-settings-smoke"]) return NativeSmoke.Run(openSettings: true);
 if (args is ["--native-startup-smoke"]) return NativeStartupSmoke.Run();
 if (args is ["--native-backend-smoke"]) return NativeBackendSmoke.Run();
+if (args is ["--native-demo-smoke"]) return NativeDemoSmoke.Run();
+if (args is ["--native-demo-smoke", "--output-dir", var nativeDemoOutput]) return NativeDemoSmoke.Run(Path.GetFullPath(nativeDemoOutput));
 
 string output = args.Length == 2 && args[0] == "--output-dir" ? Path.GetFullPath(args[1])
     : Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "avalonia-ui-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8]);
@@ -120,10 +122,12 @@ try
     passed += InteractionTests.Run(session);
     passed += DeviceBarTests.Run(session);
     passed += DeviceVisualTests.Run(session);
+    var demoChecks = DemoDeviceTests.Run(session, output, receipts);
+    passed += demoChecks;
     var startupChecks = StartupTests.Run(session);
     var settingsManagementChecks = SettingsManagementTests.Run(session);
     passed += startupChecks + settingsManagementChecks;
-    Check(passed == (OperatingSystem.IsWindows() ? 51 : 48), "Every UI scenario and interaction case must finish");
+    Check(passed == (OperatingSystem.IsWindows() ? 51 : 48) + demoChecks, "Every UI scenario and interaction case must finish");
     var report = new { schemaVersion = 1, version = AppVersion.Display, passed, success = true, nativeBluetoothCalls = 0,
         verificationScope = "source/mock checks; not a packaged executable or hardware execution receipt",
         screenshotScope = "headless Skia layout/content only; native titlebar and real 3D renderer pixels are not verified", screenshots = receipts };

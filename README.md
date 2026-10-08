@@ -1,6 +1,8 @@
 # HeyMelody for Windows
 
-**0.8.1** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型、Lottie 展示。
+**0.8.2** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型、Lottie 展示。
+
+0.8.2 新增会话内布局 Demo：长按主界面“+”两秒即可添加，使用 Enco Free4 丹拿版官方三维模型，展示全部已实现控件。控件修改仅在本地模拟数据中生效，关闭主窗口后移除；也可通过发布包的 `Start-3D-Demo.cmd` 直接进入离线演示。
 
 0.8.1 修复了资源目录包含两种 OPPO 控制服务、底层却只允许其中一种而造成的连接失败，并修正连接尚未建立时误报“型号未适配”的提示。本机 Enco X4 已通过两套预装及缓存资源的 x64 后台初始化、状态读取和通知订阅验证，全程未发送设置命令；详见 [实机验证记录](docs/research/enco-x4-0.8.1.md)。
 
@@ -12,6 +14,10 @@
 
 先在 Windows 中配对、连接耳机，再通过设备管理器保存白名单。完整解压发布包后运行 `Start-HeyMelody.cmd` 或所选架构目录中的 `HeyMelody.exe`；发布包自带 .NET 运行时。主界面关闭后后台继续运行，右键托盘可以重新打开界面或退出。设备管理器、贴合度测试和黄金听感向导均随包提供。本版本不添加登录自启或独立开盖弹窗。
 
+布局调试：在主界面按住设备添加键“+”满 2 秒，添加并选中一台临时 demo；重复长按不会添加第二台，短击仍打开 Windows 蓝牙设置。Demo 展示全部已实现的主界面控件，开关、选项、滑块、文本和 EQ 仅修改内存中的模拟数据，测试按钮不会启动真实测试。关闭主窗口即移除 demo，托盘后台不会保存它。正常启动仍要求有效白名单；无需真实设备时可运行 `Run-3D-Demo.ps1`、`Run-3D-Demo.cmd` 或发布包的 `Start-3D-Demo.cmd`，也可直接传入 `--3d-demo`。
+
+Demo 使用预装的 Enco Free4 丹拿版（`06C010`、色号 `3`）三维模型，来源及原始文件校验见 [模型验证记录](docs/research/enco-free4-dynaudio-model.md)。模拟功能集合用于检查全部已实现控件的布局，不代表该型号的实际能力。模型支持拖动旋转、惯性及空闲自转，添加 demo 不需要联网。
+
 耳机设置和手机推送共用每台设备的持续接收通道。回执、设备确认和观测状态分别处理，丢失回执不自动重放操作；未提交的 EQ 草稿保留。校准期间限制同一设备的冲突写入，其他设备继续工作；关闭、断连、休眠和切换资源来源会终止当前校准并回读状态。
 
 源码构建需要 .NET 10 SDK，官方 NuGet 源见 `NuGet.Config`：
@@ -20,7 +26,7 @@
 dotnet build src/HeyMelody.App/HeyMelody.App.csproj -c Release
 dotnet run --project tests/HeyMelody.Resources.Tests
 dotnet run --project tests/HeyMelody.Calibration.Tests
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.2
 ```
 
 常规构建和离线测试使用仓库中的资源包，不需要本地 APK。重新提取资源需要固定的 `research` 原件，入口是 `tools/bundle_resources.py`；运行中的软件不读取研究目录。原始资源版权与溯源保留在发布包的 notices 和资源清单中。

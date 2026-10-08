@@ -62,7 +62,7 @@ public sealed partial class MainViewModel
             await _operations.RunAsync(async () =>
             {
                 if (Closing) return;
-                var devices = saved ? await _service.EnumerateAsync(_lifetime.Token) : _managementDevices!;
+                var devices = ComposeDevices(saved ? await _service.EnumerateAsync(_lifetime.Token) : _managementDevices!);
                 if (Closing) return;
                 _devices = devices;
                 _selectedDevice = devices.FirstOrDefault(device => device.Identity == _managementSelectedIdentity)
@@ -70,7 +70,7 @@ public sealed partial class MainViewModel
                 _title = _selectedDevice?.Name ?? "选择一副耳机";
                 ResetSelection();
                 completed = devices.Count != 0;
-                if (completed && EventService is not null)
+                if (completed && (EventService is not null || IsDemoSelected))
                 {
                     await AttachSelectedBackendAsync();
                     return;
@@ -83,10 +83,11 @@ public sealed partial class MainViewModel
         {
             if (!Closing)
             {
-                _devices = [];
-                _selectedDevice = null;
-                _title = "选择一副耳机";
+                _devices = ComposeDevices([]);
+                _selectedDevice = _devices.FirstOrDefault();
+                _title = _selectedDevice?.Name ?? "选择一副耳机";
                 ResetSelection();
+                if (IsDemoSelected) { AttachDemo(); completed = true; }
                 SetStatus("无法读取管理后的设备名单，请重新管理设备。", true);
             }
         }
@@ -104,20 +105,23 @@ public sealed partial class MainViewModel
         if (device?.Identity == SelectedDevice?.Identity) return true;
         if (device is not null && !Devices.Any(candidate => candidate.Identity == device.Identity)) return false;
         var epoch = _sessionEpoch;
-        if (EqDirty && !await ConfirmAsync(title, message, _sessionWork.Token)) return false;
+        if (EqDirty && !IsDemoSelected && !await ConfirmAsync(title, message, _sessionWork.Token)) return false;
         if (Closing || epoch != _sessionEpoch) return false;
         AdvanceSession();
         var hadSession = _sessionIdentity is not null;
+        var previousWasDemo = IsDemoSelected;
+        CaptureDemoDraft();
         _sessionIdentity = null;
         _selectedDevice = device;
         ResetSelection();
         _title = device?.Name ?? "选择一副耳机";
+        if (IsDemoSelected) { AttachDemo(); return true; }
         if (EventService is not null)
         {
             await AttachSelectedBackendAsync();
             return true;
         }
-        if (hadSession) await _service.DisconnectAsync(_lifetime.Token);
+        if (hadSession && !previousWasDemo) await _service.DisconnectAsync(_lifetime.Token);
         SetStatus("选择耳机后连接");
         return true;
     }

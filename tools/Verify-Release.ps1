@@ -135,6 +135,17 @@ namespace HeyMelody.ReleaseVerification
             sha256 = (Hash-File $sourcePath)
         }
     }
+    if ([version]$Version -ge [version]'0.8.2') {
+        $sourceRelative = 'src/HeyMelody.App/Assets/Devices/EncoFree4Dynaudio/model.glb'
+        $sourcePath = Checked-File $taskRoot $sourceRelative
+        $sourceHash = Hash-File $sourcePath
+        Require ($sourceHash -eq '7f85c66d397ee45163246ff745c37e52a70059e739be0af2283a30bfb689c2f6') 'The demo model differs from the independently verified Dynaudio GLB.'
+        $sourceArtwork += [ordered]@{
+            path = $sourceRelative
+            bytes = [IO.File]::ReadAllBytes($sourcePath)
+            sha256 = $sourceHash
+        }
+    }
 }
 
 foreach ($architecture in @('x64', 'x86', 'arm64')) {
@@ -311,12 +322,15 @@ foreach ($architecture in @('x64', 'x86', 'arm64')) {
     Write-Output ('PASS ' + $architecture + ': executable/managed/native architecture, versions, shared runtime/dependencies and licenses')
 }
 if ($VerifyDeviceArtwork) {
-    Require ($artworkChecks.Count -eq 6) 'Expected two complete device artwork checks per architecture.'
-    Write-Output ('PASS device artwork: ' + $artworkChecks.Count + ' complete source PNG matches in published GUI assemblies')
+    Require ($artworkChecks.Count -eq ($sourceArtwork.Count * 3)) 'Expected all source artwork bytes in every published GUI architecture.'
+    Write-Output ('PASS device artwork: ' + $artworkChecks.Count + ' complete source artwork matches in published GUI assemblies')
 }
 
 foreach ($rootFile in @('README.md', 'README-使用说明.md', 'SOURCE-NOTES.md', 'Start-HeyMelody.cmd', 'Start-HeyMelody.ps1')) {
     Add-CriticalFile (Checked-File $taskStage $rootFile)
+}
+if ([version]$Version -ge [version]'0.8.2') {
+    Add-CriticalFile (Checked-File $taskStage 'Start-3D-Demo.cmd')
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem

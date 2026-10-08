@@ -44,6 +44,7 @@ public sealed partial class MainViewModel
     {
         if (!CanWrite || !Supports(supplied) || _pending.ContainsKey(GroupFor(supplied.Kind))) return;
         if (supplied.Kind == "CustomSelect" && EqDirty || supplied.Kind == "CustomEqualizer" && !EqDirty) return;
+        if (IsDemoSelected) { ApplyDemoAction(supplied); return; }
         if (_preview) { SetStatus("界面演示不会发送耳机设置。"); return; }
         var action = supplied.EqualizerEntry is not { } entry ? supplied
             : supplied with { EqualizerEntry = entry with { Bands = entry.Bands.ToArray() } };
@@ -288,7 +289,7 @@ public sealed partial class MainViewModel
             // not transfer the old intent to a similarly named device.
             try
             {
-                var devices = await _service.EnumerateAsync(_lifetime.Token);
+                var devices = ComposeDevices(await _service.EnumerateAsync(_lifetime.Token));
                 if (epoch != _sessionEpoch || Closing) return null;
                 _devices = devices;
                 _selectedDevice = devices.FirstOrDefault(x => x.Identity == _sessionIdentity);
