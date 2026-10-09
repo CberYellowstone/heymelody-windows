@@ -440,6 +440,21 @@ Test("notification capability and component lists reject malformed length and du
         bool rejected=false;try{NotificationParsers.ParseComponentPairs(data);}catch(FormatException){rejected=true;}Check(rejected);
     }
 });
+Test("component ignore is opt-in and retains envelope and other duplicate checks", () =>
+{
+    Check(NotificationParsers.ParseComponentPairs([1,0x1C,255])[0x1C]==255);
+    var retained=NotificationParsers.ParseComponentPairs([4,0x1C,0,0x0B,1,0x1C,255,0xFE,7],ignoredId:0x1C);
+    Check(retained.Count==2&&retained[0x0B]==1&&retained[0xFE]==7&&!retained.ContainsKey(0x1C));
+    Check(NotificationParsers.ParseComponentPairs([2,0x1C,0,0x1C,255],ignoredId:0x1C).Count==0);
+    bool duplicateRejected=false;
+    try { NotificationParsers.ParseComponentPairs([2,0x1C,0,0x1C,255]); }
+    catch (FormatException) { duplicateRejected=true; }
+    Check(duplicateRejected);
+    foreach(byte[] data in new byte[][]{[],[1,0x1C],[0,0x1C,0],[3,0x1C,0,0x0B,1,0x0B,0]})
+    {
+        bool rejected=false;try{NotificationParsers.ParseComponentPairs(data,ignoredId:0x1C);}catch(FormatException){rejected=true;}Check(rejected);
+    }
+});
 Test("setting synchronization commands are notification-only, spatial requests invalidate state", () =>
 {
     foreach(var entry in new (ushort Command,DeviceNotificationKind Kind)[]{(0x0503,DeviceNotificationKind.Features),

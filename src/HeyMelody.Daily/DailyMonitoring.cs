@@ -164,7 +164,7 @@ public sealed partial class DailyClient
                     if (anc.Primary is null) refreshes.Add(DailyRefreshScope.Anc);
                     break;
                 case DeviceNotificationKind.Features:
-                    foreach (var pair in NotificationParsers.ParseComponentPairs(data))
+                    foreach (var pair in DailyParsers.ParseFeatureNotification(data))
                     {
                         byte id = pair.Key, value = pair.Value;
                         updates[$"feature:{id}"] = s => s.RawFeatures[id] = value;

@@ -7,6 +7,35 @@ internal static class SelectionPresentationTests
 
     internal static async Task RunAsync(Func<string, Func<Task>, Task> test)
     {
+        await test("old cached controls and generic warnings cannot restore retired auto-volume or claim current write failures", async () =>
+        {
+            var service = new Service();
+            foreach (var identity in new[] { "a", "b" })
+            {
+                var cached = Cached(Snapshot(identity));
+                cached.FeatureSections = [cached.FeatureSections[0] with { Controls = cached.FeatureSections[0].Controls
+                    .Append(new UiFeatureControl("auto-volume", "自动音量", "Switch", 0, CanWrite: true)).ToArray() },
+                    new("legacy-only", "旧功能", false, [new("auto-volume", "自动音量", "Switch", 1, CanWrite: true)])];
+                cached.Warnings = ["部分耳机状态暂时不可用，相关设置已禁用。"];
+                service.Snapshots[identity] = Next(cached); // Exercise the serialized presentation received from an older Host.
+            }
+            await using var vm = Create(service); await vm.InitializeAsync();
+            foreach (var device in vm.Devices.ToArray())
+            {
+                await vm.SelectDeviceAsync(device);
+                Check(vm.PresentationCached && vm.FeatureSections is [{ Id: "settings" }]
+                    && vm.FeatureSections[0].Controls.Select(control => control.Id).SequenceEqual(new[] { "game", "spatial" }),
+                    "The shared rendering path must retain other cached controls and remove the retired control and its empty section.");
+                Check(vm.WarningsText == "上次连接时有状态提示，连接后请刷新确认。",
+                    "An old generic cached warning must not claim that current settings have been disabled.");
+            }
+            var connected = Snapshot(vm.SelectedDevice!.Identity); connected.Revision = 3;
+            connected.Warnings = ["耳机拒绝了提示音音量读取，请手动刷新后重试。"];
+            service.Push(connected);
+            Check(vm.HasVerifiedSnapshot && vm.WarningsText == connected.Warnings.Single(),
+                "A latest real read failure must not be replaced by historical guidance.");
+            Check(service.Actions.Count == 0, "Filtering old presentation must not send settings.");
+        });
         await test("offline startup restores the preferred real device and its complete read-only settings", async () =>
         {
             var service = new Service();

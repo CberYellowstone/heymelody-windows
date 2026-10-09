@@ -45,13 +45,17 @@ public static class NotificationParsers
         if (kind is null) return false;
         notification = new(kind.Value, data.ToArray()); return true;
     }
-    public static Dictionary<byte, byte> ParseComponentPairs(ReadOnlySpan<byte> payload)
+    public static Dictionary<byte, byte> ParseComponentPairs(ReadOnlySpan<byte> payload, byte? ignoredId = null)
     {
         if (payload.Length == 0 || payload.Length != 1 + payload[0] * 2)
             throw new FormatException("Invalid notification component pairs.");
         var result = new Dictionary<byte, byte>();
         for (int p = 1; p < payload.Length; p += 2)
+        {
+            // Ignore complete entries only after validating the envelope. Retained IDs remain unique.
+            if (payload[p] == ignoredId) continue;
             if (!result.TryAdd(payload[p], payload[p + 1])) throw new FormatException("Duplicate notification component.");
+        }
         return result;
     }
 }

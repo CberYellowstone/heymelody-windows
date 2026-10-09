@@ -257,6 +257,30 @@ await Test("Save follows all four writes and all four GETs before local persiste
     Check(engine.State.Stage == CalibrationStage.Completed && saved.Levels.SequenceEqual(Structure.Levels) && saved.ScanData!.SequenceEqual(Structure.ScanData)
         && saved.RestoreDescriptionId == engine.State.RestoreDescriptionId && saved.Name == "PC-X4-test" && saved.WireName == saved.Name);
 }));
+await Test("Hearing save verifies feature0B and persists despite duplicate disabled auto volume entries", () => WithHistory(async (store, dir) =>
+{
+    var fake = new Fake(); await using var engine = Engine(fake, true, store); await Complete(engine, true, Structure.Levels);
+    fake.Hook = (c, p, t) => Task.FromResult<Packet?>(c == 0x010D ? new(0x810D, 1, [0,4,0x1C,0,0x0B,1,0x1C,255,0xFE,7]) : null);
+    int before = fake.Sent.Count; await engine.SaveHearingAsync("verified", true);
+    var saved = (await store.ReadAsync("oppo/test-device")).Single();
+    Check(engine.State.Stage == CalibrationStage.Completed && saved.Name == "verified" && saved.Levels.SequenceEqual(Structure.Levels)
+        && saved.ScanData!.SequenceEqual(Structure.ScanData));
+    Check(fake.Sent.Skip(before).Last().Payload.SequenceEqual(new byte[] {1,0x0B})
+        && fake.Sent.Where(x => x.Command == 0x0403).All(x => x.Payload.SequenceEqual(new byte[] {0x0B,1})));
+}));
+await Test("Ignoring auto volume cannot authorize missing off duplicate or malformed hearing verification", async () =>
+{
+    byte[][] replies = [ [0,3,0x1C,0,0x0B,0,0x1C,255], [0,2,0x1C,0,0x1C,255],
+        [0,4,0x1C,0,0x0B,1,0x1C,255,0x0B,1], [0,3,0x1C,0,0x0B,1,0x1C] ];
+    for (int i = 0; i < replies.Length; i++) await WithHistory(async (store, dir) =>
+    {
+        var fake = new Fake(); await using var engine = Engine(fake, true, store); await Complete(engine, true);
+        fake.Hook = (c, p, t) => Task.FromResult<Packet?>(c == 0x010D ? new(0x810D, 1, replies[i]) : null);
+        if (i < 2) await Throws<InvalidDataException>(() => engine.SaveHearingAsync("invalid", true));
+        else await Throws<FormatException>(() => engine.SaveHearingAsync("invalid", true));
+        Check(engine.State.Stage == CalibrationStage.Failed && (await store.ReadAsync("oppo/test-device")).Count == 0);
+    });
+});
 await Test("Every rejected save write halts chain and does not persist history", async () =>
 {
     foreach (ushort rejected in new ushort[] { 0x0411, 0x040E, 0x0415, 0x0403 }) await WithHistory(async (store, dir) =>

@@ -20,7 +20,8 @@ internal static class InteractionTests
         Run("resource section expansion survives replacement definitions", ExpansionPersistenceAsync);
         Run("ANC radio sends a parent and explicit dropdown sends only a child", AncModeInteractionAsync);
         Run("ANC parent-only pushes select the radio without selecting or writing a child", AncParentPushAsync);
-        return 8;
+        Run("status notice shows notification guidance and clears after a healthy push", WarningNoticeAsync);
+        return 9;
 
         void Run(string name, Func<Task> test)
         {
@@ -28,6 +29,31 @@ internal static class InteractionTests
                 .GetAwaiter().GetResult();
             Console.WriteLine("PASS " + name);
         }
+    }
+
+    private static async Task WarningNoticeAsync()
+    {
+        var service = new PushService();
+        await using var vm = new MainViewModel(service, new NoConfirm());
+        service.EventReceived += vm.AdoptBackendEvent;
+        await vm.InitializeAsync();
+        var view = new MainView { DataContext = vm };
+        var window = CreateWindow(view);
+        try
+        {
+            window.Show(); await MainUiTestLayout.ExpandSettingsAsync(view);
+            var warning = service.Next(); warning.Warnings = ["部分状态通知不可用，仍可手动刷新状态。"];
+            service.Push(warning); Dispatcher.UIThread.RunJobs();
+            var notice = view.FindControl<FAInfoBar>("WarningsNotice")!;
+            Check(notice.IsVisible && notice.IsOpen && notice.Title == "耳机状态提示"
+                && notice.Message == warning.Warnings.Single() && FeatureTestData.Switch(view, "game").IsEnabled,
+                "The bound notice must preserve notification guidance without claiming a read failure or disabling the game switch.");
+            var cleared = service.Next(); cleared.Warnings = [];
+            service.Push(cleared); Dispatcher.UIThread.RunJobs();
+            Check(!notice.IsVisible && !notice.IsOpen && notice.Message == "" && service.Actions.Count == 0,
+                "A healthy snapshot must hide and clear the notice without submitting a setting.");
+        }
+        finally { window.Close(); }
     }
 
     private static async Task EventInteractionAsync()

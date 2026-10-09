@@ -9,6 +9,36 @@ internal static class NativeSnapshotMappingTests
 {
     internal static async Task RunAsync(Func<string, Func<Task>, Task> test, string scratch)
     {
+        await NativeHearingNotificationTests.RunAsync(test, scratch);
+        await test("native warnings preserve notification guidance and identify failed state reads without disabling other controls", async () =>
+        {
+            await using var service = new NativeHeadsetService(
+                () => throw new InvalidOperationException("Warning projection enumerated Bluetooth"),
+                new DeviceWhitelistStore(Path.Combine(scratch, "warning-projection.json")));
+            var map = typeof(NativeHeadsetService).GetMethod("Map", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var daily = new DailySnapshot
+            {
+                Revision = 1, Connected = true, ProfileVerified = true, GameMode = false,
+                Capabilities = new() { GameMode = true },
+                Warnings = ["部分状态通知不可用，仍可手动刷新状态。"],
+                FeatureSections = [new("settings", "设置", false,
+                    [new("game", "游戏低延迟", "switch", 0, null, [], 0, 1, true)])]
+            };
+            UiSnapshot Project() => (UiSnapshot)map.Invoke(service, [daily])!;
+            var projected = Project();
+            Check(projected.Warnings.SequenceEqual(daily.Warnings) && projected.CanSetGameMode
+                && projected.FeatureSections.Single().Controls.Single().CanWrite,
+                "A notification warning lost its manual-refresh guidance or disabled a verified setting");
+            daily.Warnings = ["查询 0x0130 被设备拒绝。", "查询 0x0124 的布局未通过校验，状态保留未知。"];
+            daily.Revision++;
+            projected = Project();
+            Check(projected.Warnings.SequenceEqual(new[] {
+                "耳机拒绝了提示音音量读取，请手动刷新后重试。", "耳机返回的低音强度无法识别，请手动刷新后重试。" }),
+                "Failed reads lost the affected setting or rejection/layout distinction");
+            Check(projected.CanSetGameMode, "An unrelated failed read disabled the available game setting");
+            daily.Warnings = []; daily.Revision++;
+            Check(Project().Warnings.Count == 0, "A successful fresh observation retained an earlier warning");
+        });
         await test("native ANC projection preserves a known primary without guessing its adjustment", async () =>
         {
             await using var service = new NativeHeadsetService(

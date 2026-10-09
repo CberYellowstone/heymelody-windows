@@ -5,6 +5,23 @@ internal static class EventVmTests
 {
     public static async Task RunAsync(Func<string, Func<Task>, Task> test)
     {
+        await test("event VM preserves warning guidance and clears it on a fresh state or device switch", async () =>
+        {
+            var service = new EventService();
+            service.Snapshots["device-a"].Warnings = ["部分状态通知不可用，仍可手动刷新状态。"];
+            await using var vm = Create(service); await vm.InitializeAsync();
+            Check(vm.HasWarnings && vm.WarningsText == "部分状态通知不可用，仍可手动刷新状态。"
+                && vm.CanSetGameMode && vm.CanRefreshState, "Notification guidance must leave verified settings and manual refresh available.");
+            var cleared = Next(service.Snapshots["device-a"]); cleared.Warnings = []; service.Push(cleared);
+            Check(!vm.HasWarnings && vm.WarningsText.Length == 0, "A newer healthy observation must clear the warning.");
+            var failedRead = Next(cleared); failedRead.Warnings = ["耳机拒绝了提示音音量读取，请手动刷新后重试。"];
+            service.Push(failedRead);
+            Check(vm.HasWarnings && vm.WarningsText == failedRead.Warnings.Single(), "A real failed read must remain visible.");
+            await vm.SelectDeviceAsync(vm.Devices[1]);
+            Check(vm.SelectedDevice?.Identity == "device-b" && !vm.HasWarnings && vm.WarningsText.Length == 0,
+                "A warning from another selected headset must not remain on screen.");
+            Check(service.Actions.Count == 0, "Warning replacement must not submit settings.");
+        });
         await test("live read-only preview attaches the shared backend without changing a paused device", async () =>
         {
             var backend = new EventService();

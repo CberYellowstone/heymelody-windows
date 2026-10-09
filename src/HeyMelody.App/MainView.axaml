@@ -152,7 +152,7 @@
             <fa:FAInfoBar x:Name="StatusNotice" Severity="Warning" IsClosable="False" IsOpen="{Binding StatusWarning}"
                           IsVisible="{Binding StatusWarning}" Message="{Binding Status}" Margin="0,0,0,8" />
             <fa:FAInfoBar x:Name="WarningsNotice" Severity="Informational" IsClosable="False" IsOpen="{Binding HasWarnings}"
-                          IsVisible="{Binding HasWarnings}" Title="部分状态尚未读取" Message="{Binding WarningsText}" Margin="0,0,0,8" />
+                          IsVisible="{Binding HasWarnings}" Title="耳机状态提示" Message="{Binding WarningsText}" Margin="0,0,0,8" />
             <Border x:Name="BatteryPanel" Classes="card" Padding="16,14">
               <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
                 <StackPanel Spacing="6" Background="Transparent" ToolTip.Tip="{Binding LeftChargeText}">

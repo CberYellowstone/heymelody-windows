@@ -33,6 +33,8 @@ public sealed partial class DailyClient : ICalibrationTransport
     }
     public async Task<Packet> RequestAsync(ushort command, byte[] payload, CancellationToken token)
     {
+        if (command == 0x0403 && payload is [0x1C, ..])
+            throw new InvalidOperationException("此功能已停用，没有发送设置。");
         await _gate.WaitAsync(token);
         try
         {

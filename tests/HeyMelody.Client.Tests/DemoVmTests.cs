@@ -25,6 +25,9 @@ internal static class DemoVmTests
             Check(vm.PresetOptions.Count > 1 && vm.Bands.Count == 10 && vm.EqEntries.Count > 0);
             Check(vm.CanSelectHearingProfile && vm.CanSetupHearing && vm.CanFitTest);
             var controls = vm.FeatureSections.SelectMany(section => section.Controls).ToArray();
+            Check(!controls.Any(control => control.Id == "auto-volume")
+                && controls.Any(control => control.Id == "adaptive-volume"),
+                "The retired auto-volume control is absent while adaptive volume remains independent.");
             Check(controls.Select(control => control.Kind).ToHashSet().SetEquals(["Switch", "Slider", "Radio", "Text", "Combo"]));
             Check(controls.All(control => control.CanEdit) && vm.FeatureSections.All(section => section.DefaultExpanded));
             Check(controls.Count(control => control.Id.StartsWith("gesture:", StringComparison.Ordinal)) == 12,

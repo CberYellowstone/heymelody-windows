@@ -121,7 +121,11 @@ public sealed partial class MainViewModel
         var identity = snapshot.Identity; var generation = snapshot.DeviceGeneration; var sourceRevision = snapshot.ResourceRevision;
         string context = identity + "/" + generation + "/" + sourceRevision;
         var previous = _featureContext == context ? _featureSections.ToDictionary(s => s.Id) : new Dictionary<string, FeatureSectionViewModel>();
-        var nextSections = snapshot.FeatureSections.Select(s =>
+        // Old offline presentations may still contain this retired control.
+        var visibleSections = snapshot.FeatureSections.Select(section => section with
+        { Controls = section.Controls.Where(control => control.Id != "auto-volume").ToArray() })
+            .Where(section => section.Controls.Count != 0);
+        var nextSections = visibleSections.Select(s =>
         {
             if (previous.TryGetValue(s.Id, out var old) && old.Header == s.Header && old.Description == s.Description
                 && old.DefaultExpanded == s.DefaultExpanded && old.Controls.Count == s.Controls.Count

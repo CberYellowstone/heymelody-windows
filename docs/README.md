@@ -1,11 +1,12 @@
 # 文档索引
 
-当前版本为 0.8.9。除 Markdown 链接外，文档中的路径均相对于仓库根目录；历史记录中的 `reference/` 等旧路径保留其原始含义。完整研究对象、理解、结论及产物位于 `research/`，本目录保存整理后适宜公布的结果，维护中的研究工具位于 `tools/research/`。具体约定见 [研究资料规范](research/organization.md)，位置见 [研究资料索引](research/README.md)。构建、发布和验证入口见 [REPOSITORY.md](../REPOSITORY.md)。
+当前版本为 0.8.10。除 Markdown 链接外，文档中的路径均相对于仓库根目录；历史记录中的 `reference/` 等旧路径保留其原始含义。完整研究对象、理解、结论及产物位于 `research/`，本目录保存整理后适宜公布的结果，维护中的研究工具位于 `tools/research/`。具体约定见 [研究资料规范](research/organization.md)，位置见 [研究资料索引](research/README.md)。构建、发布和验证入口见 [REPOSITORY.md](../REPOSITORY.md)。
 
 - [设备选择与离线控件](device-state.md)：0.8.7 的选择恢复、完整功能缓存、只读离线展示与重新连接刷新；0.8.8 改为在页头显示上次连接时间。
 
 ## 当前实现
 
+- [智能音量研究与处理决定](research/auto-volume.md)：0.8.10 全机型隐藏该功能，停止相关协议处理并清理旧缓存展示；右上提示区分通知问题与状态读取问题。
 - [黄金听感与贴合度组件修复](research/calibration-repair.md)：2026-10-09将两APK与X4 v116研究用于现有组件，覆盖真实佩戴查询、滤波完整性、滑块确认、暂停恢复、试听与保存读回。
 - [外观资源持久化与重新下载](artwork-persistence.md)：0.8.4 的外观提示持久化、SPP 颜色读取、缓存优先解析、X4 动态 WebP、教程与产品主图分离、设置卡片中的“重新下载在线资源”，以及 Windows x64/ARM64 CI。
 - [X4 美术复核](research/enco-x4-artwork-audit.md)：两来源官方旋转 WebP、控制 Lottie 教程的角色区分、模块获取与实际帧验证。

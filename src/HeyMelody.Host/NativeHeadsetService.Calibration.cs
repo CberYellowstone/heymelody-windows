@@ -40,7 +40,7 @@ public sealed partial class NativeHeadsetService
     {
         if (packet.Command != 0x0503 || !CalibrationAvailable("hearing") || _savingHearing
             || _calibrationState is { Stage: not ("Completed" or "Failed" or "Cancelled") }) return;
-        try { if (!NotificationParsers.ParseComponentPairs(packet.Payload).ContainsKey(0x0B)) return; }
+        try { if (!Daily.DailyParsers.ParseFeatures([0, .. packet.Payload]).ContainsKey(0x0B)) return; }
         catch (FormatException) { return; }
         lock (_hearingRefreshGate)
         {

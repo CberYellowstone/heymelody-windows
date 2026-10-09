@@ -1,6 +1,8 @@
 # HeyMelody for Windows
 
-**0.8.9** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型和动画展示。
+**0.8.10** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型和动画展示。
+
+0.8.10 统一隐藏“自动音量”（原厂“智能音量调节”），停止该项查询、写入与通知联动，旧缓存展示和 Demo 也隐藏此开关。Free4、X3、X4 的使用反馈均为没有此功能，其余机型尚未确认，暂不开放。右上提示保留具体原因：通知订阅不完整时说明仍可手动刷新，不再一律声称设置已禁用。决定、原厂用途和验证范围见 [智能音量研究与处理决定](docs/research/auto-volume.md)。
 
 2026-10-09完成 [黄金听感与耳机贴合度重新研究](docs/research/calibration-reassessment.md)，并据此[修复现有校准组件](docs/research/calibration-repair.md)：改正佩戴查询、测听路由、双耳滤波解析、滑块调档与扫描/保存流程。完整研究过程和结果在 [research/](research/calibration-reassessment-20261009/README.md)。该次源码修复当时未改变版本号，随 0.8.9 一并发布。
 
@@ -53,7 +55,7 @@ Demo 使用预装的 Enco Free4 丹拿版（`06C010`、色号 `3`）三维模型
 dotnet build src/HeyMelody.App/HeyMelody.App.csproj -c Release
 dotnet run --project tests/HeyMelody.Resources.Tests
 dotnet run --project tests/HeyMelody.Calibration.Tests
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.9
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.10
 ```
 
 常规构建和离线测试使用仓库中的资源包，不需要本地 APK。重新提取资源需要 `research/apps/` 和 `research/screenshots/` 中的固定输入及各专题保留的原件，入口是 `tools/bundle_resources.py`；目录组织、提交边界与历史路径映射见 [研究资料归档](docs/research/README.md)。运行中的软件不读取研究目录。原始资源版权与溯源保留在发布包的 notices 和资源清单中。

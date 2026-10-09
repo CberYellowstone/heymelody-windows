@@ -23,6 +23,89 @@ internal static class DailyFeatureTests
             Bad(()=>DailyFeatureCodecs.ParsePromptVolume([0,6,7])); Bad(()=>DailyFeatureCodecs.ParseGameSound([0,3,2,3,3]));
             Bad(()=>DailyFeatureCodecs.ParseGestures([0,2,1,0,2,6,1,0,2,1])); return Task.CompletedTask;
         });
+        await test("auto volume is unavailable for every declaration while adaptive volume remains writable", async () => {
+            foreach (int version in new[] {-1,0,1,2,7})
+            {
+                var f=new Fake();f.Features[0x1C]=1;f.Features[0x30]=0;
+                await using var c=new DailyClient(f,_=>Profile($"{{\"controlAutoVolumeSupport\":{version},\"adaptiveVolume\":1}}"));
+                var s=await c.RefreshAsync();
+                Check(s.Warnings.Count==0&&!s.RawFeatures.ContainsKey(0x1C)
+                    &&!s.FeatureSections.SelectMany(x=>x.Controls).Any(x=>x.Id=="auto-volume")
+                    &&Control(s,"adaptive-volume").CanWrite&&Control(s,"adaptive-volume").Value==0);
+                Check(f.Requests.Single(x=>x.Command==0x010D).Payload.Skip(1).Contains((byte)0x30)
+                    &&!f.Requests.Any(x=>x.Command==0x010D&&x.Payload.Skip(1).Contains((byte)0x1C)));
+                int requests=f.Requests.Count;
+                var disabled=await c.ApplyFeatureAsync("auto-volume",0);
+                Check(!disabled.Success&&disabled.FailureKind==DailyApplyFailure.StateUnavailable
+                    &&!disabled.SubmissionAttempted&&f.Requests.Count==requests&&f.Writes.Count==0);
+                try { await c.RequestAsync(0x0403,[0x1C,1],CancellationToken.None);throw new Exception("disabled raw setter accepted"); }
+                catch (InvalidOperationException ex) { Check(ex.Message.Contains("已停用")&&f.Requests.Count==requests&&f.Writes.Count==0); }
+                var adaptive=await c.ApplyFeatureAsync("adaptive-volume",1);
+                Check(adaptive.Success&&f.Writes.Single().Command==0x0403
+                    &&f.Writes.Single().Payload.SequenceEqual(new byte[]{0x30,1})
+                    &&!f.Requests.Any(x=>x.Command==0x010D&&x.Payload.Skip(1).Contains((byte)0x1C)));
+            }
+        });
+        await test("discarding auto volume retains other raw values and strict feature envelopes", () => {
+            var features=DailyParsers.ParseFeatures([0,4,0x1C,0,0x30,1,0x1C,255,0xFE,7]);
+            Check(features.Count==2&&features[0x30]==1&&features[0xFE]==7&&!features.ContainsKey(0x1C));
+            Check(DailyParsers.ParseFeatures([0,2,0x1C,0,0x1C,255]).Count==0);
+            Bad(()=>DailyParsers.ParseFeatures([1,1,0x1C,0]));
+            Bad(()=>DailyParsers.ParseFeatures([0,1,0x1C]));
+            Bad(()=>DailyParsers.ParseFeatures([0,0,0x1C,0]));
+            Bad(()=>DailyParsers.ParseFeatures([0,3,0x1C,0,0x30,1,0x30,0]));
+            return Task.CompletedTask;
+        });
+        await test("unsolicited auto volume query entries cannot warn or disable unrelated settings", async () => {
+            var f=new Fake();f.ReadReplies[0x010D]=[0,8,0x11,0,0x06,0,0x28,0,0x18,1,0x1B,0,0x1C,0,0x1C,255,0x30,1];
+            await using var c=new DailyClient(f,_=>Profile("{\"controlAutoVolumeSupport\":1,\"adaptiveVolume\":1}"));
+            var s=await c.RefreshAsync();
+            Check(s.Warnings.Count==0&&s.HiRes==true&&s.DualConnection==false
+                &&!s.RawFeatures.ContainsKey(0x1C)&&Control(s,"adaptive-volume").CanWrite
+                &&Control(s,"adaptive-volume").Value==1);
+        });
+        await test("auto volume only pushes publish no state and schedule no feature refresh", async () => {
+            var f=new Fake();f.Features[0x30]=0;f.Features[4]=0;
+            await using var c=new DailyClient(f,_=>Profile("{\"controlAutoVolumeSupport\":1,\"adaptiveVolume\":1,\"wearDetection\":1}"));
+            var initial=await c.RefreshAsync();await c.StartMonitoringAsync();int requests=f.Requests.Count,publications=0;
+            var marker=new TaskCompletionSource<DailySnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var mixed=new TaskCompletionSource<DailySnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+            c.SnapshotChanged+=s=>{Interlocked.Increment(ref publications);if(s.Battery?.Left?.Percent==42)marker.TrySetResult(s);
+                if(s.RawFeatures.GetValueOrDefault((byte)0x30)==1)mixed.TrySetResult(s);};
+            f.Push(0x0503,[1,0x1C,1]);f.Push(0x0503,[2,0x1C,255,0x1C,0]);f.Push(0x0204,[1,1,1,42]);
+            var seen=await marker.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            // Allow a wrongly queued background refresh to run after the reader drains the marker.
+            await Task.Delay(150);
+            Check(publications==1&&seen.Revision==initial.Revision+1&&f.Requests.Count==requests
+                &&!seen.RawFeatures.ContainsKey(0x1C)&&Control(seen,"adaptive-volume").Value==0);
+            f.Push(0x0503,[4,0x1C,255,0x30,1,0x1C,0,4,7]);seen=await mixed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Check(!seen.RawFeatures.ContainsKey(0x1C)&&Control(seen,"adaptive-volume").Value==1
+                &&Control(seen,"adaptive-volume").CanWrite&&!Control(seen,"wear").CanWrite
+                &&Control(seen,"wear").Value is null&&f.Writes.Count==0);
+        });
+        await test("duplicate retained feature push still refreshes and reports a malformed read", async () => {
+            var f=new Fake();f.Features[0x30]=0;
+            await using var c=new DailyClient(f,_=>Profile("{\"controlAutoVolumeSupport\":1,\"adaptiveVolume\":1}"));
+            await c.RefreshAsync();await c.StartMonitoringAsync();int reads=f.Requests.Count(x=>x.Command==0x010D);
+            var invalid=new TaskCompletionSource<DailySnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+            c.SnapshotChanged+=s=>{if(s.Warnings.Any(x=>x.Contains("0x010D")))invalid.TrySetResult(s);};
+            f.ReadReplies[0x010D]=[0,3,0x1C,0,0x30,1,0x30,0];f.Push(0x0503,[3,0x1C,0,0x30,1,0x30,0]);
+            var seen=await invalid.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Check(f.Requests.Count(x=>x.Command==0x010D)==reads+1&&!Control(seen,"adaptive-volume").CanWrite
+                &&Control(seen,"adaptive-volume").Value is null&&!seen.RawFeatures.ContainsKey(0x1C)&&f.Writes.Count==0);
+        });
+        await test("adaptive volume push wins over an older query while auto volume stays discarded", async () => {
+            var f=new Fake();f.Features[0x30]=0;
+            await using var c=new DailyClient(f,_=>Profile("{\"controlAutoVolumeSupport\":1,\"adaptiveVolume\":1}"));await c.RefreshAsync();
+            f.PauseNextRequest=0x010D;var read=c.RefreshAsync(DailyRefreshScope.Features);
+            await f.RequestPaused.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            var pushed=new TaskCompletionSource<DailySnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+            c.SnapshotChanged+=s=>{if(s.RawFeatures.GetValueOrDefault((byte)0x30)==1)pushed.TrySetResult(s);};
+            f.Push(0x0503,[3,0x1C,255,0x30,1,0x1C,0]);await pushed.Task.WaitAsync(TimeSpan.FromSeconds(2));f.ReleaseRequest.TrySetResult();
+            var seen=await read;
+            Check(Control(seen,"adaptive-volume").CanWrite&&Control(seen,"adaptive-volume").Value==1
+                &&!seen.RawFeatures.ContainsKey(0x1C)&&seen.Warnings.Count==0&&f.Writes.Count==0);
+        });
         await test("undeclared profile keeps baseline query and sends no general probes", async () => {
             var f = new Fake(); await using var c = new DailyClient(f,_=>Profile("{}")); var s=await c.RefreshAsync();
             Check(s.Connected&&s.FeatureSections.Count==0);

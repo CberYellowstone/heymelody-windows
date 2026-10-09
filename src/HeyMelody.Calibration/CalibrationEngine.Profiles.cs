@@ -109,7 +109,7 @@ public sealed partial class CalibrationEngine
         if (CalibrationCodecs.ParseRestoreDescription((await RequestAsync(0x0118, [], token)).Payload) != description)
             throw new InvalidDataException("耳机方案描述读回不一致。");
         var enabled = await RequestAsync(0x010D, [1, 0x0B], token);
-        var features = NotificationParsers.ParseComponentPairs(enabled.Payload.AsSpan(1));
+        var features = NotificationParsers.ParseComponentPairs(enabled.Payload.AsSpan(1), ignoredId: 0x1C);
         if (!features.TryGetValue(0x0B, out byte value) || value != 1) throw new InvalidDataException("耳机未确认黄金听感已启用。");
     }
     private static IEnumerable<HearingLevel> Ordered(IReadOnlyList<HearingLevel> levels) => levels.OrderBy(x => x.Side).ThenBy(x => x.Type);

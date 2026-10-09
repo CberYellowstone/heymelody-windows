@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.8.9',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.8.10',
     [ValidateNotNullOrEmpty()][ValidateSet('x64', 'x86', 'arm64')][string[]]$Architectures = @('x64', 'x86', 'arm64'),
     [switch]$SkipTests,
     [switch]$TestsOnly,

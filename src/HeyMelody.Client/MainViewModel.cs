@@ -148,7 +148,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool SpatialHiResMutex => _snapshot?.SpatialHiResMutex == true;
     public IReadOnlyList<string> Warnings => _snapshot?.Warnings ?? [];
     public bool HasWarnings => Warnings.Count != 0;
-    public string WarningsText => string.Join(Environment.NewLine, Warnings.Select(Sanitize));
+    public string WarningsText => string.Join(Environment.NewLine, Warnings.Select(warning => Sanitize(
+        _snapshot?.PresentationCached == true && warning == "部分耳机状态暂时不可用，相关设置已禁用。"
+            ? "上次连接时有状态提示，连接后请刷新确认。" : warning)));
     public string LogText => string.Join(Environment.NewLine, _logs);
     public IReadOnlyList<UiOption> AncOptions => _ancOptions;
     public IReadOnlyList<UiOption> PresetOptions => _presetOptions;

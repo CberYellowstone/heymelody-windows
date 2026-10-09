@@ -54,7 +54,7 @@ public static class DemoDeviceData
                     new("spatial", "空间音效", "Radio", 0, Options: spatial, Maximum: 2, CanWrite: true),
                     Switch("vocal-enhance", "人声增强"), Switch("bass-enabled", "低音增强", true),
                     new("bass", "低音强度", "Slider", 5, Maximum: 10, CanWrite: true),
-                    Switch("auto-volume", "自动音量"), Switch("adaptive-volume", "自适应音量"), Switch("adaptive-ear", "自适应听感"),
+                    Switch("adaptive-volume", "自适应音量"), Switch("adaptive-ear", "自适应听感"),
                     Switch("speech-perception", "人声感知"), Switch("hearing-optimize", "听感优化"), Switch("game-sound-enabled", "游戏音效"),
                     new("game-sound", "游戏音效类型", "Combo", 0, Options: [new(0, "默认音效"), new(3, "射击游戏")], Maximum: 3, CanWrite: true)]),
                 new("device-features", "耳机设置", true, [Switch("dual", "双设备连接", true), Switch("wear", "入耳检测", true),

@@ -322,12 +322,33 @@ public sealed partial class NativeHeadsetService : IHeadsetService, IDeviceManag
                 entry.MinimumGain, entry.MaximumGain, entry.Selected,
                 entry.Bands.Select(band => new UiBand(band.Frequency, band.Gain)).ToArray())).ToArray(),
             Firmware = snapshot.FirmwareVersion, SampleTime = snapshot.ObservedAtUtc,
-            Warnings = snapshot.Warnings.Count == 0 ? [] : ["部分耳机状态暂时不可用，相关设置已禁用。"]
+            Warnings = snapshot.Warnings.Select(UiWarning).ToArray()
         };
     }
 
     private static string UiFeatureKind(string kind) => kind switch
     { "switch" => "Switch", "slider" => "Slider", "radio" => "Radio", "combo" => "Combo", "text" => "Text", _ => kind };
+
+    private static string UiWarning(string warning)
+    {
+        if (!warning.StartsWith("查询 0x", StringComparison.Ordinal) || warning.Length < 9
+            || !ushort.TryParse(warning.AsSpan(5, 4), System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out var command)) return warning;
+        string state = command switch
+        {
+            0x0100 => "耳机能力", 0x0103 => "耳机身份", 0x0105 => "固件信息", 0x0106 => "电量状态",
+            0x0108 => "操控设置", 0x0109 => "佩戴状态", 0x010C => "降噪状态", 0x010D => "功能状态",
+            0x010F => "调音状态", 0x0114 => "音频编码信息", 0x0122 => "均衡器设置", 0x0124 => "低音强度",
+            0x012A => "空间音效状态", 0x012B => "游戏音效状态", 0x0130 => "提示音音量",
+            _ => "部分耳机状态"
+        };
+        return warning[9..] switch
+        {
+            " 被设备拒绝。" => $"耳机拒绝了{state}读取，请手动刷新后重试。",
+            " 的布局未通过校验，状态保留未知。" => $"耳机返回的{state}无法识别，请手动刷新后重试。",
+            _ => warning
+        };
+    }
 
     private static EarbudPlacement Placement(bool? inCase, bool? inEar) => inEar == true ? EarbudPlacement.InEar
         : inCase == true ? EarbudPlacement.InCase : inCase == false ? EarbudPlacement.OutOfCase : EarbudPlacement.Unknown;

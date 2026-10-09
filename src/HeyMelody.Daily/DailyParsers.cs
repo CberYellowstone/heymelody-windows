@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 using HeyMelodyWindows.Devices;
+using HeyMelodyWindows.Protocol;
 
 namespace HeyMelodyWindows.Daily;
 
@@ -60,10 +61,14 @@ public static class DailyParsers
     { Status(data); Require(data.Length == 2); return data[1] <= 2 ? data[1] : null; }
     public static Dictionary<byte, byte> ParseFeatures(ReadOnlySpan<byte> data)
     {
-        Status(data); Require(data.Length >= 2 && data.Length == 2 + data[1] * 2);
-        var result = new Dictionary<byte, byte>();
-        for (int p = 2; p < data.Length; p += 2) Require(result.TryAdd(data[p], data[p + 1]));
-        return result;
+        Status(data);
+        return ParseFeatureNotification(data[1..]);
+    }
+    internal static Dictionary<byte, byte> ParseFeatureNotification(ReadOnlySpan<byte> data)
+    {
+        // Globally disabled auto volume must not populate state or invalidate other features,
+        // even if it appears more than once. Status, count, length and other IDs remain strict.
+        return NotificationParsers.ParseComponentPairs(data, ignoredId: 0x1C);
     }
     public static List<CustomEqualizer> ParseEqualizers(ReadOnlySpan<byte> data)
     {

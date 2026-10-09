@@ -1,5 +1,9 @@
 # 日常控制的协议证据与适配边界
 
+**2026-10-10 实施决定：** 0.8.10 对所有型号统一隐藏 `controlAutoVolumeSupport` / `1C`，停止常规查询、写入及通知联动；下文保留历史协议映射，不能据此认定该项仍在当前应用开放。`adaptiveVolume` / `30` 继续独立处理。决定与依据见 [智能音量处理记录](auto-volume.md)。
+
+**2026-10-09 补充纠正：** 下文的 `controlAutoVolumeSupport` / feature `1C` 原厂名称为“智能音量调节”，显示还要求 `0100` 能力 bit 45；型号字段为1不足以证明耳机开放该功能。X4 v116缺少该能力且GET省略状态，项目误显示禁用行；本轮右上警告另由通知能力不完整触发。完整适配结论见 [重新研究](auto-volume.md)。本页其余日期与静态验证范围保留历史值，补充前原稿另存完整档案。
+
 本文为公开整理稿；[整理前完整原文](../../research/migrations/organization-2026-10-09/originals/docs/research/daily-feature-codecs.md)保存在本地研究档案，不随普通Git clone提供。历史版本、来源及验证范围保留，完整研究对象与产物由 `research/` 保存。
 
 本页记录 2026-10-08 为通用设置新增的静态协议核对。证据来自本工作区 `research/apps/无线耳机_17.6.3.apk` 的 `classes.dex`（SDK）和 `classes2.dex`（界面、配置与 repository）。DEX 偏移均为该样本的文件偏移。没有运行 Android、连接真实耳机或新增网络请求；测试使用内存 transport，不代表各型号实机验收。

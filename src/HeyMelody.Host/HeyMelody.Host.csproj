@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <AssemblyName>HeyMelody.Host</AssemblyName>
-    <Version>0.8.9</Version>
+    <Version>0.8.10</Version>
     <ApplicationIcon>../HeyMelody.App/Assets/HeyMelody.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>

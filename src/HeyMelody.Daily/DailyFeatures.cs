@@ -16,7 +16,6 @@ public sealed partial class DailyClient
         new("long-power", "长续航模式", 0x17, "longPowerMode"),
         new("smart-call", "智能通话", 0x15, "smartCall"),
         new("bass-enabled", "低音增强", 0x1D, "bassEngineSupport"),
-        new("auto-volume", "自动音量", 0x1C, "controlAutoVolumeSupport"),
         new("adaptive-volume", "自适应音量", 0x30, "adaptiveVolume"),
         new("adaptive-ear", "自适应听感", 0x31, "adaptiveEar"),
         new("speech-perception", "人声感知", 0x32, "speechPerception"),
@@ -172,6 +171,8 @@ public sealed partial class DailyClient
 
     public async Task<DailyApplyResult> ApplyFeatureAsync(string id, int value, string? text = null, CancellationToken token = default)
     {
+        // Feature 0x1C is disabled for every model, including callers with an old control ID.
+        if (id == "auto-volume") return Reject(new(), "此功能已停用，没有发送设置。", DailyApplyFailure.StateUnavailable);
         if (id is "dual" or "game" or "hires")
         {
             if (value is not (0 or 1)) return Reject(new(), "开关值无效。");
