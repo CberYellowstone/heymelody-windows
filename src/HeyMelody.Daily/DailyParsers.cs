@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 using HeyMelodyWindows.Devices;
+using HeyMelodyWindows.Protocol;
 
 namespace HeyMelodyWindows.Daily;
 
@@ -47,7 +48,8 @@ public static class DailyParsers
             var leaf = primary.Children.FirstOrDefault(x => x.ProtocolIndex == selected);
             if (leaf is null && primary.ProtocolIndex != selected) continue;
             state.Primary = (byte)primary.ProtocolIndex;
-            state.Level = selected;
+            // A parent bitmap confirms the mode, but does not report one of its child adjustments.
+            state.Level = leaf is null && primary.Children.Count > 0 ? null : selected;
             // Smart response kind=4 describes its instantaneous child, not a new manual selection.
             if (state.Kind == 4) { state.Primary = 1; state.Level = 7; }
             return state;
@@ -59,10 +61,14 @@ public static class DailyParsers
     { Status(data); Require(data.Length == 2); return data[1] <= 2 ? data[1] : null; }
     public static Dictionary<byte, byte> ParseFeatures(ReadOnlySpan<byte> data)
     {
-        Status(data); Require(data.Length >= 2 && data.Length == 2 + data[1] * 2);
-        var result = new Dictionary<byte, byte>();
-        for (int p = 2; p < data.Length; p += 2) Require(result.TryAdd(data[p], data[p + 1]));
-        return result;
+        Status(data);
+        return ParseFeatureNotification(data[1..]);
+    }
+    internal static Dictionary<byte, byte> ParseFeatureNotification(ReadOnlySpan<byte> data)
+    {
+        // Globally disabled auto volume must not populate state or invalidate other features,
+        // even if it appears more than once. Status, count, length and other IDs remain strict.
+        return NotificationParsers.ParseComponentPairs(data, ignoredId: 0x1C);
     }
     public static List<CustomEqualizer> ParseEqualizers(ReadOnlySpan<byte> data)
     {
@@ -112,8 +118,8 @@ public static class DailyParsers
             Require(!string.IsNullOrWhiteSpace(nameText) && nameText.All(c => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z'
                 or >= '0' and <= '9' or >= '\u4e00' and <= '\u9fa5'));
         byte[] name = Utf8.GetBytes(nameText);
-        Require(name.Length <= 255 && frequencies.Count == 10 && edit.Bands.Count == frequencies.Count
-            && edit.MinimumGain <= edit.MaximumGain);
+        Require(name.Length <= 255 && frequencies.Count is > 0 and <= 32 && edit.Bands.Count == frequencies.Count
+            && edit.MinimumGain <= edit.MaximumGain && frequencies.All(x => x > 0) && frequencies.Distinct().Count() == frequencies.Count);
         for (int n = 0; n < frequencies.Count; n++)
             Require(edit.Bands[n].Frequency == frequencies[n] && edit.Bands[n].Gain >= edit.MinimumGain
                 && edit.Bands[n].Gain <= edit.MaximumGain);

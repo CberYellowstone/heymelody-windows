@@ -1,0 +1,11 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="HeyMelodyWindows.App.ProductArtwork"
+             x:Name="ArtworkHost"
+             AutomationProperties.Name="耳机产品示意图">
+  <ContentPresenter x:Name="VisualPresenter"
+                    Content="{Binding Visual, ElementName=ArtworkHost}"
+                    ContentTemplate="{Binding VisualTemplate, ElementName=ArtworkHost}"
+                    HorizontalContentAlignment="Stretch"
+                    VerticalContentAlignment="Stretch" />
+</UserControl>

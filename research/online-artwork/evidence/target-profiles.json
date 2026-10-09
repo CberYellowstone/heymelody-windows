@@ -1,0 +1,3705 @@
+{
+  "format_version": 1,
+  "scope": "Offline target research only; APK code is parsed, never executed.",
+  "exact_targets": {
+    "067410": "OPPO Enco X3",
+    "068C10": "OPPO Enco Free4",
+    "06C010": "OPPO Enco Free4（丹拿版）"
+  },
+  "excluded_near_names": {
+    "06BC10": "OPPO Enco X3s",
+    "066810": "OPPO Enco X3i"
+  },
+  "sources": {
+    "com.heytap.headset": {
+      "cloud_path": "research/online-whitelist/runs/20261007T095049.319796Z/com.heytap.headset/cloud.json",
+      "cloud_sha256": "0c0288256928824090543dfaea5bd35e6f4538f190e2e9b673f871af7ab46127",
+      "effective_version": 117006007,
+      "version_jsonpath": "$.compatVersionCode",
+      "model_list_jsonpath": "$.compatWhiteList",
+      "app_metadata_version_code": 17006004,
+      "profiles": {
+        "067410": {
+          "jsonpath": "$.compatWhiteList[1]",
+          "profile": {
+            "rssi": {
+              "rightOffset": 0,
+              "leftOffset": 0,
+              "secondRssi": 50,
+              "firstRssi": 47,
+              "flattenOffset": 2
+            },
+            "opsPodsVersion": 14008000,
+            "minVersion": 14008000,
+            "function": {
+              "strongNoiseReductionRealTime": 1,
+              "dolbyMark": 1,
+              "fitDetection": 1,
+              "headSetSoundRecord": 1,
+              "highToneQuality": 1,
+              "noiseReductionMode": [
+                {
+                  "modeType": 5,
+                  "childrenMode": [
+                    {
+                      "modeType": 7,
+                      "protocolIndex": 7
+                    },
+                    {
+                      "modeType": 4,
+                      "protocolIndex": 4
+                    },
+                    {
+                      "modeType": 8,
+                      "protocolIndex": 5
+                    },
+                    {
+                      "modeType": 3,
+                      "protocolIndex": 6
+                    }
+                  ],
+                  "protocolIndex": 1
+                },
+                {
+                  "modeType": 1,
+                  "childrenMode": [
+                    {
+                      "modeType": 1,
+                      "protocolIndex": 3
+                    }
+                  ],
+                  "protocolIndex": 0
+                },
+                {
+                  "modeType": 2,
+                  "childrenMode": [
+                    {
+                      "modeType": 2,
+                      "protocolIndex": 8
+                    },
+                    {
+                      "modeType": 6,
+                      "protocolIndex": 9
+                    }
+                  ],
+                  "protocolIndex": 2
+                }
+              ],
+              "customDress": 1,
+              "hearingEnhancement": 1,
+              "callControl": [
+                {
+                  "ear": 2,
+                  "action": 32,
+                  "support": 524800,
+                  "showEar": 0,
+                  "defaultFunction": 524288
+                },
+                {
+                  "ear": 2,
+                  "action": 33,
+                  "support": 262656,
+                  "showEar": 0,
+                  "defaultFunction": 262144
+                },
+                {
+                  "ear": 2,
+                  "action": 34,
+                  "support": 131584,
+                  "showEar": 0
+                }
+              ],
+              "batteryInfo": 1,
+              "feedback": 1,
+              "related": 1,
+              "equalizer": 4,
+              "multiDevicesConnect": 1,
+              "hearingJudgeDb": 1,
+              "customEqualizer": 1,
+              "cleanGuide": 1,
+              "spatialDescriptionType": 1,
+              "autoFirmwareUpdate": 1,
+              "control": [
+                {
+                  "ear": 2,
+                  "action": 16,
+                  "support": 516,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 17,
+                  "support": 8805,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 18,
+                  "support": 8801,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 5,
+                  "support": 3584,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 20,
+                  "showEar": 1
+                }
+              ],
+              "gameSoundMutexes": [
+                1
+              ],
+              "spatialHiResMutex": 1,
+              "dialogTags": [
+                2
+              ],
+              "wearDetection": 1,
+              "supportPinch": 1,
+              "fastDiscovery": 1,
+              "support3DModel": 1,
+              "controlAutoVolumeSupport": 1,
+              "controlGuideSupport": 1,
+              "spatialTypes": [
+                0,
+                1,
+                2
+              ],
+              "equalizerMode": [
+                {
+                  "modeType": 26,
+                  "summaryId": 1,
+                  "tag": 3,
+                  "protocolIndex": 0
+                },
+                {
+                  "modeType": 27,
+                  "summaryId": 2,
+                  "tag": 3,
+                  "protocolIndex": 1
+                },
+                {
+                  "modeType": 28,
+                  "summaryId": 3,
+                  "tag": 3,
+                  "protocolIndex": 2
+                },
+                {
+                  "modeType": 29,
+                  "summaryId": 4,
+                  "tag": 3,
+                  "protocolIndex": 3
+                },
+                {
+                  "modeType": 30,
+                  "summaryId": 5,
+                  "tag": 3,
+                  "protocolIndex": 7
+                }
+              ],
+              "earScan": 1,
+              "tutorialGuide": 1,
+              "heyFindDevice": 1,
+              "gameMode": 1,
+              "gameSoundList": [
+                {
+                  "type": 3,
+                  "packageNameList": [
+                    "com.tencent.tmgp.pubgmhd",
+                    "com.netease.hyxd.nearme.gamecenter",
+                    "com.crisisfire.android.nearme.gamecenter",
+                    "com.netease.cfxf.nearme.gamecenter",
+                    "com.tencent.tmgp.cf",
+                    "com.tencent.tmgp.cod",
+                    "com.netease.lztg.nearme.gamecenter",
+                    "com.yingxiong.heroo.nearme.gamecenter",
+                    "com.tencent.ig"
+                  ]
+                },
+                {
+                  "type": 0
+                }
+              ]
+            },
+            "name": "OPPO Enco X3",
+            "id": "067410",
+            "type": "T1",
+            "supportSpp": true,
+            "podsVersion": 14008000,
+            "brand": "oppo",
+            "uuid": "0000079A-D102-11E1-9B23-00025B00A5A5",
+            "heyMelodyVersion": 114008000
+          },
+          "resource_and_color_fields": [
+            {
+              "jsonpath": "$.compatWhiteList[1].function.customDress",
+              "value": 1
+            },
+            {
+              "jsonpath": "$.compatWhiteList[1].function.support3DModel",
+              "value": 1
+            }
+          ],
+          "defaultColor_present": false,
+          "configured_color_codes": [],
+          "color_result_for_unknown_input_minus_one": -1,
+          "color_inference": "OPPO target has no configured defaultColor; resolver preserves unknown -1.",
+          "resource_urls_present": false,
+          "target_specific_model_path_present": false,
+          "observed_successful_resource_color_codes": [
+            2
+          ]
+        },
+        "068C10": {
+          "jsonpath": "$.compatWhiteList[8]",
+          "profile": {
+            "rssi": {
+              "rightOffset": 0,
+              "leftOffset": 0,
+              "secondRssi": 44,
+              "firstRssi": 44,
+              "flattenOffset": 2
+            },
+            "minVersion": 15003002,
+            "function": {
+              "strongNoiseReductionRealTime": 1,
+              "noiseReductionUIVersion": 2,
+              "fitDetection": 1,
+              "headSetSoundRecord": 0,
+              "highToneQuality": 1,
+              "noiseReductionMode": [
+                {
+                  "modeType": 5,
+                  "childrenMode": [
+                    {
+                      "modeType": 4,
+                      "protocolIndex": 4
+                    },
+                    {
+                      "modeType": 8,
+                      "protocolIndex": 5
+                    },
+                    {
+                      "modeType": 3,
+                      "protocolIndex": 6
+                    },
+                    {
+                      "modeType": 7,
+                      "protocolIndex": 7
+                    }
+                  ],
+                  "protocolIndex": 1
+                },
+                {
+                  "modeType": 10,
+                  "protocolIndex": 11
+                },
+                {
+                  "modeType": 2,
+                  "childrenMode": [
+                    {
+                      "modeType": 2,
+                      "protocolIndex": 8
+                    }
+                  ],
+                  "protocolIndex": 2
+                },
+                {
+                  "modeType": 1,
+                  "childrenMode": [
+                    {
+                      "modeType": 1,
+                      "protocolIndex": 3
+                    }
+                  ],
+                  "protocolIndex": 0
+                }
+              ],
+              "customDress": 1,
+              "hearingEnhancement": 1,
+              "callControl": [
+                {
+                  "ear": 2,
+                  "action": 29,
+                  "support": 524800,
+                  "showEar": 0,
+                  "defaultFunction": 524288
+                },
+                {
+                  "ear": 2,
+                  "action": 30,
+                  "support": 131584,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 31,
+                  "support": 262656,
+                  "showEar": 0,
+                  "defaultFunction": 262144
+                }
+              ],
+              "batteryInfo": 1,
+              "feedback": 1,
+              "related": 1,
+              "equalizer": 4,
+              "multiDevicesConnect": 1,
+              "hearingJudgeDb": 1,
+              "earphoneIdentity": 1,
+              "customEqualizer": 1,
+              "cleanGuide": 1,
+              "spatialDescriptionType": 2,
+              "functionIntroductionGuide": 1,
+              "autoFirmwareUpdate": 1,
+              "equalizerModeCompat": [
+                {
+                  "modeType": 34,
+                  "minFirmVersion": 118,
+                  "tag": 0,
+                  "protocolIndex": 7,
+                  "order": 4
+                }
+              ],
+              "control": [
+                {
+                  "ear": 2,
+                  "action": 1,
+                  "support": 516,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 2,
+                  "support": 8805,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 3,
+                  "support": 8801,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "minSelectCount": 1,
+                  "action": 27,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 5,
+                  "support": 3584,
+                  "showEar": 0
+                }
+              ],
+              "spatialHiResMutex": 1,
+              "promptVolume": 1,
+              "dialogTags": [
+                2
+              ],
+              "wearDetection": 1,
+              "fastDiscovery": 1,
+              "support3DModel": 1,
+              "controlAutoVolumeSupport": 1,
+              "controlGuideSupport": 1,
+              "spatialTypes": [
+                0,
+                1
+              ],
+              "equalizerMode": [
+                {
+                  "modeType": 26,
+                  "protocolIndex": 0
+                },
+                {
+                  "modeType": 28,
+                  "protocolIndex": 1
+                },
+                {
+                  "modeType": 29,
+                  "protocolIndex": 2
+                }
+              ],
+              "earScan": 1,
+              "heyFindDevice": 1,
+              "gameMode": 1
+            },
+            "name": "OPPO Enco Free4",
+            "id": "068C10",
+            "type": "T1",
+            "supportSpp": true,
+            "brand": "oppo",
+            "uuid": "0000079A-D102-11E1-9B23-00025B00A5A5"
+          },
+          "resource_and_color_fields": [
+            {
+              "jsonpath": "$.compatWhiteList[8].function.customDress",
+              "value": 1
+            },
+            {
+              "jsonpath": "$.compatWhiteList[8].function.support3DModel",
+              "value": 1
+            }
+          ],
+          "defaultColor_present": false,
+          "configured_color_codes": [],
+          "color_result_for_unknown_input_minus_one": -1,
+          "color_inference": "OPPO target has no configured defaultColor; resolver preserves unknown -1.",
+          "resource_urls_present": false,
+          "target_specific_model_path_present": false,
+          "observed_successful_resource_color_codes": [
+            1
+          ]
+        },
+        "06C010": {
+          "jsonpath": "$.compatWhiteList[9]",
+          "profile": {
+            "rssi": {
+              "rightOffset": 0,
+              "leftOffset": 0,
+              "secondRssi": 44,
+              "firstRssi": 44,
+              "flattenOffset": 2
+            },
+            "minVersion": 15003002,
+            "function": {
+              "strongNoiseReductionRealTime": 1,
+              "noiseReductionUIVersion": 2,
+              "fitDetection": 1,
+              "headSetSoundRecord": 0,
+              "highToneQuality": 1,
+              "noiseReductionMode": [
+                {
+                  "modeType": 5,
+                  "childrenMode": [
+                    {
+                      "modeType": 4,
+                      "protocolIndex": 4
+                    },
+                    {
+                      "modeType": 8,
+                      "protocolIndex": 5
+                    },
+                    {
+                      "modeType": 3,
+                      "protocolIndex": 6
+                    },
+                    {
+                      "modeType": 7,
+                      "protocolIndex": 7
+                    }
+                  ],
+                  "protocolIndex": 1
+                },
+                {
+                  "modeType": 10,
+                  "protocolIndex": 11
+                },
+                {
+                  "modeType": 2,
+                  "childrenMode": [
+                    {
+                      "modeType": 2,
+                      "protocolIndex": 8
+                    }
+                  ],
+                  "protocolIndex": 2
+                },
+                {
+                  "modeType": 1,
+                  "childrenMode": [
+                    {
+                      "modeType": 1,
+                      "protocolIndex": 3
+                    }
+                  ],
+                  "protocolIndex": 0
+                }
+              ],
+              "customDress": 1,
+              "hearingEnhancement": 1,
+              "callControl": [
+                {
+                  "ear": 2,
+                  "action": 29,
+                  "support": 524800,
+                  "showEar": 0,
+                  "defaultFunction": 524288
+                },
+                {
+                  "ear": 2,
+                  "action": 30,
+                  "support": 131584,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 31,
+                  "support": 262656,
+                  "showEar": 0,
+                  "defaultFunction": 262144
+                }
+              ],
+              "batteryInfo": 1,
+              "feedback": 1,
+              "related": 1,
+              "equalizer": 4,
+              "multiDevicesConnect": 1,
+              "hearingJudgeDb": 1,
+              "earphoneIdentity": 1,
+              "customEqualizer": 1,
+              "cleanGuide": 1,
+              "spatialDescriptionType": 2,
+              "functionIntroductionGuide": 1,
+              "autoFirmwareUpdate": 1,
+              "equalizerModeCompat": [
+                {
+                  "modeType": 34,
+                  "minFirmVersion": 118,
+                  "tag": 0,
+                  "protocolIndex": 7,
+                  "order": 4
+                }
+              ],
+              "control": [
+                {
+                  "ear": 2,
+                  "action": 1,
+                  "support": 516,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 2,
+                  "support": 8805,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 3,
+                  "support": 8801,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "minSelectCount": 1,
+                  "action": 27,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 5,
+                  "support": 3584,
+                  "showEar": 0
+                }
+              ],
+              "spatialHiResMutex": 1,
+              "promptVolume": 1,
+              "dialogTags": [
+                2
+              ],
+              "equalizerModeByVersion": [
+                {
+                  "modeType": 40,
+                  "minFirmVersion": 136,
+                  "minAppVersion": 15011000,
+                  "tag": 3,
+                  "protocolIndex": 8,
+                  "order": 6
+                }
+              ],
+              "wearDetection": 1,
+              "fastDiscovery": 1,
+              "support3DModel": 1,
+              "controlAutoVolumeSupport": 1,
+              "controlGuideSupport": 1,
+              "spatialTypes": [
+                0,
+                1
+              ],
+              "equalizerMode": [
+                {
+                  "modeType": 26,
+                  "protocolIndex": 0,
+                  "order": 1
+                },
+                {
+                  "modeType": 28,
+                  "protocolIndex": 1,
+                  "order": 2
+                },
+                {
+                  "modeType": 29,
+                  "protocolIndex": 2,
+                  "order": 3
+                },
+                {
+                  "modeType": 30,
+                  "tag": 3,
+                  "protocolIndex": 3,
+                  "order": 5
+                }
+              ],
+              "earScan": 1,
+              "heyFindDevice": 1,
+              "gameMode": 1
+            },
+            "name": "OPPO Enco Free4（丹拿版）",
+            "id": "06C010",
+            "type": "T1",
+            "supportSpp": true,
+            "brand": "oppo",
+            "uuid": "0000079A-D102-11E1-9B23-00025B00A5A5"
+          },
+          "resource_and_color_fields": [
+            {
+              "jsonpath": "$.compatWhiteList[9].function.customDress",
+              "value": 1
+            },
+            {
+              "jsonpath": "$.compatWhiteList[9].function.support3DModel",
+              "value": 1
+            }
+          ],
+          "defaultColor_present": false,
+          "configured_color_codes": [],
+          "color_result_for_unknown_input_minus_one": -1,
+          "color_inference": "OPPO target has no configured defaultColor; resolver preserves unknown -1.",
+          "resource_urls_present": false,
+          "target_specific_model_path_present": false,
+          "observed_successful_resource_color_codes": []
+        }
+      },
+      "apk_configs": [
+        {
+          "entry": "res/Hx.json",
+          "sha256": "6d93d5c65621bf59bf2d5442676488a5b76f5b3269534684e3278590e4a0d594",
+          "content": {
+            "dressVersion": 2,
+            "bgType": "",
+            "name": "",
+            "icon": "icon.png",
+            "discoveryStates": {
+              "connectedState": {
+                "startTime": 0,
+                "endTime": 6000,
+                "closeDelay": 6000,
+                "infoFadeInDelay": 3000,
+                "resShowDelay": 3000,
+                "animation": 1,
+                "autoCrop": true,
+                "resInAnim": "fadeIn",
+                "maskColor": "#73000000",
+                "showEarphoneImageRes": true,
+                "bgVideoRes": {
+                  "path": "res/video/boot"
+                },
+                "boxImageRes": {
+                  "path": "res/image/connected_box.png"
+                },
+                "budsImageRes": {
+                  "path": "res/image/connected_buds.png"
+                },
+                "titleRes": {},
+                "batteriesRes": {}
+              }
+            }
+          },
+          "relative_path_evidence": [
+            {
+              "jsonpath": "$.icon",
+              "value": "icon.png",
+              "member_present_in_apk": false
+            },
+            {
+              "jsonpath": "$.discoveryStates.connectedState.bgVideoRes.path",
+              "value": "res/video/boot",
+              "member_present_in_apk": false
+            },
+            {
+              "jsonpath": "$.discoveryStates.connectedState.boxImageRes.path",
+              "value": "res/image/connected_box.png",
+              "member_present_in_apk": false
+            },
+            {
+              "jsonpath": "$.discoveryStates.connectedState.budsImageRes.path",
+              "value": "res/image/connected_buds.png",
+              "member_present_in_apk": false
+            }
+          ],
+          "target_pid_present": false,
+          "target_binding_confirmed": false
+        },
+        {
+          "entry": "res/iD.json",
+          "sha256": "98085f1d2c9aaed3e6fe962bec6eed10e931b44156f8bf48ae5134854e0597cc",
+          "content": {
+            "dressVersion": 2,
+            "bgType": "",
+            "name": "",
+            "icon": "icon.png",
+            "srcFile": "srcFile.png",
+            "blurProgress": 0,
+            "discoveryStates": {
+              "connectedState": {
+                "closeDelay": 6000,
+                "infoFadeInDelay": 3000,
+                "resShowDelay": 3000,
+                "autoCrop": true,
+                "resInAnim": "fadeIn",
+                "maskColor": "#73000000",
+                "showEarphoneImageRes": true,
+                "bgImageRes": {
+                  "path": "res/image/connected_background"
+                },
+                "boxImageRes": {
+                  "path": "res/image/connected_box.png"
+                },
+                "budsImageRes": {
+                  "path": "res/image/connected_buds.png"
+                },
+                "titleRes": {},
+                "batteriesRes": {}
+              }
+            }
+          },
+          "relative_path_evidence": [
+            {
+              "jsonpath": "$.icon",
+              "value": "icon.png",
+              "member_present_in_apk": false
+            },
+            {
+              "jsonpath": "$.srcFile",
+              "value": "srcFile.png",
+              "member_present_in_apk": false
+            },
+            {
+              "jsonpath": "$.discoveryStates.connectedState.bgImageRes.path",
+              "value": "res/image/connected_background",
+              "member_present_in_apk": false
+            },
+            {
+              "jsonpath": "$.discoveryStates.connectedState.boxImageRes.path",
+              "value": "res/image/connected_box.png",
+              "member_present_in_apk": false
+            },
+            {
+              "jsonpath": "$.discoveryStates.connectedState.budsImageRes.path",
+              "value": "res/image/connected_buds.png",
+              "member_present_in_apk": false
+            }
+          ],
+          "target_pid_present": false,
+          "target_binding_confirmed": false
+        }
+      ],
+      "apk_sha256": "eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4",
+      "plain_json_scan": {
+        "parseable_assets_res_json_count": 49,
+        "entries_containing_target_pid": [],
+        "scope": "Plain JSON only; encrypted whitelist was separately authenticated and saved in cloud.json."
+      },
+      "dex_code_evidence": [
+        {
+          "kind": "legacy_model_member_path",
+          "dex_entry": "classes3.dex",
+          "dex_sha256": "b1ef4c90f60bdc6b333b61a14b6ea99d01a7ad2d7c7ed07776f8a2b46de04025",
+          "class": "LG9/b;",
+          "method": "run()V",
+          "code_offset": "0x16EE60",
+          "instructions": [
+            {
+              "dex_offset": "0x16FE64",
+              "opcode": "0x22",
+              "code_units": [
+                "0x0822",
+                "0x1DD2"
+              ]
+            },
+            {
+              "dex_offset": "0x16FE68",
+              "opcode": "0x70",
+              "code_units": [
+                "0x1070",
+                "0x8E2A",
+                "0x0008"
+              ],
+              "invoked": [
+                "Ljava/lang/StringBuilder;",
+                "<init>",
+                "()V"
+              ]
+            },
+            {
+              "dex_offset": "0x16FE6E",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x8E35",
+                "0x0048"
+              ],
+              "invoked": [
+                "Ljava/lang/StringBuilder;",
+                "append",
+                "(Ljava/lang/Object;)Ljava/lang/StringBuilder;"
+              ]
+            },
+            {
+              "dex_offset": "0x16FE74",
+              "opcode": "0x62",
+              "code_units": [
+                "0x0962",
+                "0x49A5"
+              ],
+              "field": [
+                "Ljava/io/File;",
+                "separator",
+                "Ljava/lang/String;"
+              ]
+            },
+            {
+              "dex_offset": "0x16FE78",
+              "opcode": "0x1A",
+              "code_units": [
+                "0x0A1A",
+                "0xA875"
+              ],
+              "string": "res/raw/detail_model.vfxms"
+            },
+            {
+              "dex_offset": "0x16FE7C",
+              "opcode": "0x71",
+              "code_units": [
+                "0x3071",
+                "0x8647",
+                "0x0A98"
+              ],
+              "invoked": [
+                "Lg0/c;",
+                "c",
+                "(Ljava/lang/StringBuilder;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"
+              ]
+            },
+            {
+              "dex_offset": "0x16FE82",
+              "opcode": "0x0C",
+              "code_units": [
+                "0x080C"
+              ]
+            },
+            {
+              "dex_offset": "0x16FE84",
+              "opcode": "0x70",
+              "code_units": [
+                "0x2070",
+                "0x8C9E",
+                "0x0087"
+              ],
+              "invoked": [
+                "Ljava/io/File;",
+                "<init>",
+                "(Ljava/lang/String;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x16FE8A",
+              "opcode": "0x71",
+              "code_units": [
+                "0x2071",
+                "0x406B",
+                "0x0072"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/util/o;",
+                "p",
+                "(Ljava/io/File;Ljava/io/File;)Z"
+              ]
+            },
+            {
+              "dex_offset": "0x16FE90",
+              "opcode": "0x22",
+              "code_units": [
+                "0x0222",
+                "0x1D77"
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "color_resolver",
+          "dex_entry": "classes3.dex",
+          "dex_sha256": "b1ef4c90f60bdc6b333b61a14b6ea99d01a7ad2d7c7ed07776f8a2b46de04025",
+          "class": "Lcom/oplus/melody/model/repository/earphone/Q;",
+          "method": "A(ILjava/lang/String;)I",
+          "code_offset": "0x2E18DC",
+          "instructions": [
+            {
+              "dex_offset": "0x2E18EC",
+              "opcode": "0x12",
+              "code_units": [
+                "0xF012"
+              ]
+            },
+            {
+              "dex_offset": "0x2E18EE",
+              "opcode": "0x33",
+              "code_units": [
+                "0x0433",
+                "0x004F"
+              ]
+            },
+            {
+              "dex_offset": "0x2E18F2",
+              "opcode": "0x71",
+              "code_units": [
+                "0x0071",
+                "0x1172",
+                "0x0000"
+              ],
+              "invoked": [
+                "LLa/a;",
+                "f",
+                "()LLa/a;"
+              ]
+            },
+            {
+              "dex_offset": "0x2E18F8",
+              "opcode": "0x0C",
+              "code_units": [
+                "0x010C"
+              ]
+            },
+            {
+              "dex_offset": "0x2E18FA",
+              "opcode": "0x12",
+              "code_units": [
+                "0x0212"
+              ]
+            },
+            {
+              "dex_offset": "0x2E18FC",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x306E",
+                "0x116F",
+                "0x0251"
+              ],
+              "invoked": [
+                "LLa/a;",
+                "c",
+                "(Ljava/lang/String;Ljava/lang/String;)Lcom/oplus/melody/common/data/WhitelistConfigDTO;"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1902",
+              "opcode": "0x0C",
+              "code_units": [
+                "0x010C"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1904",
+              "opcode": "0x1A",
+              "code_units": [
+                "0x021A",
+                "0x1D2C"
+              ],
+              "string": "EarphoneUtils"
+            },
+            {
+              "dex_offset": "0x2E1908",
+              "opcode": "0x38",
+              "code_units": [
+                "0x0138",
+                "0x0017"
+              ]
+            },
+            {
+              "dex_offset": "0x2E190C",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x3EB3",
+                "0x0001"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/data/WhitelistConfigDTO;",
+                "getDefaultColor",
+                "()I"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1912",
+              "opcode": "0x0A",
+              "code_units": [
+                "0x030A"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1914",
+              "opcode": "0x32",
+              "code_units": [
+                "0x0332",
+                "0x0011"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1918",
+              "opcode": "0x22",
+              "code_units": [
+                "0x0422",
+                "0x004B"
+              ]
+            },
+            {
+              "dex_offset": "0x2E191C",
+              "opcode": "0x13",
+              "code_units": [
+                "0x0013",
+                "0x0016"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1920",
+              "opcode": "0x70",
+              "code_units": [
+                "0x4070",
+                "0x0116",
+                "0x5104"
+              ],
+              "invoked": [
+                "LAb/N;",
+                "<init>",
+                "(ILjava/lang/Object;Ljava/lang/Object;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1926",
+              "opcode": "0x71",
+              "code_units": [
+                "0x2071",
+                "0x40E4",
+                "0x0042"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/util/y;",
+                "c",
+                "(Ljava/lang/String;Ljava/util/function/Supplier;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x2E192C",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x3EB3",
+                "0x0001"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/data/WhitelistConfigDTO;",
+                "getDefaultColor",
+                "()I"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1932",
+              "opcode": "0x0A",
+              "code_units": [
+                "0x040A"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1934",
+              "opcode": "0x0F",
+              "code_units": [
+                "0x040F"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1936",
+              "opcode": "0x38",
+              "code_units": [
+                "0x0138",
+                "0x002B"
+              ]
+            },
+            {
+              "dex_offset": "0x2E193A",
+              "opcode": "0x1A",
+              "code_units": [
+                "0x001A",
+                "0xA638"
+              ],
+              "string": "realme"
+            },
+            {
+              "dex_offset": "0x2E193E",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x3EAF",
+                "0x0001"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/data/WhitelistConfigDTO;",
+                "getBrand",
+                "()Ljava/lang/String;"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1944",
+              "opcode": "0x0C",
+              "code_units": [
+                "0x030C"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1946",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x8DF7",
+                "0x0030"
+              ],
+              "invoked": [
+                "Ljava/lang/String;",
+                "equalsIgnoreCase",
+                "(Ljava/lang/String;)Z"
+              ]
+            },
+            {
+              "dex_offset": "0x2E194C",
+              "opcode": "0x0A",
+              "code_units": [
+                "0x000A"
+              ]
+            },
+            {
+              "dex_offset": "0x2E194E",
+              "opcode": "0x38",
+              "code_units": [
+                "0x0038",
+                "0x001F"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1952",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x3EBF",
+                "0x0001"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/data/WhitelistConfigDTO;",
+                "getSupportSpp",
+                "()Z"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1958",
+              "opcode": "0x0A",
+              "code_units": [
+                "0x040A"
+              ]
+            },
+            {
+              "dex_offset": "0x2E195A",
+              "opcode": "0x38",
+              "code_units": [
+                "0x0438",
+                "0x000E"
+              ]
+            },
+            {
+              "dex_offset": "0x2E195E",
+              "opcode": "0x22",
+              "code_units": [
+                "0x0422",
+                "0x0154"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1962",
+              "opcode": "0x13",
+              "code_units": [
+                "0x0013",
+                "0x0014"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1966",
+              "opcode": "0x70",
+              "code_units": [
+                "0x3070",
+                "0x0556",
+                "0x0054"
+              ],
+              "invoked": [
+                "LBc/n;",
+                "<init>",
+                "(Ljava/lang/String;I)V"
+              ]
+            },
+            {
+              "dex_offset": "0x2E196C",
+              "opcode": "0x71",
+              "code_units": [
+                "0x2071",
+                "0x40E4",
+                "0x0042"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/util/y;",
+                "c",
+                "(Ljava/lang/String;Ljava/util/function/Supplier;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1972",
+              "opcode": "0x12",
+              "code_units": [
+                "0x0412"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1974",
+              "opcode": "0x0F",
+              "code_units": [
+                "0x040F"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1976",
+              "opcode": "0x22",
+              "code_units": [
+                "0x0422",
+                "0x027E"
+              ]
+            },
+            {
+              "dex_offset": "0x2E197A",
+              "opcode": "0x13",
+              "code_units": [
+                "0x0013",
+                "0x001B"
+              ]
+            },
+            {
+              "dex_offset": "0x2E197E",
+              "opcode": "0x70",
+              "code_units": [
+                "0x3070",
+                "0x0967",
+                "0x0054"
+              ],
+              "invoked": [
+                "LFa/q;",
+                "<init>",
+                "(Ljava/lang/String;I)V"
+              ]
+            },
+            {
+              "dex_offset": "0x2E1984",
+              "opcode": "0x71",
+              "code_units": [
+                "0x2071",
+                "0x40E4",
+                "0x0042"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/util/y;",
+                "c",
+                "(Ljava/lang/String;Ljava/util/function/Supplier;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x2E198A",
+              "opcode": "0x12",
+              "code_units": [
+                "0x1412"
+              ]
+            },
+            {
+              "dex_offset": "0x2E198C",
+              "opcode": "0x0F",
+              "code_units": [
+                "0x040F"
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "download_config_members",
+          "dex_entry": "classes3.dex",
+          "dex_sha256": "b1ef4c90f60bdc6b333b61a14b6ea99d01a7ad2d7c7ed07776f8a2b46de04025",
+          "class": "Loa/c;",
+          "method": "invoke(Ljava/lang/Object;)Ljava/lang/Object;",
+          "code_offset": "0x418424",
+          "instructions": [
+            {
+              "dex_offset": "0x418492",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x9D1A",
+                "0x0046"
+              ],
+              "invoked": [
+                "Loa/f;",
+                "setProductId",
+                "(Ljava/lang/String;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x418498",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x9D17",
+                "0x0056"
+              ],
+              "invoked": [
+                "Loa/f;",
+                "setColorId",
+                "(I)V"
+              ]
+            },
+            {
+              "dex_offset": "0x4184A6",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x1367",
+                "0x000B"
+              ],
+              "invoked": [
+                "LNa/d;",
+                "getModel3D",
+                "()Lcom/oplus/melody/model/zipdata/MelodyResourceDO;"
+              ]
+            },
+            {
+              "dex_offset": "0x4184AE",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x13E2",
+                "0x000B"
+              ],
+              "invoked": [
+                "LNa/i;",
+                "getRootPath",
+                "()Ljava/lang/String;"
+              ]
+            },
+            {
+              "dex_offset": "0x4184DA",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x9D18",
+                "0x0076"
+              ],
+              "invoked": [
+                "Loa/f;",
+                "setModelFilePath",
+                "(Ljava/lang/String;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x4184E8",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x1368",
+                "0x000B"
+              ],
+              "invoked": [
+                "LNa/d;",
+                "getModelWebp",
+                "()Lcom/oplus/melody/model/zipdata/MelodyResourceDO;"
+              ]
+            },
+            {
+              "dex_offset": "0x4184F0",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x13E2",
+                "0x000B"
+              ],
+              "invoked": [
+                "LNa/i;",
+                "getRootPath",
+                "()Ljava/lang/String;"
+              ]
+            },
+            {
+              "dex_offset": "0x41851C",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x9D1B",
+                "0x0016"
+              ],
+              "invoked": [
+                "Loa/f;",
+                "setWebpFilePath",
+                "(Ljava/lang/String;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x4185B8",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x9D1A",
+                "0x0046"
+              ],
+              "invoked": [
+                "Loa/f;",
+                "setProductId",
+                "(Ljava/lang/String;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x4185BE",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x9D17",
+                "0x0056"
+              ],
+              "invoked": [
+                "Loa/f;",
+                "setColorId",
+                "(I)V"
+              ]
+            },
+            {
+              "dex_offset": "0x4185D4",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x13E2",
+                "0x000B"
+              ],
+              "invoked": [
+                "LNa/i;",
+                "getRootPath",
+                "()Ljava/lang/String;"
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "module14_request",
+          "dex_entry": "classes3.dex",
+          "dex_sha256": "b1ef4c90f60bdc6b333b61a14b6ea99d01a7ad2d7c7ed07776f8a2b46de04025",
+          "class": "Loa/e;",
+          "method": "b(ILjava/lang/String;)Ljava/util/concurrent/CompletableFuture;",
+          "code_offset": "0x41888C",
+          "instructions": [
+            {
+              "dex_offset": "0x4188A4",
+              "opcode": "0x70",
+              "code_units": [
+                "0x4070",
+                "0x0AD7",
+                "0x1560"
+              ],
+              "invoked": [
+                "LGa/n;",
+                "<init>",
+                "(Ljava/lang/String;II)V"
+              ]
+            },
+            {
+              "dex_offset": "0x4188AE",
+              "opcode": "0x71",
+              "code_units": [
+                "0x2071",
+                "0x40E4",
+                "0x0001"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/util/y;",
+                "c",
+                "(Ljava/lang/String;Ljava/util/function/Supplier;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x4188B4",
+              "opcode": "0x71",
+              "code_units": [
+                "0x0071",
+                "0xA175",
+                "0x0000"
+              ],
+              "invoked": [
+                "Lsa/a;",
+                "g",
+                "()Lsa/a;"
+              ]
+            },
+            {
+              "dex_offset": "0x4188BC",
+              "opcode": "0x13",
+              "code_units": [
+                "0x0113",
+                "0x000E"
+              ]
+            },
+            {
+              "dex_offset": "0x4188C0",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x406E",
+                "0xA172",
+                "0x6150"
+              ],
+              "invoked": [
+                "Lsa/a;",
+                "d",
+                "(IILjava/lang/String;)Ljava/util/concurrent/CompletableFuture;"
+              ]
+            },
+            {
+              "dex_offset": "0x4188CE",
+              "opcode": "0x70",
+              "code_units": [
+                "0x5270",
+                "0x9D06",
+                "0x5641"
+              ],
+              "invoked": [
+                "Loa/c;",
+                "<init>",
+                "(Loa/e;Ljava/lang/String;II)V"
+              ]
+            },
+            {
+              "dex_offset": "0x4188DC",
+              "opcode": "0x70",
+              "code_units": [
+                "0x3070",
+                "0x8394",
+                "0x0312"
+              ],
+              "invoked": [
+                "Ldb/b;",
+                "<init>",
+                "(Ljava/lang/Object;I)V"
+              ]
+            },
+            {
+              "dex_offset": "0x4188E2",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x90F6",
+                "0x0020"
+              ],
+              "invoked": [
+                "Ljava/util/concurrent/CompletableFuture;",
+                "thenApplyAsync",
+                "(Ljava/util/function/Function;)Ljava/util/concurrent/CompletableFuture;"
+              ]
+            },
+            {
+              "dex_offset": "0x4188F0",
+              "opcode": "0x70",
+              "code_units": [
+                "0x5270",
+                "0x9D08",
+                "0x5641"
+              ],
+              "invoked": [
+                "Loa/d;",
+                "<init>",
+                "(Loa/e;Ljava/lang/String;II)V"
+              ]
+            },
+            {
+              "dex_offset": "0x4188F6",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x90E5",
+                "0x0010"
+              ],
+              "invoked": [
+                "Ljava/util/concurrent/CompletableFuture;",
+                "exceptionally",
+                "(Ljava/util/function/Function;)Ljava/util/concurrent/CompletableFuture;"
+              ]
+            },
+            {
+              "dex_offset": "0x418902",
+              "opcode": "0x71",
+              "code_units": [
+                "0x2071",
+                "0x9557",
+                "0x0065"
+              ],
+              "invoked": [
+                "Lkotlin/jvm/internal/i;",
+                "e",
+                "(Ljava/lang/Object;Ljava/lang/String;)V"
+              ]
+            }
+          ]
+        }
+      ],
+      "legacy_model_member_present_in_apk": false
+    },
+    "com.oplus.melody": {
+      "cloud_path": "research/online-whitelist/runs/20261007T095049.319796Z/com.oplus.melody/cloud.json",
+      "cloud_sha256": "d75a8612981ece2011617a0ed4314ade8be766e8365a78d58b4d15b1c10ce4a6",
+      "effective_version": 17006007,
+      "version_jsonpath": "$.versionCode",
+      "model_list_jsonpath": "$.whiteList",
+      "app_metadata_version_code": 17006002,
+      "profiles": {
+        "067410": {
+          "jsonpath": "$.whiteList[120]",
+          "profile": {
+            "rssi": {
+              "rightOffset": 0,
+              "leftOffset": 0,
+              "secondRssi": 50,
+              "firstRssi": 47,
+              "flattenOffset": 2
+            },
+            "minVersion": 14008000,
+            "function": {
+              "spineHealth": 1,
+              "strongNoiseReductionRealTime": 1,
+              "dolbyMark": 1,
+              "fitDetection": 1,
+              "headSetSoundRecord": 1,
+              "highToneQuality": 1,
+              "dolbyAtmos": 1,
+              "noiseReductionMode": [
+                {
+                  "modeType": 5,
+                  "childrenMode": [
+                    {
+                      "modeType": 7,
+                      "protocolIndex": 7
+                    },
+                    {
+                      "modeType": 4,
+                      "protocolIndex": 4
+                    },
+                    {
+                      "modeType": 8,
+                      "protocolIndex": 5
+                    },
+                    {
+                      "modeType": 3,
+                      "protocolIndex": 6
+                    }
+                  ],
+                  "protocolIndex": 1
+                },
+                {
+                  "modeType": 1,
+                  "childrenMode": [
+                    {
+                      "modeType": 1,
+                      "protocolIndex": 3
+                    }
+                  ],
+                  "protocolIndex": 0
+                },
+                {
+                  "modeType": 2,
+                  "childrenMode": [
+                    {
+                      "modeType": 2,
+                      "protocolIndex": 8
+                    },
+                    {
+                      "modeType": 6,
+                      "protocolIndex": 9
+                    }
+                  ],
+                  "protocolIndex": 2
+                }
+              ],
+              "customDress": 1,
+              "hearingEnhancement": 1,
+              "callControl": [
+                {
+                  "ear": 2,
+                  "action": 32,
+                  "support": 524800,
+                  "showEar": 0,
+                  "defaultFunction": 524288
+                },
+                {
+                  "ear": 2,
+                  "action": 33,
+                  "support": 262656,
+                  "showEar": 0,
+                  "defaultFunction": 262144
+                },
+                {
+                  "ear": 2,
+                  "action": 34,
+                  "support": 131584,
+                  "showEar": 0
+                }
+              ],
+              "batteryInfo": 1,
+              "feedback": 1,
+              "immersiveRecord": 0,
+              "related": 1,
+              "equalizer": 4,
+              "aiSummary": 1,
+              "multiDevicesConnect": 1,
+              "hearingJudgeDb": 1,
+              "diagnostic": 1,
+              "customEqualizer": 1,
+              "clickTakePic": 1,
+              "cleanGuide": 1,
+              "zenMode": 2,
+              "spatialDescriptionType": 1,
+              "autoFirmwareUpdate": 1,
+              "control": [
+                {
+                  "ear": 2,
+                  "action": 16,
+                  "support": 516,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 17,
+                  "support": 8807,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 18,
+                  "support": 3220067,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 5,
+                  "support": 3584,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 20,
+                  "showEar": 1
+                }
+              ],
+              "gameSoundMutexes": [
+                1
+              ],
+              "spatialHiResMutex": 1,
+              "spatialVip": 1,
+              "dialogTags": [
+                1
+              ],
+              "wearDetection": 1,
+              "supportPinch": 1,
+              "autoSwitchLink": 1,
+              "fastDiscovery": 1,
+              "support3DModel": 1,
+              "controlAutoVolumeSupport": 1,
+              "controlGuideSupport": 1,
+              "spatialTypes": [
+                0,
+                1,
+                2
+              ],
+              "leFilterFunctions": [
+                {
+                  "minFirmVersion": 25,
+                  "minAppVersion": 14007000,
+                  "functionType": "goldHearing",
+                  "needConnectSpp": false
+                },
+                {
+                  "minFirmVersion": 25,
+                  "minAppVersion": 14007000,
+                  "functionType": "personalTone",
+                  "needConnectSpp": true
+                },
+                {
+                  "minFirmVersion": 25,
+                  "minAppVersion": 14007000,
+                  "functionType": "fitDetection",
+                  "needConnectSpp": false
+                },
+                {
+                  "minFirmVersion": 25,
+                  "minAppVersion": 14007000,
+                  "functionType": "firmwareUpdate",
+                  "needConnectSpp": true
+                },
+                {
+                  "minFirmVersion": 25,
+                  "minAppVersion": 14007000,
+                  "functionType": "collectLogs",
+                  "needConnectSpp": true
+                }
+              ],
+              "equalizerMode": [
+                {
+                  "modeType": 26,
+                  "summaryId": 1,
+                  "tag": 3,
+                  "protocolIndex": 0
+                },
+                {
+                  "modeType": 27,
+                  "summaryId": 2,
+                  "tag": 3,
+                  "protocolIndex": 1
+                },
+                {
+                  "modeType": 28,
+                  "summaryId": 3,
+                  "tag": 3,
+                  "protocolIndex": 2
+                },
+                {
+                  "modeType": 29,
+                  "summaryId": 4,
+                  "tag": 3,
+                  "protocolIndex": 3
+                },
+                {
+                  "modeType": 30,
+                  "summaryId": 5,
+                  "tag": 3,
+                  "protocolIndex": 7
+                }
+              ],
+              "findDevice": 1,
+              "earScan": 1,
+              "tutorialGuide": 1,
+              "aiTranslate": 1,
+              "gameSoundList": [
+                {
+                  "type": 3,
+                  "packageNameList": [
+                    "com.tencent.tmgp.pubgmhd",
+                    "com.netease.hyxd.nearme.gamecenter",
+                    "com.crisisfire.android.nearme.gamecenter",
+                    "com.netease.cfxf.nearme.gamecenter",
+                    "com.tencent.tmgp.cf",
+                    "com.tencent.tmgp.cod",
+                    "com.netease.lztg.nearme.gamecenter",
+                    "com.yingxiong.heroo.nearme.gamecenter",
+                    "com.tencent.ig"
+                  ]
+                },
+                {
+                  "type": 0
+                }
+              ]
+            },
+            "name": "OPPO Enco X3",
+            "id": "067410",
+            "type": "T1",
+            "supportSpp": true,
+            "brand": "oppo",
+            "uuid": "0000079A-D102-11E1-9B23-00025B00A5A5"
+          },
+          "resource_and_color_fields": [
+            {
+              "jsonpath": "$.whiteList[120].function.customDress",
+              "value": 1
+            },
+            {
+              "jsonpath": "$.whiteList[120].function.support3DModel",
+              "value": 1
+            }
+          ],
+          "defaultColor_present": false,
+          "configured_color_codes": [],
+          "color_result_for_unknown_input_minus_one": -1,
+          "color_inference": "OPPO target has no configured defaultColor; resolver preserves unknown -1.",
+          "resource_urls_present": false,
+          "target_specific_model_path_present": false,
+          "observed_successful_resource_color_codes": [
+            2
+          ]
+        },
+        "068C10": {
+          "jsonpath": "$.whiteList[134]",
+          "profile": {
+            "rssi": {
+              "rightOffset": 0,
+              "leftOffset": 0,
+              "secondRssi": 44,
+              "firstRssi": 44,
+              "flattenOffset": 2
+            },
+            "minVersion": 15003002,
+            "function": {
+              "strongNoiseReductionRealTime": 1,
+              "noiseReductionUIVersion": 2,
+              "fitDetection": 1,
+              "headSetSoundRecord": 0,
+              "highToneQuality": 1,
+              "dolbyAtmos": 1,
+              "noiseReductionMode": [
+                {
+                  "modeType": 5,
+                  "childrenMode": [
+                    {
+                      "modeType": 4,
+                      "protocolIndex": 4
+                    },
+                    {
+                      "modeType": 8,
+                      "protocolIndex": 5
+                    },
+                    {
+                      "modeType": 3,
+                      "protocolIndex": 6
+                    },
+                    {
+                      "modeType": 7,
+                      "protocolIndex": 7
+                    }
+                  ],
+                  "protocolIndex": 1
+                },
+                {
+                  "modeType": 10,
+                  "protocolIndex": 11
+                },
+                {
+                  "modeType": 2,
+                  "childrenMode": [
+                    {
+                      "modeType": 2,
+                      "protocolIndex": 8
+                    }
+                  ],
+                  "protocolIndex": 2
+                },
+                {
+                  "modeType": 1,
+                  "childrenMode": [
+                    {
+                      "modeType": 1,
+                      "protocolIndex": 3
+                    }
+                  ],
+                  "protocolIndex": 0
+                }
+              ],
+              "customDress": 1,
+              "hearingEnhancement": 1,
+              "callControl": [
+                {
+                  "ear": 2,
+                  "action": 29,
+                  "support": 524800,
+                  "showEar": 0,
+                  "defaultFunction": 524288
+                },
+                {
+                  "ear": 2,
+                  "action": 30,
+                  "support": 131584,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 31,
+                  "support": 262656,
+                  "showEar": 0,
+                  "defaultFunction": 262144
+                }
+              ],
+              "batteryInfo": 1,
+              "feedback": 1,
+              "functionGuide": 0,
+              "related": 1,
+              "equalizer": 4,
+              "aiSummary": 1,
+              "multiDevicesConnect": 1,
+              "hearingJudgeDb": 1,
+              "earphoneIdentity": 1,
+              "diagnostic": 1,
+              "customEqualizer": 1,
+              "clickTakePic": 1,
+              "cleanGuide": 1,
+              "spatialDescriptionType": 2,
+              "functionIntroductionGuide": 1,
+              "autoFirmwareUpdate": 1,
+              "equalizerModeCompat": [
+                {
+                  "modeType": 34,
+                  "minFirmVersion": 118,
+                  "tag": 0,
+                  "protocolIndex": 7,
+                  "order": 4
+                }
+              ],
+              "control": [
+                {
+                  "ear": 2,
+                  "action": 1,
+                  "support": 516,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 2,
+                  "support": 8807,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 3,
+                  "support": 3154531,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "minSelectCount": 1,
+                  "action": 27,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 5,
+                  "support": 3584,
+                  "showEar": 0
+                }
+              ],
+              "spatialHiResMutex": 1,
+              "promptVolume": 1,
+              "spatialVip": 1,
+              "dialogTags": [
+                2
+              ],
+              "wearDetection": 1,
+              "autoSwitchLink": 1,
+              "fastDiscovery": 1,
+              "support3DModel": 1,
+              "controlAutoVolumeSupport": 1,
+              "controlGuideSupport": 1,
+              "spatialTypes": [
+                0,
+                1
+              ],
+              "equalizerMode": [
+                {
+                  "modeType": 26,
+                  "protocolIndex": 0
+                },
+                {
+                  "modeType": 28,
+                  "protocolIndex": 1
+                },
+                {
+                  "modeType": 29,
+                  "protocolIndex": 2
+                }
+              ],
+              "findDevice": 1,
+              "earScan": 1,
+              "aiTranslate": 1
+            },
+            "name": "OPPO Enco Free4",
+            "id": "068C10",
+            "type": "T1",
+            "supportSpp": true,
+            "brand": "oppo",
+            "uuid": "0000079A-D102-11E1-9B23-00025B00A5A5"
+          },
+          "resource_and_color_fields": [
+            {
+              "jsonpath": "$.whiteList[134].function.customDress",
+              "value": 1
+            },
+            {
+              "jsonpath": "$.whiteList[134].function.support3DModel",
+              "value": 1
+            }
+          ],
+          "defaultColor_present": false,
+          "configured_color_codes": [],
+          "color_result_for_unknown_input_minus_one": -1,
+          "color_inference": "OPPO target has no configured defaultColor; resolver preserves unknown -1.",
+          "resource_urls_present": false,
+          "target_specific_model_path_present": false,
+          "observed_successful_resource_color_codes": [
+            1
+          ]
+        },
+        "06C010": {
+          "jsonpath": "$.whiteList[135]",
+          "profile": {
+            "rssi": {
+              "rightOffset": 0,
+              "leftOffset": 0,
+              "secondRssi": 44,
+              "firstRssi": 44,
+              "flattenOffset": 2
+            },
+            "minVersion": 15003002,
+            "function": {
+              "strongNoiseReductionRealTime": 1,
+              "noiseReductionUIVersion": 2,
+              "fitDetection": 1,
+              "headSetSoundRecord": 0,
+              "highToneQuality": 1,
+              "dolbyAtmos": 1,
+              "noiseReductionMode": [
+                {
+                  "modeType": 5,
+                  "childrenMode": [
+                    {
+                      "modeType": 4,
+                      "protocolIndex": 4
+                    },
+                    {
+                      "modeType": 8,
+                      "protocolIndex": 5
+                    },
+                    {
+                      "modeType": 3,
+                      "protocolIndex": 6
+                    },
+                    {
+                      "modeType": 7,
+                      "protocolIndex": 7
+                    }
+                  ],
+                  "protocolIndex": 1
+                },
+                {
+                  "modeType": 10,
+                  "protocolIndex": 11
+                },
+                {
+                  "modeType": 2,
+                  "childrenMode": [
+                    {
+                      "modeType": 2,
+                      "protocolIndex": 8
+                    }
+                  ],
+                  "protocolIndex": 2
+                },
+                {
+                  "modeType": 1,
+                  "childrenMode": [
+                    {
+                      "modeType": 1,
+                      "protocolIndex": 3
+                    }
+                  ],
+                  "protocolIndex": 0
+                }
+              ],
+              "customDress": 1,
+              "hearingEnhancement": 1,
+              "callControl": [
+                {
+                  "ear": 2,
+                  "action": 29,
+                  "support": 524800,
+                  "showEar": 0,
+                  "defaultFunction": 524288
+                },
+                {
+                  "ear": 2,
+                  "action": 30,
+                  "support": 131584,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 31,
+                  "support": 262656,
+                  "showEar": 0,
+                  "defaultFunction": 262144
+                }
+              ],
+              "batteryInfo": 1,
+              "feedback": 1,
+              "functionGuide": 0,
+              "related": 1,
+              "equalizer": 4,
+              "aiSummary": 1,
+              "multiDevicesConnect": 1,
+              "hearingJudgeDb": 1,
+              "earphoneIdentity": 1,
+              "diagnostic": 1,
+              "customEqualizer": 1,
+              "clickTakePic": 1,
+              "cleanGuide": 1,
+              "spatialDescriptionType": 2,
+              "functionIntroductionGuide": 1,
+              "autoFirmwareUpdate": 1,
+              "equalizerModeCompat": [
+                {
+                  "modeType": 34,
+                  "minFirmVersion": 118,
+                  "tag": 0,
+                  "protocolIndex": 7,
+                  "order": 4
+                }
+              ],
+              "control": [
+                {
+                  "ear": 2,
+                  "action": 1,
+                  "support": 516,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 2,
+                  "support": 8807,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 3,
+                  "support": 3154531,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "minSelectCount": 1,
+                  "action": 27,
+                  "showEar": 0
+                },
+                {
+                  "ear": 2,
+                  "action": 5,
+                  "support": 3584,
+                  "showEar": 0
+                }
+              ],
+              "spatialHiResMutex": 1,
+              "promptVolume": 1,
+              "spatialVip": 1,
+              "dialogTags": [
+                2
+              ],
+              "equalizerModeByVersion": [
+                {
+                  "modeType": 40,
+                  "minFirmVersion": 136,
+                  "minAppVersion": 15011000,
+                  "tag": 3,
+                  "protocolIndex": 8,
+                  "order": 6
+                }
+              ],
+              "wearDetection": 1,
+              "autoSwitchLink": 1,
+              "fastDiscovery": 1,
+              "support3DModel": 1,
+              "controlAutoVolumeSupport": 1,
+              "controlGuideSupport": 1,
+              "spatialTypes": [
+                0,
+                1
+              ],
+              "equalizerMode": [
+                {
+                  "modeType": 26,
+                  "protocolIndex": 0,
+                  "order": 1
+                },
+                {
+                  "modeType": 28,
+                  "protocolIndex": 1,
+                  "order": 2
+                },
+                {
+                  "modeType": 29,
+                  "protocolIndex": 2,
+                  "order": 3
+                },
+                {
+                  "modeType": 30,
+                  "tag": 3,
+                  "protocolIndex": 3,
+                  "order": 5
+                }
+              ],
+              "findDevice": 1,
+              "earScan": 1,
+              "aiTranslate": 1
+            },
+            "name": "OPPO Enco Free4（丹拿版）",
+            "id": "06C010",
+            "type": "T1",
+            "supportSpp": true,
+            "brand": "oppo",
+            "uuid": "0000079A-D102-11E1-9B23-00025B00A5A5"
+          },
+          "resource_and_color_fields": [
+            {
+              "jsonpath": "$.whiteList[135].function.customDress",
+              "value": 1
+            },
+            {
+              "jsonpath": "$.whiteList[135].function.support3DModel",
+              "value": 1
+            }
+          ],
+          "defaultColor_present": false,
+          "configured_color_codes": [],
+          "color_result_for_unknown_input_minus_one": -1,
+          "color_inference": "OPPO target has no configured defaultColor; resolver preserves unknown -1.",
+          "resource_urls_present": false,
+          "target_specific_model_path_present": false,
+          "observed_successful_resource_color_codes": []
+        }
+      },
+      "apk_configs": [
+        {
+          "entry": "res/Hx.json",
+          "sha256": "6d93d5c65621bf59bf2d5442676488a5b76f5b3269534684e3278590e4a0d594",
+          "content": {
+            "dressVersion": 2,
+            "bgType": "",
+            "name": "",
+            "icon": "icon.png",
+            "discoveryStates": {
+              "connectedState": {
+                "startTime": 0,
+                "endTime": 6000,
+                "closeDelay": 6000,
+                "infoFadeInDelay": 3000,
+                "resShowDelay": 3000,
+                "animation": 1,
+                "autoCrop": true,
+                "resInAnim": "fadeIn",
+                "maskColor": "#73000000",
+                "showEarphoneImageRes": true,
+                "bgVideoRes": {
+                  "path": "res/video/boot"
+                },
+                "boxImageRes": {
+                  "path": "res/image/connected_box.png"
+                },
+                "budsImageRes": {
+                  "path": "res/image/connected_buds.png"
+                },
+                "titleRes": {},
+                "batteriesRes": {}
+              }
+            }
+          },
+          "relative_path_evidence": [
+            {
+              "jsonpath": "$.icon",
+              "value": "icon.png",
+              "member_present_in_apk": false
+            },
+            {
+              "jsonpath": "$.discoveryStates.connectedState.bgVideoRes.path",
+              "value": "res/video/boot",
+              "member_present_in_apk": false
+            },
+            {
+              "jsonpath": "$.discoveryStates.connectedState.boxImageRes.path",
+              "value": "res/image/connected_box.png",
+              "member_present_in_apk": false
+            },
+            {
+              "jsonpath": "$.discoveryStates.connectedState.budsImageRes.path",
+              "value": "res/image/connected_buds.png",
+              "member_present_in_apk": false
+            }
+          ],
+          "target_pid_present": false,
+          "target_binding_confirmed": false
+        },
+        {
+          "entry": "res/iD.json",
+          "sha256": "98085f1d2c9aaed3e6fe962bec6eed10e931b44156f8bf48ae5134854e0597cc",
+          "content": {
+            "dressVersion": 2,
+            "bgType": "",
+            "name": "",
+            "icon": "icon.png",
+            "srcFile": "srcFile.png",
+            "blurProgress": 0,
+            "discoveryStates": {
+              "connectedState": {
+                "closeDelay": 6000,
+                "infoFadeInDelay": 3000,
+                "resShowDelay": 3000,
+                "autoCrop": true,
+                "resInAnim": "fadeIn",
+                "maskColor": "#73000000",
+                "showEarphoneImageRes": true,
+                "bgImageRes": {
+                  "path": "res/image/connected_background"
+                },
+                "boxImageRes": {
+                  "path": "res/image/connected_box.png"
+                },
+                "budsImageRes": {
+                  "path": "res/image/connected_buds.png"
+                },
+                "titleRes": {},
+                "batteriesRes": {}
+              }
+            }
+          },
+          "relative_path_evidence": [
+            {
+              "jsonpath": "$.icon",
+              "value": "icon.png",
+              "member_present_in_apk": false
+            },
+            {
+              "jsonpath": "$.srcFile",
+              "value": "srcFile.png",
+              "member_present_in_apk": false
+            },
+            {
+              "jsonpath": "$.discoveryStates.connectedState.bgImageRes.path",
+              "value": "res/image/connected_background",
+              "member_present_in_apk": false
+            },
+            {
+              "jsonpath": "$.discoveryStates.connectedState.boxImageRes.path",
+              "value": "res/image/connected_box.png",
+              "member_present_in_apk": false
+            },
+            {
+              "jsonpath": "$.discoveryStates.connectedState.budsImageRes.path",
+              "value": "res/image/connected_buds.png",
+              "member_present_in_apk": false
+            }
+          ],
+          "target_pid_present": false,
+          "target_binding_confirmed": false
+        }
+      ],
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "plain_json_scan": {
+        "parseable_assets_res_json_count": 39,
+        "entries_containing_target_pid": [],
+        "scope": "Plain JSON only; encrypted whitelist was separately authenticated and saved in cloud.json."
+      },
+      "dex_code_evidence": [
+        {
+          "kind": "legacy_model_member_path",
+          "dex_entry": "classes2.dex",
+          "dex_sha256": "dc1fcb15e4a71ac74a7f990679ceaceeb9cf13f267631c765650af26c0a42bba",
+          "class": "LA9/P;",
+          "method": "run()V",
+          "code_offset": "0xF7C3C",
+          "instructions": [
+            {
+              "dex_offset": "0xF7F8A",
+              "opcode": "0x22",
+              "code_units": [
+                "0x0922",
+                "0x180F"
+              ]
+            },
+            {
+              "dex_offset": "0xF7F8E",
+              "opcode": "0x70",
+              "code_units": [
+                "0x1070",
+                "0x79C3",
+                "0x0009"
+              ],
+              "invoked": [
+                "Ljava/lang/StringBuilder;",
+                "<init>",
+                "()V"
+              ]
+            },
+            {
+              "dex_offset": "0xF7F94",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x79CE",
+                "0x0059"
+              ],
+              "invoked": [
+                "Ljava/lang/StringBuilder;",
+                "append",
+                "(Ljava/lang/Object;)Ljava/lang/StringBuilder;"
+              ]
+            },
+            {
+              "dex_offset": "0xF7F9A",
+              "opcode": "0x62",
+              "code_units": [
+                "0x0A62",
+                "0x3C55"
+              ],
+              "field": [
+                "Ljava/io/File;",
+                "separator",
+                "Ljava/lang/String;"
+              ]
+            },
+            {
+              "dex_offset": "0xF7F9E",
+              "opcode": "0x1A",
+              "code_units": [
+                "0x0B1A",
+                "0x92DA"
+              ],
+              "string": "res/raw/detail_model.vfxms"
+            },
+            {
+              "dex_offset": "0xF7FA2",
+              "opcode": "0x71",
+              "code_units": [
+                "0x3071",
+                "0x0010",
+                "0x09BA"
+              ],
+              "invoked": [
+                "LA0/q;",
+                "f",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/StringBuilder;)Ljava/lang/String;"
+              ]
+            },
+            {
+              "dex_offset": "0xF7FA8",
+              "opcode": "0x0C",
+              "code_units": [
+                "0x090C"
+              ]
+            },
+            {
+              "dex_offset": "0xF7FAA",
+              "opcode": "0x70",
+              "code_units": [
+                "0x2070",
+                "0x785E",
+                "0x0098"
+              ],
+              "invoked": [
+                "Ljava/io/File;",
+                "<init>",
+                "(Ljava/lang/String;)V"
+              ]
+            },
+            {
+              "dex_offset": "0xF7FB0",
+              "opcode": "0x71",
+              "code_units": [
+                "0x2071",
+                "0x277A",
+                "0x0083"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/util/o;",
+                "p",
+                "(Ljava/io/File;Ljava/io/File;)Z"
+              ]
+            },
+            {
+              "dex_offset": "0xF7FB6",
+              "opcode": "0x22",
+              "code_units": [
+                "0x0322",
+                "0x17BA"
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "download_config_members",
+          "dex_entry": "classes2.dex",
+          "dex_sha256": "dc1fcb15e4a71ac74a7f990679ceaceeb9cf13f267631c765650af26c0a42bba",
+          "class": "LF8/d;",
+          "method": "invoke(Ljava/lang/Object;)Ljava/lang/Object;",
+          "code_offset": "0x1375FC",
+          "instructions": [
+            {
+              "dex_offset": "0x1376AC",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x765A",
+                "0x000A"
+              ],
+              "invoked": [
+                "Lf9/i;",
+                "getRootPath",
+                "()Ljava/lang/String;"
+              ]
+            },
+            {
+              "dex_offset": "0x1377C2",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x765A",
+                "0x000A"
+              ],
+              "invoked": [
+                "Lf9/i;",
+                "getRootPath",
+                "()Ljava/lang/String;"
+              ]
+            },
+            {
+              "dex_offset": "0x1378B4",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x085B",
+                "0x0045"
+              ],
+              "invoked": [
+                "LF8/i;",
+                "setProductId",
+                "(Ljava/lang/String;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x1378BA",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x0858",
+                "0x0095"
+              ],
+              "invoked": [
+                "LF8/i;",
+                "setColorId",
+                "(I)V"
+              ]
+            },
+            {
+              "dex_offset": "0x1378C8",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x75DF",
+                "0x000A"
+              ],
+              "invoked": [
+                "Lf9/d;",
+                "getModel3D",
+                "()Lcom/oplus/melody/model/zipdata/MelodyResourceDO;"
+              ]
+            },
+            {
+              "dex_offset": "0x1378D0",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x765A",
+                "0x000A"
+              ],
+              "invoked": [
+                "Lf9/i;",
+                "getRootPath",
+                "()Ljava/lang/String;"
+              ]
+            },
+            {
+              "dex_offset": "0x1378FC",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x0859",
+                "0x0065"
+              ],
+              "invoked": [
+                "LF8/i;",
+                "setModelFilePath",
+                "(Ljava/lang/String;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x13790A",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x75E0",
+                "0x000A"
+              ],
+              "invoked": [
+                "Lf9/d;",
+                "getModelWebp",
+                "()Lcom/oplus/melody/model/zipdata/MelodyResourceDO;"
+              ]
+            },
+            {
+              "dex_offset": "0x137912",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x765A",
+                "0x000A"
+              ],
+              "invoked": [
+                "Lf9/i;",
+                "getRootPath",
+                "()Ljava/lang/String;"
+              ]
+            },
+            {
+              "dex_offset": "0x13793E",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x085C",
+                "0x0015"
+              ],
+              "invoked": [
+                "LF8/i;",
+                "setWebpFilePath",
+                "(Ljava/lang/String;)V"
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "module14_request",
+          "dex_entry": "classes2.dex",
+          "dex_sha256": "dc1fcb15e4a71ac74a7f990679ceaceeb9cf13f267631c765650af26c0a42bba",
+          "class": "LF8/h;",
+          "method": "b(ILjava/lang/String;)Ljava/util/concurrent/CompletableFuture;",
+          "code_offset": "0x1386B4",
+          "instructions": [
+            {
+              "dex_offset": "0x1386CA",
+              "opcode": "0x70",
+              "code_units": [
+                "0x4070",
+                "0x042E",
+                "0x1560"
+              ],
+              "invoked": [
+                "LB8/n;",
+                "<init>",
+                "(Ljava/lang/String;II)V"
+              ]
+            },
+            {
+              "dex_offset": "0x1386D4",
+              "opcode": "0x71",
+              "code_units": [
+                "0x2071",
+                "0x2797",
+                "0x0001"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/util/y;",
+                "d",
+                "(Ljava/lang/String;Ljava/util/function/Supplier;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x1386DA",
+              "opcode": "0x71",
+              "code_units": [
+                "0x0071",
+                "0x0AED",
+                "0x0000"
+              ],
+              "invoked": [
+                "LJ8/a;",
+                "h",
+                "()LJ8/a;"
+              ]
+            },
+            {
+              "dex_offset": "0x1386E2",
+              "opcode": "0x13",
+              "code_units": [
+                "0x0113",
+                "0x000E"
+              ]
+            },
+            {
+              "dex_offset": "0x1386E6",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x406E",
+                "0x0AEA",
+                "0x6150"
+              ],
+              "invoked": [
+                "LJ8/a;",
+                "e",
+                "(IILjava/lang/String;)Ljava/util/concurrent/CompletableFuture;"
+              ]
+            },
+            {
+              "dex_offset": "0x1386F4",
+              "opcode": "0x70",
+              "code_units": [
+                "0x5270",
+                "0x083B",
+                "0x5641"
+              ],
+              "invoked": [
+                "LF8/d;",
+                "<init>",
+                "(Ljava/lang/Object;Ljava/lang/Object;II)V"
+              ]
+            },
+            {
+              "dex_offset": "0x138700",
+              "opcode": "0x70",
+              "code_units": [
+                "0x3070",
+                "0x01C0",
+                "0x0132"
+              ],
+              "invoked": [
+                "LA9/k;",
+                "<init>",
+                "(ILjava/lang/Object;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x138706",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x7C66",
+                "0x0020"
+              ],
+              "invoked": [
+                "Ljava/util/concurrent/CompletableFuture;",
+                "thenApplyAsync",
+                "(Ljava/util/function/Function;)Ljava/util/concurrent/CompletableFuture;"
+              ]
+            },
+            {
+              "dex_offset": "0x138714",
+              "opcode": "0x70",
+              "code_units": [
+                "0x5270",
+                "0x083F",
+                "0x5641"
+              ],
+              "invoked": [
+                "LF8/e;",
+                "<init>",
+                "(Ljava/lang/Object;Ljava/lang/String;II)V"
+              ]
+            },
+            {
+              "dex_offset": "0x13871A",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x7C56",
+                "0x0010"
+              ],
+              "invoked": [
+                "Ljava/util/concurrent/CompletableFuture;",
+                "exceptionally",
+                "(Ljava/util/function/Function;)Ljava/util/concurrent/CompletableFuture;"
+              ]
+            },
+            {
+              "dex_offset": "0x138726",
+              "opcode": "0x71",
+              "code_units": [
+                "0x2071",
+                "0x818E",
+                "0x0045"
+              ],
+              "invoked": [
+                "Lkotlin/jvm/internal/i;",
+                "e",
+                "(Ljava/lang/String;Ljava/lang/Object;)V"
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "color_resolver",
+          "dex_entry": "classes2.dex",
+          "dex_sha256": "dc1fcb15e4a71ac74a7f990679ceaceeb9cf13f267631c765650af26c0a42bba",
+          "class": "Lcom/oplus/melody/model/repository/earphone/L;",
+          "method": "E(ILjava/lang/String;)I",
+          "code_offset": "0x221614",
+          "instructions": [
+            {
+              "dex_offset": "0x221624",
+              "opcode": "0x12",
+              "code_units": [
+                "0xF012"
+              ]
+            },
+            {
+              "dex_offset": "0x221626",
+              "opcode": "0x33",
+              "code_units": [
+                "0x0433",
+                "0x004E"
+              ]
+            },
+            {
+              "dex_offset": "0x22162A",
+              "opcode": "0x71",
+              "code_units": [
+                "0x0071",
+                "0x1EB5",
+                "0x0000"
+              ],
+              "invoked": [
+                "Lc9/a;",
+                "f",
+                "()Lc9/a;"
+              ]
+            },
+            {
+              "dex_offset": "0x221630",
+              "opcode": "0x0C",
+              "code_units": [
+                "0x010C"
+              ]
+            },
+            {
+              "dex_offset": "0x221632",
+              "opcode": "0x12",
+              "code_units": [
+                "0x0212"
+              ]
+            },
+            {
+              "dex_offset": "0x221634",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x306E",
+                "0x1EB2",
+                "0x0251"
+              ],
+              "invoked": [
+                "Lc9/a;",
+                "c",
+                "(Ljava/lang/String;Ljava/lang/String;)Lcom/oplus/melody/common/data/WhitelistConfigDTO;"
+              ]
+            },
+            {
+              "dex_offset": "0x22163A",
+              "opcode": "0x0C",
+              "code_units": [
+                "0x010C"
+              ]
+            },
+            {
+              "dex_offset": "0x22163C",
+              "opcode": "0x1A",
+              "code_units": [
+                "0x021A",
+                "0x1987"
+              ],
+              "string": "EarphoneUtils"
+            },
+            {
+              "dex_offset": "0x221640",
+              "opcode": "0x38",
+              "code_units": [
+                "0x0138",
+                "0x0017"
+              ]
+            },
+            {
+              "dex_offset": "0x221644",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x26AA",
+                "0x0001"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/data/WhitelistConfigDTO;",
+                "getDefaultColor",
+                "()I"
+              ]
+            },
+            {
+              "dex_offset": "0x22164A",
+              "opcode": "0x0A",
+              "code_units": [
+                "0x030A"
+              ]
+            },
+            {
+              "dex_offset": "0x22164C",
+              "opcode": "0x32",
+              "code_units": [
+                "0x0332",
+                "0x0011"
+              ]
+            },
+            {
+              "dex_offset": "0x221650",
+              "opcode": "0x22",
+              "code_units": [
+                "0x0422",
+                "0x09D9"
+              ]
+            },
+            {
+              "dex_offset": "0x221654",
+              "opcode": "0x13",
+              "code_units": [
+                "0x0013",
+                "0x000C"
+              ]
+            },
+            {
+              "dex_offset": "0x221658",
+              "opcode": "0x70",
+              "code_units": [
+                "0x4070",
+                "0x1F91",
+                "0x5104"
+              ],
+              "invoked": [
+                "Lca/u;",
+                "<init>",
+                "(ILjava/lang/Object;Ljava/lang/Object;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x22165E",
+              "opcode": "0x71",
+              "code_units": [
+                "0x2071",
+                "0x2797",
+                "0x0042"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/util/y;",
+                "d",
+                "(Ljava/lang/String;Ljava/util/function/Supplier;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x221664",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x26AA",
+                "0x0001"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/data/WhitelistConfigDTO;",
+                "getDefaultColor",
+                "()I"
+              ]
+            },
+            {
+              "dex_offset": "0x22166A",
+              "opcode": "0x0A",
+              "code_units": [
+                "0x040A"
+              ]
+            },
+            {
+              "dex_offset": "0x22166C",
+              "opcode": "0x0F",
+              "code_units": [
+                "0x040F"
+              ]
+            },
+            {
+              "dex_offset": "0x22166E",
+              "opcode": "0x38",
+              "code_units": [
+                "0x0138",
+                "0x002A"
+              ]
+            },
+            {
+              "dex_offset": "0x221672",
+              "opcode": "0x1A",
+              "code_units": [
+                "0x001A",
+                "0x90CD"
+              ],
+              "string": "realme"
+            },
+            {
+              "dex_offset": "0x221676",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x26A7",
+                "0x0001"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/data/WhitelistConfigDTO;",
+                "getBrand",
+                "()Ljava/lang/String;"
+              ]
+            },
+            {
+              "dex_offset": "0x22167C",
+              "opcode": "0x0C",
+              "code_units": [
+                "0x030C"
+              ]
+            },
+            {
+              "dex_offset": "0x22167E",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x206E",
+                "0x7995",
+                "0x0030"
+              ],
+              "invoked": [
+                "Ljava/lang/String;",
+                "equalsIgnoreCase",
+                "(Ljava/lang/String;)Z"
+              ]
+            },
+            {
+              "dex_offset": "0x221684",
+              "opcode": "0x0A",
+              "code_units": [
+                "0x000A"
+              ]
+            },
+            {
+              "dex_offset": "0x221686",
+              "opcode": "0x38",
+              "code_units": [
+                "0x0038",
+                "0x001E"
+              ]
+            },
+            {
+              "dex_offset": "0x22168A",
+              "opcode": "0x6E",
+              "code_units": [
+                "0x106E",
+                "0x26B1",
+                "0x0001"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/data/WhitelistConfigDTO;",
+                "getSupportSpp",
+                "()Z"
+              ]
+            },
+            {
+              "dex_offset": "0x221690",
+              "opcode": "0x0A",
+              "code_units": [
+                "0x040A"
+              ]
+            },
+            {
+              "dex_offset": "0x221692",
+              "opcode": "0x38",
+              "code_units": [
+                "0x0438",
+                "0x000D"
+              ]
+            },
+            {
+              "dex_offset": "0x221696",
+              "opcode": "0x22",
+              "code_units": [
+                "0x0422",
+                "0x0F8D"
+              ]
+            },
+            {
+              "dex_offset": "0x22169A",
+              "opcode": "0x12",
+              "code_units": [
+                "0x5012"
+              ]
+            },
+            {
+              "dex_offset": "0x22169C",
+              "opcode": "0x70",
+              "code_units": [
+                "0x3070",
+                "0x40A4",
+                "0x0054"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/model/repository/earphone/s;",
+                "<init>",
+                "(Ljava/lang/String;I)V"
+              ]
+            },
+            {
+              "dex_offset": "0x2216A2",
+              "opcode": "0x71",
+              "code_units": [
+                "0x2071",
+                "0x2797",
+                "0x0042"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/util/y;",
+                "d",
+                "(Ljava/lang/String;Ljava/util/function/Supplier;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x2216A8",
+              "opcode": "0x12",
+              "code_units": [
+                "0x0412"
+              ]
+            },
+            {
+              "dex_offset": "0x2216AA",
+              "opcode": "0x0F",
+              "code_units": [
+                "0x040F"
+              ]
+            },
+            {
+              "dex_offset": "0x2216AC",
+              "opcode": "0x22",
+              "code_units": [
+                "0x0422",
+                "0x0C0E"
+              ]
+            },
+            {
+              "dex_offset": "0x2216B0",
+              "opcode": "0x13",
+              "code_units": [
+                "0x0013",
+                "0x000A"
+              ]
+            },
+            {
+              "dex_offset": "0x2216B4",
+              "opcode": "0x70",
+              "code_units": [
+                "0x3070",
+                "0x25AE",
+                "0x0054"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/btsdk/protocol/commands/s;",
+                "<init>",
+                "(Ljava/lang/String;I)V"
+              ]
+            },
+            {
+              "dex_offset": "0x2216BA",
+              "opcode": "0x71",
+              "code_units": [
+                "0x2071",
+                "0x2797",
+                "0x0042"
+              ],
+              "invoked": [
+                "Lcom/oplus/melody/common/util/y;",
+                "d",
+                "(Ljava/lang/String;Ljava/util/function/Supplier;)V"
+              ]
+            },
+            {
+              "dex_offset": "0x2216C0",
+              "opcode": "0x12",
+              "code_units": [
+                "0x1412"
+              ]
+            },
+            {
+              "dex_offset": "0x2216C2",
+              "opcode": "0x0F",
+              "code_units": [
+                "0x040F"
+              ]
+            }
+          ]
+        }
+      ],
+      "legacy_model_member_present_in_apk": false
+    }
+  },
+  "prior_evidence": {
+    "resource-contract.json": {
+      "path": "research/earbud-artwork/evidence/resource-contract.json",
+      "sha256": "47dbeaa979ed939fa50fa69dd041b3dacbde9f8827d7c427f33aff60a68bdf94"
+    },
+    "default-color-selection.json": {
+      "path": "research/earbud-artwork/evidence/default-color-selection.json",
+      "sha256": "30dd24f46469080598dbdaf43db39bb48f1e8c1f3a4ef389fc3049a003807345"
+    },
+    "server-probes.json": {
+      "path": "research/earbud-artwork/evidence/server-probes.json",
+      "sha256": "89d9c17b75308f646425d123e5b405523e296a704b2430715095f13ac037cd8f"
+    }
+  },
+  "conclusions": {
+    "support3DModel": "All three exact targets declare support3DModel=1 and customDress=1 in both cloud sources.",
+    "configured_color_codes": "None of these six profiles declares a defaultColor or color enumeration.",
+    "known_numeric_inputs": {
+      "-1": "Unknown color; retained for these OPPO profiles.",
+      "0": "Explicit historical X3 probe input; not an official default or validated available variant.",
+      "1": "Free4 successfully returned a verified module14 package for this explicit number.",
+      "2": "X3 successfully returned a verified module14 package for this explicit number."
+    },
+    "free4_confirmed_resource_color_codes": [
+      1
+    ],
+    "x3_confirmed_resource_color_codes": [
+      2
+    ],
+    "free4_dynaudio_confirmed_resource_color_codes": [],
+    "generic_dress_configs": "iD/Hx are shared image/video dress templates; their paths do not identify these products or a 3D mesh.",
+    "module_selection": "Module 14 selects the model resource download; downloaded config exposes model3D and modelWebp separately.",
+    "model_retrieval": "Offline analysis references saved request results and independently checks saved ZIP/model bytes; it makes no network requests.",
+    "unavailable_probe_scope": "A no_resource_returned observation applies only to its recorded request; it cannot exclude other colors, versions or future server changes."
+  },
+  "resource_request_contract": {
+    "endpoint": "v1/earphone/resource/fetch",
+    "method": "POST",
+    "moduleId": 14,
+    "body_fields": [
+      "platform",
+      "channel",
+      "versionCode",
+      "productId",
+      "color",
+      "moduleId"
+    ],
+    "channel_by_package": {
+      "com.heytap.headset": "2",
+      "com.oplus.melody": "1"
+    },
+    "configuration_members": [
+      "model3D",
+      "modelWebp"
+    ],
+    "cache_name": "fetch14_<productId>_<resolvedColor>",
+    "legacy_model_member": "res/raw/detail_model.vfxms",
+    "code_evidence": {
+      "class": "LF8/h;",
+      "method": "b(int,String)CompletableFuture",
+      "dex": "classes2.dex",
+      "offset_bytes": "0x001E",
+      "behavior": "Constant moduleId 14, passed to LJ8/a.e at 0x0022"
+    }
+  },
+  "saved_online_observations": [
+    {
+      "results_path": "research/online-artwork/runs/20261007T101352.199515Z/results.json",
+      "results_sha256": "4b0e04ca733feb3b7e5fb93d5281cf37fda4687c937990b990e3b9b559df2af5",
+      "jsonpath": "$.cases[0]",
+      "package": "com.heytap.headset",
+      "productId": "067410",
+      "target_name": "OPPO Enco X3",
+      "color": "1",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101352.199515Z/results.json",
+      "results_sha256": "4b0e04ca733feb3b7e5fb93d5281cf37fda4687c937990b990e3b9b559df2af5",
+      "jsonpath": "$.cases[1]",
+      "package": "com.heytap.headset",
+      "productId": "068C10",
+      "target_name": "OPPO Enco Free4",
+      "color": "1",
+      "moduleId": "14",
+      "status": "verified",
+      "expected_sha256": "068676a8bb633f35e741f2d0dc7eb919afcb03e89f5c6839b41adbec53287bb1",
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping.",
+      "resource_zip_sha256_verified": "068676a8bb633f35e741f2d0dc7eb919afcb03e89f5c6839b41adbec53287bb1"
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101352.199515Z/results.json",
+      "results_sha256": "4b0e04ca733feb3b7e5fb93d5281cf37fda4687c937990b990e3b9b559df2af5",
+      "jsonpath": "$.cases[2]",
+      "package": "com.heytap.headset",
+      "productId": "06C010",
+      "target_name": "OPPO Enco Free4（丹拿版）",
+      "color": "1",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101352.199515Z/results.json",
+      "results_sha256": "4b0e04ca733feb3b7e5fb93d5281cf37fda4687c937990b990e3b9b559df2af5",
+      "jsonpath": "$.cases[3]",
+      "package": "com.oplus.melody",
+      "productId": "067410",
+      "target_name": "OPPO Enco X3",
+      "color": "1",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101352.199515Z/results.json",
+      "results_sha256": "4b0e04ca733feb3b7e5fb93d5281cf37fda4687c937990b990e3b9b559df2af5",
+      "jsonpath": "$.cases[4]",
+      "package": "com.oplus.melody",
+      "productId": "068C10",
+      "target_name": "OPPO Enco Free4",
+      "color": "1",
+      "moduleId": "14",
+      "status": "verified",
+      "expected_sha256": "068676a8bb633f35e741f2d0dc7eb919afcb03e89f5c6839b41adbec53287bb1",
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping.",
+      "resource_zip_sha256_verified": "068676a8bb633f35e741f2d0dc7eb919afcb03e89f5c6839b41adbec53287bb1"
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101352.199515Z/results.json",
+      "results_sha256": "4b0e04ca733feb3b7e5fb93d5281cf37fda4687c937990b990e3b9b559df2af5",
+      "jsonpath": "$.cases[5]",
+      "package": "com.oplus.melody",
+      "productId": "06C010",
+      "target_name": "OPPO Enco Free4（丹拿版）",
+      "color": "1",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101533.954104Z/results.json",
+      "results_sha256": "66d274a499db628c02d5c4717f0437bb97f7176a4ccb953a676631c1c9b407ea",
+      "jsonpath": "$.cases[0]",
+      "package": "com.heytap.headset",
+      "productId": "067410",
+      "target_name": "OPPO Enco X3",
+      "color": "0",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101533.954104Z/results.json",
+      "results_sha256": "66d274a499db628c02d5c4717f0437bb97f7176a4ccb953a676631c1c9b407ea",
+      "jsonpath": "$.cases[1]",
+      "package": "com.heytap.headset",
+      "productId": "068C10",
+      "target_name": "OPPO Enco Free4",
+      "color": "0",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101533.954104Z/results.json",
+      "results_sha256": "66d274a499db628c02d5c4717f0437bb97f7176a4ccb953a676631c1c9b407ea",
+      "jsonpath": "$.cases[2]",
+      "package": "com.heytap.headset",
+      "productId": "06C010",
+      "target_name": "OPPO Enco Free4（丹拿版）",
+      "color": "0",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101533.954104Z/results.json",
+      "results_sha256": "66d274a499db628c02d5c4717f0437bb97f7176a4ccb953a676631c1c9b407ea",
+      "jsonpath": "$.cases[3]",
+      "package": "com.oplus.melody",
+      "productId": "067410",
+      "target_name": "OPPO Enco X3",
+      "color": "0",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101533.954104Z/results.json",
+      "results_sha256": "66d274a499db628c02d5c4717f0437bb97f7176a4ccb953a676631c1c9b407ea",
+      "jsonpath": "$.cases[4]",
+      "package": "com.oplus.melody",
+      "productId": "068C10",
+      "target_name": "OPPO Enco Free4",
+      "color": "0",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101533.954104Z/results.json",
+      "results_sha256": "66d274a499db628c02d5c4717f0437bb97f7176a4ccb953a676631c1c9b407ea",
+      "jsonpath": "$.cases[5]",
+      "package": "com.oplus.melody",
+      "productId": "06C010",
+      "target_name": "OPPO Enco Free4（丹拿版）",
+      "color": "0",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101708.195649Z/results.json",
+      "results_sha256": "9f7e1e30142a4b06b146da1366140b5a9bebe48718f96b6a33fdfd8df2b037f2",
+      "jsonpath": "$.cases[0]",
+      "package": "com.heytap.headset",
+      "productId": "067410",
+      "target_name": "OPPO Enco X3",
+      "color": "2",
+      "moduleId": "14",
+      "status": "verified",
+      "expected_sha256": "b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf",
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping.",
+      "resource_zip_sha256_verified": "b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf"
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101708.195649Z/results.json",
+      "results_sha256": "9f7e1e30142a4b06b146da1366140b5a9bebe48718f96b6a33fdfd8df2b037f2",
+      "jsonpath": "$.cases[1]",
+      "package": "com.heytap.headset",
+      "productId": "067410",
+      "target_name": "OPPO Enco X3",
+      "color": "-1",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101708.195649Z/results.json",
+      "results_sha256": "9f7e1e30142a4b06b146da1366140b5a9bebe48718f96b6a33fdfd8df2b037f2",
+      "jsonpath": "$.cases[2]",
+      "package": "com.heytap.headset",
+      "productId": "06C010",
+      "target_name": "OPPO Enco Free4（丹拿版）",
+      "color": "2",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101708.195649Z/results.json",
+      "results_sha256": "9f7e1e30142a4b06b146da1366140b5a9bebe48718f96b6a33fdfd8df2b037f2",
+      "jsonpath": "$.cases[3]",
+      "package": "com.heytap.headset",
+      "productId": "06C010",
+      "target_name": "OPPO Enco Free4（丹拿版）",
+      "color": "-1",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101708.195649Z/results.json",
+      "results_sha256": "9f7e1e30142a4b06b146da1366140b5a9bebe48718f96b6a33fdfd8df2b037f2",
+      "jsonpath": "$.cases[4]",
+      "package": "com.oplus.melody",
+      "productId": "067410",
+      "target_name": "OPPO Enco X3",
+      "color": "2",
+      "moduleId": "14",
+      "status": "verified",
+      "expected_sha256": "b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf",
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping.",
+      "resource_zip_sha256_verified": "b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf"
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101708.195649Z/results.json",
+      "results_sha256": "9f7e1e30142a4b06b146da1366140b5a9bebe48718f96b6a33fdfd8df2b037f2",
+      "jsonpath": "$.cases[5]",
+      "package": "com.oplus.melody",
+      "productId": "067410",
+      "target_name": "OPPO Enco X3",
+      "color": "-1",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101708.195649Z/results.json",
+      "results_sha256": "9f7e1e30142a4b06b146da1366140b5a9bebe48718f96b6a33fdfd8df2b037f2",
+      "jsonpath": "$.cases[6]",
+      "package": "com.oplus.melody",
+      "productId": "06C010",
+      "target_name": "OPPO Enco Free4（丹拿版）",
+      "color": "2",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    },
+    {
+      "results_path": "research/online-artwork/runs/20261007T101708.195649Z/results.json",
+      "results_sha256": "9f7e1e30142a4b06b146da1366140b5a9bebe48718f96b6a33fdfd8df2b037f2",
+      "jsonpath": "$.cases[7]",
+      "package": "com.oplus.melody",
+      "productId": "06C010",
+      "target_name": "OPPO Enco Free4（丹拿版）",
+      "color": "-1",
+      "moduleId": "14",
+      "status": "no_resource_returned",
+      "expected_sha256": null,
+      "color_meaning": "Request protocol number; no marketing-color or default-color mapping."
+    }
+  ],
+  "saved_verified_packages": {
+    "068676a8bb633f35e741f2d0dc7eb919afcb03e89f5c6839b41adbec53287bb1": {
+      "artifact": "research/online-artwork/runs/20261007T101352.199515Z/packages/068676a8bb633f35e741f2d0dc7eb919afcb03e89f5c6839b41adbec53287bb1",
+      "zip_bytes": 8885630,
+      "config": {
+        "model3D": {
+          "path": "res/raw/detail_model.vfxms"
+        }
+      },
+      "config_sha256": "20dd6bcf9fc16b9f42c6ad2835d322ebab4059a6430fdee92eb6efa9c80a2f71",
+      "model_member": "res/raw/detail_model.vfxms",
+      "model_bytes": 13397063,
+      "model_sha256": "1c5fa169f224b2f7e9f2bc7ee535c39e4accf26ff65fc792aa94ca49e03a6154"
+    },
+    "b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf": {
+      "artifact": "research/online-artwork/runs/20261007T101708.195649Z/packages/b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf",
+      "zip_bytes": 9581441,
+      "config": {
+        "model3D": {
+          "path": "res/raw/detail_model.vfxms"
+        }
+      },
+      "config_sha256": "20dd6bcf9fc16b9f42c6ad2835d322ebab4059a6430fdee92eb6efa9c80a2f71",
+      "model_member": "res/raw/detail_model.vfxms",
+      "model_bytes": 12932064,
+      "model_sha256": "5b57fbff64ecc4e2521e693847fc2dc49f5e6d3598a6f76cdacb053a990795aa"
+    }
+  }
+}

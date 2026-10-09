@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using HeyMelodyWindows.Resources;
 using HeyMelodyWindows.Windows;
 
 // Offline only: no enumeration, service lookup or native socket creation is called.
@@ -12,6 +13,7 @@ unsafe class Program
             ["SOCKADDR_BTH.Size"] = 30, ["SOCKADDR_BTH.Address"] = 2,
             ["SOCKADDR_BTH.ServiceId"] = 10, ["SOCKADDR_BTH.Port"] = 26,
             ["fd_set.Size"] = wide ? 520 : 260, ["fd_set.Sockets"] = wide ? 8 : 4,
+            ["WSANETWORKEVENTS.Size"] = 44, ["WSANETWORKEVENTS.Errors"] = 4,
             ["WSAQUERYSETW.Size"] = wide ? 120 : 60, ["WSAQUERYSETW.Version"] = wide ? 24 : 12,
             ["WSAQUERYSETW.Context"] = wide ? 56 : 28, ["WSAQUERYSETW.Addresses"] = wide ? 96 : 48,
             ["WSAQUERYSETW.Blob"] = wide ? 112 : 56, ["SOCKET_ADDRESS.Size"] = wide ? 16 : 8,
@@ -26,18 +28,65 @@ unsafe class Program
             Console.WriteLine($"{pair.Key}={pair.Value}");
         }
         const ulong address = 0x112233445566;
-        var serviceId = Native.MelodyServiceId;
-        Reject<ArgumentException>(() => WindowsSdp.FindServices(address, Guid.Empty));
-        Reject<ArgumentOutOfRangeException>(() => WindowsSdp.FindServices(0, serviceId));
-        Reject<ArgumentException>(() => RfcommConnection.ConnectAsync(address, Guid.Empty, 1, default));
-        Reject<ArgumentOutOfRangeException>(() => RfcommConnection.ConnectAsync(address, serviceId, 0, default));
-        Reject<ArgumentOutOfRangeException>(() => RfcommConnection.ConnectAsync(address, serviceId, 31, default));
-        using (var cancelled = new CancellationTokenSource())
+        var serviceIds = new[]
         {
-            cancelled.Cancel();
-            Reject<OperationCanceledException>(() => RfcommConnection.ConnectAsync(address, serviceId, 1, cancelled.Token).GetAwaiter().GetResult());
+            new Guid("0000079A-D102-11E1-9B23-00025B00A5A5"),
+            new Guid("00001107-D102-11E1-9B23-00025B00A5A5")
+        };
+        if (Native.MelodyServiceId != serviceIds[0] || Native.LegacyMelodyServiceId != serviceIds[1])
+            throw new Exception("OPPO service UUID constants do not match the complete vendor UUIDs.");
+        var bundled = new BundledResourceStore();
+        foreach (var source in Enum.GetValues<ResourceSource>())
+        {
+            var transports = bundled.GetCatalog(source).Profiles.Values.Where(profile => profile.CanUseControlTransport).ToArray();
+            if (transports.Length == 0) throw new Exception($"Bundled catalog has no control transports: {source}");
+            var catalogIds = new HashSet<Guid>();
+            foreach (var profile in transports)
+            {
+                var catalogId = Guid.Parse(profile.Uuid!);
+                Native.Validate(address, catalogId);
+                catalogIds.Add(catalogId);
+            }
+            if (!catalogIds.SetEquals(serviceIds)) throw new Exception($"Bundled transport UUIDs changed: {source}");
+            Console.WriteLine($"PASS: {source} bundled transport validation ({transports.Length} profiles, {catalogIds.Count} UUIDs).");
         }
+        foreach (var serviceId in serviceIds)
+        {
+            Native.Validate(1, serviceId);
+            Native.Validate(0xFFFFFFFFFFFFUL, serviceId);
+            foreach (var invalidAddress in new[] { 0UL, 0x1000000000000UL })
+            {
+                Reject<ArgumentOutOfRangeException>(() => Native.Validate(invalidAddress, serviceId));
+                Reject<ArgumentOutOfRangeException>(() => WindowsSdp.FindServices(invalidAddress, serviceId));
+                Reject<ArgumentOutOfRangeException>(() => RfcommConnection.ConnectAsync(invalidAddress, serviceId, 1, default));
+            }
+            foreach (var invalidChannel in new[] { 0U, 31U })
+                Reject<ArgumentOutOfRangeException>(() => RfcommConnection.ConnectAsync(address, serviceId, invalidChannel, default));
+            using var cancelled = new CancellationTokenSource();
+            cancelled.Cancel();
+            foreach (var channel in new[] { 1U, 30U })
+                Reject<OperationCanceledException>(() => RfcommConnection.ConnectAsync(address, serviceId, channel, cancelled.Token).GetAwaiter().GetResult());
+            CheckSdpParser(address, serviceId, serviceIds.Single(id => id != serviceId));
+        }
+        foreach (var invalidServiceId in new[]
+        {
+            Guid.Empty,
+            new Guid("0000079A-0000-1000-8000-00805F9B34FB"),
+            new Guid("00001107-0000-1000-8000-00805F9B34FB"),
+            new Guid("0000079A-D102-11E1-9B23-00025B00A5A4"),
+            new Guid("00001107-D102-11E1-9B23-00025B00A5A4"),
+            new Guid("0000110B-0000-1000-8000-00805F9B34FB")
+        })
+        {
+            Reject<ArgumentException>(() => Native.Validate(address, invalidServiceId));
+            Reject<ArgumentException>(() => WindowsSdp.FindServices(address, invalidServiceId));
+            Reject<ArgumentException>(() => RfcommConnection.ConnectAsync(address, invalidServiceId, 1, default));
+        }
+        Console.WriteLine("PASS: offline ABI, bundled transport whitelist, input, pre-cancel and bounded SDP parser checks. No Bluetooth calls performed.");
+    }
 
+    static void CheckSdpParser(ulong address, Guid serviceId, Guid otherServiceId)
+    {
         var buffer = Marshal.AllocHGlobal(1024);
         try
         {
@@ -68,6 +117,8 @@ unsafe class Program
             query->AddressCount = uint.MaxValue;
             Reject<InvalidDataException>(() => WindowsSdp.Parse(buffer, 1024, address, serviceId, []));
             query->AddressCount = 1;
+            *(Guid*)query->ServiceId = otherServiceId;
+            Reject<InvalidDataException>(() => WindowsSdp.Parse(buffer, 1024, address, serviceId, []));
             *(Guid*)query->ServiceId = Guid.Empty;
             Reject<InvalidDataException>(() => WindowsSdp.Parse(buffer, 1024, address, serviceId, []));
             *(Guid*)query->ServiceId = serviceId;
@@ -81,7 +132,6 @@ unsafe class Program
             Reject<InvalidDataException>(() => WindowsSdp.Parse(buffer, 1024, address, serviceId, []));
         }
         finally { Marshal.FreeHGlobal(buffer); }
-        Console.WriteLine("PASS: offline ABI, whitelist input, pre-cancel and bounded SDP parser checks. No Bluetooth calls performed.");
     }
     static void Reject<T>(Action action) where T : Exception
     {

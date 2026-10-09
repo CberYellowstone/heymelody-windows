@@ -1,0 +1,33 @@
+<Project>
+  <!-- Some NuGet packages classify native PDBs as runtime assets, bypassing the
+       SDK's CopyDebugSymbolFilesFromPackages switch. Honor that switch before
+       copying resolved dependencies; no source or on-disk files are removed. -->
+  <Target Name="HeyMelodyExcludeDependencySymbolsFromBuild"
+          BeforeTargets="_CopyFilesMarkedCopyLocal"
+          Condition="'$(CopyDebugSymbolFilesFromPackages)' == 'false'">
+    <ItemGroup>
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)"
+                               Condition="'%(ReferenceCopyLocalPaths.Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+
+  <!-- SDK 10.0.401 uses the underscored publish-assets item list here. -->
+  <Target Name="HeyMelodyExcludeDependencySymbolsFromPublishAssets"
+          AfterTargets="_ComputeResolvedCopyLocalPublishAssets"
+          Condition="'$(CopyDebugSymbolFilesFromPackages)' == 'false'">
+    <ItemGroup>
+      <_ResolvedCopyLocalPublishAssets Remove="@(_ResolvedCopyLocalPublishAssets)"
+                                      Condition="'%(_ResolvedCopyLocalPublishAssets.Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Filter the final list before the SDK partitions it into copy batches. -->
+  <Target Name="HeyMelodyExcludeSymbolsFromPublishFiles"
+          BeforeTargets="_ComputeResolvedFilesToPublishTypes"
+          Condition="'$(CopyDebugSymbolFilesFromPackages)' == 'false'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(ResolvedFileToPublish.Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+</Project>

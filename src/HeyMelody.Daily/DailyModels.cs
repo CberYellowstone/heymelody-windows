@@ -1,4 +1,18 @@
+using HeyMelodyWindows.Protocol;
+
 namespace HeyMelodyWindows.Daily;
+
+public sealed record DailyFeatureOption(int Value, string Name);
+public sealed record DailyFeatureControl(string Id, string Title, string Kind, int? Value, string? Text,
+    IReadOnlyList<DailyFeatureOption> Options, int? Minimum, int? Maximum, bool CanWrite);
+public sealed record DailyFeatureSection(string Id, string Title, bool DefaultExpanded, IReadOnlyList<DailyFeatureControl> Controls);
+
+public enum DailyRefreshScope { Full, Identity, Features, Anc, Equalizer, Battery, Information }
+public enum DailyApplyFailure
+{
+    None, Validation, StateUnavailable, PeerRejected, ReadbackMismatch, ReadbackUnavailable,
+    TransportUnknown, Disconnected, WorkerUnavailable, MutexConsentRequired
+}
 
 public sealed record BatteryLevel(byte Raw, int? Percent, bool? Charging);
 public sealed class BatterySnapshot
@@ -54,13 +68,29 @@ public sealed class DailyCapabilities
 }
 public sealed class DailySnapshot
 {
+    public long Revision { get; set; }
     public DateTimeOffset ObservedAtUtc { get; set; }
     public bool Connected { get; set; }
     public bool ProfileVerified { get; set; }
     public string? ProductId { get; set; }
+    // Protocol color from GET 0x010B; unknown when the device rejects or leaves the optional read unanswered.
+    public byte? Color { get; set; }
+    public DateTimeOffset? ColorObservedAtUtc { get; set; }
     public string? DeviceName { get; set; }
     public string? FirmwareVersion { get; set; }
     public byte? CodecRaw { get; set; }
+    public bool? CaseOpen { get; set; }
+    public bool? LeftInCase { get; set; }
+    public bool? RightInCase { get; set; }
+    public bool? LeftInEar { get; set; }
+    public bool? RightInEar { get; set; }
+    public DateTimeOffset? CaseObservedAtUtc { get; set; }
+    public DateTimeOffset? LeftPlacementObservedAtUtc { get; set; }
+    public DateTimeOffset? RightPlacementObservedAtUtc { get; set; }
+    public DateTimeOffset? LeftBatteryObservedAtUtc { get; set; }
+    public DateTimeOffset? RightBatteryObservedAtUtc { get; set; }
+    public DateTimeOffset? CaseBatteryObservedAtUtc { get; set; }
+    public Dictionary<byte, byte> RawStatusComponents { get; set; } = [];
     public BatterySnapshot? Battery { get; set; }
     public AncSnapshot? Anc { get; set; }
     public byte? PresetId { get; set; }
@@ -69,21 +99,33 @@ public sealed class DailySnapshot
     public List<CustomEqualizer> CustomEqualizers { get; set; } = [];
     public bool CustomEqualizersRead { get; set; }
     public ushort[] EqualizerFrequencies { get; set; } = [];
+    public int CustomEqualizerCapacity { get; set; } = 3;
     public bool? DualConnection { get; set; }
     public bool? GameMode { get; set; }
     public byte? SpatialMode { get; set; }
     public bool? HiRes { get; set; }
     public DailyCapabilities Capabilities { get; set; } = new();
     public Dictionary<byte, byte> RawFeatures { get; set; } = [];
+    public BassEngineRange? BassEngine { get; set; }
+    public byte? PromptVolume { get; set; }
+    public GameSoundState? GameSound { get; set; }
+    public IReadOnlyList<GestureAssignment> Gestures { get; set; } = [];
+    public IReadOnlyList<DailyFeatureSection> FeatureSections { get; set; } = [];
     public List<string> Warnings { get; set; } = [];
     public string? Error { get; set; }
 }
 public sealed class DailyApplyResult
 {
     public bool SubmissionAttempted { get; set; }
+    public bool TargetSubmitted { get; set; }
+    public bool PrerequisiteSubmitted { get; set; }
     public bool ResponseMatched { get; set; }
     public bool? AckAccepted { get; set; }
-    public bool ReadbackVerified { get; set; }
+    public byte? AckStatus { get; set; }
+    public bool? ReadbackMatches { get; set; }
+    public bool ReadbackVerified => ReadbackMatches == true;
+    public DailyApplyFailure FailureKind { get; set; }
+    public byte? ObservedEqualizerId { get; set; }
     public bool Success { get; set; }
     public DailySnapshot? Before { get; set; }
     public DailySnapshot? After { get; set; }

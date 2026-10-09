@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "api_base": "https://iot-earbuds-cn.heytapmobi.com/",
+  "endpoint": "v1/earphone/new/latestWhiteList",
+  "method": "POST",
+  "request_fields": [
+    "platform",
+    "channel",
+    "versionCode"
+  ],
+  "request_version_source": "Android application meta-data.versionCode, not manifest versionCode",
+  "authentication": {
+    "header_names": [
+      "Content-Type",
+      "appid",
+      "ts",
+      "nonce",
+      "sv",
+      "sign"
+    ],
+    "appid": "earphone",
+    "sv": "v1",
+    "sign": "HMAC-SHA1 over exact serialized UTF-8 body, lowercase hex",
+    "material": "AES-GCM decrypted APK literal, key = SHA256(signer certificate DER)",
+    "material_persisted": false
+  },
+  "cloud": {
+    "metadata_fields": [
+      "downloadUrl",
+      "fileName",
+      "id",
+      "size",
+      "version"
+    ],
+    "expected_payload": "JSON, encrypted only when written to Android private cache",
+    "metadata_version_comparison": "Download when different or cache missing, not strictly greater"
+  },
+  "cache": {
+    "format": "nonce12 || AES-GCM(gzip(JSON)) || tag16",
+    "key": "Android creates a local random 32-byte key stored in SharedPreferences",
+    "research_key": "Ephemeral independent key, kept only during validation"
+  },
+  "selection": {
+    "startup": "Highest content versionCode; builtin wins equal version",
+    "refresh": "Only adopt when new content versionCode is strictly greater",
+    "compat": "Non-null compatVersionCode/compatWhiteList replace formal fields",
+    "provisional": "Only add IDs missing from selected official content"
+  },
+  "corrections_to_previous_research": [
+    "Request versionCode is application metadata: H17006004, O17006002",
+    "H loader opcode 0xb0 is add-int/2addr: builtin effective version 117006004",
+    "O builtin effective version is17006002; package manifest versions remain unchanged"
+  ],
+  "research_limits": {
+    "metadata_bytes": 1048576,
+    "config_bytes": 8388608,
+    "redirects": "blocked",
+    "tls": "normal Python certificate verification",
+    "vendor_tls_pinning_reproduced": false,
+    "these_limits_are_official_app_rules": false
+  }
+}

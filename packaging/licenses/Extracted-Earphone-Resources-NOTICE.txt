@@ -1,0 +1,23 @@
+EXTRACTED EARPHONE RESOURCES
+
+This distribution contains device configuration and artwork supplied for this
+project's compatibility work. They originate from HeyMelody 17.6.5
+(com.heytap.headset) and Wireless Earphones 17.6.3 (com.oplus.melody), plus
+verified device artwork packages delivered by the corresponding vendor service.
+OPPO, OnePlus, realme, their logos, product artwork and other vendor materials
+remain the property of their respective rights holders. This project's source
+license does not relicense those materials; no open-source asset license is
+claimed here. The two X4 PNGs were separately supplied for this project.
+
+From 0.8.8 the main GUI assembly also embeds a few monochrome icon outlines
+(noise control, ear, earbud and left/right/case battery) as vector path data
+copied from the same Wireless Earphones resources; they are subject to the
+same notice.
+
+ResourceBundles/provenance.json identifies the APK versions and SHA256 values.
+ResourceBundles/artwork.json identifies source, exact product/color association,
+file paths and hashes. Installed offline assets are kept separate from the
+user's downloaded cache. Original research inputs are not required at runtime.
+
+The independent desktop Lottie renderer uses the separately licensed
+SkiaSharp.Skottie dependency. Avalonia.Labs source code is not included.

@@ -1,90 +1,65 @@
 # HeyMelody for Windows
 
-独立源码仓库、克隆后的构建步骤和本地研究资料依赖见 [REPOSITORY.md](REPOSITORY.md)。
+**0.8.10** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型和动画展示。
 
-阶段五客户端 **0.5.0** 已完成，支持 OPPO Enco X4 的电量、降噪、五种声音预设、十段 EQ、双连、游戏和空间模式，以及 Hi-Res 互斥控制。发布包包含 x86、x64、ARM64 自包含版本和自动选择架构的启动器，无须安装 .NET SDK。
+0.8.10 统一隐藏“自动音量”（原厂“智能音量调节”），停止该项查询、写入与通知联动，旧缓存展示和 Demo 也隐藏此开关。Free4、X3、X4 的使用反馈均为没有此功能，其余机型尚未确认，暂不开放。右上提示保留具体原因：通知订阅不完整时说明仍可手动刷新，不再一律声称设置已禁用。决定、原厂用途和验证范围见 [智能音量研究与处理决定](docs/research/auto-volume.md)。
 
-完整解压 `release/HeyMelody_Windows_0.5.0_AllArchitectures.zip`，双击 `Start-HeyMelody.cmd`；或直接运行 `release/HeyMelody_Windows_0.5.0/x64/HeyMelody.exe`。先在 Windows 中配对并连接耳机，再在客户端点击“连接耳机”。只读刷新不自动发送设置。
+2026-10-09完成 [黄金听感与耳机贴合度重新研究](docs/research/calibration-reassessment.md)，并据此[修复现有校准组件](docs/research/calibration-repair.md)：改正佩戴查询、测听路由、双耳滤波解析、滑块调档与扫描/保存流程。完整研究过程和结果在 [research/](research/calibration-reassessment-20261009/README.md)。该次源码修复当时未改变版本号，随 0.8.9 一并发布。
 
-x64 和 x86 发布程序已在本机执行蓝牙查询与真实界面预览。ARM64 已交叉构建并核对 PE 架构和图标，尚未在 ARM 电脑执行。设置路径已通过离线 golden、响应匹配和模拟回读测试，本轮没有在真实耳机发送 SET。记录见 `phase5-notes.md` 和 `artifacts/phase5-release-validation.json`。
+用户授权的[X4 v116实测](research/calibration-reassessment-20261009/LIVE-TEST.md)已完成：贴合度双耳良好；黄金听感12项手动测听、两类滤波、保存/启用与读回成功，原方案公开字段恢复并逐字节核对。实测使用研究工具；本次应用修复的验证范围与该实测分别记录，不将其当成修复后的完整客户端实测。
 
-源码入口为 `src/HeyMelody.App`，蓝牙后台为 `src/HeyMelody.Host`，日常功能为 `src/HeyMelody.Daily`。使用 .NET SDK10 执行 `Build-Client.ps1` 可以构建三架构发布包。OTA、录音、翻译和健康功能留待后续阶段。
+0.8.9 重新设计贴合度测试与黄金听感两个独立窗口：沿用设备管理器的上部 Mica Alt 与底部不透明操作栏，按钮按 Windows 向导顺序排列为“上一步 · 下一步 · 取消”。黄金听感参照 ColorOS 设置向导，显示“耳道扫描 → 听音测试”步骤、随主题变化的波纹主图、居中说明与“当前测试左耳/右耳”，进度由左右两组共 12 个进度条组成，当前频段显示为半满；音量条使用原生刻度。结果页用切换按钮比较原音与黄金听感，再命名保存；贴合度结果改为左右耳状态卡片加建议提示。暂停原因、设备拒绝与错误统一显示在信息栏中。详见 [界面说明](docs/gui-notes.md#校准窗口)。
 
-以下为保留的协议研究工具。只读 CLI 为 0.2.0/schema2，受控实验 CLI 为 0.3.0；运行这些源码工具需要 .NET SDK10，以及已配对、连接的 OPPO Enco X4。
+0.8.8 重新整理右侧控制面板：设备名称、连接状态点和连接操作固定在顶部，圆点以绿、黄、灰表示已连接、正在连接或写入、未连接；连接时不再在“已连接”后显示固件版本，离线时在名称下方显示上次连接时间，取代原先的缓存提示框。进度条使用固定槽位淡入淡出，显示和消失都不会推动下方控件。各卡片补齐 Segoe Fluent Icons 风格图标（无对应字形时使用 OPPO 无线耳机资源中的矢量图标）和简短描述，动态功能行按原生设置条目对齐，电量卡改为图标加充电标记。详见 [界面说明](docs/gui-notes.md)。
 
-```powershell
-cd D:\Code\LHDC_Driver\HeyMelodyWindows
-powershell.exe -NoProfile -File .\Run-ReadOnly.ps1 -List
-powershell.exe -NoProfile -File .\Run-ReadOnly.ps1
-```
+0.8.7 恢复底部设备栏的通用耳机图标，仍移除 Enco X4 专属图片，并将复制按钮放到设备信息展开内容的底部。设备连接状态刷新时保留选择与高亮，重启后恢复上次选择的已启用设备。连接成功后缓存功能、选项和设置值；未连接时显示并禁用缓存控件，重新连接并读取后更新，包括固件新增或删除的功能。缓存说明见 [设备选择与离线控件](docs/device-state.md)。
 
-查询结果保存为 `artifacts/x4-readonly-<UTC时间>.json`，同时输出至控制台。写入采用 CreateNew，不覆盖已有报告。默认报告不含蓝牙地址。可用 `-OutputPath` 指定一个新的文件路径。
+0.8.6 恢复默认 GPU 优先渲染，保留已保存的渲染选择及软件回退。底部设备卡片只显示名称与状态，左侧外观下方不再重复设备文字；降噪使用常显圆角区域，其他设置默认折叠。设备信息提供带图标的“复制”按钮，复制当前显示的名称、产品编号和固件版本，贴合度测试与设备信息之间保留一致间距。
 
-直接调用：
+0.8.5 修正软件三维模型过亮、曲面缺少层次的问题：按每个网格实际使用的贴图区域估算金属度、粗糙度和发光参数，并调整软件光照。保留原始模型、基础色贴图及旋转交互；切换到 GPU 时恢复原始材质与原有光照。该版默认关闭 GPU 加速；软件修正在 0.8.6 的软件选择与自动回退时继续应用。依据与限制见 [软件模型材质研究](docs/research/software-model-materials.md)。
 
-```powershell
-dotnet run --project .\src\HeyMelody.Probe\HeyMelody.Probe.csproj -c Release -- --probe --output .\artifacts\my-query.json
-```
+0.8.4 修正 Enco X4 的产品动画，并让耳机外观在第一次取得后持续可用：
 
-CLI 通过 Windows 设备列表找到唯一的名称匹配项，再从指定 Melody UUID 的 SDP 查询获得真实通道，不扫描裸通道。连接后首先查询 Product ID；必须精确匹配 `06EC10` 才继续。存在多个同名设备时，可用 CLI 的 `--list --show-addresses` 查看地址，并通过 `--address HEX12` 显式选择。这个选项仅在控制台主动要求时显示地址，查询报告仍不写地址。
+- 后台按设备记住产品 ID 与颜色，未连接、重启或重新打开界面时都会立即显示图片、模型或动画；只有资源真正变化时才更换。
+- 控制连接会只读读取一次颜色（GET `0x010B`），失败时只记为未知；这比此前实机记录多 1 次 GET，需要在 X4 上复验。
+- 两种来源均使用官方模块 14 的动态 WebP 播放 X4 产品旋转，保留原始帧时长与局部帧合成；control 包中的捏柄、滑动 Lottie 保持教程角色，主图回退到该型号的 detail 图片。
+- 新增“三维模型 GPU 加速”开关，默认关闭；关闭时仍以软件后端显示完整三维模型，并保留拖动与自动旋转。设置保存后即时应用。
+- 应用设置改为 FluentAvalonia 设置卡片，新增“重新下载在线资源”。
+- 新增 GitHub Actions，构建 Windows x64 与 ARM64 包。
 
-## 本阶段发送内容
+详见 [外观资源持久化](docs/artwork-persistence.md)、[X4 美术复核](docs/research/enco-x4-artwork-audit.md) 与 [三维模型渲染设置](docs/model-rendering.md)。
 
-| 命令 | 查询 | 载荷 |
-|---|---|---|
-| 0x0103 | Product ID | 空 |
-| 0x0100 | 命令能力位图 | 空 |
-| 0x0101 | 远端控制 MTU | 空 |
-| 0x0102 | Vendor ID | 空 |
-| 0x0104 | 协议版本 | 空 |
-| 0x0105 | 固件版本列表 | 空；设备能力允许时查询 |
-| 0x0114 | 当前 codec 原始编号 | 空；设备能力允许时查询 |
-| 0x010D | Hi-Res 功能状态 | 01 18 |
+0.8.3 修复降噪主模式按钮的协议编号：进入“自适应”等主模式时发送父编号，细分档位仍独立发送子编号，父态回读不会猜选首个子档。Enco X4 自适应主切换与手机端的字节差异已由两份官方 APK 复核；本检查包的提示音效果仍待用户真机确认，详见 [协议研究与 A/B 步骤](docs/research/anc-mode-prompt.md)。
 
-发送门只允许上表的命令和对应载荷。没有 SET、通知注册、主机能力宣告、时间应答、OTA、配对或取消配对命令，也不操作驱动、注册表、服务和音频播放。连接私有控制服务本身仍会建立并随后关闭一条 RFCOMM 连接。
+0.8.2 新增会话内布局 Demo：长按主界面“+”两秒即可添加，使用 Enco Free4 丹拿版官方三维模型，展示全部已实现控件。控件修改仅在本地模拟数据中生效，关闭主窗口后移除；也可通过发布包的 `Start-3D-Demo.cmd` 直接进入离线演示。
 
-序号与响应命令必须同时匹配，业务 status 必须为 0，数据通过各查询的布局校验才算成功。超时、断连或非法完整帧后停止在该会话上发送，不自动重发。控制服务查询使用同步 Windows SDP API，因此运行于独立进程中：工作进程操作预算 55 秒，父进程 70 秒后终止未返回的工作进程。这是进程监督，不是对所有内核调用的绝对耗时保证。
+0.8.1 修复了资源目录包含两种 OPPO 控制服务、底层却只允许其中一种而造成的连接失败，并修正连接尚未建立时误报“型号未适配”的提示。本机 Enco X4 已通过两套预装及缓存资源的 x64 后台初始化、状态读取和通知订阅验证，全程未发送设置命令；详见 [实机验证记录](docs/research/enco-x4-0.8.1.md)。
 
-报告的 `success=true` 表示八项 GET 均收到匹配的成功响应并通过对应布局校验，且身份为 X4、feature 0x18 状态明确。单项失败、未知状态或能力不支持会保留在 `queries` 内，整体标记 partial。原始 codec 编号和固件版本三元组保留，避免跨固件或跨接口套用枚举。协议版本的三字节二进制形式保留原始 hex，并明确标记未确认其版本语义。功能状态只有 0/1 可以映射成关闭/开启，其他值保留为未知。
+预装欢律与 ColorOS“无线耳机”两套独立资源，目录分别包含 **85、141 个耳机产品 ID**，覆盖 OPPO、OnePlus、realme，排除音箱。这是资源目录覆盖；控制仍须同时满足所选配置、已实现的协议 codec、固件条件和设备实际能力。未知协议、无 SPP 及需要外部 App 的型号不会开放设置，图片或名称识别也不授予控制权限。
 
-能力结果的 `supportedCommands` 保留阶段 1 八个 GET 的可用子集。`allSupportedCommands` 使用 APK 的完整 69 位映射和 11 条基础命令，未知尾位记录为 `unknownCapabilitySetBits`，不据此猜测额外命令；完整原始位图保留为 `capabilityBitmapHex`。这两个集合都不是发送授权。`readOnly.sentQueries` 是应用提交记录，可检查命令与帧；它不是独立 HCI 抓包。
+设置默认选择欢律、开启在线资源，可切换资源来源并填入自定义请求密钥。本版保留各来源的预置密钥。两套来源各自缓存，不合并参数或外观；完整控制配置采用内容版本较高的一版，同版本采用预装版。美术更新按厂商摘要比较，新包校验并发布后清理旧在线版本，正在显示的旧包等待释放；预装离线资源保持不动。关闭在线资源停止网络请求，已下载的有效新版仍可使用。用户密钥和缓存加密密钥以本地 JSON 明文保存。
 
-## 阶段 2 的配置与状态
+降噪使用圆形模式按钮和细分选项，EQ 按型号提供频段和容量，内置与自定义方案分组显示。普通控制采用开关、Slider、RadioButton、文本框和 ComboBox。耳塞贴合度测试由独立 `HeyMelody.FitTest.exe` 处理；黄金听感由独立 `HeyMelody.HearingSetup.exe` 向导创建，主界面的 ComboBox 选择本机保存及耳机当前读回的完整方案。校准组件共享 Host 的蓝牙连接，不另行建立控制连接。
 
-`deviceModel` 仅在本次 Product ID 精确验证为 06EC10 后生成；蓝牙名称和别名不能替代身份验证。嵌入 X4 资产与证据包成员逐字节一致，加载时验证 SHA256。`profile.rawSource` 和子项原始 JSON 保留未投影字段，配置的数字标志不会作为当前开启状态。
+先在 Windows 中配对、连接耳机，再通过设备管理器保存白名单。完整解压发布包后运行 `Start-HeyMelody.cmd` 或所选架构目录中的 `HeyMelody.exe`；发布包自带 .NET 运行时。主界面关闭后后台继续运行，右键托盘可以重新打开界面或退出。设备管理器、贴合度测试和黄金听感向导均随包提供。本版本不添加登录自启或独立开盖弹窗。
 
-EQ 预设保持协议编号顺序 **0、7、2、1、3**，与显示顺序或 modeType 分开；ANC 父子编号和未知子类型原值保留。十段 EQ 频点、空间列表 0/1/2、游戏音效类型 3/0、互斥列表 1/3、多设备条件和源版本门槛均保留。
+布局调试：在主界面按住设备添加键“+”满 2 秒，添加并选中一台临时 demo；重复长按不会添加第二台，短击仍打开 Windows 蓝牙设置。Demo 展示全部已实现的主界面控件，开关、选项、滑块、文本和 EQ 仅修改内存中的模拟数据，测试按钮不会启动真实测试。关闭主窗口即移除 demo，托盘后台不会保存它。正常启动仍要求有效白名单；无需真实设备时可运行 `Run-3D-Demo.ps1`、`Run-3D-Demo.cmd` 或发布包的 `Start-3D-Demo.cmd`，也可直接传入 `--3d-demo`。
 
-能力模型分别记录静态声明、查询/设置命令支持、原始状态及 0/1/unknown 状态。当前实际只请求 feature 0x18；其他状态在模型中保持未知，额外回包值可在查询证据中查看。新空间模式与旧 feature 0x1B 分开；游戏模式 0x06/0x28 和专用游戏音效 0x012B/0x0423 分开，不与驱动低延迟设置混同。
+Demo 使用预装的 Enco Free4 丹拿版（`06C010`、色号 `3`）三维模型，来源及原始文件校验见 [模型验证记录](docs/research/enco-free4-dynaudio-model.md)。模拟功能集合用于检查全部已实现控件的布局，不代表该型号的实际能力。模型支持拖动旋转、惯性及空闲自转，沿用应用的 GPU 优先设置和已保存的软件选择；添加 demo 不需要联网。
 
-来源中的 `minVersion` 属于 Android 应用版本门槛。版本条件按来源字段和 App/Firmware 域保留为 Pass/Fail/Conditional，不拿 Windows 程序的 0.2.0 与耳机固件 116 比较。只读工具未提供额外版本判断上下文，因此正门槛可保持 Conditional；它是条件资料，不等于某项设置已被实际验证。
+耳机设置和手机推送共用每台设备的持续接收通道。回执、设备确认和观测状态分别处理，丢失回执不自动重放操作；未提交的 EQ 草稿保留。校准期间限制同一设备的冲突写入，其他设备继续工作；关闭、断连、休眠和切换资源来源会终止当前校准并回读状态。
 
-同一会话最多分配256个互不重复的请求序号；耗尽后停止发送，需要新会话。响应必须带正确响应位、命令与序号。EOF遇到半帧或未完成分片时拒绝并清理状态。只读模型没有传输接口，settingsTransmissionEnabled=false；设置通过独立的Control workflow明确执行，不由模型投影触发。
-
-## Hi-Res与高采样率验证
+源码构建需要 .NET 10 SDK，官方 NuGet 源见 `NuGet.Config`：
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Run-HiRes.ps1 -Action Enable
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Run-HiRes.ps1 -Action DriverStatus
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Run-HiRes.ps1 -Action Rate -SampleRate 192000
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Run-HiRes.ps1 -Action Play -SampleRate 192000
+dotnet build src/HeyMelody.App/HeyMelody.App.csproj -c Release
+dotnet run --project tests/HeyMelody.Resources.Tests
+dotnet run --project tests/HeyMelody.Calibration.Tests
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.10
 ```
 
-Enable处理耳机空间互斥、单次设置、匹配ACK及新控制会话回读；可能短暂中断播放。Rate只发送一次临时96/192请求；Play做短静音测试。设置结果和线上协商分别记录，不能把驱动目标当成已验证的wire配置。
+常规构建和离线测试使用仓库中的资源包，不需要本地 APK。重新提取资源需要 `research/apps/` 和 `research/screenshots/` 中的固定输入及各专题保留的原件，入口是 `tools/bundle_resources.py`；目录组织、提交边界与历史路径映射见 [研究资料归档](docs/research/README.md)。运行中的软件不读取研究目录。原始资源版权与溯源保留在发布包的 notices 和资源清单中。
 
-本机完整结果为Hi-Res开启，实际96/192 kHz、24bit LHDC5配置均被耳机接受，Start及媒体流有证据，最终保留192k/24bit。使用说明和测量边界见 `phase34-notes.md`；汇总 `artifacts/phase34-validation.json`。这不构成声学时钟、无损比例、逐样本bit-perfect或实际码率测量。
+本轮没有把静态解析、模拟协议或 UI 测试当作所有型号的实机验证。新增型号、校准流程、手机并发操作、休眠恢复和 ARM64 行为仍需对应硬件验证；历史 X4 证据只证明记录中的版本与设备。OTA、录音、翻译、健康功能、macOS/Linux 后台及 2.3 Mbps 无损链路保持后续范围。
 
-耳机的 codec/Hi-Res 回读不等于 Windows 驱动的采样率、实际传输码率、无损状态或声音延迟。只读 CLI 不执行 Hi-Res 设置和音频协商验证。
-
-## 验证
-
-```powershell
-dotnet run --project .\tests\HeyMelody.Protocol.Tests\HeyMelody.Protocol.Tests.csproj
-dotnet run --project .\tests\HeyMelody.Devices.Tests\HeyMelody.Devices.Tests.csproj
-dotnet run --project .\tests\HeyMelody.Probe.Tests\HeyMelody.Probe.Tests.csproj
-```
-
-协议测试覆盖可变长长度、分片、增量读取、序号、畸形数据和查询解析；会话测试覆盖只读允许列表、身份不符停止、错误序号、空回应、超时/断连后停止与不自动重发。ARM64 交叉构建仅证明编译通过，真实 ARM64 蓝牙执行另需验证。
-
-资料与定位见reference，未修改参考资料。阶段1实测见phase1-notes.md，阶段2见phase2-notes.md，阶段3/4见phase34-notes.md。历史schemaVersion1的阶段1证据保持原样。
-
+完整模块、构建和验证说明见 [REPOSITORY.md](REPOSITORY.md)，协议与资源依据见 [研究交接](docs/research/device-adaptation-handoff.md)，历史记录见 [文档入口](docs/README.md)。`research/` 保存完整研究对象、理解、结论及产物，`docs/` 保存整理后适宜公布的结果；持续维护的复现工具位于 `tools/research/`。具体约定见 [研究资料规范](docs/research/organization.md)。

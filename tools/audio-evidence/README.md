@@ -5,16 +5,18 @@ It reads a supplied file; it cannot start capture, access a driver, change
 settings, restart a device or play audio. Tests generate anonymous synthetic
 traffic and also run the installed tshark against a synthetic USBPcap file.
 
-Root command (PowerShell, repository root; replace private paths and bus key):
+Root command (PowerShell, repository root; `python` must be Python 3; replace
+private paths and bus key). If Python is not on `PATH`, use your Python 3
+executable path:
 
 ```powershell
-& 'D:\Conda\miniconda3\python.exe' '.\HeyMelodyWindows\tools\audio-evidence\analyze_avdtp.py' `
-  --pcap '.\HeyMelodyWindows\artifacts\private\phase3.pcap' `
-  --target-mac-file '.\HeyMelodyWindows\artifacts\private\target.txt' `
-  --private-fields '.\HeyMelodyWindows\artifacts\private\phase3.fields.json' `
+python '.\tools\audio-evidence\analyze_avdtp.py' `
+  --pcap '.\artifacts\private\phase3.pcap' `
+  --target-mac-file '.\artifacts\private\target.txt' `
+  --private-fields '.\artifacts\private\phase3.fields.json' `
   --decode-as 'usb.device==0x00020004,bluetooth' `
   --requested-rate 96000 --requested-depth 24 `
-  --output '.\HeyMelodyWindows\artifacts\phase3.wire.json'
+  --output '.\artifacts\phase3.wire.json'
 ```
 
 The private target file contains only the MAC; `TARGET_MAC` environment variable
@@ -23,7 +25,7 @@ is an alternative. The script never prints it. USB decode key is
 For 192k use `--requested-rate 192000`. Existing private field JSON can be read
 with `--fields-json ...` in place of `--pcap/--private-fields/--decode-as`.
 Only the final report is safe for sharing. Field JSON and its schema belong in
-`artifacts/private`; root owns ACL and gitignore. Raw PCAP stays private.
+`artifacts/private`; the capture owner manages ACL and gitignore. Raw PCAP stays private.
 Offline analysis needs no administrator rights when file ACL permits reading.
 
 USBPcap IRP addresses can be reused across unrelated transfers. The analyzer
@@ -31,16 +33,19 @@ selects OUT/submission (`irp_info` bit0=0) and IN/completion (bit0=1); it does
 not deduplicate by IRP address. Reuse and peer-initiated PSM19 connections
 with pending then success responses are covered by regression tests.
 
-Capture prerequisites verified read-only on 2026-10-06: tshark at
+Historical capture setup, recorded read-only on 2026-10-06: tshark was at
 `D:\Installations\Wireshark\tshark.exe`, USBPcap native at
 `D:\Installations\Wireshark\extcap\USBPcapCMD.exe`, also native at
-`C:\Program Files\USBPcap\USBPcapCMD.exe`. Root confirmed current control
-device `\\.\USBPcap2`, Intel8087/PID0026, allocatedAddress4. Native root
-capture uses `-d '\\.\USBPcap2' --devices 4 -s 65535 -b 1048576 -o ...`
-in elevated PowerShell. Root's writer retains Bulk plus Interrupt event03/05;
-old `highrate/capture_bulk.py` drops event03/05 and cannot verify an address.
-Start capture before reconnect and L2CAP PSM0x19 setup; root controls duration
-and stopping. This tool does not invoke any capture helper.
+`C:\Program Files\USBPcap\USBPcapCMD.exe`. The recorded control device was
+`\\.\USBPcap2`, Intel8087/PID0026, allocatedAddress4. These paths and device
+values describe that session, not prerequisites verified on the current
+machine. That session's native capture command used
+`-d '\\.\USBPcap2' --devices 4 -s 65535 -b 1048576 -o ...` in elevated
+PowerShell. Its writer retained Bulk plus Interrupt event03/05;
+the historical `highrate/capture_bulk.py` helper dropped event03/05 and could
+not verify an address. A live capture needs to start before reconnect and
+L2CAP PSM0x19 setup; its operator controls duration and stopping. This tool
+does not invoke any capture helper.
 
 `verifiedAddress` requires status0, ACL linkType1 ConnectionComplete matching
 the supplied address in the same USB scope. Disconnect and handle reuse end
@@ -77,7 +82,7 @@ as extensions. The rate and depth constants were verified against read-only
 44100/48000/96000/192000Hz; P7 low3 masks04/02/01 mean16/24/32bit. The
 referenced official header itself was not present at its recorded ZIP path.
 Other bits remain raw and uninterpreted. Expected capability byte pairs
-30/16 (default) and35/06 (HiRes) are comparisons for root, not selection proof.
+30/16 (default) and35/06 (HiRes) are comparison values, not selection proof.
 
 Only a single-rate/single-depth LHDC5 SetConfiguration/Reconfigure accept
 establishes an accepted configuration. GetConfiguration replies are recorded
@@ -85,15 +90,20 @@ independently. Start accept must match that endpoint and initiator direction.
 LHDC5 media count uses tshark's vendor053A/codec4C35 media marker on a verified
 PSM19 CID. A second count requires the matching accepted config and Start.
 `hostSetterRequested_vsWireObserved` compares the supplied phase request to
-those observed streams. Root should capture each setter phase separately.
+those observed streams. Each setter phase needs a separate capture for that
+comparison.
 Wire negotiation and packet activity do not measure decoded PCM sample rate;
-actual96/192 audio validation remains root's live task. Actual packet bitrate
+actual96/192 audio validation requires separate live measurements outside
+this offline analyzer. This is a measurement limitation, not a pending task
+for the current refresh work. Actual packet bitrate
 is explicitly not measured because codec headers, aggregation and fragments
 are not accounted for.
 
-Run tests:
+Run the 23 synthetic tests from the repository root with Python 3 and tshark
+installed. One test invokes tshark against a generated PCAP; the suite performs
+no live capture or device access:
 
 ```powershell
 $env:PYTHONDONTWRITEBYTECODE='1'
-& 'D:\Conda\miniconda3\python.exe' -m unittest discover -s '.\HeyMelodyWindows\tools\audio-evidence' -p 'test_*.py' -v
+python -m unittest discover -s '.\tools\audio-evidence' -p 'test_*.py' -v
 ```

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <Version>0.7.1</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../HeyMelody.Contracts/HeyMelody.Contracts.csproj" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <InternalsVisibleTo Include="HeyMelody.Client.Tests" />
+  </ItemGroup>
+</Project>

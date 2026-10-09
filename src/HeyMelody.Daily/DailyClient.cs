@@ -2,12 +2,23 @@ using HeyMelodyWindows.Control;
 namespace HeyMelodyWindows.Daily;
 
 /// <summary>Daily OPPO controls are serialized; constructing a client never opens or writes a device.</summary>
-public sealed partial class DailyClient(IControlConnector connector) : IAsyncDisposable
+public sealed partial class DailyClient(IControlConnector connector,
+    Func<string, HeyMelodyWindows.Devices.DeviceProfile?>? profileResolver = null,
+    long appVersionMarker = 17006004, string? observedProductId = null, byte? observedColor = null) : IAsyncDisposable
 {
     private readonly IControlConnector _connector = connector ?? throw new ArgumentNullException(nameof(connector));
+    private readonly Func<string, HeyMelodyWindows.Devices.DeviceProfile?> _profileResolver = profileResolver ?? HeyMelodyWindows.Devices.DeviceModelResolver.FindByProductId;
+    private readonly long _appVersionMarker = appVersionMarker;
+    private string? _observedProductId = observedProductId;
+    private byte? _observedColor = observedColor;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private bool _disposed;
-    public Task<DailySnapshot> RefreshAsync(CancellationToken token = default) => RefreshCoreAsync(token);
+    private volatile bool _disposed;
+    private int _disposeStarted;
+    public Task<DailySnapshot> RefreshAsync(CancellationToken token = default) => RefreshCoreAsync(DailyRefreshScope.Full, token);
+    public Task<DailySnapshot> RefreshAsync(DailyRefreshScope scope, CancellationToken token = default) => RefreshCoreAsync(scope, token);
+    /// <summary>Selects a configured main ANC mode without choosing a child adjustment.</summary>
+    public Task<DailyApplyResult> ApplyAncModeAsync(byte primary, CancellationToken token = default) =>
+        ApplyCoreAsync("anc-mode", primary, 0, null, false, token);
     public Task<DailyApplyResult> ApplyAncAsync(byte primary, byte level, CancellationToken token = default) =>
         ApplyCoreAsync("anc", primary, level, null, false, token);
     public Task<DailyApplyResult> ApplyPresetAsync(byte presetId, CancellationToken token = default) =>
@@ -30,8 +41,12 @@ public sealed partial class DailyClient(IControlConnector connector) : IAsyncDis
         ApplyCoreAsync("hires", value ? (byte)1 : (byte)0, 0, null, allowMutexChange, token);
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeStarted, 1) != 0) return;
+        _monitorLifetime.Cancel();
         await _gate.WaitAsync();
         try { _disposed = true; await DropSessionAsync(); }
         finally { _gate.Release(); }
+        await _notificationRefresh;
+        _monitorLifetime.Dispose();
     }
 }

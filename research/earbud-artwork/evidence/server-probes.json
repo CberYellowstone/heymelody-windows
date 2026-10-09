@@ -1,0 +1,3578 @@
+{
+  "schema_version": 1,
+  "max_metadata_requests_per_probe_invocation": 1,
+  "max_cdn_gets_per_probe_invocation": 1,
+  "network_mode": "Explicit --probe or --known-defaults only",
+  "probes": [
+    {
+      "productId": "060410",
+      "color": "0",
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "json_root_keys": [
+        "code",
+        "data",
+        "msg"
+      ],
+      "code": 0,
+      "msg": "成功",
+      "data_keys": [
+        "cartoonUrl",
+        "productId",
+        "sha256"
+      ],
+      "resource_records_found": 1,
+      "resourceUrl_present": true,
+      "sha256_present": true,
+      "response_productIds": [
+        "060410"
+      ],
+      "selected_response_productId": "060410",
+      "resource_host": "iot-earbuds-cn.heytapimage.com",
+      "resource_filename": "control_060410_0.zip",
+      "resource_https_cdn_approved": true,
+      "sha256_shape_64hex": true,
+      "resource_get": {
+        "attempted": true,
+        "http_status": 200,
+        "bytes": 171549,
+        "sha256_matches": true,
+        "saved_package": "research\\earbud-artwork\\remote\\control_060410_0_9ef29c1995fc.zip",
+        "sha256": "9ef29c1995fc87d31df0ff608ee6f352a0ac1065f9cac8baa4c67e0ff92eadbf",
+        "header_hex": "504b0304140008080800c04b44520000",
+        "zip_member_count": 6,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 256
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 10993
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 2544
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 120562
+          },
+          {
+            "path": "res/image/img_left.png",
+            "bytes": 19265
+          },
+          {
+            "path": "res/image/img_right.png",
+            "bytes": 18135
+          }
+        ],
+        "configs": {
+          "config.json": {
+            "capsuleImageRes": {
+              "path": "res/image/img_capsule.png"
+            },
+            "detailImageRes": {
+              "path": "res/image/img_detail.png"
+            },
+            "leftImageRes": {
+              "path": "res/image/img_left.png"
+            },
+            "boxImageRes": {
+              "path": "res/image/img_box.png"
+            },
+            "rightImageRes": {
+              "path": "res/image/img_right.png"
+            }
+          }
+        },
+        "member_headers_hex": {
+          "res/image/img_box.png": "89504e470d0a1a0a0000000d49484452000000d8000000d80803000000befedd",
+          "res/image/img_capsule.png": "89504e470d0a1a0a0000000d4948445200000072000000720803000000b80375",
+          "res/image/img_detail.png": "89504e470d0a1a0a0000000d494844520000030c0000030c0803000000c9a1d0",
+          "res/image/img_left.png": "89504e470d0a1a0a0000000d49484452000001980000029408030000000ecfde",
+          "res/image/img_right.png": "89504e470d0a1a0a0000000d49484452000001980000029408030000000ecfde"
+        },
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "bf0d2200399543abbca01fc74c9ce9f5ade6bd2ab06fe7444413be3b816d9e38",
+          "query_present": false
+        }
+      },
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "bf0d2200399543abbca01fc74c9ce9f5ade6bd2ab06fe7444413be3b816d9e38",
+            "query_present": false
+          },
+          "productId": "060410",
+          "sha256": "9ef29c1995fc87d31df0ff608ee6f352a0ac1065f9cac8baa4c67e0ff92eadbf"
+        },
+        "msg": "成功"
+      },
+      "case_id": "enco-free-control",
+      "package": "com.oplus.melody",
+      "source": "无线耳机_17.6.3.apk",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "060410",
+        "color": "0"
+      },
+      "model_attribution": "request_and_response_productId",
+      "authentication_headers_persisted": false,
+      "color_evidence": "defaultColor=0 in both recovered APK whitelists.",
+      "evidence_note": "Imported immediately saved representative probe; no exact observation timestamp was persisted."
+    },
+    {
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/fetch",
+      "observed_at": null,
+      "original_response_persisted": false,
+      "exact_observation_time_persisted": false,
+      "replayed_for_evidence": false,
+      "evidence_note": "Earlier Plan-mode in-memory observation, reconstructed from recorded agent reports; original response and exact time were not saved.",
+      "authentication_headers_persisted": false,
+      "case_id": "historical-unsigned-x4-model",
+      "http_status": 500,
+      "code": null,
+      "msg": "The signature must not be blank! Please make sure the correctly[sign] parameter exists in request’s uri or header.",
+      "signed_request": false,
+      "request_sent": true,
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "06EC10",
+        "color": "0",
+        "moduleId": "14"
+      },
+      "data_present": null,
+      "resource_url_present": false,
+      "sha256_present": false,
+      "response_keys_observed": null,
+      "resource_records_found": 0
+    },
+    {
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/fetch",
+      "observed_at": null,
+      "original_response_persisted": false,
+      "exact_observation_time_persisted": false,
+      "replayed_for_evidence": false,
+      "evidence_note": "Earlier Plan-mode in-memory observation, reconstructed from recorded agent reports; original response and exact time were not saved.",
+      "authentication_headers_persisted": false,
+      "case_id": "historical-signed-x4-model",
+      "http_status": 200,
+      "code": 0,
+      "msg": "成功",
+      "signed_request": true,
+      "request_sent": true,
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "06EC10",
+        "color": "0",
+        "moduleId": "14"
+      },
+      "data_present": false,
+      "resource_url_present": false,
+      "sha256_present": false,
+      "response_keys_observed": [
+        "code",
+        "msg"
+      ],
+      "resource_records_found": 0
+    },
+    {
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/fetch",
+      "observed_at": null,
+      "original_response_persisted": false,
+      "exact_observation_time_persisted": false,
+      "replayed_for_evidence": false,
+      "evidence_note": "Earlier Plan-mode in-memory observation, reconstructed from recorded agent reports; original response and exact time were not saved.",
+      "authentication_headers_persisted": false,
+      "case_id": "historical-signed-x3-model",
+      "http_status": 200,
+      "code": 0,
+      "msg": "成功",
+      "signed_request": true,
+      "request_sent": true,
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "067410",
+        "color": "0",
+        "moduleId": "14"
+      },
+      "data_present": false,
+      "resource_url_present": false,
+      "sha256_present": false,
+      "response_keys_observed": [
+        "code",
+        "msg"
+      ],
+      "resource_records_found": 0
+    },
+    {
+      "case_id": "default-control-066812-0",
+      "observed_at": "2026-10-06T15:01:38.164726+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "066812",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-060810-0",
+      "observed_at": "2026-10-06T15:01:39.178596+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "060810",
+        "color": "0"
+      },
+      "color_evidence": "whitelist_explicit_defaultColor",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "990cd5156388ab1eef9a3208f8b8c30f152131e827536513af8decf2c607aaf5",
+            "query_present": false
+          },
+          "productId": "060810",
+          "sha256": "8904a7dafe83556d565568f053083e053517ba7efe8633c1a1dfdbe92f797be9"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "060810"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "990cd5156388ab1eef9a3208f8b8c30f152131e827536513af8decf2c607aaf5",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 70243,
+        "sha256": "8904a7dafe83556d565568f053083e053517ba7efe8633c1a1dfdbe92f797be9",
+        "sha256_matches": true,
+        "saved_package": "remote/control_060810_0_8904a7dafe83.zip",
+        "zip_member_count": 4,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 156
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 9359
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 2839
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 58206
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-061010-1",
+      "observed_at": "2026-10-06T15:01:40.451544+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "061010",
+        "color": "1"
+      },
+      "color_evidence": "whitelist_explicit_defaultColor",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "992f638c4613c861c1ad0c216e70261c04967bfe5087624ab6a6fabb0ef0fc35",
+            "query_present": false
+          },
+          "productId": "061010",
+          "sha256": "a64c9d5867c459c03440aa782426869377754da20eb2c1f24d0110e317954274"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "061010"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "992f638c4613c861c1ad0c216e70261c04967bfe5087624ab6a6fabb0ef0fc35",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 88576,
+        "sha256": "a64c9d5867c459c03440aa782426869377754da20eb2c1f24d0110e317954274",
+        "sha256_matches": true,
+        "saved_package": "remote/control_061010_1_a64c9d5867c4.zip",
+        "zip_member_count": 4,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 156
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 9702
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 2365
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 76229
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-060412-1",
+      "observed_at": "2026-10-06T15:01:42.616336+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "060412",
+        "color": "1"
+      },
+      "color_evidence": "whitelist_explicit_defaultColor",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "05503faefe7866b5acd2fc87576dd77e004aff13e7b378c7c6ca1632ed200acc",
+            "query_present": false
+          },
+          "productId": "060412",
+          "sha256": "3fe203d68ea9e25f0e7709fba659a1cceb01dc5ff1e2b95498075efdfd455238"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "060412"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "05503faefe7866b5acd2fc87576dd77e004aff13e7b378c7c6ca1632ed200acc",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 63103,
+        "sha256": "3fe203d68ea9e25f0e7709fba659a1cceb01dc5ff1e2b95498075efdfd455238",
+        "sha256_matches": true,
+        "saved_package": "remote/control_060412_1_3fe203d68ea9.zip",
+        "zip_member_count": 2,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 54
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 62872
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-062C10-1",
+      "observed_at": "2026-10-06T15:01:45.236226+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "062C10",
+        "color": "1"
+      },
+      "color_evidence": "whitelist_explicit_defaultColor",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "514c8aff0ea214f1cb43319378c9741366463410e788f6852d442391456664a3",
+            "query_present": false
+          },
+          "productId": "062C10",
+          "sha256": "a64c9d5867c459c03440aa782426869377754da20eb2c1f24d0110e317954274"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "062C10"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "514c8aff0ea214f1cb43319378c9741366463410e788f6852d442391456664a3",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 88576,
+        "sha256": "a64c9d5867c459c03440aa782426869377754da20eb2c1f24d0110e317954274",
+        "sha256_matches": true,
+        "saved_package": "remote/control_062C10_1_a64c9d5867c4.zip",
+        "zip_member_count": 4,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 156
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 9702
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 2365
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 76229
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-050410-0",
+      "observed_at": "2026-10-06T15:01:47.040027+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "050410",
+        "color": "0"
+      },
+      "color_evidence": "whitelist_explicit_defaultColor",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "6b2b0850f2dd2005a8226892dff8ad283c7ffbacbdb29a39b55dde47793f11bd",
+            "query_present": false
+          },
+          "productId": "050410",
+          "sha256": "e82de73bc1f84d7e184424622e3f3ffcf0a00aa67c291a03c50eb8366cac85d9"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "050410"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "6b2b0850f2dd2005a8226892dff8ad283c7ffbacbdb29a39b55dde47793f11bd",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 49137,
+        "sha256": "e82de73bc1f84d7e184424622e3f3ffcf0a00aa67c291a03c50eb8366cac85d9",
+        "sha256_matches": true,
+        "saved_package": "remote/control_050410_0_e82de73bc1f8.zip",
+        "zip_member_count": 4,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 156
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 14026
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 14026
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 21000
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-050010-0",
+      "observed_at": "2026-10-06T15:01:49.183617+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "050010",
+        "color": "0"
+      },
+      "color_evidence": "whitelist_explicit_defaultColor",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "b39696ff25b8b5343f2a1a037dc44aa3bbe1fc001e4cd355cabd058d8c94b74c",
+            "query_present": false
+          },
+          "productId": "050010",
+          "sha256": "519159e3fda05eab00abb5edd13ed5114e6f542af3a6b158b1cc569f1702efe7"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "050010"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "b39696ff25b8b5343f2a1a037dc44aa3bbe1fc001e4cd355cabd058d8c94b74c",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 125956,
+        "sha256": "519159e3fda05eab00abb5edd13ed5114e6f542af3a6b158b1cc569f1702efe7",
+        "sha256_matches": true,
+        "saved_package": "remote/control_050010_0_519159e3fda0.zip",
+        "zip_member_count": 4,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 156
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 19214
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 54649
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 54649
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-3D59CF-1",
+      "observed_at": "2026-10-06T15:01:51.058956+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "3D59CF",
+        "color": "1"
+      },
+      "color_evidence": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "1ba0a092dfe9a44810d49569fcd5fb328849ebe1b3e37a418c06184455e1352c",
+            "query_present": false
+          },
+          "productId": "3D59CF",
+          "sha256": "453df9c97d334c461153ee5abb876cd5e16d20cc390a9ed9d9c253db2f526638"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "3D59CF"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "1ba0a092dfe9a44810d49569fcd5fb328849ebe1b3e37a418c06184455e1352c",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 207810,
+        "sha256": "453df9c97d334c461153ee5abb876cd5e16d20cc390a9ed9d9c253db2f526638",
+        "sha256_matches": true,
+        "saved_package": "remote/control_3D59CF_1_453df9c97d33.zip",
+        "zip_member_count": 10,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 674
+          },
+          {
+            "path": "res/image/connected_box.png",
+            "bytes": 10278
+          },
+          {
+            "path": "res/image/connected_buds.png",
+            "bytes": 16280
+          },
+          {
+            "path": "res/image/disconnected.png",
+            "bytes": 39184
+          },
+          {
+            "path": "res/image/disconnected_to_pair.png",
+            "bytes": 38495
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 8420
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 3357
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 61235
+          },
+          {
+            "path": "res/image/img_left.png",
+            "bytes": 15351
+          },
+          {
+            "path": "res/image/img_right.png",
+            "bytes": 15404
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-F85450-1",
+      "observed_at": "2026-10-06T15:01:53.582152+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "F85450",
+        "color": "1"
+      },
+      "color_evidence": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "8fa69da93ad07a8a026e40242d1669d74d23b118e71a87ea937526b940d23cab",
+            "query_present": false
+          },
+          "productId": "F85450",
+          "sha256": "cab2a13d355f0dcb9e9c774e6efe756f82b218362adb03b53218622cd5ff2fb0"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "F85450"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "8fa69da93ad07a8a026e40242d1669d74d23b118e71a87ea937526b940d23cab",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 196907,
+        "sha256": "cab2a13d355f0dcb9e9c774e6efe756f82b218362adb03b53218622cd5ff2fb0",
+        "sha256_matches": true,
+        "saved_package": "remote/control_F85450_1_cab2a13d355f.zip",
+        "zip_member_count": 10,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 674
+          },
+          {
+            "path": "res/image/connected_box.png",
+            "bytes": 10719
+          },
+          {
+            "path": "res/image/connected_buds.png",
+            "bytes": 13613
+          },
+          {
+            "path": "res/image/disconnected.png",
+            "bytes": 38259
+          },
+          {
+            "path": "res/image/disconnected_to_pair.png",
+            "bytes": 37357
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 8181
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 2771
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 60167
+          },
+          {
+            "path": "res/image/img_left.png",
+            "bytes": 13234
+          },
+          {
+            "path": "res/image/img_right.png",
+            "bytes": 13120
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-E3009F-1",
+      "observed_at": "2026-10-06T15:01:55.674773+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "E3009F",
+        "color": "1"
+      },
+      "color_evidence": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "57d46e5fdc648896661b7c0837bb9832423857cddb1543fc1f56cf0373df98ef",
+            "query_present": false
+          },
+          "productId": "E3009F",
+          "sha256": "dfeb83c7c246b2d83f3017b5d79750f0426d9b63578fbd9fc3098348d041673c"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "E3009F"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "57d46e5fdc648896661b7c0837bb9832423857cddb1543fc1f56cf0373df98ef",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 66776,
+        "sha256": "dfeb83c7c246b2d83f3017b5d79750f0426d9b63578fbd9fc3098348d041673c",
+        "sha256_matches": true,
+        "saved_package": "remote/control_E3009F_1_dfeb83c7c246.zip",
+        "zip_member_count": 6,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 504
+          },
+          {
+            "path": "res/image/connected.png",
+            "bytes": 11407
+          },
+          {
+            "path": "res/image/disconnected.png",
+            "bytes": 17488
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 5256
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 2757
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 28933
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-8CD10F-1",
+      "observed_at": "2026-10-06T15:01:57.385626+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "8CD10F",
+        "color": "1"
+      },
+      "color_evidence": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "e7f3e71bc520ec3d41c9952b41424223e63f3dee77cafec7fa56c4532f93bbdb",
+            "query_present": false
+          },
+          "productId": "8CD10F",
+          "sha256": "f6312e21160ec37cd51d54687ac7d96cb465627c1eba74198774b98d998e9795"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "8CD10F"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "e7f3e71bc520ec3d41c9952b41424223e63f3dee77cafec7fa56c4532f93bbdb",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 335349,
+        "sha256": "f6312e21160ec37cd51d54687ac7d96cb465627c1eba74198774b98d998e9795",
+        "sha256_matches": true,
+        "saved_package": "remote/control_8CD10F_1_f6312e21160e.zip",
+        "zip_member_count": 10,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 674
+          },
+          {
+            "path": "res/image/connected_box.png",
+            "bytes": 22362
+          },
+          {
+            "path": "res/image/connected_buds.png",
+            "bytes": 19924
+          },
+          {
+            "path": "res/image/disconnected.png",
+            "bytes": 57270
+          },
+          {
+            "path": "res/image/disconnected_to_pair.png",
+            "bytes": 54685
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 13130
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 3570
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 93335
+          },
+          {
+            "path": "res/image/img_left.png",
+            "bytes": 35024
+          },
+          {
+            "path": "res/image/img_right.png",
+            "bytes": 34887
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-BA5D56-1",
+      "observed_at": "2026-10-06T15:01:59.445991+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "BA5D56",
+        "color": "1"
+      },
+      "color_evidence": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "72e974329a1df4e78fc2a8f64e3660d239869a38981e936052316315a641e937",
+            "query_present": false
+          },
+          "productId": "BA5D56",
+          "sha256": "6c4c298a798a49b9d545c8a467a55c494d8ae4351c212026e4618270b4dfb1c8"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "BA5D56"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "72e974329a1df4e78fc2a8f64e3660d239869a38981e936052316315a641e937",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 284571,
+        "sha256": "6c4c298a798a49b9d545c8a467a55c494d8ae4351c212026e4618270b4dfb1c8",
+        "sha256_matches": true,
+        "saved_package": "remote/control_BA5D56_1_6c4c298a798a.zip",
+        "zip_member_count": 10,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 674
+          },
+          {
+            "path": "res/image/connected_box.png",
+            "bytes": 27836
+          },
+          {
+            "path": "res/image/connected_buds.png",
+            "bytes": 13199
+          },
+          {
+            "path": "res/image/disconnected.png",
+            "bytes": 53341
+          },
+          {
+            "path": "res/image/disconnected_to_pair.png",
+            "bytes": 49442
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 12530
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 3151
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 84178
+          },
+          {
+            "path": "res/image/img_left.png",
+            "bytes": 19906
+          },
+          {
+            "path": "res/image/img_right.png",
+            "bytes": 20252
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-1B5374-1",
+      "observed_at": "2026-10-06T15:02:01.432999+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "1B5374",
+        "color": "1"
+      },
+      "color_evidence": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "a9e6a43912e5b3ab2dcc65fb700c8907918d8a5ebabbc5c48bcf0629858830a7",
+            "query_present": false
+          },
+          "productId": "1B5374",
+          "sha256": "536b1dc9a3af68505db576cdce9000a26d1e9dfe3ad8f1c525a0ad67325fac6a"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "1B5374"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "a9e6a43912e5b3ab2dcc65fb700c8907918d8a5ebabbc5c48bcf0629858830a7",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 371590,
+        "sha256": "536b1dc9a3af68505db576cdce9000a26d1e9dfe3ad8f1c525a0ad67325fac6a",
+        "sha256_matches": true,
+        "saved_package": "remote/control_1B5374_1_536b1dc9a3af.zip",
+        "zip_member_count": 10,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 674
+          },
+          {
+            "path": "res/image/connected_box.png",
+            "bytes": 27013
+          },
+          {
+            "path": "res/image/connected_buds.png",
+            "bytes": 20854
+          },
+          {
+            "path": "res/image/disconnected.png",
+            "bytes": 70745
+          },
+          {
+            "path": "res/image/disconnected_to_pair.png",
+            "bytes": 69549
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 14827
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 3905
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 122596
+          },
+          {
+            "path": "res/image/img_left.png",
+            "bytes": 20671
+          },
+          {
+            "path": "res/image/img_right.png",
+            "bytes": 20903
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-C1E2B1-1",
+      "observed_at": "2026-10-06T15:02:03.405633+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "C1E2B1",
+        "color": "1"
+      },
+      "color_evidence": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "f5cd63ace9adfc8782b1d6f04d04da92bb05def37b9d31af269f4760eaf4dd87",
+            "query_present": false
+          },
+          "productId": "C1E2B1",
+          "sha256": "51371fb75ecbf6dde60f569486a2b1b52e0bbc80ad4da15e83861d5122eaa587"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "C1E2B1"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "f5cd63ace9adfc8782b1d6f04d04da92bb05def37b9d31af269f4760eaf4dd87",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 61893,
+        "sha256": "51371fb75ecbf6dde60f569486a2b1b52e0bbc80ad4da15e83861d5122eaa587",
+        "sha256_matches": true,
+        "saved_package": "remote/control_C1E2B1_1_51371fb75ecb.zip",
+        "zip_member_count": 6,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 504
+          },
+          {
+            "path": "res/image/connected.png",
+            "bytes": 10602
+          },
+          {
+            "path": "res/image/disconnected.png",
+            "bytes": 16677
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 5014
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 2687
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 26181
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-C70A6D-1",
+      "observed_at": "2026-10-06T15:02:05.308258+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "C70A6D",
+        "color": "1"
+      },
+      "color_evidence": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "e45abd9f4a3a028a3786fcae5fa2c4f18f971842944418c82b4fcc19eced307a",
+            "query_present": false
+          },
+          "productId": "C70A6D",
+          "sha256": "b74e8836ae1d1d8eceae872b54ed6bf3f3e88a5bfa7e37eb816453d6b88d0ea0"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "C70A6D"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "e45abd9f4a3a028a3786fcae5fa2c4f18f971842944418c82b4fcc19eced307a",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 61032,
+        "sha256": "b74e8836ae1d1d8eceae872b54ed6bf3f3e88a5bfa7e37eb816453d6b88d0ea0",
+        "sha256_matches": true,
+        "saved_package": "remote/control_C70A6D_1_b74e8836ae1d.zip",
+        "zip_member_count": 6,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 504
+          },
+          {
+            "path": "res/image/connected.png",
+            "bytes": 10331
+          },
+          {
+            "path": "res/image/disconnected.png",
+            "bytes": 16132
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 4903
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 2692
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 26141
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-693878-1",
+      "observed_at": "2026-10-06T15:02:07.242599+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "693878",
+        "color": "1"
+      },
+      "color_evidence": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "e5c5a65fb43834da9bdd3fa29dfe7dcd73048e4d003167fac0e202e3e913a3a0",
+            "query_present": false
+          },
+          "productId": "693878",
+          "sha256": "4f14f4771e418012271965a98cceb6d8f810199e08dae0c54dd980bd90213279"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "693878"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "e5c5a65fb43834da9bdd3fa29dfe7dcd73048e4d003167fac0e202e3e913a3a0",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 338162,
+        "sha256": "4f14f4771e418012271965a98cceb6d8f810199e08dae0c54dd980bd90213279",
+        "sha256_matches": true,
+        "saved_package": "remote/control_693878_1_4f14f4771e41.zip",
+        "zip_member_count": 10,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 674
+          },
+          {
+            "path": "res/image/connected_box.png",
+            "bytes": 23174
+          },
+          {
+            "path": "res/image/connected_buds.png",
+            "bytes": 16067
+          },
+          {
+            "path": "res/image/disconnected.png",
+            "bytes": 75280
+          },
+          {
+            "path": "res/image/disconnected_to_pair.png",
+            "bytes": 31947
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 13557
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 3524
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 121832
+          },
+          {
+            "path": "res/image/img_left.png",
+            "bytes": 26295
+          },
+          {
+            "path": "res/image/img_right.png",
+            "bytes": 26489
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-060812-1",
+      "observed_at": "2026-10-06T15:02:09.293912+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "060812",
+        "color": "1"
+      },
+      "color_evidence": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "48855d262b2b9fc3a86f3031cff4a2a8a2513b412ce427116879f1d25952b8ab",
+            "query_present": false
+          },
+          "productId": "060812",
+          "sha256": "db5c3799bb701e802b84ae15b93e294879c22e8efa98236507213ff31aa5ec1c"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "060812"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "48855d262b2b9fc3a86f3031cff4a2a8a2513b412ce427116879f1d25952b8ab",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 191675,
+        "sha256": "db5c3799bb701e802b84ae15b93e294879c22e8efa98236507213ff31aa5ec1c",
+        "sha256_matches": true,
+        "saved_package": "remote/control_060812_1_db5c3799bb70.zip",
+        "zip_member_count": 12,
+        "zip_members": [
+          {
+            "path": "res/",
+            "bytes": 0
+          },
+          {
+            "path": "res/image/",
+            "bytes": 0
+          },
+          {
+            "path": "res/image/connected_box.png",
+            "bytes": 10089
+          },
+          {
+            "path": "res/image/connected_buds.png",
+            "bytes": 14702
+          },
+          {
+            "path": "res/image/disconnected.png",
+            "bytes": 38456
+          },
+          {
+            "path": "res/image/disconnected_to_pair.png",
+            "bytes": 35203
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 8758
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 3210
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 65045
+          },
+          {
+            "path": "res/image/img_left.png",
+            "bytes": 8109
+          },
+          {
+            "path": "res/image/img_right.png",
+            "bytes": 8057
+          },
+          {
+            "path": "config.json",
+            "bytes": 674
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-060C12-0",
+      "observed_at": "2026-10-06T15:02:11.173770+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "060C12",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-050412-1",
+      "observed_at": "2026-10-06T15:02:12.174488+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "050412",
+        "color": "1"
+      },
+      "color_evidence": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-061812-0",
+      "observed_at": "2026-10-06T15:02:13.166146+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "061812",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-061412-0",
+      "observed_at": "2026-10-06T15:02:14.173079+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "061412",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-061012-0",
+      "observed_at": "2026-10-06T15:02:15.178326+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "061012",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-061C12-0",
+      "observed_at": "2026-10-06T15:02:16.168117+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "061C12",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-063012-0",
+      "observed_at": "2026-10-06T15:02:17.166821+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "063012",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-050812-0",
+      "observed_at": "2026-10-06T15:02:18.172876+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "050812",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-062012-0",
+      "observed_at": "2026-10-06T15:02:19.163242+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "062012",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-063412-0",
+      "observed_at": "2026-10-06T15:02:20.155663+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "063412",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-063812-0",
+      "observed_at": "2026-10-06T15:02:21.156659+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "063812",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-063C12-0",
+      "observed_at": "2026-10-06T15:02:22.160405+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "063C12",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-064012-0",
+      "observed_at": "2026-10-06T15:02:23.151537+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "064012",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-062412-0",
+      "observed_at": "2026-10-06T15:02:24.152322+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "062412",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-064812-0",
+      "observed_at": "2026-10-06T15:02:25.159336+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "064812",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-064C12-0",
+      "observed_at": "2026-10-06T15:02:26.153121+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "064C12",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-066C12-0",
+      "observed_at": "2026-10-06T15:02:27.150775+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "066C12",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-066452-0",
+      "observed_at": "2026-10-06T15:02:28.156881+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "066452",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-067852-0",
+      "observed_at": "2026-10-06T15:02:29.161961+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "067852",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-067452-0",
+      "observed_at": "2026-10-06T15:02:30.155367+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "067452",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-067052-0",
+      "observed_at": "2026-10-06T15:02:31.154724+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "067052",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-065C12-0",
+      "observed_at": "2026-10-06T15:02:32.156191+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "065C12",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-065452-0",
+      "observed_at": "2026-10-06T15:02:33.161574+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "065452",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-062812-0",
+      "observed_at": "2026-10-06T15:02:34.162693+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "062812",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-064412-0",
+      "observed_at": "2026-10-06T15:02:35.156446+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "064412",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-065052-0",
+      "observed_at": "2026-10-06T15:02:36.163754+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "065052",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-067C52-0",
+      "observed_at": "2026-10-06T15:02:37.276665+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "067C52",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-065852-0",
+      "observed_at": "2026-10-06T15:02:38.282557+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "065852",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-066012-0",
+      "observed_at": "2026-10-06T15:02:39.275230+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "066012",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-050C12-0",
+      "observed_at": "2026-10-06T15:02:40.288702+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "050C12",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-051412-0",
+      "observed_at": "2026-10-06T15:02:41.293809+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "051412",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-052052-0",
+      "observed_at": "2026-10-06T15:02:42.296864+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "052052",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-051812-0",
+      "observed_at": "2026-10-06T15:02:43.296894+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "051812",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-051C52-0",
+      "observed_at": "2026-10-06T15:02:44.301825+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "051C52",
+        "color": "0"
+      },
+      "color_evidence": "L.E_realme_supportSpp_true_to_0",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-C70A6E-1",
+      "observed_at": "2026-10-06T15:02:45.297627+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "C70A6E",
+        "color": "1"
+      },
+      "color_evidence": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-C70A6F-1",
+      "observed_at": "2026-10-06T15:02:46.298191+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "C70A6F",
+        "color": "1"
+      },
+      "color_evidence": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-C70A70-1",
+      "observed_at": "2026-10-06T15:02:47.299210+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "C70A70",
+        "color": "1"
+      },
+      "color_evidence": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 25,
+      "response_sanitized": {
+        "code": 0,
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 0,
+      "response_product_ids": [],
+      "resource_url_present": false,
+      "sha256_present": false,
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-050810-0",
+      "observed_at": "2026-10-06T15:02:48.302343+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "050810",
+        "color": "0"
+      },
+      "color_evidence": "whitelist_explicit_defaultColor",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "a9fcfa54dac4cdfacbfced23a4a247e5f3f850d1addf24fdf02c67b719b84d1c",
+            "query_present": false
+          },
+          "productId": "050810",
+          "sha256": "da38e86092a4ae9cf7a13d33e5d26b19c68904fde2766cb00472fef54e71215e"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "050810"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "a9fcfa54dac4cdfacbfced23a4a247e5f3f850d1addf24fdf02c67b719b84d1c",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 29304,
+        "sha256": "da38e86092a4ae9cf7a13d33e5d26b19c68904fde2766cb00472fef54e71215e",
+        "sha256_matches": true,
+        "saved_package": "remote/control_050810_0_da38e86092a4.zip",
+        "zip_member_count": 4,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 156
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 6294
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 2722
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 20109
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    },
+    {
+      "case_id": "default-control-050414-2",
+      "observed_at": "2026-10-06T15:02:50.200043+00:00",
+      "source": "无线耳机_17.6.3.apk",
+      "package": "com.oplus.melody",
+      "version_name": "17.6.3",
+      "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+      "http_method": "POST",
+      "endpoint": "v1/earphone/resource/control",
+      "request_body": {
+        "platform": "android",
+        "channel": "1",
+        "versionCode": "17006003",
+        "productId": "050414",
+        "color": "2"
+      },
+      "color_evidence": "whitelist_explicit_defaultColor",
+      "authentication_headers_persisted": false,
+      "request_sent": true,
+      "http_status": 200,
+      "response_bytes": 244,
+      "response_sanitized": {
+        "code": 0,
+        "data": {
+          "cartoonUrl": {
+            "url_redacted": true,
+            "scheme": "https",
+            "host": "iot-earbuds-cn.heytapimage.com",
+            "path_sha256": "ee1993fa9552343f3d5e15972609f8f19e76ec04bdb4c053d3f9df081478578e",
+            "query_present": false
+          },
+          "productId": "050414",
+          "sha256": "b732f3b074a6fab99a6574a802fee74aef4653e98259712226cda01400799df3"
+        },
+        "msg": "成功"
+      },
+      "code": 0,
+      "msg": "成功",
+      "resource_records_found": 1,
+      "response_product_ids": [
+        "050414"
+      ],
+      "resource_url_present": true,
+      "sha256_present": true,
+      "model_attribution": "request_and_response_productId",
+      "resource_get": {
+        "selected_url_field": "cartoonUrl",
+        "attempted": true,
+        "source_url": {
+          "url_redacted": true,
+          "scheme": "https",
+          "host": "iot-earbuds-cn.heytapimage.com",
+          "path_sha256": "ee1993fa9552343f3d5e15972609f8f19e76ec04bdb4c053d3f9df081478578e",
+          "query_present": false
+        },
+        "http_status": 200,
+        "bytes": 244489,
+        "sha256": "b732f3b074a6fab99a6574a802fee74aef4653e98259712226cda01400799df3",
+        "sha256_matches": true,
+        "saved_package": "remote/control_050414_2_b732f3b074a6.zip",
+        "zip_member_count": 4,
+        "zip_members": [
+          {
+            "path": "config.json",
+            "bytes": 156
+          },
+          {
+            "path": "res/image/img_box.png",
+            "bytes": 38099
+          },
+          {
+            "path": "res/image/img_capsule.png",
+            "bytes": 14479
+          },
+          {
+            "path": "res/image/img_detail.png",
+            "bytes": 192623
+          }
+        ]
+      },
+      "selection_source": {
+        "package": "com.oplus.melody",
+        "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+        "apk_entry": "res/AQ.json",
+        "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+        "authenticated": true,
+        "model_count": 143
+      }
+    }
+  ],
+  "known_defaults_batch": {
+    "started_at": "2026-10-06T15:01:38.164726+00:00",
+    "qps_limit": 1,
+    "concurrency": 1,
+    "candidate_count": 57,
+    "new_metadata_requests": 56,
+    "reused_existing_observations": 1,
+    "max_one_query_per_product_id": true,
+    "stop_http_statuses": [
+      403,
+      429
+    ],
+    "max_cdn_bytes": 33554432,
+    "stop_reason": null,
+    "completed": true,
+    "finished_at": "2026-10-06T15:02:52.297590+00:00",
+    "verified_packages_total": 19,
+    "selected_products_with_observation": 57
+  }
+}

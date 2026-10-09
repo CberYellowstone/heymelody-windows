@@ -1,0 +1,30 @@
+{
+  "dressVersion": 2,
+  "bgType": "",
+  "name": "",
+  "icon": "icon.png",
+  "srcFile": "srcFile.png",
+  "blurProgress": 0,
+  "discoveryStates": {
+    "connectedState": {
+      "closeDelay" : 6000,
+      "infoFadeInDelay" : 3000,
+      "resShowDelay" : 3000,
+      "autoCrop" : true,
+      "resInAnim" : "fadeIn",
+      "maskColor": "#73000000",
+      "showEarphoneImageRes": true,
+      "bgImageRes": {
+        "path": "res/image/connected_background"
+      },
+      "boxImageRes": {
+        "path": "res/image/connected_box.png"
+      },
+      "budsImageRes": {
+        "path": "res/image/connected_buds.png"
+      },
+      "titleRes": {},
+      "batteriesRes": {}
+    }
+  }
+}

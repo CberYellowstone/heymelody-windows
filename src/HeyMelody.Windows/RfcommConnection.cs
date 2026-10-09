@@ -1,145 +1,197 @@
 namespace HeyMelodyWindows.Windows;
 
-/// <summary>Raw RFCOMM byte transport. The caller enforces the packet whitelist.
-/// No discovery, retry, channel fallback, notification registration, or device command is generated.
-/// Native sockets stay nonblocking; readiness polls use 100 ms waits. Cancellation is cooperative,
-/// not an absolute wall-clock guarantee against an unresponsive OS Bluetooth stack.</summary>
+/// <summary>Raw RFCOMM transport. One native event registration reports readiness without polling.
+/// The caller owns command policy, deadlines, discovery and reconnect decisions.</summary>
 public sealed class RfcommConnection : IAsyncDisposable
 {
     private readonly SafeRfcommSocket _socket;
     private readonly object _nativeGate = new();
     private readonly SemaphoreSlim _readGate = new(1, 1), _writeGate = new(1, 1);
+    private readonly EventWaitHandle _networkEvent = new(false, EventResetMode.ManualReset);
+    private RegisteredWaitHandle? _registration;
+    private readonly TaskCompletionSource _connectionReady = NewSignal();
+    private TaskCompletionSource? _readReady, _writeReady;
+    private Exception? _failure;
+    private bool _remoteClosed;
     private int _disposed;
-    private RfcommConnection(SafeRfcommSocket socket) => _socket = socket;
+    private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    /// <summary>Connects once to the supplied SDP-derived Melody channel. Channel 0 and service
-    /// fallback are rejected. Supply a deadline token; no automatic reconnection occurs.</summary>
+    private RfcommConnection(SafeRfcommSocket socket)
+    {
+        _socket = socket;
+        int result = Native.WSAEventSelect(socket.DangerousGetHandle(), _networkEvent.SafeWaitHandle.DangerousGetHandle(),
+            Native.FdRead | Native.FdWrite | Native.FdConnect | Native.FdClose);
+        if (result != 0)
+        {
+            int error = Native.WSAGetLastError(); _networkEvent.Dispose();
+            throw Native.Error(error, "RFCOMM event registration failed.");
+        }
+        ArmWait();
+    }
+    private void ArmWait() => _registration = ThreadPool.RegisterWaitForSingleObject(_networkEvent,
+        static (state, _) => ((RfcommConnection)state!).OnNetworkEvent(), this, Timeout.Infinite, executeOnlyOnce: true);
+
+    /// <summary>Connects once to the explicit SDP-derived Melody channel; never falls back or reconnects.</summary>
     public static Task<RfcommConnection> ConnectAsync(ulong address, Guid serviceId, uint channel, CancellationToken token)
     {
         Native.Validate(address, serviceId);
         if (channel is < 1 or > 30) throw new ArgumentOutOfRangeException(nameof(channel));
-        return Task.Run(() => ConnectCore(address, serviceId, channel, token), token);
+        return ConnectCoreAsync(address, channel, token);
     }
-    private static unsafe RfcommConnection ConnectCore(ulong address, Guid serviceId, uint channel, CancellationToken token)
+    private static async Task<RfcommConnection> ConnectCoreAsync(ulong address, uint channel, CancellationToken token)
     {
-        token.ThrowIfCancellationRequested();
-        Native.Startup();
-        var raw = Native.socket(Native.AfBth, Native.SockStream, Native.Rfcomm);
-        var socketError = raw == -1 ? Native.WSAGetLastError() : 0;
-        if (raw == -1) throw Native.Error(socketError, "RFCOMM socket creation failed.");
+        token.ThrowIfCancellationRequested(); Native.Startup();
+        nint raw = Native.socket(Native.AfBth, Native.SockStream, Native.Rfcomm);
+        if (raw == -1) throw Native.Error(Native.WSAGetLastError(), "RFCOMM socket creation failed.");
         var socket = new SafeRfcommSocket(raw);
+        RfcommConnection? connection = null;
         try
         {
-            uint nonblocking = 1;
-            var mode = Native.ioctlsocket(raw, unchecked((int)0x8004667E), ref nonblocking);
-            var modeError = mode == 0 ? 0 : Native.WSAGetLastError();
-            if (mode != 0) throw Native.Error(modeError, "RFCOMM nonblocking configuration failed.");
-            // Port is the explicit SDP result; do not request a second implicit service lookup.
-            var peer = new Native.SockAddrBth { Family = Native.AfBth, Address = address, ServiceId = Guid.Empty, Port = channel };
-            var connected = Native.connect(raw, ref peer, sizeof(Native.SockAddrBth));
-            var error = connected == 0 ? 0 : Native.WSAGetLastError();
-            if (connected != 0 && error != Native.WouldBlock) throw Native.Error(error, "RFCOMM connection failed.");
-            while (connected != 0)
-            {
-                token.ThrowIfCancellationRequested();
-                if (!Ready(raw, write: true)) continue;
-                var socketStatus = 0;
-                var size = sizeof(int);
-                var status = Native.getsockopt(raw, 0xFFFF, 0x1007, ref socketStatus, ref size);
-                var statusError = status == 0 ? 0 : Native.WSAGetLastError();
-                if (status != 0) throw Native.Error(statusError, "RFCOMM connection status failed.");
-                if (socketStatus != 0) throw Native.Error(socketStatus, "RFCOMM connection failed.");
-                break;
-            }
-            token.ThrowIfCancellationRequested();
-            return new RfcommConnection(socket);
+            connection = new(socket);
+            if (!connection.BeginConnect(address, channel))
+                await connection._connectionReady.Task.WaitAsync(token).ConfigureAwait(false);
+            token.ThrowIfCancellationRequested(); connection.ThrowIfUnavailable();
+            return connection;
         }
-        catch { socket.Dispose(); throw; }
+        catch
+        {
+            if (connection is not null) await connection.DisposeAsync(); else socket.Dispose();
+            throw;
+        }
     }
-
+    private unsafe bool BeginConnect(ulong address, uint channel)
+    {
+        lock (_nativeGate)
+        {
+            var peer = new Native.SockAddrBth { Family = Native.AfBth, Address = address, ServiceId = Guid.Empty, Port = channel };
+            int result = Native.connect(_socket.DangerousGetHandle(), ref peer, sizeof(Native.SockAddrBth));
+            int error = result == 0 ? 0 : Native.WSAGetLastError();
+            if (result != 0 && error != Native.WouldBlock) throw Native.Error(error, "RFCOMM connection failed.");
+            if (result == 0) _connectionReady.TrySetResult();
+            return result == 0;
+        }
+    }
+    private void OnNetworkEvent()
+    {
+        lock (_nativeGate)
+        {
+            if (_disposed != 0) return;
+            int result = Native.WSAEnumNetworkEvents(_socket.DangerousGetHandle(),
+                _networkEvent.SafeWaitHandle.DangerousGetHandle(), out var events);
+            if (result != 0) Fail(Native.Error(Native.WSAGetLastError(), "RFCOMM event enumeration failed."));
+            else
+            {
+                for (int bit = 0; bit < 6; bit++)
+                    if ((events.Events & (1 << bit)) != 0 && events.Errors[bit] != 0)
+                    { Fail(Native.Error(events.Errors[bit], "RFCOMM network event failed.")); break; }
+                if (_failure is null)
+                {
+                    if ((events.Events & Native.FdConnect) != 0) _connectionReady.TrySetResult();
+                    if ((events.Events & Native.FdClose) != 0) _remoteClosed = true;
+                    if ((events.Events & (Native.FdRead | Native.FdClose)) != 0)
+                    { _readReady?.TrySetResult(); _readReady = null; }
+                    if ((events.Events & (Native.FdWrite | Native.FdClose)) != 0)
+                    { _writeReady?.TrySetResult(); _writeReady = null; }
+                }
+            }
+            // EnumNetworkEvents atomically drains and resets the manual-reset event.
+            // Rearming a one-shot managed wait avoids overlapping callbacks while it is signaled.
+            if (_failure is null) ArmWait();
+        }
+    }
+    private void Fail(Exception failure)
+    {
+        _failure ??= failure;
+        _connectionReady.TrySetException(failure);
+        _readReady?.TrySetException(failure); _writeReady?.TrySetException(failure);
+    }
     public async Task SendAsync(ReadOnlyMemory<byte> bytes, CancellationToken token)
     {
-        ThrowIfDisposed();
-        await _writeGate.WaitAsync(token).ConfigureAwait(false);
-        try { await Task.Run(() => SendCore(bytes, token), token).ConfigureAwait(false); }
-        finally { _writeGate.Release(); }
-    }
-    private unsafe void SendCore(ReadOnlyMemory<byte> bytes, CancellationToken token)
-    {
-        using var pinned = bytes.Pin();
-        var offset = 0;
-        while (offset < bytes.Length)
+        ThrowIfUnavailable(); await _writeGate.WaitAsync(token).ConfigureAwait(false);
+        try
         {
-            token.ThrowIfCancellationRequested();
-            ThrowIfDisposed();
-            lock (_nativeGate)
+            int offset = 0;
+            while (offset < bytes.Length)
             {
                 token.ThrowIfCancellationRequested();
-                ThrowIfDisposed();
-                var raw = _socket.DangerousGetHandle();
-                if (!Ready(raw, write: true)) continue;
-                var count = Native.send(raw, (byte*)pinned.Pointer + offset, Math.Min(bytes.Length - offset, 65536), 0);
-                var error = count < 0 ? Native.WSAGetLastError() : 0;
-                if (count < 0 && error == Native.WouldBlock) continue;
-                if (count < 0) throw Native.Error(error, "RFCOMM send failed.");
-                if (count == 0) throw new IOException("RFCOMM closed during send.");
-                offset += count;
+                Task? ready;
+                lock (_nativeGate)
+                {
+                    ThrowIfUnavailable();
+                    if (_remoteClosed) throw new IOException("RFCOMM closed during send.");
+                    int count = TrySend(bytes[offset..]);
+                    if (count >= 0)
+                    {
+                        if (count == 0) throw new IOException("RFCOMM closed during send.");
+                        offset += count; ready = null;
+                    }
+                    else ready = (_writeReady ??= NewSignal()).Task;
+                }
+                if (ready is not null) await ready.WaitAsync(token).ConfigureAwait(false);
             }
+            token.ThrowIfCancellationRequested(); ThrowIfUnavailable();
         }
-        token.ThrowIfCancellationRequested();
-        ThrowIfDisposed();
+        finally { _writeGate.Release(); }
+    }
+    private unsafe int TrySend(ReadOnlyMemory<byte> bytes)
+    {
+        using var pinned = bytes.Pin();
+        int count = Native.send(_socket.DangerousGetHandle(), (byte*)pinned.Pointer, Math.Min(bytes.Length, 65536), 0);
+        if (count < 0)
+        {
+            int error = Native.WSAGetLastError();
+            if (error != Native.WouldBlock) throw Native.Error(error, "RFCOMM send failed.");
+        }
+        return count;
     }
     public async Task<int> ReadAsync(Memory<byte> bytes, CancellationToken token)
     {
-        ThrowIfDisposed();
-        await _readGate.WaitAsync(token).ConfigureAwait(false);
-        try { return await Task.Run(() => ReadCore(bytes, token), token).ConfigureAwait(false); }
-        finally { _readGate.Release(); }
-    }
-    private unsafe int ReadCore(Memory<byte> bytes, CancellationToken token)
-    {
-        token.ThrowIfCancellationRequested();
-        ThrowIfDisposed();
-        if (bytes.IsEmpty) return 0;
-        using var pinned = bytes.Pin();
-        while (true)
+        ThrowIfUnavailable(); await _readGate.WaitAsync(token).ConfigureAwait(false);
+        try
         {
-            token.ThrowIfCancellationRequested();
-            ThrowIfDisposed();
-            lock (_nativeGate)
+            if (bytes.IsEmpty) return 0;
+            while (true)
             {
-                token.ThrowIfCancellationRequested();
-                ThrowIfDisposed();
-                var raw = _socket.DangerousGetHandle();
-                if (!Ready(raw, write: false)) continue;
-                var count = Native.recv(raw, (byte*)pinned.Pointer, Math.Min(bytes.Length, 65536), 0);
-                var error = count < 0 ? Native.WSAGetLastError() : 0;
-                if (count < 0 && error == Native.WouldBlock) continue;
-                if (count < 0) throw Native.Error(error, "RFCOMM receive failed.");
-                return count;
+                token.ThrowIfCancellationRequested(); Task ready;
+                lock (_nativeGate)
+                {
+                    ThrowIfUnavailable();
+                    int count = TryRead(bytes);
+                    if (count >= 0) return count;
+                    if (_remoteClosed) return 0;
+                    ready = (_readReady ??= NewSignal()).Task;
+                }
+                await ready.WaitAsync(token).ConfigureAwait(false);
             }
         }
+        finally { _readGate.Release(); }
     }
-    private static unsafe bool Ready(nint socket, bool write)
+    private unsafe int TryRead(Memory<byte> bytes)
     {
-        var ready = Native.FdSet.One(socket);
-        var errors = Native.FdSet.One(socket);
-        var timeout = new Native.TimeVal { Microseconds = 100_000 };
-        var selected = Native.select(0, write ? null : &ready, write ? &ready : null, &errors, ref timeout);
-        var error = selected < 0 ? Native.WSAGetLastError() : 0;
-        if (selected < 0) throw Native.Error(error, "RFCOMM readiness polling failed.");
-        return selected > 0;
+        using var pinned = bytes.Pin();
+        int count = Native.recv(_socket.DangerousGetHandle(), (byte*)pinned.Pointer, Math.Min(bytes.Length, 65536), 0);
+        if (count < 0)
+        {
+            int error = Native.WSAGetLastError();
+            if (error != Native.WouldBlock) throw Native.Error(error, "RFCOMM receive failed.");
+        }
+        return count;
     }
-    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-
-    /// <summary>Prevents further native operations, then closes under the same lock as select/send/recv.
-    /// No managed lock is held across an unbounded I/O wait. Native scheduling latency is not bounded.</summary>
+    private void ThrowIfUnavailable()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (_failure is { } failure) throw new IOException("RFCOMM channel failed.", failure);
+    }
     public ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return ValueTask.CompletedTask;
-        lock (_nativeGate) _socket.Dispose();
-        // SemaphoreSlim instances are deliberately not disposed while queued/active callers can
-        // still release them. They own no WaitHandle; concurrent callers observe _disposed.
+        lock (_nativeGate)
+        {
+            _registration?.Unregister(null);
+            _connectionReady.TrySetCanceled(); _readReady?.TrySetCanceled(); _writeReady?.TrySetCanceled();
+            _socket.Dispose(); _networkEvent.Dispose();
+        }
+        // Callers can still release their semaphores after cancellation, so do not dispose those here.
         return ValueTask.CompletedTask;
     }
 }

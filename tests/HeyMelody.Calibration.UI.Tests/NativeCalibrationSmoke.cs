@@ -1,0 +1,200 @@
+using System.Text.Json;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Styling;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using FluentAvalonia.Styling;
+using FluentAvalonia.UI.Windowing;
+using HeyMelodyWindows.App;
+using HeyMelodyWindows.Calibration.UI;
+
+internal static class NativeCalibrationSmoke
+{
+    private static string _output = "";
+    private static string? _failure;
+    private static bool _completed;
+    private static int _checks;
+    private static CancellationTokenSource _loop = null!;
+
+    public static int Run()
+    {
+        if (!OperatingSystem.IsWindows()) return 2;
+        _output = Path.GetFullPath(Path.Combine("artifacts", "calibration-native-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss")));
+        Directory.CreateDirectory(_output);
+        _loop = new CancellationTokenSource();
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                AppBuilder.Configure<NativeFixtureApplication>().UsePlatformDetect().SetupWithoutStarting();
+                Dispatcher.UIThread.MainLoop(_loop.Token);
+            }
+            catch (Exception error) { _failure = error.ToString(); }
+        }) { IsBackground = true, Name = "Calibration native fixture" };
+        thread.SetApartmentState(ApartmentState.STA); thread.Start();
+        if (!thread.Join(TimeSpan.FromSeconds(30))) _failure ??= "Native fixture did not finish.";
+        var result = new { success = _completed && _failure is null, passed = _checks, nativeBluetoothCalls = 0,
+            scope = "Win32 wizard windows with fixture responses and routed keyboard input; no device or acoustic test", failure = _failure };
+        File.WriteAllText(Path.Combine(_output, "receipt.json"), JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+        Console.WriteLine(JsonSerializer.Serialize(result)); Console.WriteLine(_output);
+        return result.success ? 0 : 1;
+    }
+
+    public sealed class NativeFixtureApplication : Application
+    {
+        public override void Initialize()
+        { RequestedThemeVariant = ThemeVariant.Light; Styles.Add(new FluentAvaloniaTheme { PreferSystemTheme = false }); }
+        public override void OnFrameworkInitializationCompleted()
+        {
+            var service = new TestService { BlockFirstLevel = true };
+            service.State = service.State with { HearingVersion = "V2", Stage = "AwaitingAnswer", ToneAcknowledged = true, FrequencyHz = 500 };
+            var model = new CalibrationViewModel(service, "operation", "hearing");
+            var view = new CalibrationView(model);
+            var window = CreateWindow(view, "黄金听感 fixture");
+            window.Opened += async (_, _) =>
+            {
+                try
+                {
+                    await model.InitializeAsync(); await Task.Delay(200);
+                    var handle = window.TryGetPlatformHandle();
+                    Check(handle is not null && handle.Handle != IntPtr.Zero && view.Bounds.Width > 0, "A real Win32 wizard window is laid out.");
+                    var slider = view.GetVisualDescendants().OfType<Slider>().Single();
+                    Check(slider.Value == 5 && model.State.Decibels == -19, "Factory middle level is the initial native slider value.");
+                    slider.Focus(); PressKey(slider, Key.Right);
+                    await service.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+                    Check(!Button(view, "下一步").IsEnabled, "Native Next is disabled while the tone ACK is pending.");
+                    service.ReleaseLevel.TrySetResult(); await Until(() => !model.LevelPending);
+                    Check(service.Inputs.Last() is { Action: "level", LevelIndex: 6 } && model.State.Decibels == -11,
+                        "Native slider keyboard input sends the higher level.");
+                    PressKey(slider, Key.Left); await Until(() => !model.LevelPending && service.Inputs.Count == 2);
+                    Check(service.Inputs.Last().LevelIndex == 5 && model.State.Decibels == -19,
+                        "Native slider keyboard input also sends the lower level.");
+                    Push(service.State with { StepIndex = 1, FrequencyType = 2, FrequencyHz = 1000, LevelIndex = 5, Decibels = -19 });
+                    Check(view.GetVisualDescendants().OfType<Slider>().Single().Value == 5, "A native step change resets the middle level.");
+                    Capture(view, "hearing-slider");
+                    Push(service.State with { Stage = "Results", StepIndex = 12, FiltersReady = false });
+                    Check(!view.GetVisualDescendants().OfType<TextBox>().Any(), "Incomplete native results do not expose Save.");
+                    Push(service.State with { FiltersReady = true, CanPreview = true, HasInterEarDifference = true });
+                    Check(Button(view, "原音").IsEnabled && Button(view, "黄金听感").IsEnabled && Button(view, "保存并启用").IsEnabled,
+                        "Complete native results expose effect comparison and Save.");
+                    Capture(view, "hearing-results");
+                    service.StopFailuresRemaining = 1;
+                    Button(view, "取消").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+                    await Until(() => model.CancellationFailed && !model.CancellationPending);
+                    Check(!model.StopConfirmed && window.IsVisible && Button(view, "重试停止").IsEnabled,
+                        "Native STOP failure keeps the window and its retry button available.");
+                    Capture(view, "stop-failed");
+                    Button(view, "重试停止").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+                    await Until(() => model.StopConfirmed && !model.CancellationPending);
+                    Check(service.Cancels == 2 && model.State.Stage == "Cancelled" && model.Error.Length == 0,
+                        "Native retry confirms STOP only after a successful response.");
+                    var fitService = new TestService();
+                    await using var fitModel = new CalibrationViewModel(fitService, "operation", "fit");
+                    await fitModel.InitializeAsync();
+                    var fitView = new CalibrationView(fitModel); var fitWindow = CreateWindow(fitView, "贴合度 fixture");
+                    try
+                    {
+                        fitWindow.Show(); await Task.Delay(100);
+                        fitService.State = fitService.State with { Revision = 2, Stage = "Completed", FitResults = [new(1, 0), new(2, 1)] };
+                        fitModel.Adopt(fitService.State); await Task.Delay(50);
+                        var text = fitView.GetVisualDescendants().OfType<TextBlock>().Select(x => x.Text).ToArray();
+                        Check(text.Contains("贴合一般") && text.Contains("贴合良好") && Button(fitView, "重新测试").IsEnabled,
+                            "Native fit results preserve the three-state wording and retry.");
+                        Capture(fitView, "fit-results");
+                    }
+                    finally { fitWindow.Close(); }
+                    await CheckWindowClosingAsync();
+                    _completed = true;
+                }
+                catch (Exception error) { _failure = error.ToString(); }
+                finally { service.ReleaseLevel.TrySetResult(); await model.DisposeAsync(); window.Close(); _loop.Cancel(); }
+            };
+            base.OnFrameworkInitializationCompleted();
+            // The fixture owns the dispatcher lifetime so production wizard closes can be tested independently.
+            window.Show();
+
+            void Push(UiCalibrationState state)
+            { service.State = state with { Revision = model.State.Revision + 1 }; model.Adopt(service.State); Dispatcher.UIThread.RunJobs(); }
+        }
+    }
+
+    private static FAAppWindow CreateWindow(CalibrationView view, string title)
+    {
+        view.Background = new SolidColorBrush(Color.FromRgb(243, 243, 243));
+        return new() { Content = view, Title = title, Width = 520, Height = 720, ShowActivated = false, Position = new PixelPoint(-32000, -32000) };
+    }
+    private static async Task CheckWindowClosingAsync()
+    {
+        var service = ActiveService(); service.StopFailuresRemaining = 1;
+        var window = CreateWindow();
+        try
+        {
+            window.Show(); await Task.Delay(50); window.Close();
+            await Until(() => service.Cancels == 1 && Button(window, "重试停止").IsEnabled);
+            Check(window.IsVisible && !service.Disposed && service.State.Stage == "Failed",
+                "A native window close retains its service after STOP fails.");
+            Button(window, "重试停止").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+            await Until(() => !window.IsVisible);
+            Check(service.Cancels == 2 && service.Disposed && service.State.Stage == "Cancelled",
+                "A native retry click closes only after a confirmed STOP.");
+        }
+        finally { if (window.IsVisible) { service.StopFailuresRemaining = 0; window.Close(); await Until(() => !window.IsVisible); } }
+
+        service = ActiveService(); service.StopFailuresRemaining = 1; window = CreateWindow();
+        try
+        {
+            window.Show(); await Task.Delay(50);
+            service.Push(new BackendEvent { Kind = "requestExit", ExitRequestId = "exit-failed" });
+            await Until(() => service.ExitApprovals.Count == 1);
+            Check(service.ExitApprovals is [("exit-failed", false)] && window.IsVisible && !service.Disposed,
+                "A native failed STOP acknowledges the exit request as false.");
+            service.Push(new BackendEvent { Kind = "requestExit", ExitRequestId = "exit-retry" });
+            await Until(() => !window.IsVisible);
+            Check(service.ExitApprovals is [("exit-failed", false), ("exit-retry", true)] && service.Cancels == 2 && service.Disposed,
+                "A native confirmed retry acknowledges exit as true before closing.");
+        }
+        finally { if (window.IsVisible) { service.StopFailuresRemaining = 0; window.Close(); await Until(() => !window.IsVisible); } }
+
+        service = ActiveService(); service.StopFailuresRemaining = 1; window = CreateWindow();
+        try
+        {
+            window.Show(); await Task.Delay(50); window.Close();
+            await Until(() => service.Cancels == 1 && Button(window, "重试停止").IsEnabled);
+            service.Push(new BackendEvent { Kind = "unavailable", Message = "后台已断开。" });
+            await Until(() => !window.IsVisible);
+            Check(service.Cancels == 1 && service.Disposed && service.State.Stage == "Failed" && service.ExitApprovals.Count == 0,
+                "A disconnected backend permits native local close without claiming STOP succeeded.");
+        }
+        finally { if (window.IsVisible) { service.StopFailuresRemaining = 0; window.Close(); await Until(() => !window.IsVisible); } }
+
+        static TestEventService ActiveService() => new() { State = new UiCalibrationState
+            { Handle = "operation", Identity = "earbuds", Generation = 42, Revision = 1, BackendInstanceId = "fixture",
+                Stage = "AwaitingAnswer", HearingVersion = "V2", ToneAcknowledged = true } };
+        CalibrationWindow CreateWindow() => new(service, "operation", "hearing")
+            { ShowActivated = false, WindowStartupLocation = WindowStartupLocation.Manual, Position = new PixelPoint(-32000, -32000) };
+    }
+    private static Button Button(Control view, string text) => view.GetVisualDescendants().OfType<Button>().Single(x => Equals(x.Content, text));
+    private static void PressKey(Slider slider, Key key)
+    {
+        slider.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = key });
+        slider.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyUpEvent, Key = key });
+    }
+    private static async Task Until(Func<bool> condition)
+    {
+        for (var i = 0; i < 300 && !condition(); i++) await Task.Delay(10);
+        Check(condition(), "Native interaction completed.");
+    }
+    private static void Capture(Control view, string name)
+    {
+        using var bitmap = new RenderTargetBitmap(new PixelSize((int)Math.Ceiling(view.Bounds.Width), (int)Math.Ceiling(view.Bounds.Height)), new Vector(96, 96));
+        bitmap.Render(view);
+        using var file = File.Create(Path.Combine(_output, name + ".png"));
+        bitmap.Save(file, PngBitmapEncoderOptions.Default);
+    }
+    private static void Check(bool condition, string message)
+    { if (!condition) throw new InvalidOperationException(message); _checks++; }
+}

@@ -1,4 +1,9 @@
-"""Offline source-evidence checks only; never imports client/native modules."""
+"""Offline historical source-evidence checks; no client/native modules or device calls.
+
+New reports default to research/phase5-protocol-evidence/<UTC>.json. An explicit
+--output retains old path compatibility; existing reports are never overwritten.
+"""
+import argparse
 from pathlib import Path
 import hashlib
 import json
@@ -11,6 +16,13 @@ def read(path):
     return path.read_text(encoding='utf-8-sig')
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output', type=Path, help='New report path; refuses an existing file')
+    args = parser.parse_args()
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+    out = (args.output or ROOT / 'research/phase5-protocol-evidence' / (stamp + '.json')).resolve()
+    if out.exists():
+        parser.error('Output already exists; choose a new report path')
     labels = {'0': '丹拿原声', '7': '丹拿高解析', '2': '纯享人声', '1': '清亮高音', '3': '澎湃低音'}
     from xml.etree import ElementTree
     strings = {x.attrib['name']: x.text for x in ElementTree.parse(REF / 'apktool/res/values-zh-rCN/strings.xml').getroot().findall('string')}
@@ -53,8 +65,9 @@ def main():
         'blockingFindingsInReadScope': [],
         'outOfReviewScope': ['GUI', 'Windows native connector', 'release packaging', 'ARM64 native execution', 'OTA', 'recording', 'translation', 'health']
     }
-    out = ROOT / 'artifacts/phase5-protocol-evidence.json'
-    out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open('x', encoding='utf-8') as stream:
+        stream.write(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps({'pass': report['pass'], 'checks': len(checks), 'output': str(out)}, ensure_ascii=False))
     return 0 if report['pass'] else 1
 

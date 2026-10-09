@@ -6,9 +6,20 @@ using System.Text.Json.Nodes;
 using HeyMelodyWindows.Devices;
 using HeyMelodyWindows.Protocol;
 
+if (args.Length != 0)
+{
+    if (args.Length != 2 || args[0] != "--verify-source")
+    {
+        Console.Error.WriteLine("Usage: HeyMelody.Devices.Tests [--verify-source <original-evidence.zip>]");
+        return 2;
+    }
+    try { SourceArchive(Path.GetFullPath(args[1])); Console.WriteLine("PASS original ZIP member matches pinned source and embedded asset"); return 0; }
+    catch (Exception error) { Console.Error.WriteLine($"FAIL source provenance: {error.Message}"); return 1; }
+}
+
 var tests = new (string Name, Action Body)[]
 {
-    ("Pinned asset equals complete ZIP member and embedded resource", Asset),
+    ("Pinned source asset equals embedded resource and recorded hash", Asset),
     ("Exact product identity has no name or alias fallback", Identity),
     ("All X4 projections preserve values, order and raw fields", Metadata),
     ("Sparse EQ and unknown ANC children use protocol IDs", Modes),
@@ -21,6 +32,12 @@ var tests = new (string Name, Action Body)[]
     ("Legacy and modern game candidates follow reported features", Games),
     ("Game sound uses dedicated commands and original type/mutex lists", GameSound),
     ("JSON projection is complete and serializable", JsonProjection),
+    ("Every bundled source profile parses and cannot authorize setters", CatalogProfileTests.AllBundledProfiles),
+    ("Malformed optional profile metadata cannot grant controls", CatalogProfileTests.MalformedOptionalMetadata),
+    ("Firmware compatibility EQ branches preserve native protocol IDs", CatalogProfileTests.CompatibilityEqualizers),
+    ("Version EQ requires both firmware and source app marker", CatalogProfileTests.VersionEqualizers),
+    ("APK EQ append order, stable sorting and exact color selection", CatalogProfileTests.ApkEqualizerOrderingAndColor),
+    ("EQ firmware markers and malformed conditions follow safe branches", CatalogProfileTests.FirmwareMarkerAndMalformedConditions),
 };
 int failed = 0;
 foreach (var test in tests)
@@ -46,23 +63,30 @@ static string ProjectRoot()
 {
     var directory = new DirectoryInfo(AppContext.BaseDirectory);
     while (directory != null)
-    { if (File.Exists(Path.Combine(directory.FullName, X4Profile.ArchivePath))) return directory.FullName; directory = directory.Parent; }
-    throw new InvalidOperationException("Cannot locate source archive for provenance test");
+    { if (File.Exists(Path.Combine(directory.FullName, "src/HeyMelody.Devices/Assets/oppo-enco-x4.json"))) return directory.FullName; directory = directory.Parent; }
+    throw new InvalidOperationException("Cannot locate repository asset for profile tests");
 }
 static void Asset()
 {
     string root = ProjectRoot();
-    using var archive = ZipFile.OpenRead(Path.Combine(root, X4Profile.ArchivePath));
-    using var source = archive.GetEntry(X4Profile.ArchiveMember)!.Open();
-    using var buffer = new MemoryStream(); source.CopyTo(buffer);
-    byte[] original = buffer.ToArray();
     byte[] copy = File.ReadAllBytes(Path.Combine(root, "src/HeyMelody.Devices/Assets/oppo-enco-x4.json"));
-    Sequence(original, copy);
     Eq(X4Profile.AssetSha256, Convert.ToHexString(SHA256.HashData(copy)));
     using var embedded = typeof(X4Profile).Assembly.GetManifestResourceStream("HeyMelodyWindows.Devices.Assets.oppo-enco-x4.json")!;
-    using var data = new MemoryStream(); embedded.CopyTo(data); Sequence(original, data.ToArray());
+    using var data = new MemoryStream(); embedded.CopyTo(data); Sequence(copy, data.ToArray());
+    Eq(X4Profile.AssetSha256, Convert.ToHexString(SHA256.HashData(data.ToArray())));
     Eq(X4Profile.AssetSha256, X4Profile.Load().Provenance.Sha256);
     Eq(X4Profile.ArchiveMember, X4Profile.Load().Provenance.ArchiveMember);
+}
+static void SourceArchive(string path)
+{
+    Asset();
+    using var archive = ZipFile.OpenRead(path);
+    using var source = (archive.GetEntry(X4Profile.ArchiveMember)
+        ?? throw new InvalidDataException($"Missing evidence member: {X4Profile.ArchiveMember}")).Open();
+    using var buffer = new MemoryStream(); source.CopyTo(buffer);
+    byte[] original = buffer.ToArray();
+    Eq(X4Profile.AssetSha256, Convert.ToHexString(SHA256.HashData(original)));
+    Sequence(original, File.ReadAllBytes(Path.Combine(ProjectRoot(), "src/HeyMelody.Devices/Assets/oppo-enco-x4.json")));
 }
 static void Identity()
 {

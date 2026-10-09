@@ -77,9 +77,9 @@ Test("Bound messages and prevent FSN wrap", () =>
     try { PacketEncoder.Encode(1, 1, new byte[ushort.MaxValue + 1]); throw new Exception(); } catch (ArgumentOutOfRangeException) { }
     try { PacketEncoder.Encode(1, 1, new byte[2000], 10); throw new Exception(); } catch (ArgumentOutOfRangeException) { }
 });
-Test("All eight ACK failures ignore trailing bytes", () =>
+Test("All nine ACK failures ignore trailing bytes", () =>
 {
-    foreach (ushort command in new ushort[] { 0x0100, 0x0101, 0x0102, 0x0103, 0x0104, 0x0105, 0x0114, 0x010D })
+    foreach (ushort command in new ushort[] { 0x0100, 0x0101, 0x0102, 0x0103, 0x0104, 0x0105, 0x010B, 0x0114, 0x010D })
         foreach (byte status in new byte[] { 1, 128, 255 })
         {
             var reply = QueryParsers.Parse(command, [status, 1, 0x18, 1]);
@@ -140,6 +140,15 @@ Test("Firmware triples preserve versions and reject malformed counts", () =>
     Check(reply.Success && ((List<FirmwareEntry>)reply.Data["firmwareEntries"]!).Count == 2 && reply.Data["firmwareVersion"] is null);
     Check((string)QueryParsers.Parse(0x0105, Body("1,2,1.2.3")).Data["firmwareVersion"]! == "1.2.3");
     Check(!QueryParsers.Parse(0x0105, Body("1,2,123", 2)).Success && !QueryParsers.Parse(0x0105, Body("x,2,123")).Success && !QueryParsers.Parse(0x0105, [0, 1, 0xFF]).Success);
+});
+Test("Color reads payload byte one unsigned and rejects a missing value", () =>
+{
+    foreach (byte color in new byte[] { 0, 3, 200, 255 })
+    {
+        var reply = QueryParsers.Parse(0x010B, [0, color, 7]);
+        Check(reply.Success && (byte)reply.Data["color"]! == color);
+    }
+    Check(!QueryParsers.Parse(0x010B, [0]).Success && !QueryParsers.Parse(0x010B, []).Success);
 });
 Test("Codec byte has no cross-layer invented mapping", () =>
 {
@@ -409,4 +418,52 @@ Test("Decoder refuses independent fragment FSN wrap and resets", () =>
     Check(decoder.Feed(Convert.FromHexString("AA0700000301000000")).Single().Command == 0x0103);
     decoder.Complete();
 });
+Test("notification envelopes exclude event IDs and legacy response status", () =>
+{
+    Check(NotificationParsers.TryParse(new(0x0204,5,[1,1,1,42]), out var current)
+        && current!.Kind == DeviceNotificationKind.Battery && current.Data.SequenceEqual(new byte[]{1,1,42}));
+    Check(NotificationParsers.TryParse(new(0x8202,5,[0,2,1,3,4]), out var legacy)
+        && legacy!.Kind == DeviceNotificationKind.Placement && legacy.Data.SequenceEqual(new byte[]{1,3,4}));
+    Check(!NotificationParsers.TryParse(new(0x0204,5,[240,1]),out _));
+    Check(!NotificationParsers.IsNotificationCommand(0x8406));
+});
+Test("notification capability and component lists reject malformed length and duplicate IDs", () =>
+{
+    Check(NotificationParsers.ParseSupportedEvents([0,3,1,2,15]).SequenceEqual(new byte[]{1,2,15}));
+    Check(NotificationParsers.ParseComponentPairs([2,1,42,2,61])[2] == 61);
+    foreach(byte[] data in new byte[][]{[0],[1,0],[0,2,1],[0,2,1,1]})
+    {
+        bool rejected=false;try{NotificationParsers.ParseSupportedEvents(data);}catch(FormatException){rejected=true;}Check(rejected);
+    }
+    foreach(byte[] data in new byte[][]{[],[2,1,42],[2,1,42,1,61]})
+    {
+        bool rejected=false;try{NotificationParsers.ParseComponentPairs(data);}catch(FormatException){rejected=true;}Check(rejected);
+    }
+});
+Test("component ignore is opt-in and retains envelope and other duplicate checks", () =>
+{
+    Check(NotificationParsers.ParseComponentPairs([1,0x1C,255])[0x1C]==255);
+    var retained=NotificationParsers.ParseComponentPairs([4,0x1C,0,0x0B,1,0x1C,255,0xFE,7],ignoredId:0x1C);
+    Check(retained.Count==2&&retained[0x0B]==1&&retained[0xFE]==7&&!retained.ContainsKey(0x1C));
+    Check(NotificationParsers.ParseComponentPairs([2,0x1C,0,0x1C,255],ignoredId:0x1C).Count==0);
+    bool duplicateRejected=false;
+    try { NotificationParsers.ParseComponentPairs([2,0x1C,0,0x1C,255]); }
+    catch (FormatException) { duplicateRejected=true; }
+    Check(duplicateRejected);
+    foreach(byte[] data in new byte[][]{[],[1,0x1C],[0,0x1C,0],[3,0x1C,0,0x0B,1,0x0B,0]})
+    {
+        bool rejected=false;try{NotificationParsers.ParseComponentPairs(data,ignoredId:0x1C);}catch(FormatException){rejected=true;}Check(rejected);
+    }
+});
+Test("setting synchronization commands are notification-only, spatial requests invalidate state", () =>
+{
+    foreach(var entry in new (ushort Command,DeviceNotificationKind Kind)[]{(0x0503,DeviceNotificationKind.Features),
+        (0x0504,DeviceNotificationKind.Preset),(0x0506,DeviceNotificationKind.CustomEqualizers),(0x051D,DeviceNotificationKind.SpatialInvalidated)})
+        Check(NotificationParsers.TryParse(new(entry.Command,7,[]),out var parsed) && parsed!.Kind==entry.Kind);
+    Check(!new RequestKey(0x0406,7).MatchesResponse(new(0x0504,7,[0]))
+        && !new RequestKey(0x0403,7).MatchesResponse(new(0x0503,7,[0]))
+        && !new RequestKey(0x0418,7).MatchesResponse(new(0x0506,7,[0])));
+});
+OppoAdvertisementTests.Run(Test);
+CalibrationCodecTests.Run(Test);
 Console.WriteLine($"{passed} offline protocol tests passed.");

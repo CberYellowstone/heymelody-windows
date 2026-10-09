@@ -2,14 +2,16 @@
 **/obj/
 .vs/
 .idea/
+.venv/
 __pycache__/
 *.py[cod]
 *.user
 *.suo
 *.pdb
 
-# Local research inputs and generated/device evidence stay on this machine.
+# Complete local research objects, analysis, conclusions and products stay here.
 /reference/
+/research/
 /release/
 /artifacts/
 *.pcap
@@ -19,7 +21,12 @@ __pycache__/
 *.reg
 *.zip
 *.msi
+*.msix
+*.msixbundle
 
 .env
 .env.*
 !.env.example
+
+# Curated publishable research results live in docs; maintained tools live in tools/research.
+# Full research archives remain in research. Existing tracked contracts are retained.

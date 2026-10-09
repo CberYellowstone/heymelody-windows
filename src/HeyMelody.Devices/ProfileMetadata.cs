@@ -54,13 +54,22 @@ public sealed class NoiseReductionMode : SourceMetadata
 
 public sealed class EqualizerMode : SourceMetadata
 {
-    internal EqualizerMode(JsonElement source, int protocolIndex, int modeType, int? tag, int? summaryId, VersionConditions conditions) : base(source)
-    { ProtocolIndex = protocolIndex; ModeType = modeType; Tag = tag; SummaryId = summaryId; Conditions = conditions; }
+    internal EqualizerMode(JsonElement source, int protocolIndex, int modeType, int? tag, int? summaryId, VersionConditions conditions,
+        string sourceArray = "equalizerMode") : base(source)
+    {
+        ProtocolIndex = protocolIndex; ModeType = modeType; Tag = tag; SummaryId = summaryId; Conditions = conditions;
+        SourceArray = sourceArray; Order = ProfileJson.Int(source, "order") ?? 0;
+        ColorId = ProfileJson.Int(source, "colorId") is >= 0 and <= byte.MaxValue ? (byte)ProfileJson.Int(source, "colorId")!.Value : null;
+    }
     public int ProtocolIndex { get; }
     public int ModeType { get; }
     public int? Tag { get; }
     public int? SummaryId { get; }
     public VersionConditions Conditions { get; }
+    public string SourceArray { get; }
+    public int Order { get; }
+    public byte? ColorId { get; }
+    public VersionConditionStatus EvaluateConditions(DeviceVersionContext? versions = null) => EqualizerVersionConditionEvaluator.Evaluate(this, versions);
 }
 
 public sealed class GameSoundMode : SourceMetadata
@@ -82,17 +91,31 @@ public sealed class MultiConnectFunction : SourceMetadata
 
 internal static class ProfileJson
 {
-    internal static int? Int(JsonElement element, string name) => element.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) ? n : null;
-    internal static IReadOnlyList<int> Ints(JsonElement element, string name) => System.Array.AsReadOnly(Array(element, name).Select(x => x.GetInt32()).ToArray());
-    internal static IEnumerable<JsonElement> Array(JsonElement element, string name) => element.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array ? v.EnumerateArray() : [];
-    internal static NoiseReductionMode NoiseMode(JsonElement x) => new(x, x.GetProperty("protocolIndex").GetInt32(), x.GetProperty("modeType").GetInt32(), Array(x, "childrenMode").Select(NoiseMode), Conditions(x));
+    internal static bool Property(JsonElement element, string name, out JsonElement value)
+    { value = default; return element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out value); }
+    internal static int? Int(JsonElement element, string name) => Property(element, name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int n) ? n : null;
+    internal static string? Text(JsonElement element, string name) => Property(element, name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+    internal static IReadOnlyList<int> Ints(JsonElement element, string name) => System.Array.AsReadOnly(Array(element, name)
+        .Where(x => x.ValueKind == JsonValueKind.Number && x.TryGetInt32(out int n) && n >= 0).Select(x => x.GetInt32()).ToArray());
+    internal static IEnumerable<JsonElement> Array(JsonElement element, string name) => Property(element, name, out var v) && v.ValueKind == JsonValueKind.Array ? v.EnumerateArray() : [];
+    internal static IEnumerable<NoiseReductionMode> NoiseModes(JsonElement parent, string name, int depth = 0)
+    {
+        if (depth >= 32) yield break;
+        foreach (var x in Array(parent, name))
+            if (Int(x, "protocolIndex") is >= 0 and <= byte.MaxValue && Int(x, "modeType") is >= 0)
+                yield return new(x, Int(x, "protocolIndex")!.Value, Int(x, "modeType")!.Value, NoiseModes(x, "childrenMode", depth + 1), Conditions(x));
+    }
+    internal static IReadOnlyList<EqualizerMode> EqualizerModes(JsonElement functions, string name) => System.Array.AsReadOnly(Array(functions, name)
+        .Where(x => Int(x, "protocolIndex") is >= 0 and <= byte.MaxValue && Int(x, "modeType") is >= 0)
+        .Select(x => new EqualizerMode(x, Int(x, "protocolIndex")!.Value, Int(x, "modeType")!.Value,
+            Int(x, "tag"), Int(x, "summaryId"), Conditions(x), name)).ToArray());
     internal static VersionConditions Conditions(JsonElement x)
     {
         var requirements = new List<VersionRequirement>();
         foreach (string name in new[] { "minVersion", "minAppVersion", "minAppVersionCode" })
-            if (x.TryGetProperty(name, out var v)) requirements.Add(new(name, VersionDomain.AndroidAppMarker, v));
+            if (Property(x, name, out var v)) requirements.Add(new(name, VersionDomain.AndroidAppMarker, v));
         foreach (string name in new[] { "minFirmVersion", "minFirmware", "minFirmwareVersion" })
-            if (x.TryGetProperty(name, out var v)) requirements.Add(new(name, VersionDomain.EarbudFirmware, v));
+            if (Property(x, name, out var v)) requirements.Add(new(name, VersionDomain.EarbudFirmware, v));
         return new(x, requirements);
     }
 }

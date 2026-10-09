@@ -1,0 +1,1308 @@
+{
+  "schema_version": 1,
+  "source": {
+    "package": "com.oplus.melody",
+    "apk_sha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
+    "apk_entry": "res/AQ.json",
+    "plaintext_sha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
+    "authenticated": true,
+    "model_count": 143
+  },
+  "endpoint": "v1/earphone/resource/control",
+  "http_method": "POST",
+  "selection_rule": "One documented App default color per earphone; no color or module enumeration",
+  "candidate_count": 57,
+  "skip_count": 86,
+  "candidates": [
+    {
+      "product_id": "066812",
+      "name": "realme Buds Air8",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "060410",
+      "name": "OPPO Enco Free",
+      "brand": "oppo",
+      "type": "T1",
+      "resolved_color": 0,
+      "evidence_rule": "whitelist_explicit_defaultColor",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": 0
+    },
+    {
+      "product_id": "060810",
+      "name": "OPPO Enco W31",
+      "brand": "oppo",
+      "type": "T1",
+      "resolved_color": 0,
+      "evidence_rule": "whitelist_explicit_defaultColor",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": 0
+    },
+    {
+      "product_id": "061010",
+      "name": "OPPO Enco W11",
+      "brand": "oppo",
+      "type": "T2",
+      "resolved_color": 1,
+      "evidence_rule": "whitelist_explicit_defaultColor",
+      "supportSpp_declared": false,
+      "supportSpp_missing": false,
+      "configured_defaultColor": 1
+    },
+    {
+      "product_id": "060412",
+      "name": "OPPO O-Free",
+      "brand": "oppo",
+      "type": "N",
+      "resolved_color": 1,
+      "evidence_rule": "whitelist_explicit_defaultColor",
+      "supportSpp_declared": false,
+      "supportSpp_missing": false,
+      "configured_defaultColor": 1
+    },
+    {
+      "product_id": "062C10",
+      "name": "OPPO Enco W31 Lite",
+      "brand": "oppo",
+      "type": "T2",
+      "resolved_color": 1,
+      "evidence_rule": "whitelist_explicit_defaultColor",
+      "supportSpp_declared": false,
+      "supportSpp_missing": false,
+      "configured_defaultColor": 1
+    },
+    {
+      "product_id": "050410",
+      "name": "OPPO Enco M31",
+      "brand": "oppo",
+      "type": "N",
+      "resolved_color": 0,
+      "evidence_rule": "whitelist_explicit_defaultColor",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": 0
+    },
+    {
+      "product_id": "050010",
+      "name": "OPPO Enco Quiet",
+      "brand": "oppo",
+      "type": "N",
+      "resolved_color": 0,
+      "evidence_rule": "whitelist_explicit_defaultColor",
+      "supportSpp_declared": false,
+      "supportSpp_missing": false,
+      "configured_defaultColor": 0
+    },
+    {
+      "product_id": "3D59CF",
+      "name": "realme Buds Air",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 1,
+      "evidence_rule": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "supportSpp_declared": null,
+      "supportSpp_missing": true,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "F85450",
+      "name": "realme Buds Air Neo",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 1,
+      "evidence_rule": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "supportSpp_declared": null,
+      "supportSpp_missing": true,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "E3009F",
+      "name": "realme Buds Wireless Pro",
+      "brand": "realme",
+      "type": "N",
+      "resolved_color": 1,
+      "evidence_rule": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "supportSpp_declared": null,
+      "supportSpp_missing": true,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "8CD10F",
+      "name": "realme Buds Air Pro",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 1,
+      "evidence_rule": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "supportSpp_declared": null,
+      "supportSpp_missing": true,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "BA5D56",
+      "name": "realme Buds Air 2",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 1,
+      "evidence_rule": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "supportSpp_declared": null,
+      "supportSpp_missing": true,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "1B5374",
+      "name": "realme Buds Air 2 Neo",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 1,
+      "evidence_rule": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "supportSpp_declared": null,
+      "supportSpp_missing": true,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "C1E2B1",
+      "name": "realme Buds Wireless 2",
+      "brand": "realme",
+      "type": "N",
+      "resolved_color": 1,
+      "evidence_rule": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "supportSpp_declared": null,
+      "supportSpp_missing": true,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "C70A6D",
+      "name": "realme Buds Wireless 2 Neo",
+      "brand": "realme",
+      "type": "N",
+      "resolved_color": 1,
+      "evidence_rule": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "supportSpp_declared": null,
+      "supportSpp_missing": true,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "693878",
+      "name": "realme Buds Q2",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 1,
+      "evidence_rule": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "supportSpp_declared": null,
+      "supportSpp_missing": true,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "060812",
+      "name": "realme Buds Air 3",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 1,
+      "evidence_rule": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "supportSpp_declared": null,
+      "supportSpp_missing": true,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "060C12",
+      "name": "realme Buds Q2s",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "050412",
+      "name": "realme Buds Wireless 2S",
+      "brand": "realme",
+      "type": "N",
+      "resolved_color": 1,
+      "evidence_rule": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "supportSpp_declared": null,
+      "supportSpp_missing": true,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "061812",
+      "name": "realme Buds Air 3 Neo",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "061412",
+      "name": "realme Buds T100",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "061012",
+      "name": "realme Buds Air 3S",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "061C12",
+      "name": "realme Buds Air 5 Pro",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "063012",
+      "name": "realme Buds Air6 Pro",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "050812",
+      "name": "realme Buds Wireless 3",
+      "brand": "realme",
+      "type": "N",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "062012",
+      "name": "realme Buds Air 5",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "063412",
+      "name": "realme Buds Air6",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "063812",
+      "name": "realme Buds N1 Pro",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "063C12",
+      "name": "realme Buds T310",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "064012",
+      "name": "realme Buds N1",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "062412",
+      "name": "realme Buds T300",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "064812",
+      "name": "realme Buds Air7",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "064C12",
+      "name": "realme Buds Air7 Pro",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "066C12",
+      "name": "realme Buds Air8 Pro",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "066452",
+      "name": "realme Buds T500 Pro",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "067852",
+      "name": "realme TechLife Buds T500 Pro",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "067452",
+      "name": "realme Buds T500 Pro HP Ed",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "067052",
+      "name": "realme TechLife Buds T500",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "065C12",
+      "name": "realme Buds Clip",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "065452",
+      "name": "realme Buds T200",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "062812",
+      "name": "realme Buds T110",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "064412",
+      "name": "realme Buds T01",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "065052",
+      "name": "realme Buds T200 Lite",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "067C52",
+      "name": "realme TechLife Buds T200 Lite",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "065852",
+      "name": "realme Buds T200x",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "066012",
+      "name": "realme TechLife Buds",
+      "brand": "realme",
+      "type": "T2",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "050C12",
+      "name": "realme Buds Wireless 3 Neo",
+      "brand": "realme",
+      "type": "N",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "051412",
+      "name": "realme Buds Wireless 5 ANC",
+      "brand": "realme",
+      "type": "N",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "052052",
+      "name": "realme TechLife Wireless Z3ANC",
+      "brand": "realme",
+      "type": "N",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "051812",
+      "name": "realme Buds Wireless 6 Neo",
+      "brand": "realme",
+      "type": "N",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "051C52",
+      "name": "realme TechLife Wireless Z3",
+      "brand": "realme",
+      "type": "N",
+      "resolved_color": 0,
+      "evidence_rule": "L.E_realme_supportSpp_true_to_0",
+      "supportSpp_declared": true,
+      "supportSpp_missing": false,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "C70A6E",
+      "name": "DIZO Wireless",
+      "brand": "realme",
+      "type": "N",
+      "resolved_color": 1,
+      "evidence_rule": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "supportSpp_declared": null,
+      "supportSpp_missing": true,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "C70A6F",
+      "name": "DIZO GoPods D",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 1,
+      "evidence_rule": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "supportSpp_declared": null,
+      "supportSpp_missing": true,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "C70A70",
+      "name": "DIZO GoPods",
+      "brand": "realme",
+      "type": "T1",
+      "resolved_color": 1,
+      "evidence_rule": "L.E_realme_supportSpp_false_or_missing_to_1",
+      "supportSpp_declared": null,
+      "supportSpp_missing": true,
+      "configured_defaultColor": null
+    },
+    {
+      "product_id": "050810",
+      "name": "OPPO Enco M32",
+      "brand": "oppo",
+      "type": "N",
+      "resolved_color": 0,
+      "evidence_rule": "whitelist_explicit_defaultColor",
+      "supportSpp_declared": false,
+      "supportSpp_missing": false,
+      "configured_defaultColor": 0
+    },
+    {
+      "product_id": "050414",
+      "name": "OnePlus Bullets Wireless Z2",
+      "brand": "OnePlus",
+      "type": "N",
+      "resolved_color": 2,
+      "evidence_rule": "whitelist_explicit_defaultColor",
+      "supportSpp_declared": false,
+      "supportSpp_missing": false,
+      "configured_defaultColor": 2
+    }
+  ],
+  "skipped": [
+    {
+      "product_id": "06EC10",
+      "name": "OPPO Enco X4",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "067814",
+      "name": "OnePlus Buds Pro 4",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06F010",
+      "name": "OPPO Enco Air4s",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06B450",
+      "name": "OPPO Enco R5",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "067414",
+      "name": "OnePlus Flow Buds",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06E810",
+      "name": "OPPO Enco Air5s（星光版）",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06C810",
+      "name": "OPPO Enco Air5s",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "067014",
+      "name": "OnePlus Nord Buds 4",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06E010",
+      "name": "OPPO Enco Clip2",
+      "brand": "oppo",
+      "type": "O1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06E410",
+      "name": "OnePlus Buds Clip",
+      "brand": "OnePlus",
+      "type": "O1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06D810",
+      "name": "OPPO Enco Air5",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06C410",
+      "name": "OPPO Enco Air5 Pro",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "066414",
+      "name": "OnePlus Buds Ace 3",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "066814",
+      "name": "OnePlus Nord Buds 4 Pro",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "066054",
+      "name": "OnePlus Buds 3V",
+      "brand": "OnePlus",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "065854",
+      "name": "OnePlus Nord Buds 3r",
+      "brand": "OnePlus",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06F450",
+      "name": "OPPO Enco Buds3s",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06B810",
+      "name": "OPPO Enco Clip",
+      "brand": "oppo",
+      "type": "O1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "065C14",
+      "name": "OnePlus Open Buds",
+      "brand": "OnePlus",
+      "type": "O1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "061410",
+      "name": "OPPO Enco X",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "062010",
+      "name": "OPPO Enco Free2",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "061C10",
+      "name": "OPPO Enco Play",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "061810",
+      "name": "OPPO Enco Air",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "062410",
+      "name": "OPPO Enco Buds",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "062810",
+      "name": "OPPO Enco Air Lite",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "060C10",
+      "name": "OPPO Enco W51",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "060414",
+      "name": "OnePlus Buds",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "060814",
+      "name": "OnePlus Buds Z",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "49074B",
+      "name": "realme Cobble Speaker",
+      "brand": "realme",
+      "type": "S",
+      "reason": "Speaker; outside earphone artwork scope"
+    },
+    {
+      "product_id": "C70A75",
+      "name": "realme Pocket Speaker",
+      "brand": "realme",
+      "type": "S",
+      "reason": "Speaker; outside earphone artwork scope"
+    },
+    {
+      "product_id": "A5FD66",
+      "name": "realme Brick Speaker",
+      "brand": "realme",
+      "type": "S",
+      "reason": "Speaker; outside earphone artwork scope"
+    },
+    {
+      "product_id": "060C14",
+      "name": "OnePlus Buds Pro",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "062014",
+      "name": "OnePlus Buds Pro 2",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "063014",
+      "name": "OnePlus Buds Pro 2（轻享版）",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "063414",
+      "name": "OnePlus Buds Pro 2R",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "064C10",
+      "name": "OPPO Enco Air3",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "065C10",
+      "name": "OPPO Enco Air3 Pro",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "065810",
+      "name": "OPPO Enco R2",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "066010",
+      "name": "OPPO Enco Free3",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "061014",
+      "name": "OnePlus Buds Z2",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "063010",
+      "name": "OPPO Enco R",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "063410",
+      "name": "OPPO Enco Air2",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "061C14",
+      "name": "OnePlus Nord Buds CE",
+      "brand": "OnePlus",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "064010",
+      "name": "OPPO Enco Free2i",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "068414",
+      "name": "OnePlus Buds",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "063C10",
+      "name": "OPPO Enco X2",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "068814",
+      "name": "OnePlus Buds Z",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "063810",
+      "name": "OPPO Enco Air2 Pro",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "061414",
+      "name": "OnePlus Nord Buds",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "061814",
+      "name": "OnePlus Buds N",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "064410",
+      "name": "OPPO Enco Air2i",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "064810",
+      "name": "OPPO Enco Buds2",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "065010",
+      "name": "OPPO Enco R Pro",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "062414",
+      "name": "OnePlus Nord Buds 2",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "062C14",
+      "name": "OnePlus Nord Buds 2r",
+      "brand": "OnePlus",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "062814",
+      "name": "OnePlus Buds Ace",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "066C10",
+      "name": "OPPO Enco Air2（新声版）",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "067010",
+      "name": "OPPO Enco Air3i",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "050C10",
+      "name": "OPPO Enco M33",
+      "brand": "oppo",
+      "type": "N",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "050C14",
+      "name": "OnePlus BulletsWireless Z2 ANC",
+      "brand": "OnePlus",
+      "type": "N",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "051014",
+      "name": "OnePlus Bullets Wireless Z3",
+      "brand": "OnePlus",
+      "type": "N",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "063C14",
+      "name": "OnePlus Buds 3",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "066810",
+      "name": "OPPO Enco X3i",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "067410",
+      "name": "OPPO Enco X3",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "064014",
+      "name": "OnePlus Buds Pro 3",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "067810",
+      "name": "OPPO Enco Air3s",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "068010",
+      "name": "OPPO Enco Buds2 Pro",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "064814",
+      "name": "OnePlus Buds V",
+      "brand": "OnePlus",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "068810",
+      "name": "OPPO Enco Air 3i",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "068410",
+      "name": "OPPO Enco R3",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "067C10",
+      "name": "OPPO Enco Air4 Pro",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "064414",
+      "name": "OnePlus Nord Buds 3 Pro",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "069010",
+      "name": "OPPO Enco Air4",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "065014",
+      "name": "OnePlus Nord Buds 3",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "069C10",
+      "name": "OPPO Enco R3 Pro",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06A010",
+      "name": "OPPO Enco Buds3 Pro+",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "064C14",
+      "name": "OnePlus Buds Ace 2",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "068C10",
+      "name": "OPPO Enco Free4",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06C010",
+      "name": "OPPO Enco Free4（丹拿版）",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06BC10",
+      "name": "OPPO Enco X3s",
+      "brand": "oppo",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "065414",
+      "name": "OnePlus Buds 4",
+      "brand": "OnePlus",
+      "type": "T1",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06A850",
+      "name": "OPPO Enco Buds3 Pro",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "069850",
+      "name": "OPPO Enco Air4i",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06AC50",
+      "name": "OPPO Enco R4",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06A450",
+      "name": "OPPO Enco Buds3",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    },
+    {
+      "product_id": "06B050",
+      "name": "OPPO Enco Air4（新声版）",
+      "brand": "oppo",
+      "type": "T2",
+      "reason": "L.E keeps unknown color -1: no configured default and not realme"
+    }
+  ],
+  "color_code_is_marketing_name": false,
+  "code_evidence": [
+    {
+      "dex": "classes2.dex",
+      "class": "Lcom/oplus/melody/model/repository/earphone/L;",
+      "method": "E(int,String)int",
+      "offset_bytes": "0x0002",
+      "behavior": "Input other than -1 returned unchanged"
+    },
+    {
+      "dex": "classes2.dex",
+      "class": "Lcom/oplus/melody/model/repository/earphone/L;",
+      "method": "E(int,String)int",
+      "offset_bytes": "0x0020",
+      "behavior": "getDefaultColor >=0 takes precedence"
+    },
+    {
+      "dex": "classes2.dex",
+      "class": "Lcom/oplus/melody/model/repository/earphone/L;",
+      "method": "E(int,String)int",
+      "offset_bytes": "0x0052",
+      "behavior": "WhitelistConfigDTO.getBrand equalsIgnoreCase(realme); getSupportSpp at 0x0066; true returns0 at0x0084, false returns1 at0x009C"
+    },
+    {
+      "dex": "classes.dex",
+      "class": "Lcom/oplus/melody/common/data/WhitelistConfigDTO;",
+      "method": "getSupportSpp()boolean",
+      "offset_bytes": "0x0000",
+      "behavior": "Direct iget-boolean of primitive supportSpp field; no runtime phone state"
+    },
+    {
+      "dex": "classes.dex",
+      "class": "Lcom/oplus/melody/common/data/WhitelistConfigDTO;",
+      "method": "<init>(...,int,kotlin.jvm.internal.e)",
+      "offset_bytes": "0x00D8",
+      "behavior": "Kotlin default mask8192 branch sets supportSpp=false at0x00E0; no-arg constructor uses default mask"
+    },
+    {
+      "dex": "classes2.dex",
+      "class": "Lcom/oplus/melody/model/repository/whitelist/a;",
+      "method": "p(InputStream,byte[])Object",
+      "offset_bytes": "0x0056",
+      "behavior": "AES-GCM then gzip then JsonUtils.e to WhitelistContentDO"
+    },
+    {
+      "dex": "classes.dex",
+      "class": "Lcom/oplus/melody/common/util/JsonUtils$a;",
+      "method": "<clinit>()void",
+      "offset_bytes": "0x0148",
+      "behavior": "Gson normal DTO reader; only Bundle-specific adapter registered; omitted supportSpp remainsfalse"
+    },
+    {
+      "dex": "classes.dex",
+      "class": "Lcom/oplus/melody/common/util/T;",
+      "method": "a(Collection,String,String)WhitelistConfigDTO",
+      "offset_bytes": "0x0076",
+      "behavior": "Whitelist product ID lookup compares getId() ignoring case; returns original DTO"
+    }
+  ]
+}

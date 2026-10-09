@@ -6,5 +6,8 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../HeyMelody.Windows.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../HeyMelody.Windows.csproj" />
+    <ProjectReference Include="../../HeyMelody.Resources/HeyMelody.Resources.csproj" />
+  </ItemGroup>
 </Project>

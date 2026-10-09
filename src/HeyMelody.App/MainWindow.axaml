@@ -1,0 +1,19 @@
+<fa:FAAppWindow xmlns="https://github.com/avaloniaui"
+               xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+               xmlns:fa="clr-namespace:FluentAvalonia.UI.Windowing;assembly=FluentAvalonia"
+               xmlns:local="clr-namespace:HeyMelodyWindows.App"
+               x:Class="HeyMelodyWindows.App.MainWindow"
+               Title="HeyMelody" Icon="avares://HeyMelody/Assets/HeyMelody.ico"
+               Width="1280" Height="900" MinWidth="900" MinHeight="640"
+               WindowStartupLocation="CenterScreen">
+  <Grid>
+    <local:MainView x:Name="Page" />
+    <Border x:Name="StartupOverlay" IsVisible="False"
+            Background="{DynamicResource ApplicationPageBackgroundThemeBrush}">
+      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
+        <TextBlock Text="正在加载设备…" HorizontalAlignment="Center" FontSize="16" />
+        <ProgressBar IsIndeterminate="True" Width="240" Height="3" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</fa:FAAppWindow>
