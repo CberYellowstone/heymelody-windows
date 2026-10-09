@@ -18,7 +18,7 @@ import sys
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[4]
-sys.path.insert(0, str(ROOT / "docs/research/earbud-artwork/scripts"))
+sys.path.insert(0, str(ROOT / "tools/research/earbud-artwork/scripts"))
 from research_runtime import research_path
 TARGETS = {"068C10": "OPPO Enco Free4", "06C010": "OPPO Enco Free4（丹拿版）"}
 API = runpy.run_path(str(ROOT / "tools/research/event_dex_audit.py"), run_name="dex_reader_only")

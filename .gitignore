@@ -9,7 +9,7 @@ __pycache__/
 *.suo
 *.pdb
 
-# Local research inputs and generated/device evidence stay on this machine.
+# Complete local research objects, analysis, conclusions and products stay here.
 /reference/
 /research/
 /release/
@@ -28,5 +28,5 @@ __pycache__/
 .env.*
 !.env.example
 
-# Research reports and reproduction scripts live in docs/research.
-# Binary inputs, raw evidence and upstream checkouts live in the ignored research directory.
+# Curated publishable research results live in docs; maintained tools live in tools/research.
+# Full research archives remain in research. Existing tracked contracts are retained.

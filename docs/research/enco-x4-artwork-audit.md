@@ -1,5 +1,7 @@
 # Enco X4 产品展示与操作引导资源复核
 
+本文为公开整理稿；[整理前完整原文](../../research/migrations/organization-2026-10-09/originals/docs/research/enco-x4-artwork-audit.md)保存在本地研究档案，不随普通Git clone提供。历史版本、来源及验证范围保留，完整研究对象与产物由 `research/` 保存。
+
 2026-10-09（香港时间；在线证据时间为 2026-10-08 22:03 UTC），从保存的两份官方 APK 复核资源调用链，并向官方接口查询精确产品 `06EC10` 的 `color=0/1`。**X4 水平旋转的产品展示资源是 Animated WebP，位于模块 14 的 `modelWebp` 字段；control 包的 Lottie 是按捏、滑动等操作引导。** 不能把同型号任意 Lottie 作为主页面产品展示，也不能将模块 14 一律视为 GLB/3D 模型。
 
 这些研究结果用于 0.8.4 的产品动画与角色选择修正；该版本也新增默认关闭的 [三维模型 GPU 加速开关](../model-rendering.md)。本文记录资源与调用依据，源码检查和发布包的验证范围分别见 [外观资源持久化](../artwork-persistence.md) 与 [构建说明](../../REPOSITORY.md)。
@@ -104,11 +106,11 @@ control 的主列表 getter 实名是 `getLottieRes`；其消费者继续读取 
 
 `RUN/inspection/synthetic-fixtures/two-frame.webp` 为独立生成的透明 32 × 32 Lossless WebP，140 字节，SHA256 为 `859cb79880a2e401fc275c91c669814ba68c49c34e33f1abb0fccd70d4f453f3`；两帧 100/300 ms、loop=0。第二帧仅改动第一帧红方块内的一小块青色，适合检查不同时长、保留像素和循环。它不含厂商外观，不能作为取得官方资产的证据。
 
-复现脚本：[audit_x4_artwork.py](online-artwork/scripts/audit_x4_artwork.py) 默认离线，只在显式 `--online` 下执行上述固定 8 次请求；[inspect_x4_artwork.py](online-artwork/scripts/inspect_x4_artwork.py) 仅离线校验/解码，拒绝覆盖已有输出。
+复现脚本：[audit_x4_artwork.py](../../tools/research/online-artwork/scripts/audit_x4_artwork.py) 默认离线，只在显式 `--online` 下执行上述固定 8 次请求；[inspect_x4_artwork.py](../../tools/research/online-artwork/scripts/inspect_x4_artwork.py) 仅离线校验/解码，拒绝覆盖已有输出。
 
 ```powershell
-python -B -X utf8 docs/research/online-artwork/scripts/audit_x4_artwork.py --online --proxy http://127.0.0.1:59991
-python -B -X utf8 docs/research/online-artwork/scripts/inspect_x4_artwork.py research/online-artwork/x4-artwork-audit/20261008T220302.957674Z --output research/online-artwork/x4-artwork-reverification-new
+python -B -X utf8 tools/research/online-artwork/scripts/audit_x4_artwork.py --online --proxy http://127.0.0.1:59991
+python -B -X utf8 tools/research/online-artwork/scripts/inspect_x4_artwork.py research/online-artwork/x4-artwork-audit/20261008T220302.957674Z --output research/online-artwork/x4-artwork-reverification-new
 ```
 
 第二条路径需不存在，重复验证应换新目录。脚本使用已安装的 Python 3.11、cryptography、Pillow，不安装依赖。此机 Python 入口可用 `uv python find --offline` 查询。原始 ZIP、完整厂商 WebP/PNG/Lottie、DEX 报告和解码图都保存在被忽略的 `research/` 中；提交时保留本文、复现脚本与必要小样本，不能仅凭本文恢复未提交的完整厂商原件。

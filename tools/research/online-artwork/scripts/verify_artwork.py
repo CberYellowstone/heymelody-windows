@@ -17,9 +17,9 @@ import stat
 import struct
 import zipfile
 
-DOCUMENTATION_ROOT = Path(__file__).resolve().parents[2]
+TOOLS_ROOT = Path(__file__).resolve().parents[2]
 ROOT = Path(__file__).resolve().parents[4] / "research/online-artwork"
-sys.path.insert(0, str(DOCUMENTATION_ROOT / "earbud-artwork/scripts"))
+sys.path.insert(0, str(TOOLS_ROOT / "earbud-artwork/scripts"))
 from research_runtime import research_path
 MAX_DOWNLOAD = 64 * 1024 * 1024
 MAX_MEMBER = 64 * 1024 * 1024
@@ -351,7 +351,7 @@ def verify_exports(run, artifacts):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", required=True, type=Path)
-    parser.add_argument("--output", type=Path, help="New report below repository artifacts; refuses an existing file")
+    parser.add_argument("--output", type=Path, help="New report below research/cloud-acceptance (or historical artifacts); refuses an existing file")
     args = parser.parse_args()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -365,8 +365,9 @@ def main():
     if args.output is not None:
         output = args.output.resolve()
         artifacts = (ROOT.parents[1] / "artifacts").resolve()
-        if output == artifacts or not output.is_relative_to(artifacts):
-            parser.error("Output must be a file below repository artifacts")
+        acceptance = (ROOT.parent / "cloud-acceptance").resolve()
+        if not any(output != base and output.is_relative_to(base) for base in (acceptance, artifacts)):
+            parser.error("Output must be a file below research/cloud-acceptance or artifacts")
         if output.exists():
             parser.error("Output already exists; choose a new report path")
     results_raw = read(run, "results.json")

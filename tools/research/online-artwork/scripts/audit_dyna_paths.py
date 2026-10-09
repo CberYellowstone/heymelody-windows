@@ -12,7 +12,7 @@ import zipfile
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[4]
-sys.path.insert(0, str(ROOT / 'docs/research/earbud-artwork/scripts'))
+sys.path.insert(0, str(ROOT / 'tools/research/earbud-artwork/scripts'))
 from research_runtime import research_path
 reader = runpy.run_path(str(ROOT / 'tools/research/event_dex_audit.py'), run_name='dex_audit_import')
 SAFE_STRING = re.compile(r'(?i)(resource|fetch|control|platform|android|version|channel|model|module|06C010|068C10|color|https?://|productId|firmware|headset|com\.oplus\.melody|EarphoneUtils)')

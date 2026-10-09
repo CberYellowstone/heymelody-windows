@@ -58,4 +58,4 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Vers
 
 本轮没有把静态解析、模拟协议或 UI 测试当作所有型号的实机验证。新增型号、校准流程、手机并发操作、休眠恢复和 ARM64 行为仍需对应硬件验证；历史 X4 证据只证明记录中的版本与设备。OTA、录音、翻译、健康功能、macOS/Linux 后台及 2.3 Mbps 无损链路保持后续范围。
 
-完整模块、构建和验证说明见 [REPOSITORY.md](REPOSITORY.md)，协议与资源依据见 [研究交接](docs/research/device-adaptation-handoff.md)，历史记录见 [文档入口](docs/README.md)。研究结论和复现工具保存在 `docs/research/`，原始输入、上游仓库、厂商资源和采样记录保存在 `research/`。
+完整模块、构建和验证说明见 [REPOSITORY.md](REPOSITORY.md)，协议与资源依据见 [研究交接](docs/research/device-adaptation-handoff.md)，历史记录见 [文档入口](docs/README.md)。`research/` 保存完整研究对象、理解、结论及产物，`docs/` 保存整理后适宜公布的结果；持续维护的复现工具位于 `tools/research/`。具体约定见 [研究资料规范](docs/research/organization.md)。

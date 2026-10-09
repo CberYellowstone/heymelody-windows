@@ -1,5 +1,7 @@
 # EQ 兼容、颜色与 App/Firmware 条件
 
+本文为公开整理稿；[整理前完整原文](../../research/migrations/organization-2026-10-09/originals/docs/research/equalizer-selection.md)保存在本地研究档案，不随普通Git clone提供。历史版本、来源及验证范围保留，完整研究对象与产物由 `research/` 保存。
+
 2026-10-08 已逐指令检查用户提供的两份 APK，以下分支由 DEX 直接恢复，未运行 APK、请求网络或操作耳机。固定输入为 `research/apps/欢律.apk`（SHA256 `eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4`）与 `research/apps/无线耳机_17.6.3.apk`（SHA256 `c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059`）。
 
 只读复现工具 [equalizer_dex_audit.py](../../tools/research/equalizer_dex_audit.py) 先检查 APK 指纹，再输出指令、调用目标、字段、分支目标。运行 `python -B -X utf8 tools/research/equalizer_dex_audit.py`；附加 `--app-markers` 可一并输出 App 版本来源。不生成或改写研究样本。

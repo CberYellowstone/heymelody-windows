@@ -35,7 +35,7 @@ def copy_asset(path):
     return "data/" + name, digest(raw), len(raw)
 
 def main():
-    spec = importlib.util.spec_from_file_location("bundle_auth", ROOT / "docs/research/online-whitelist/scripts/fetch_whitelist.py")
+    spec = importlib.util.spec_from_file_location("bundle_auth", ROOT / "tools/research/online-whitelist/scripts/fetch_whitelist.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     keys, provenance, assets = {}, [], []

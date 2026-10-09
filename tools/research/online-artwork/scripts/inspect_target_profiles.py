@@ -14,7 +14,7 @@ import sys
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[4]
-sys.path.insert(0, str(ROOT / "docs/research/earbud-artwork/scripts"))
+sys.path.insert(0, str(ROOT / "tools/research/earbud-artwork/scripts"))
 from research_runtime import research_path
 OUTPUT_ROOT = ROOT / "research/online-artwork"
 TARGETS = {"067410": "OPPO Enco X3", "068C10": "OPPO Enco Free4",

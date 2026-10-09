@@ -1,5 +1,7 @@
 # 云端设备美术资源：验收与后续适配交接
 
+本文为公开整理稿；[整理前完整原文](../../research/migrations/organization-2026-10-09/originals/docs/research/cloud-device-artwork.md)保存在本地研究档案，不随普通Git clone提供。历史版本、来源及验证范围保留，完整研究对象与产物由 `research/` 保存。
+
 **2026-10-09 更新：X4 产品旋转已复核。** 两来源对 `06EC10 / color=1 / moduleId=14` 均返回动态 `modelWebp`，非 GLB 或 Lottie。control 包的 Lottie 属于操作教程，不能成为主展示；`support3DModel` 也不是 WebP 获取的必要条件。原件摘要、APK 加载调用与解码证据见 [X4 美术报告](enco-x4-artwork-audit.md)。下文旧库存和未取得状态保留其原采样范围。
 
 **2026-10-08 更新：Free4 丹拿版已取得。** `productId=06C010`、`color=3`、`moduleId=14` 在两种 App 来源下均返回同一官方资源包，下载及独立离线复核通过。原件、GLB、精确摘要和复现见 [丹拿版模型研究](enco-free4-dynaudio-model.md)。下文 2026-10-07 的色号查询范围及未取得状态属于历史记录，不能继续作为丹拿版当前状态。
@@ -178,6 +180,6 @@ Android vector 原件是二进制 XML，PNG/SVG 仅是研究预览；主题属�
 
 不要为阅读成果默认执行 online 获取或 `--merge`/重新提取操作。原在线 fetcher 默认离线，只有显式 `--online` 才请求资源；复现需要已经安装的 Python 3.11、cryptography，图册检查还需要 Pillow，脚本不会安装依赖。模型获取器依赖 `online-whitelist/scripts/fetch_whitelist.py`，后者又依赖 `earbud-artwork/scripts/probe_resources.py` 与 `android_resources.py`；保存研究时需要连同辅助脚本及两份输入 APK 保留，不只复制 GLB。
 
-原验收没有发现正式模型、主清单原件、派生预览或报告失效路径；这是对当时本地保存产物的结论，未检查当时 CDN 链接现在是否仍有效。原 `research/` 产物现按专题归档于 `docs/research/`；其中原始输入、完整厂商资源、生成图册与运行报告，以及 `artifacts/` 证据仍仅在本地保留，具体提交边界见 [资料归档入口](README.md)。迁移电脑或清理忽略目录前应同时保全原件、脚本、清单、报告和依赖入口，不能仅凭本文恢复未提交的二进制资源。
+原验收没有发现正式模型、主清单原件、派生预览或报告失效路径；这是对当时本地保存产物的结论，未检查当时 CDN 链接现在是否仍有效。完整研究对象、解释、结论及产物保存在 `research/`，本页保存公开整理结果；维护脚本位于 `tools/research/`。早期 `artifacts` 研究证据已按原字节归档，位置见 [资料索引](README.md)。迁移电脑或清理忽略目录前应同时保全原件、脚本、清单、报告和依赖入口，不能仅凭本文恢复未提交的二进制资源。
 
 **资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。

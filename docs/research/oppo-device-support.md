@@ -1,5 +1,7 @@
 # OPPO 耳机型号与手机组件调研
 
+本文为公开整理稿；[整理前完整原文](../../research/migrations/organization-2026-10-09/originals/docs/research/oppo-device-support.md)保存在本地研究档案，不随普通Git clone提供。历史版本、来源及验证范围保留，完整研究对象与产物由 `research/` 保存。
+
 > 本页保留 2026-10-06 静态研究阶段的结论。后续已纠正请求版本来源、欢律内置版本加法及兼容名单的非 null 规则，并取得 X3/Free4 云端模型。当前适配请先读 [研究交接](device-adaptation-handoff.md)、[设备配置](cloud-device-configuration.md) 和 [设备美术](cloud-device-artwork.md)；下文的未联网/未获取状态属于当时范围。
 
 核对日期：2026-10-06。范围是用户提供的两份 APK、项目现有 X4 配置和协议实现。只读分析，没有执行 APK，没有向耳机发送命令，也没有验证真实无线音频。APK 原件的 SHA-256 在读取前后保持一致。
@@ -24,10 +26,10 @@
 
 ```powershell
 python -m pip install -r tools/research/requirements.txt
-python tools/research/inspect_oppo_apk.py research/apps/欢律.apk research/apps/无线耳机_17.6.3.apk --output artifacts/apk-research --include-plaintext
+python tools/research/inspect_oppo_apk.py research/apps/欢律.apk research/apps/无线耳机_17.6.3.apk --output research/apk-research-new --include-plaintext
 ```
 
-工具不执行 Android 代码，不调用网络/蓝牙，不解包可执行程序到应用目录。它读取资源表和签名证书，在内存验证 GCM，输出本地 evidence JSON、型号 CSV，以及显式请求后的完整原始 JSON。输出位于已忽略的 `artifacts/`，不成为应用运行依赖。APK、完整厂商配置和厂商艺术资源不随仓库重新分发。
+工具不执行 Android 代码，不调用网络/蓝牙，不解包可执行程序到应用目录。它读取资源表和签名证书，在内存验证 GCM，输出本地 evidence JSON、型号 CSV，以及显式请求后的完整原始 JSON。新研究输出位于 `research/`，默认目录为 `research/apk-research/`；旧 `artifacts/apk-research/` 证据保留并已另存完整研究档案。输出不成为应用运行依赖。APK、完整厂商配置和厂商艺术资源不随仓库重新分发。
 
 ### 白名单来源与解码链
 

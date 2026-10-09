@@ -26,7 +26,7 @@ import zipfile
 from datetime import datetime, timezone
 
 SCRIPTS_ROOT = Path(__file__).resolve().parents[1]
-DOCUMENTATION_ROOT = SCRIPTS_ROOT.parent
+TOOLS_ROOT = SCRIPTS_ROOT.parent
 ROOT = Path(__file__).resolve().parents[4] / "research/online-whitelist"
 RESEARCH = ROOT.parent
 MAX_CONFIG_BYTES = 8 * 1024 * 1024
@@ -56,7 +56,7 @@ def load_helper(name, path):
     return module
 
 
-runtime = load_helper("verify_runtime", DOCUMENTATION_ROOT / "earbud-artwork/scripts/research_runtime.py")
+runtime = load_helper("verify_runtime", TOOLS_ROOT / "earbud-artwork/scripts/research_runtime.py")
 runtime.bootstrap("cryptography")
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.serialization import pkcs7, Encoding
@@ -341,7 +341,7 @@ def verify_package(run, package, source, analysis, fetcher):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", required=True)
-    parser.add_argument("--output", type=Path, help="New report below repository artifacts; refuses an existing file")
+    parser.add_argument("--output", type=Path, help="New report below research/cloud-acceptance (or historical artifacts); refuses an existing file")
     args = parser.parse_args()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -350,8 +350,9 @@ def main():
     if args.output is not None:
         output = args.output.resolve()
         artifacts = (ROOT.parents[1] / "artifacts").resolve()
-        if output == artifacts or not output.is_relative_to(artifacts):
-            parser.error("Output must be a file below repository artifacts")
+        acceptance = (ROOT.parent / "cloud-acceptance").resolve()
+        if not any(output != base and output.is_relative_to(base) for base in (acceptance, artifacts)):
+            parser.error("Output must be a file below research/cloud-acceptance or artifacts")
         if output.exists():
             parser.error("Output already exists; choose a new report path")
     results_raw = read_saved(run, "results.json", MAX_REPORT_BYTES)

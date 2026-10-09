@@ -29,7 +29,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 SCRIPTS_ROOT = Path(__file__).resolve().parents[1]
-DOCUMENTATION_ROOT = SCRIPTS_ROOT.parent
+TOOLS_ROOT = SCRIPTS_ROOT.parent
 ROOT = Path(__file__).resolve().parents[4] / "research/online-whitelist"
 RESEARCH = ROOT.parent
 ENDPOINT = "v1/earphone/new/latestWhiteList"
@@ -59,8 +59,8 @@ def load_helper(name: str, path: Path):
     return module
 
 
-legacy = load_helper("whitelist_artwork_helpers", DOCUMENTATION_ROOT / "earbud-artwork/scripts/probe_resources.py")
-android = load_helper("whitelist_android_helpers", DOCUMENTATION_ROOT / "earbud-artwork/scripts/android_resources.py")
+legacy = load_helper("whitelist_artwork_helpers", TOOLS_ROOT / "earbud-artwork/scripts/probe_resources.py")
+android = load_helper("whitelist_android_helpers", TOOLS_ROOT / "earbud-artwork/scripts/android_resources.py")
 AESGCM, pkcs7, Encoding, InvalidTag = legacy.crypto_modules()
 
 

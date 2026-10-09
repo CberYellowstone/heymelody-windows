@@ -28,7 +28,7 @@ import uuid
 import zipfile
 
 SCRIPTS_ROOT = Path(__file__).resolve().parents[1]
-DOCUMENTATION_ROOT = SCRIPTS_ROOT.parent
+TOOLS_ROOT = SCRIPTS_ROOT.parent
 ROOT = Path(__file__).resolve().parents[4] / "research/online-artwork"
 RESEARCH = ROOT.parent
 ENDPOINT = "v1/earphone/resource/fetch"
@@ -52,7 +52,7 @@ def helper(name, path):
     return module
 
 
-whitelist = helper("artwork_whitelist", DOCUMENTATION_ROOT / "online-whitelist/scripts/fetch_whitelist.py")
+whitelist = helper("artwork_whitelist", TOOLS_ROOT / "online-whitelist/scripts/fetch_whitelist.py")
 legacy = whitelist.legacy
 
 

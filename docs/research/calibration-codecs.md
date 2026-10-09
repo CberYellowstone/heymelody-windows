@@ -1,5 +1,7 @@
 # 贴合度、测听与耳扫旧实现记录（修复前）
 
+本文为公开整理稿；[整理前完整原文](../../research/migrations/organization-2026-10-09/originals/docs/research/calibration-codecs.md)保存在本地研究档案，不随普通Git clone提供。历史版本、来源及验证范围保留，完整研究对象与产物由 `research/` 保存。
+
 **2026-10-09 状态更新：** 本文保留修复前0.8.8实现及其纠错记录，下文“当前/现有”均指该历史基线。后续已将研究用于源码修复，当前实现与验证见 [组件修复](calibration-repair.md)；协议依据见 [重新研究摘要](calibration-reassessment.md) 和 [完整过程与结果](../../research/calibration-reassessment-20261009/README.md)。旧模拟基线不能继续作为原厂协议完整证明。
 
 2026-10-08 的实现位于独立 [HeyMelody.Calibration](../../src/HeyMelody.Calibration/CalibrationEngine.cs) 模块，依赖 [CalibrationCodecs.cs](../../src/HeyMelody.Protocol/CalibrationCodecs.cs)。模块不引用 App、Host 或 Contracts，transport 由 Daily/Host 适配。以下保留旧实现记录，并按此次重新研究标出差异；旧静态核对与内存测试没有真实设备测试。

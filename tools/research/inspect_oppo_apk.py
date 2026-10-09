@@ -172,7 +172,9 @@ def inspect(apk: Path, output: Path, include_plaintext: bool, dump_classes: tupl
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("apk", type=Path, nargs="+")
-    parser.add_argument("--output", type=Path, default=Path("artifacts/apk-research"))
+    parser.add_argument("--output", type=Path,
+                        default=Path(__file__).resolve().parents[2] / "research/apk-research",
+                        help="Evidence directory (default: repository research/apk-research)")
     parser.add_argument("--include-plaintext", action="store_true",
                         help="Also save the complete recovered local whitelist")
     parser.add_argument("--dump-class", action="append", default=[],

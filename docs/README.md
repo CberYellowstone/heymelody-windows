@@ -1,6 +1,6 @@
 # 文档索引
 
-当前版本为 0.8.8。除 Markdown 链接外，文档中的 `src/`、`tests/`、`docs/research/`、`reference/`、`artifacts/` 和 `release/` 路径均相对于仓库根目录。研究结论和工具位于 `docs/research/`，原始材料位于根目录 `research/`，具体位置见 [研究资料归档](research/README.md)。构建、发布和验证入口见 [REPOSITORY.md](../REPOSITORY.md)。
+当前版本为 0.8.8。除 Markdown 链接外，文档中的路径均相对于仓库根目录；历史记录中的 `reference/` 等旧路径保留其原始含义。完整研究对象、理解、结论及产物位于 `research/`，本目录保存整理后适宜公布的结果，维护中的研究工具位于 `tools/research/`。具体约定见 [研究资料规范](research/organization.md)，位置见 [研究资料索引](research/README.md)。构建、发布和验证入口见 [REPOSITORY.md](../REPOSITORY.md)。
 
 - [设备选择与离线控件](device-state.md)：0.8.7 的选择恢复、完整功能缓存、只读离线展示与重新连接刷新；0.8.8 改为在页头显示上次连接时间。
 
@@ -26,6 +26,7 @@
 - [黄金听感与贴合度重新研究](research/calibration-reassessment.md)：2026-10-09从两原APK与X4 v116固件重新核对，纠正V1/V2路由、filter结构、停止/保存流程和名称字节边界；研究阶段与后续应用修复分别记录。
 - [X4 v116追加实测](../research/calibration-reassessment-20261009/LIVE-TEST.md)：贴合度双耳良好；黄金听感12项、两类filter、保存/读回及旧公开字段恢复；保留断线、0107误读与研究UI音量纠错。
 - [研究资料归档与提交边界](research/README.md)：专题目录、原始输入与上游仓库、新旧路径映射及本地保全规则。
+- [研究资料规范与本轮整理](research/organization.md)：完整档案与公开整理稿的职责、工具目录及2026-10-09原稿保全。
 - [两个 OppoPods 项目的适配调查](research/oppopods-comparison-2026-10-08/README.md)：官方型号表、协议与系统集成对照，证据位置及值得继续验证的经验。
 - [设备适配研究交接与验收入口](research/device-adaptation-handoff.md)：下一会话的阅读入口、离线复现与原件保全清单。
 - [云端设备配置](research/cloud-device-configuration.md)、[云端设备美术](research/cloud-device-artwork.md)：认证、解密、配置选择、模型/2D 原件与未证明范围。
@@ -35,4 +36,4 @@
 - [阶段 1](history/phase1-notes.md)、[阶段 2](history/phase2-notes.md)、[阶段 3/4](history/phase34-notes.md)：旧 CLI 和本机实验记录。
 - [阶段 5](history/phase5-notes.md)、[协议证据](history/phase5-protocol-evidence.md)、[集成审阅](history/integration-review.md)：WPF 0.5.0 证据与 0.6.x 后续说明。
 
-历史证据保留原始时间、版本、范围和源码定位；新的复核另存报告，不覆盖原件。资料迁移仅更新访问链接及工具入口，历史报告和 manifest 的旧路径保留。当前离线/模拟测试和静态包校验不证明真实耳机广播、手机并发、休眠恢复或 ARM64 实机行为。研究结论与复现脚本保存在 `docs/research/`；原始输入、上游仓库、厂商配置、图册和采样记录保存在根目录 `research/`。发布包与构建输出仍使用原有目录。
+历史证据保留原始时间、版本、范围和源码定位；新的复核另存报告，不覆盖原件。公开文档与工具更新当前访问路径，完整原稿和 manifest 的旧路径保留。当前离线/模拟测试和静态包校验不证明真实耳机广播、手机并发、休眠恢复或 ARM64 实机行为。完整研究资料保存在 `research/`；本地原件链接不随普通clone提供，公开结论、维护工具和正常构建不依赖完整档案随源码分发。发布包与构建输出仍使用原有目录。

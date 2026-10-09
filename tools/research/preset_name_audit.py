@@ -11,7 +11,7 @@ import zipfile
 
 from event_dex_audit import instructions, read_dex
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "docs/research/earbud-artwork/scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools/research/earbud-artwork/scripts"))
 from android_resources import resource_table
 
 

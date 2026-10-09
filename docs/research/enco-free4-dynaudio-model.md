@@ -1,5 +1,7 @@
 # Enco Free4 丹拿版官方模型获取与验证
 
+本文是2026-10-08模型研究的公开整理稿。完整原文保存在[本地研究档案](../../research/migrations/organization-2026-10-09/originals/docs/research/enco-free4-dynaudio-model.md)，研究对象、工具、理解和产物保存在`research/online-artwork/`。下文的`research/`原件、日志和渲染图链接仅供本地档案使用，不随源码分发；克隆仓库包含公开文档和`tools/`工具，不要求拥有这些原件。
+
 **后续接入：0.8.2 的临时 Demo 已改用此模型。** 原始 GLB 独立嵌入 `src/HeyMelody.App/Assets/Devices/EncoFree4Dynaudio/model.glb`，长按主界面“+”两秒或 `Start-3D-Demo.cmd` 可检查布局；精确摘要限定内存不透明/深度写入设置。下文保留获取阶段的研究范围，来源及原件不变。
 
 2026-10-08 已取得 **Enco Free4 丹拿版 `06C010` 的官方 3D 资源**。有效条件为 `color="3"`、`moduleId="14"`；欢律与无线耳机两种来源返回同一 ZIP。此前仅查询 `-1、0、1、2`，遗漏了 3，空响应不能作为模型不存在的依据。本次仅做资源研究与验证，没有修改应用实现，也不需要 root AVD 或手机配合。
@@ -24,12 +26,12 @@
 本次新增 2 次模型元数据 POST、1 次 CDN GET，全部串行并沿用现有请求间隔。下载前要求唯一资源记录，下载后校验服务端 SHA256，再验证 ZIP 路径、成员大小和 CRC。两来源记录见 [获取 run](../../research/online-artwork/runs/20261008T051703.741040Z/results.json)，独立离线复核见 [verification.json](../../research/online-artwork/runs/20261008T051703.741040Z/verification.json)。
 
 ```powershell
-python -B -X utf8 docs/research/online-artwork/scripts/fetch_artwork.py --online --targets free4-dyna --colors 3 --proxy http://127.0.0.1:59991
-python -B -X utf8 docs/research/online-artwork/scripts/inspect_models.py research/online-artwork/runs/20261008T051703.741040Z
-python -B -X utf8 docs/research/online-artwork/scripts/verify_artwork.py --run research/online-artwork/runs/20261008T051703.741040Z --output research/online-artwork/enco-free4-dynaudio/verification-new.json
+python -B -X utf8 tools/research/online-artwork/scripts/fetch_artwork.py --online --targets free4-dyna --colors 3
+python -B -X utf8 tools/research/online-artwork/scripts/inspect_models.py research/online-artwork/runs/20261008T051703.741040Z
+python -B -X utf8 tools/research/online-artwork/scripts/verify_artwork.py --run research/online-artwork/runs/20261008T051703.741040Z --output research/cloud-acceptance/free4-dynaudio-review/verification.json
 ```
 
-第一条会创建一个新 run，后两条只离线检查本次已保存原件。本机可用 Python 为 `C:/Users/LOZAP/AppData/Local/Programs/conda-forge/python.exe`；复现时将 `python` 换为已有解释器路径即可，无需安装依赖。
+复现需要已安装依赖的Python环境和相应研究输入。第一条明确访问网络并创建新run；后两条离线读取已保存原件并生成分析结果。验证报告指定尚不存在的输出文件，原始下载字节保留不变；普通构建和应用运行不依赖这份本地研究档案。
 
 ## 身份与结构证据
 
@@ -73,4 +75,4 @@ python -B -X utf8 docs/research/online-artwork/scripts/verify_artwork.py --run r
 
 目检确认内存 Opaque 版本外壳遮挡正常、三个角度模型完整且未裁切。原始 BLEND 正面可见耳机柄和内部零件覆盖外壳，和该材质关闭深度写入一致；alpha 证据支持对这个精确模型采用 Opaque。研究场景使用 Ava3D studio 光照，未加载 OEM KTX，因此验证的是当前引擎可加载和绘制原件，不是复刻手机端光照效果或完成 App 接入。
 
-**资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。
+**资料整理（2026-10-09）：** 完整原稿已按字节归档，原报告与manifest中的历史路径保留。本页保留型号、厂商资源摘要、结构及渲染结论，复现工具入口更新为`tools/research/online-artwork/scripts/`；完整研究材料与公开整理稿的范围见[资料索引](README.md)。

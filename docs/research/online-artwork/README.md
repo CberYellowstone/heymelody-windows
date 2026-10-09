@@ -1,115 +1,36 @@
-# Enco X3 / Enco Free4 云端 3D 资源获取
+# 官方云端模型与动态外观研究摘要
 
-**2026-10-09 补充：X4 旋转资源是动态 WebP。** 两来源 `06EC10 / color=1 / moduleId=14` 都取得相同 `modelWebp` 包，主展示应按模型／WebP／静态图选择；control Lottie 是操作教程。真实包、APK 调用、帧合成与复现脚本见 [X4 复核](../enco-x4-artwork-audit.md)。
+2026-10-07 至 2026-10-09 已取得并复核 X3、普通 Free4、Free4 丹拿版的官方三维模型，以及 X4 的官方动态 WebP。完整请求条件、空响应、原包、格式解析和运行记录保存在 [research/online-artwork/](../../../research/online-artwork/)；资源获取阶段原文见 [归档报告](../../../research/online-artwork/archive-2026-10-09/README.md)。
 
-**2026-10-08 补充：Free4 丹拿版也已取得。** 精确请求 `06C010 / color=3 / moduleId=14` 在欢律与无线耳机下都成功，原 ZIP SHA256 `efe7c68b71fe92a3b6c8e5901603cd889ac3e5f8737e612e3e42f3f6054b1a99`，GLB SHA256 `7f85c66d397ee45163246ff745c37e52a70059e739be0af2283a30bfb689c2f6`。见 [研究报告](../enco-free4-dynaudio-model.md)、[整理后的模型](../../../research/online-artwork/enco-free4-dynaudio/model.glb)、[原件 manifest](../../../research/online-artwork/enco-free4-dynaudio/manifest.json) 和 [独立验证](../../../research/online-artwork/runs/20261008T051703.741040Z/verification.json)。下文保留 2026-10-07 历史范围；当时丹拿版只查到色号 2，不能据此推断模型不存在。本次没有应用功能变更，也无需 root AVD。
+## 已核实的资源
 
-本页保留资源获取阶段记录。后续已完成 X3 渲染验证，并将 Free4 模型迁入 0.7.1；当前范围见 [美术交接](../cloud-device-artwork.md) 和 [Free4 实现](../enco-free4-0.7.1.md)。对已保存样本优先运行 `python -B -X utf8 tools/research/accept_cloud_research.py`，它只离线复验并另存报告。
+| 型号 | 精确产品 ID | 成功请求的色号 | 模块 | 已取得内容 | 对应报告 |
+| --- | --- | ---: | ---: | --- | --- |
+| Enco X3 | `067410` | 2 | 14 | VFXMS 原容器、GLB、IBL 与场景配置 | [X3 模型验证](../enco-x3-3d-validation.md) |
+| Enco Free4 | `068C10` | 1 | 14 | VFXMS、GLB、IBL、skybox 与场景配置 | [Free4 模型与实现](../enco-free4-0.7.1.md) |
+| Enco Free4 丹拿版 | `06C010` | 3 | 14 | 独立官方模型包与导出模型 | [丹拿版模型研究](../enco-free4-dynaudio-model.md) |
+| Enco X4 | `06EC10` | 1 | 14 | 官方 `modelWebp` 动态资源 | [X4 美术复核](../enco-x4-artwork-audit.md) |
 
-2026-10-07 已实际取得 **Enco X3 与 Enco Free4 的官方 3D 资源包**。每个型号分别通过欢律和无线耳机的请求认证查询，两种来源返回的包 SHA256 相同；每份包只下载一次。研究使用现有 Python 环境和 `http://127.0.0.1:59991` 代理，不需要 AVD、root 或手机辅助。当时全部产物保存在 `research/online-artwork/`，没有接入桌面应用或实现渲染。
+每个表中成功条件都分别查询欢律与无线耳机，两来源返回的对应原包摘要相同。色号是请求协议值；此次样本不能将它自动解释成商品颜色名称或官方默认色。普通 Free4 和丹拿版使用不同产品 ID，不能互相替代。
 
-## 已取得资源
+X4 的主展示资源是动态 WebP，control 包中的 Lottie 是操作教程；二者用途不同。`support3DModel` 不是取得 WebP 的必要条件。主展示应依据实际资源角色与可加载格式选择三维模型、WebP 或静态图，不能把教程动画当作型号外观。
 
-| 型号 | 产品 ID | 本次有效配色编号 | ZIP 字节数 | VFXMS 字节数 | 导出 GLB 字节数 |
-|---|---|---:|---:|---:|---:|
-| Enco X3 | `067410` | 2 | 9581441 | 12932064 | 10835448 |
-| Enco Free4 | `068C10` | 1 | 8885630 | 13397063 | 9727500 |
+## 格式与来源结论
 
-编号是请求中的协议值，两款白名单均未声明 `defaultColor`。本轮没有把这些编号认定为官方默认色或对应的商品颜色。
+取得的 X3、普通 Free4 `.vfxms` 不是加密模型包，而是头部加场景 JSON、GLB、IBL KTX 和可选 skybox KTX 的容器。导出直接复制各段原字节，没有重编码模型。固定样本中 GLB 都是版本 2，无外部 buffer/image URI，也没有内置 glTF animation；X3 有 31 个 mesh，普通 Free4 有 28 个。
 
-直接查看导出模型与原包：
+原件复核覆盖元数据摘要、ZIP 成员和提取字节、容器边界、GLB chunk/JSON，以及 KTX 全部面和 mip 边界。获取阶段的结构检查没有运行模型引擎或完整渲染验收；后续原生显示、材质处理和帧验证由表中专题另行记录。当前应用已接入官方模型与动态外观，具体持久化和显示行为见 [外观资源持久化](../../artwork-persistence.md) 与 [模型渲染设置](../../model-rendering.md)。
 
-- X3：[model.glb](../../../research/online-artwork/runs/20261007T101708.195649Z/model-inspection/b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf/extracted/res/raw/detail_model/model.glb)、[原 ZIP](../../../research/online-artwork/runs/20261007T101708.195649Z/packages/b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf/resource.zip)、[结构报告](../../../research/online-artwork/runs/20261007T101708.195649Z/model-inspection/report.json)。
-- Free4：[model.glb](../../../research/online-artwork/runs/20261007T101352.199515Z/model-inspection/068676a8bb633f35e741f2d0dc7eb919afcb03e89f5c6839b41adbec53287bb1/extracted/res/raw/detail_model/model.glb)、[原 ZIP](../../../research/online-artwork/runs/20261007T101352.199515Z/packages/068676a8bb633f35e741f2d0dc7eb919afcb03e89f5c6839b41adbec53287bb1/resource.zip)、[结构报告](../../../research/online-artwork/runs/20261007T101352.199515Z/model-inspection/report.json)。
+资源查询版本取自 application meta-data，旧外观探测器使用 manifest 版本的观察保留为历史，不能替代本次有效条件。模块响应没有独立产品 ID 字段，型号归属由精确请求、唯一响应资源、文件名与包摘要建立，不能称为响应产品 ID 的额外校验。
 
-原 ZIP 的 SHA256 与元数据完全一致：
+## 未证明范围与完整复核
 
-- X3：`b4763c5f9f790b0859131807324bf81c4a1855489fc087e715f673de848119bf`
-- Free4：`068676a8bb633f35e741f2d0dc7eb919afcb03e89f5c6839b41adbec53287bb1`
+2026-10-07 X3 只在已查询的色号 2 下取得包，普通 Free4 在色号 1 下取得包；丹拿版当日的 -1/0/1/2 查询没有资源，次日色号 3 已成功。因此 `HTTP 200 / code 0` 的空资源响应只说明该次条件未提供包，不能否定型号资源存在，也不能推广为所有颜色或地区的结论。
 
-两包都只有两个文件：`config.json` 和 `res/raw/detail_model.vfxms`。外层配置明确指向该模型文件。原件、ZIP 成员清单、逐文件摘要与导出结果均保留；没有重编码或转换模型。
+原元数据完整 HTTP 字节未保留，无法重新计算其传输摘要。原包摘要与本地结构完整性也不证明其他型号控制能力、官方渲染的完全等效或真实双耳声音效果。
 
-## 请求契约与查询范围
+固定原件复核入口：[X3](../../../research/online-artwork/runs/20261007T101708.195649Z/verification.json)、[普通 Free4](../../../research/online-artwork/runs/20261007T101352.199515Z/verification.json)、[丹拿版](../../../research/online-artwork/runs/20261008T051703.741040Z/verification.json)。X4 原包及帧复核入口见其专题报告；容器静态依据见 [model-format-contract.json](../../../research/online-artwork/evidence/model-format-contract.json)。
 
-`POST https://iot-earbuds-cn.heytapmobi.com/v1/earphone/resource/fetch`。
+复现脚本位于 [tools/research/online-artwork/scripts/](../../../tools/research/online-artwork/scripts/)。已有样本可通过 [accept_cloud_research.py](../../../tools/research/accept_cloud_research.py) 统一离线复核，新报告另存 `research/cloud-acceptance/`。重新获取、导出或原生预览的详细命令与环境记录保留在完整研究目录中。
 
-欢律查询 X3 的成功请求体：
-
-```json
-{"platform":"android","channel":"2","versionCode":"17006004","productId":"067410","color":"2","moduleId":"14"}
-```
-
-无线耳机使用 `channel="1"`、`versionCode="17006002"`；Free4 改为 `productId="068C10"`、`color="1"`。所有值均为字符串。认证沿用已验证的 APK 内认证材料解密与准确 body 字节的 HMAC-SHA1 请求签名。认证材料、签名、nonce、请求认证头及完整下载 URL 不写盘。
-
-版本来源是 **application meta-data.versionCode**。旧 `earbud-artwork` 资源探测器用了 manifest 安装版本号，此处已纠正；旧观察仅作为历史线索，不作为本轮结果。
-
-本轮共 20 次元数据 POST、2 次 CDN GET，全部串行、所有网络请求间隔至少一秒；HTTP 200、业务码 0。具体条件如下：
-
-| 型号 | 两来源查询的配色编号 | 有资源的编号 |
-|---|---|---|
-| X3 `067410` | -1、0、1、2 | 2 |
-| Free4 `068C10` | 0、1 | 1 |
-| Free4 丹拿版 `06C010` | -1、0、1、2 | 本次均未返回资源 |
-
-其他条件返回成功但没有 `data`，只能说明本次查询没有提供包，不能推断该型号没有模型。此后没有继续扫描配色、其他产品或模块。
-
-成功元数据含 `fileName/resourceDescription/resourceName/resourceUrl/sha256`，没有独立 `productId` 字段。型号归属记录为 **request-only**：依据精确产品 ID 和配色请求、唯一响应资源、带对应编号的文件名，以及经校验的包 SHA256；没有声称存在响应产品 ID 的独立校验。
-
-## VFXMS 格式及实际验证
-
-APK 的 `ModelScene` 加载器直接读取文件字节，不经过 AES 解密。实际取得的两份 `.vfxms` 是可解析容器，结构为：
-
-```text
-40 字节头部（10 个 big-endian int32）
-configStart, configLength, glbStart, glbLength,
-iblStart, iblLength, skyboxStart, skyboxLength,
-animationStart, animationLength
-
-UTF-8 场景 JSON → GLB → IBL KTX → 可选 skybox KTX
-```
-
-官方加载器按长度顺序读取前四段，没有用 start 字段 seek。本轮样本的所有非空段 start 都与顺序位置一致，段长度覆盖整个文件且没有剩余尾部；animation 段均为空。导出时复制原始段字节。
-
-- 两个 GLB 均为版本 2、一个 JSON chunk 加一个 BIN chunk，声明总长与实际一致。X3 有 31 个 mesh，Free4 有 28 个；两者均没有外部 buffer/image URI，也没有内置 glTF animation。
-- 两个 IBL 均为 KTX1 六面 cubemap，256×256、五级 mipmap；Free4 另有一个 256×256、单级 mipmap 的 skybox KTX1，X3 没有 skybox 段。
-- 场景 JSON 包含光照、材质、缩放、抗锯齿及阴影等参数；已保存原容器与场景配置原始段。
-
-检查覆盖容器边界、GLB chunk/JSON、KTX header 和所有面/级别边界；没有运行像素解码器、完整 glTF accessor 验证器、模型加载引擎或渲染器，因此这不是渲染效果验收。
-
-静态依据见 [model-format-contract.json](../../../research/online-artwork/evidence/model-format-contract.json)；两来源目标能力与资源字段见 [target-profiles.json](../../../research/online-artwork/evidence/target-profiles.json)。
-
-## 文件及复现
-
-- [配色 1 请求与 Free4 下载记录](../../../research/online-artwork/runs/20261007T101352.199515Z/results.json)
-- [配色 0 空响应记录](../../../research/online-artwork/runs/20261007T101533.954104Z/results.json)
-- [配色 2/-1 请求与 X3 下载记录](../../../research/online-artwork/runs/20261007T101708.195649Z/results.json)
-- 独立原件复核：[Free4](../../../research/online-artwork/runs/20261007T101352.199515Z/verification.json)、[X3](../../../research/online-artwork/runs/20261007T101708.195649Z/verification.json)。
-
-两份独立原件复核均通过，包括服务端摘要、ZIP 实际成员字节、提取原件、请求与资源文件名映射及模型容器结构。空响应的检查只证明记录自洽，不表示该查询取得了模型。
-
-获取器正常验证 TLS、限制为厂商 HTTPS CDN、禁止重定向，校验元数据 SHA256；同时保留传输原文与 HTTP 解码后 ZIP 的摘要。ZIP 全成员先检查 Windows 路径、大小、类型及 CRC，再提取；不执行包内内容。元数据响应保留脱敏版本，没有保留完整 HTTP 原文，无法离线重算元数据传输摘要。
-
-在仓库根目录复现成功条件（会发起新请求）：
-
-```powershell
-$artworkPython = 'python'
-& $artworkPython -B -X utf8 docs/research/online-artwork/scripts/fetch_artwork.py --online --targets x3 --colors 2 --proxy http://127.0.0.1:59991
-& $artworkPython -B -X utf8 docs/research/online-artwork/scripts/fetch_artwork.py --online --targets free4 --colors 1 --proxy http://127.0.0.1:59991
-```
-
-默认查询两种 App 来源；`--packages` 可只选一种。获取器默认离线，`--offline` 仅复核 APK 与认证材料，不访问网络。在线退出码 0 代表流程完成，应查看各 case 的 `status` 和 `unique_verified_packages`；空资源响应会明确记录，不等于已下载模型。
-
-仅解析、导出与复核已有样本，不联网：
-
-```powershell
-$artworkRun = 'research/online-artwork/runs/20261007T101708.195649Z'
-& $artworkPython -B -X utf8 docs/research/online-artwork/scripts/inspect_models.py $artworkRun
-& $artworkPython -B -X utf8 docs/research/online-artwork/scripts/verify_artwork.py --run $artworkRun --output artifacts/artwork-review-new/verification.json
-```
-
-两个模型目录中的 `model.glb`、`ibl.ktx`、可选 `skybox.ktx` 和场景配置可供下一阶段研究使用；本阶段没有调整 Avalonia 界面或添加 3D 渲染能力。
-
-
-## 2026-10-08 归档位置与提交范围
-
-研究说明和复现脚本保存在本目录；原件、配置、静态取证、运行记录及派生数据保存在 [`research/online-artwork/`](../../../research/online-artwork/)。历史 JSON 内的采样路径与摘要保持原值，文档链接和工具入口指向当前位置。目录总览见 [研究资料索引](../README.md)。
+这些 `research/` 链接指向本地保存的完整材料；普通仓库克隆不包含厂商 ZIP、模型、纹理或全部验证记录。

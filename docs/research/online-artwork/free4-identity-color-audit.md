@@ -1,5 +1,7 @@
 # Free4 丹拿版身份与颜色：独立静态审计
 
+本文为公开整理稿；[整理前完整原文](../../../research/migrations/organization-2026-10-09/originals/docs/research/online-artwork/free4-identity-color-audit.md)保存在本地研究档案，不随普通Git clone提供。历史版本、来源及验证范围保留，完整研究对象与产物由 `research/` 保存。
+
 2026-10-08。只解析本地两套 APK、已保存的官方白名单和资源结果；没有新增网络探测，也没有修改应用实现。
 
 **丹拿版使用精确请求 `productId=06C010 / color=3 / moduleId=14` 已取得官方模型。** 两来源验证成功、ZIP 同为 8,820,468 字节、SHA256 同为 `efe7c68b71fe92a3b6c8e5901603cd889ac3e5f8737e612e3e42f3f6054b1a99`。此前 `-1/0/1/2` 的无资源结果遗漏了 3，只能描述当时这些请求的结果，不能推断模型不存在。现有请求认证即可获取，不需要 root、AVD 或手机私有缓存。
@@ -36,10 +38,10 @@
 
 ```powershell
 $free4AuditPython = (uv python find --offline).Trim()
-& $free4AuditPython -B -X utf8 docs/research/online-artwork/scripts/audit_free4_identity_color.py
+& $free4AuditPython -B -X utf8 tools/research/online-artwork/scripts/audit_free4_identity_color.py
 ```
 
 
 ## 归档说明
 
-本页和复现脚本位于 `docs/research/online-artwork/`；上述 JSON、请求记录和模型原件位于 `research/online-artwork/`。原始取证日期、摘要与请求结果未改变。目录位置见 [研究资料索引](../README.md)。
+本页是公开整理结果，维护脚本位于 `tools/research/online-artwork/scripts/`；完整解读原稿、JSON、请求记录和模型原件保存在 `research/`。原始取证日期、摘要与请求结果未改变。目录位置见 [研究资料索引](../README.md)。

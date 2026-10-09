@@ -17,9 +17,9 @@ import struct
 import sys
 
 sys.dont_write_bytecode = True
-DOCUMENTATION_ROOT = Path(__file__).resolve().parents[2]
+TOOLS_ROOT = Path(__file__).resolve().parents[2]
 RESEARCH = Path(__file__).resolve().parents[4] / "research/online-artwork"
-sys.path.insert(0, str(DOCUMENTATION_ROOT / "earbud-artwork/scripts"))
+sys.path.insert(0, str(TOOLS_ROOT / "earbud-artwork/scripts"))
 from research_runtime import research_path
 MAX_MODEL_BYTES = 256 * 1024 * 1024
 MAX_JSON_BYTES = 8 * 1024 * 1024

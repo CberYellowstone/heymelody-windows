@@ -1,5 +1,7 @@
 # 日常控制的协议证据与适配边界
 
+本文为公开整理稿；[整理前完整原文](../../research/migrations/organization-2026-10-09/originals/docs/research/daily-feature-codecs.md)保存在本地研究档案，不随普通Git clone提供。历史版本、来源及验证范围保留，完整研究对象与产物由 `research/` 保存。
+
 本页记录 2026-10-08 为通用设置新增的静态协议核对。证据来自本工作区 `research/apps/无线耳机_17.6.3.apk` 的 `classes.dex`（SDK）和 `classes2.dex`（界面、配置与 repository）。DEX 偏移均为该样本的文件偏移。没有运行 Android、连接真实耳机或新增网络请求；测试使用内存 transport，不代表各型号实机验收。
 
 实现入口为 [DailyFeatures.cs](../../src/HeyMelody.Daily/DailyFeatures.cs)、[DailyFeatureCodecs.cs](../../src/HeyMelody.Protocol/DailyFeatureCodecs.cs)，验收入口为 [DailyFeatureTests.cs](../../tests/HeyMelody.Daily.Tests/DailyFeatureTests.cs)。资源来源沿用完整配置选择，不能将无线耳机界面的分支规则直接套到欢律。

@@ -1,5 +1,7 @@
 # 0.7.1 Enco Free4 外观体验包
 
+本文为公开整理稿；[整理前完整原文](../../research/migrations/organization-2026-10-09/originals/docs/research/enco-free4-0.7.1.md)保存在本地研究档案，不随普通Git clone提供。历史版本、来源及验证范围保留，完整研究对象与产物由 `research/` 保存。
+
 0.7.1 的 Free4 模型与交互已从独立分支 `experiment/enco-free4-3d-0.7.1` 迁入 `arch/modular-devices`。原独立成果提交为 `10c2c71`，基于此前已验证的 X3 预览提交 `e7db26b`，仍沿用 0.7.0 的设备控制架构。主界面左侧换用 Enco Free4 官方 GLB；App、Client、Contracts、Host 和 DeviceManager 的版本均为 0.7.1。
 
 下文体验包的 259 项原生检查、338 项离线检查、ZIP 摘要与发布窗口来自迁移前的独立工作区；对应本地证据保存在 `research/3d-validation/worktree`。迁移后主仓库另行验证的结果见“主仓库迁移验证”。

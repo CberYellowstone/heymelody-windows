@@ -8,18 +8,19 @@ import sys
 
 sys.dont_write_bytecode = True
 
-DOCUMENTATION_ROOT = Path(__file__).resolve().parents[2]
-REPOSITORY_ROOT = DOCUMENTATION_ROOT.parents[1]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+DOCUMENTATION_ROOT = REPOSITORY_ROOT / "docs/research"
+TOOLS_ROOT = REPOSITORY_ROOT / "tools/research"
 RESEARCH_ROOT = REPOSITORY_ROOT / "research"
 SCRIPT_TOPICS = {"earbud-artwork", "online-artwork", "online-whitelist"}
-REPORT_TOPICS = SCRIPT_TOPICS | {"3d-validation"}
+REPORT_TOPICS = SCRIPT_TOPICS | {"3d-validation", "oppopods-comparison-2026-10-08"}
 
 
 def research_path(value: str | Path, base: Path | None = None) -> Path:
     """Resolve migrated files without rewriting paths in historical evidence."""
     candidate = Path(str(value).replace("\\", "/"))
     if not candidate.is_absolute():
-        if candidate.parts[:2] == ("docs", "research") or candidate.parts[:1] == ("research",):
+        if candidate.parts[:2] in {("docs", "research"), ("tools", "research")} or candidate.parts[:1] == ("research",):
             candidate = REPOSITORY_ROOT / candidate
         else:
             candidate = (base or Path.cwd()) / candidate
@@ -27,19 +28,31 @@ def research_path(value: str | Path, base: Path | None = None) -> Path:
     was_documentation = candidate.is_relative_to(DOCUMENTATION_ROOT)
     if was_documentation:
         relative = candidate.relative_to(DOCUMENTATION_ROOT)
+    elif candidate.is_relative_to(TOOLS_ROOT):
+        relative = candidate.relative_to(TOOLS_ROOT)
     elif candidate.is_relative_to(RESEARCH_ROOT):
+        # Complete local research notes can coexist with a public summary at
+        # the same topic/name. An explicit existing research Markdown input
+        # always keeps its own contents; only legacy missing reports redirect.
+        if candidate.suffix.lower() == ".md" and candidate.is_file():
+            return candidate
         relative = candidate.relative_to(RESEARCH_ROOT)
     else:
         return candidate
-    # Only this project's reproduction code and reports remain in docs;
-    # third-party scripts and nested Markdown evidence move with their data.
+    # Resolve old manifest paths without editing historical evidence. Current
+    # reproduction code lives in tools, publishable reports in docs, and raw
+    # objects (including third-party code and nested evidence) in research.
     topic = relative.parts[0] if relative.parts else None
+    if topic == "oppopods-comparison-2026-10-08" and len(relative.parts) == 2 and relative.name in {"EVIDENCE.md", "SNAPSHOT.json"}:
+        return (RESEARCH_ROOT / topic / "originals" / relative.name).resolve()
     is_code = topic in SCRIPT_TOPICS and relative.parts[1:2] == ("scripts",)
     is_report = relative.suffix.lower() == ".md" and (
         (was_documentation and len(relative.parts) == 1)
         or (topic in REPORT_TOPICS and len(relative.parts) == 2)
     )
-    if is_code or is_report or topic == "oppopods-comparison-2026-10-08":
+    if is_code:
+        return (TOOLS_ROOT / relative).resolve()
+    if is_report:
         return (DOCUMENTATION_ROOT / relative).resolve()
     if relative.parts[:2] == ("local", "inputs"):
         relative = Path(*relative.parts[2:])

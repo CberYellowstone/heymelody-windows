@@ -1,5 +1,7 @@
 # 设备适配研究交接与验收入口
 
+本文为公开整理稿；[整理前完整原文](../../research/migrations/organization-2026-10-09/originals/docs/research/device-adaptation-handoff.md)保存在本地研究档案，不随普通Git clone提供。历史版本、来源及验证范围保留，完整研究对象与产物由 `research/` 保存。
+
 **2026-10-09 校准重新研究与修复：** 黄金听感与贴合度已从两原APK独立重读并与可信X4 v116固件核对，随后已用于[现有组件修复](calibration-repair.md)。后续校准适配先读修复记录、[最新纠正摘要](calibration-reassessment.md) 和 [完整过程/结果](../../research/calibration-reassessment-20261009/README.md)。下文0.7.1基线与旧验收保留为历史。
 
 用户追加授权的[实测](../../research/calibration-reassessment-20261009/LIVE-TEST.md)已完成fit双耳Good及黄金听感12项/滤波/保存读回，旧方案公开字段恢复一致。本次已修正CalibrationEngine/DailyRefresh将OTA查询0107当佩戴的问题，正确命令0109。研究工具实测与修复后的客户端验证范围分别记录。临时工具曾漏绑滑块回调并已纠正，作废数据与有效数据分别保留。
@@ -54,15 +56,15 @@
 python -B -X utf8 tools/research/accept_cloud_research.py
 ```
 
-默认创建 `artifacts/research-acceptance-<UTC>/`；也可指定尚不存在的目录：
+默认创建 `research/cloud-acceptance/research-acceptance-<UTC>/`；也可指定尚不存在的研究目录：
 
 ```powershell
-python -B -X utf8 tools/research/accept_cloud_research.py --output-dir artifacts/research-acceptance-next-session
+python -B -X utf8 tools/research/accept_cloud_research.py --output-dir research/cloud-acceptance/next-session
 ```
 
-读取输出 `summary.json` 的总体/分项 `passed` 与退出码。`retention-manifest.json` 记录保全文件的仓库相对路径、大小和 SHA256；配置/模型/图册报告复核原件及历史证据。输出必须在 `artifacts` 内，已存在时拒绝执行。
+读取输出 `summary.json` 的总体/分项 `passed` 与退出码。`retention-manifest.json` 记录保全文件的仓库相对路径、大小和 SHA256；配置/模型/图册报告复核原件及历史证据。新的研究输出位于 `research/cloud-acceptance`，已存在时拒绝执行；显式旧 `artifacts` 输出参数仅保留兼容。
 
-单独复验时，两验证器均支持 `--output <新的 artifacts 报告路径>`；不传则仍原位写 `RUN/verification.json`。`analyze_whitelist.py` 和 `inspect_models.py` 旧 CLI 也会写回研究目录，阅读成果不要默认重跑。在线入口及成功条件见两个专题交接，本次证据不用 `latest-run.json` 定位。
+单独复验时，两验证器均支持 `--output <新的 research/cloud-acceptance 报告路径>`；不传则仍原位写 `RUN/verification.json`。`analyze_whitelist.py` 和 `inspect_models.py` 旧 CLI 也会写回研究目录，阅读成果不要默认重跑。在线入口及成功条件见两个专题交接，本次证据不用 `latest-run.json` 定位。
 
 ## 保全范围与跨会话使用
 
@@ -73,12 +75,12 @@ python -B -X utf8 tools/research/accept_cloud_research.py --output-dir artifacts
 | `research/online-artwork/runs` 与 `evidence/` | 原 ZIP、传输字节、VFXMS、场景 JSON、GLB/KTX 及成功/空响应记录 |
 | `research/earbud-artwork/` | 原 ZIP、APK 美术原件、型号/功能/变体关联、绘制依赖、图册与预览 |
 | 研究脚本、静态契约、本页及专题交接 | 可复现规则；DEX 小工具迁至 `tools/research/event_dex_audit.py` |
-| 本轮新 `artifacts` 验收报告及 manifest | 本次验收、历史报告未变的证据和备份核对索引 |
-| `artifacts/apk-research/` | 早期白名单、反汇编及事件链索引；本页的新结论优先于旧报告中的已纠正解释 |
+| 新 `research/cloud-acceptance` 验收报告及 manifest | 本次验收、历史报告未变的证据和备份核对索引 |
+| `research/evidence-archive-2026-10-09/apk-research/` | 早期白名单、反汇编及事件链索引的原字节档案；本页的新结论优先于旧报告中的已纠正解释 |
 
-研究文档和复现脚本保存在 `docs/research/`；原始输入、取证文件和派生产物保存在根目录 `research/`。`retention-manifest.json` 用于核对文件路径、大小和摘要。
+完整研究对象、理解、结论和产物保存在 `research/`；本页和其他 `docs/` 文档是适宜公布的整理结果。维护中的项目复现工具保存在 `tools/research/`，原字节版本仍归入研究档案。`retention-manifest.json` 用于核对文件路径、大小和摘要。
 
-获取、分析、验证和图册工具保存在 `docs/research/{online-whitelist,online-artwork,earbud-artwork}/scripts/`。各专题 README 给出相应复现流程。本轮依赖版本见 [cloud-research-requirements.txt](../../tools/research/cloud-research-requirements.txt)，验收摘要记录实际加载版本；旧 [requirements.txt](../../tools/research/requirements.txt) 是另一套 APK 研究环境要求。
+获取、分析、验证和图册工具保存在 `tools/research/{online-whitelist,online-artwork,earbud-artwork}/scripts/`。各专题 README 给出公开结论及复现入口，完整流程与原稿保存在 `research/`。本轮依赖版本见 [cloud-research-requirements.txt](../../tools/research/cloud-research-requirements.txt)，验收摘要记录实际加载版本；旧 [requirements.txt](../../tools/research/requirements.txt) 是另一套 APK 研究环境要求。
 
 当时保存的取证文件没有记录认证材料、真实签名/nonce/认证头、完整临时下载 URL 或缓存测试 key。测试 key 未保留，不能在新进程再次解密旧测试密文；验收检查旧字节和记录，并用新内存 key 重做加解密、错误 key 与篡改拒绝测试。部分旧远程配置是脱敏派生文件，原 ZIP 才是原字节权威。
 
@@ -92,6 +94,6 @@ python -B -X utf8 tools/research/accept_cloud_research.py --output-dir artifacts
 
 新会话可直接使用以下说明：
 
-> 先读 docs/research/device-adaptation-handoff.md 及设备配置/美术交接，在当前 arch/modular-devices 的 0.7.1 基线上继续。本轮先做设备操作适配，保留欢律/无线耳机整体来源切换要求。旧模块方案已撤销，不恢复旧 stash。优先固定样本和离线验收，无需重复批量云端查询；按已核实协议与固件条件逐项实现，随后再做美术适配。
+> 先读 docs/research/device-adaptation-handoff.md、研究资料规范及设备配置/美术结果，结合当前分支源码继续。完整对象、解释、结论和产物在research，公开整理稿在docs，维护工具在tools/research。保留欢律/无线耳机整体来源选择；优先固定样本和离线验收，按协议、固件条件及实机验证逐项适配。
 
 **资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。
