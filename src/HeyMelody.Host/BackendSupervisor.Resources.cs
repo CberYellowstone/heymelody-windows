@@ -50,20 +50,22 @@ internal sealed partial class BackendSupervisor
     {
         if (_resources is null) return;
         Peer[] peers;
+        bool restart, ownsTransition = false;
         lock (_sync)
         {
             if (_stopping) return;
             if (catalogChanged && _calibrations.Values.Any(IsActiveCalibration))
             { _catalogPending = true; EmitLocked(new() { Kind = "resources", Resources = ResourceSettings() }); return; }
+            restart = _activeCatalog?.Sha256 != _resources.Catalog.Sha256 || _activeCatalog?.Source != _resources.Catalog.Source;
             peers = _peers.Values.ToArray();
+            // Capture the peers whose existing commands need draining at the same
+            // instant that new submissions are blocked, including newly discovered peers.
+            if (restart) { ownsTransition = !_resourceTransition; if (ownsTransition) SetResourceTransitionLocked(true); }
         }
-        bool restart = _activeCatalog?.Sha256 != _resources.Catalog.Sha256 || _activeCatalog?.Source != _resources.Catalog.Source;
         if (restart)
         {
             // Finish any submitted ordinary command before retiring its configuration.
             var acquired = new List<Peer>();
-            bool ownsTransition;
-            lock (_sync) { ownsTransition = !_resourceTransition; if (ownsTransition) SetResourceTransitionLocked(true); }
             try
             {
                 foreach (var peer in peers) { await peer.Commands.WaitAsync(token); acquired.Add(peer); }
@@ -72,6 +74,10 @@ internal sealed partial class BackendSupervisor
                     if (_activeCatalog?.Source == _resources.Catalog.Source && _calibrations.Values.Any(IsActiveCalibration))
                     { _catalogPending = true; EmitLocked(new() { Kind = "resources", Resources = ResourceSettings() }); return; }
                     _activeCatalog = _resources.Catalog; _activeResourceRevision = _resources.Revision; _catalogPending = false;
+                    // Catalog refresh can add a peer while the command gates above are
+                    // awaited. It could only start reads during the transition, so cancel
+                    // those reads and retire its old-source worker along with all others.
+                    peers = _peers.Values.ToArray();
                     foreach (var peer in peers) { StopPeerLocked(peer); peer.Broadcast = null; peer.Failures = 0; PublishLocked(peer); }
                 }
             }

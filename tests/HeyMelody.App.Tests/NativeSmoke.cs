@@ -153,11 +153,14 @@ internal static class NativeSmoke
                 var selectedCard = picker.ContainerFromIndex(picker.SelectedIndex) as ListBoxItem
                     ?? throw new InvalidOperationException("Selected native device card was not realized.");
                 var card = selectedCard.GetVisualDescendants().OfType<Grid>().Single(control => control.Name == "DeviceCardContent");
-                Check(card.ColumnDefinitions.Count == 1
-                    && !selectedCard.GetVisualDescendants().OfType<Control>().Any(control => control.Name == "DeviceIcon")
+                Check(card.ColumnDefinitions.Count == 2
+                    && card.GetVisualDescendants().OfType<Viewbox>().Any(control => control.Name == "DeviceIcon"
+                        && control.IsEffectivelyVisible && control.Bounds.Width == 28 && control.Bounds.Height == 28
+                        && control.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Any())
+                    && !card.GetVisualDescendants().OfType<Image>().Any()
                     && selectedCard.GetVisualDescendants().OfType<TextBlock>().Any(control => control.Name == "DeviceNameText"
                         && control.Text == vm.SelectedDevice!.Name),
-                    "The native device card retains its name and status without a redundant product icon.");
+                    "The native device card shows its generic vector headphone icon, name and status without a product image.");
                 var selectedOrigin = selectedCard.TranslatePoint(default, scroll)
                     ?? throw new InvalidOperationException("Selected native device card is detached.");
                 var selectedCenter = selectedOrigin.X + selectedCard.Bounds.Width / 2;

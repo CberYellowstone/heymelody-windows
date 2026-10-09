@@ -50,8 +50,8 @@ public sealed partial class MainViewModel
         var action = supplied.EqualizerEntry is not { } entry ? supplied
             : supplied with { EqualizerEntry = entry with { Bands = entry.Bands.ToArray() } };
         var intent = new PendingAction(action, GroupFor(action.Kind), _sessionIdentity!, _sessionEpoch,
-            VersionFor(action.Kind), _draftIdentity, _snapshot!.EqualizerEntries.Select(x => x.Id).ToArray(), _sessionWork.Token,
-            _snapshot.BackendInstanceId, _snapshot.DeviceGeneration);
+            VersionFor(action.Kind), _draftIdentity, _liveSnapshot!.EqualizerEntries.Select(x => x.Id).ToArray(), _sessionWork.Token,
+            _liveSnapshot.BackendInstanceId, _liveSnapshot.DeviceGeneration);
         _pending.Add(intent.Group, intent);
         if (action.Kind == "Anc") { _pendingAnc = true; _pendingAncKey = action.Value; _pendingAncPrimary = action.Value >> 8; }
         if (action.Kind == "AncMode") { _pendingAnc = true; _pendingAncKey = null; _pendingAncPrimary = action.Value; }
@@ -97,7 +97,7 @@ public sealed partial class MainViewModel
             if (!consent) { await CancelAndRefreshAsync(); return; }
             action = action with { AllowMutexChange = true };
         }
-        if (!Current(intent) || _lifecyclePending) return;
+        if (!Current(intent) || _lifecyclePending || !Supports(action)) return;
         var first = await SubmitAsync(intent, action);
         if (!Current(intent)) return;
         if (FinishIfConfirmed(intent, first)) return;
@@ -301,9 +301,8 @@ public sealed partial class MainViewModel
             {
                 var devices = ComposeDevices(await _service.EnumerateAsync(_lifetime.Token));
                 if (epoch != _sessionEpoch || Closing) return null;
-                _devices = devices;
-                _selectedDevice = devices.FirstOrDefault(x => x.Identity == _sessionIdentity);
-                if (_selectedDevice is null) { _sessionIdentity = null; AdvanceSession(); }
+                var changed = PresentDevices(devices, _selectedDevice?.Identity);
+                if (changed || _snapshot is null) PresentSelectedBackendSnapshot();
                 NotifyState();
             }
             catch { }

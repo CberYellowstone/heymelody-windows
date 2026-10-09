@@ -69,15 +69,17 @@ internal static class MainLayoutTests
                             "Fit-test and device-information cards use the same actual eight-pixel gap as adjacent groups.");
                         var copy = view.FindControl<Button>("CopyDeviceInfoButton")!;
                         var copyContent = (StackPanel)copy.Content!;
-                        Check(copy.IsEnabled && copy.Bounds.Width > 0 && copy.Bounds.Height > 0 && !information.IsExpanded
+                        Check(copy.IsEnabled && information.Footer is null && !information.IsExpanded
                             && copyContent.Children[0] is FASymbolIcon { Symbol: FASymbol.Copy }
                             && copyContent.Children[1] is TextBlock { Text: "复制" },
-                            "The collapsed information header offers the Copy icon followed by its text.");
+                            "Copy keeps its icon and text in the expanded information content, not in the header.");
                         var picker = view.FindControl<ListBox>("DevicePicker")!;
                         var cards = picker.GetVisualDescendants().OfType<Grid>().Where(grid => grid.Name == "DeviceCardContent").ToArray();
-                        Check(cards.Length > 0 && cards.All(card => card.ColumnDefinitions.Count == 1)
-                            && !picker.GetVisualDescendants().OfType<Control>().Any(control => control.Name == "DeviceIcon"),
-                            "Device cards retain their text while removing the redundant icon slot.");
+                        Check(cards.Length > 0 && cards.All(card => card.ColumnDefinitions.Count == 2
+                                && card.GetVisualDescendants().OfType<Viewbox>().Any(icon => icon.Name == "DeviceIcon"
+                                    && icon.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Any()))
+                            && !picker.GetVisualDescendants().OfType<Image>().Any(),
+                            "Real and demo cards share a generic vector headphone icon without product images.");
                         Check(view.IsCompact == (size.Width < 1080), "The simplified hero respects the responsive breakpoint.");
 
                         using var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("Missing main-layout pixels.");
@@ -90,7 +92,7 @@ internal static class MainLayoutTests
 
                         // Inspect the controls below the initial viewport without opening
                         // any panel. Center the adjacent fit-test and information cards
-                        // together so their spacing and the collapsed Copy action are visible.
+                        // and verify that copying is unavailable until information is expanded.
                         information.BringIntoView(); Dispatcher.UIThread.RunJobs();
                         AvaloniaHeadlessPlatform.ForceRenderTimerTick(); Dispatcher.UIThread.RunJobs();
                         fitTop = fit.TranslatePoint(default, scroll)!.Value.Y;
@@ -104,12 +106,28 @@ internal static class MainLayoutTests
                         AvaloniaHeadlessPlatform.ForceRenderTimerTick(); Dispatcher.UIThread.RunJobs();
                         fitTop = fit.TranslatePoint(default, scroll)!.Value.Y;
                         informationTop = information.TranslatePoint(default, scroll)!.Value.Y;
-                        var copyTop = copy.TranslatePoint(default, scroll)!.Value.Y;
                         Check(fitTop >= -.6 && informationTop + information.Bounds.Height <= scroll.Viewport.Height + .6
-                            && copyTop >= -.6 && copyTop + copy.Bounds.Height <= scroll.Viewport.Height + .6
                             && !information.IsExpanded
+                            && !CanHit(window, copy)
                             && view.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => !expander.IsExpanded),
-                            "The scrolled information screenshot shows the complete fit-test card, collapsed information card and Copy button.");
+                            "The collapsed information card remains beside fit-test with no clickable Copy action.");
+                        await ExpandInformationAsync(information);
+                        information.BringIntoView(); Dispatcher.UIThread.RunJobs();
+                        await MainUiTestLayout.ClickPointAsync(window, copy);
+                        AvaloniaHeadlessPlatform.ForceRenderTimerTick(); Dispatcher.UIThread.RunJobs();
+                        fitTop = fit.TranslatePoint(default, scroll)!.Value.Y;
+                        informationTop = information.TranslatePoint(default, scroll)!.Value.Y;
+                        var copyTop = copy.TranslatePoint(default, scroll)!.Value.Y;
+                        var fields = view.FindControl<Grid>("DeviceInfoFields")!;
+                        var fieldsTop = fields.TranslatePoint(default, information)!.Value.Y;
+                        var copyInInformation = copy.TranslatePoint(default, information)!.Value.Y;
+                        Check(information.IsExpanded && CanHit(window, copy) && copy.Bounds.Width > 0 && copy.Bounds.Height > 0
+                            && copyInInformation >= fieldsTop + fields.Bounds.Height + 15.4
+                            && copyInInformation + copy.Bounds.Height <= information.Bounds.Height + .6
+                            && copyTop >= -.6 && copyTop + copy.Bounds.Height <= scroll.Viewport.Height + .6
+                            && view.GetVisualDescendants().OfType<FASettingsExpander>()
+                                .Where(expander => !ReferenceEquals(expander, information)).All(expander => !expander.IsExpanded),
+                            "Expanding information reveals Copy below every field while the other settings stay collapsed.");
                         using var informationFrame = window.CaptureRenderedFrame()
                             ?? throw new InvalidOperationException("Missing device-information layout pixels.");
                         var informationName = $"main-information-{(demo ? "demo" : "real")}-{(dark ? "dark" : "light")}-{(int)size.Width}x{(int)size.Height}.png";
@@ -117,7 +135,7 @@ internal static class MainLayoutTests
                         using (var stream = new FileStream(informationPath, FileMode.CreateNew))
                             informationFrame.Save(stream, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
                         receipts.Add(new { scenario = "main-information", demo, theme = dark ? "dark" : "light",
-                            width = size.Width, height = size.Height, file = informationName,
+                            width = size.Width, height = size.Height, file = informationName, informationExpanded = true,
                             scrollY = scroll.Offset.Y, viewportHeight = scroll.Viewport.Height,
                             fitTop, informationTop, informationHeight = information.Bounds.Height,
                             copyTop, copyHeight = copy.Bounds.Height,
@@ -146,11 +164,14 @@ internal static class MainLayoutTests
             await view.CopyDeviceInfoAsync();
             Check(copied.Count == 0, "An unavailable copy action does not access the clipboard.");
             view.DataContext = vm; Dispatcher.UIThread.RunJobs();
-            button.BringIntoView(); Dispatcher.UIThread.RunJobs();
-            Click(window, button);
+            var information = view.FindControl<FASettingsExpander>("DeviceInfoPanel")!;
+            information.BringIntoView(); Dispatcher.UIThread.RunJobs();
+            Check(!information.IsExpanded && !CanHit(window, button), "Collapsed information cannot expose a clickable Copy button.");
+            await ExpandInformationAsync(information);
+            await ClickAsync(window, button);
             Check(copied.SequenceEqual([Expected(vm)]) && view.FindControl<TextBlock>("DeviceInfoCopyStatus")!.Text == "已复制"
-                && !view.FindControl<FASettingsExpander>("DeviceInfoPanel")!.IsExpanded,
-                "Clicking the header button copies every displayed information field without expanding the panel.");
+                && information.IsExpanded,
+                "Clicking Copy below the expanded fields copies the displayed information and keeps the panel open.");
 
             await vm.AddDemoDeviceAsync(); Dispatcher.UIThread.RunJobs();
             await view.CopyDeviceInfoAsync();
@@ -180,10 +201,28 @@ internal static class MainLayoutTests
     }
 
     private static string Expected(MainViewModel vm) => $"设备名称：{vm.Title}{Environment.NewLine}产品编号：{vm.ProductId ?? "—"}{Environment.NewLine}固件版本：{vm.Firmware ?? "—"}";
-    private static void Click(Window window, Control control)
+    private static async Task ExpandInformationAsync(FASettingsExpander information)
     {
-        var point = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)!.Value;
+        information.IsExpanded = true;
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        while (timer.Elapsed < TimeSpan.FromMilliseconds(350))
+        {
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(); Dispatcher.UIThread.RunJobs();
+            await Task.Delay(20);
+        }
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick(); Dispatcher.UIThread.RunJobs();
+    }
+    private static async Task ClickAsync(Window window, Control control)
+    {
+        var point = await MainUiTestLayout.ClickPointAsync(window, control);
         window.MouseDown(point, MouseButton.Left); window.MouseUp(point, MouseButton.Left); Dispatcher.UIThread.RunJobs();
+    }
+    private static bool CanHit(Window window, Control control)
+    {
+        if (control.Bounds.Width <= 0 || control.Bounds.Height <= 0) return false;
+        var point = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window);
+        return point is { } current && window.InputHitTest(current) is Visual hit
+            && (ReferenceEquals(hit, control) || hit.GetVisualAncestors().Contains(control));
     }
     private static void Check(bool condition, string reason) { if (!condition) throw new InvalidOperationException(reason); }
 }

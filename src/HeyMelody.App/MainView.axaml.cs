@@ -13,6 +13,7 @@ namespace HeyMelodyWindows.App;
 public partial class MainView : UserControl
 {
     private bool _selectingDevice;
+    private bool _deviceSelectionSyncQueued;
     private MainViewModel? _observedViewModel;
     private FAContentDialog? _settingsDialog;
     private Task? _settingsOperation;
@@ -63,6 +64,7 @@ public partial class MainView : UserControl
             UpdateArtwork();
             UpdateDemoPresentation();
             ResetDeviceInfoCopyFeedback();
+            RequestDeviceSelectionSync();
             RequestDeviceCenter();
         };
     }
@@ -72,7 +74,11 @@ public partial class MainView : UserControl
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.ProductId) or nameof(MainViewModel.HasVerifiedSnapshot)
             or nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices) or nameof(MainViewModel.ResourceSource)
             or nameof(MainViewModel.ArtworkEpoch) or nameof(MainViewModel.DeviceColor)) UpdateArtwork();
-        if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices)) RequestDeviceCenterIfChanged();
+        if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices))
+        {
+            RequestDeviceSelectionSync();
+            RequestDeviceCenterIfChanged();
+        }
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.IsDemoSelected)) UpdateDemoPresentation();
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice)
             or nameof(MainViewModel.Title) or nameof(MainViewModel.ProductId) or nameof(MainViewModel.Firmware)
@@ -126,10 +132,35 @@ public partial class MainView : UserControl
 
     private async void Device_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_selectingDevice || ViewModel is not { } vm || vm.UpdatingState || Equals(DevicePicker.SelectedItem, vm.SelectedDevice)) return;
+        if (_selectingDevice || ViewModel is not { } vm) return;
+        // Replacing ItemsSource can briefly clear selection. Only a different, current
+        // device is a user switch; the view model owns null and canonical selections.
+        var selected = DevicePicker.SelectedItem as UiDevice;
+        if (vm.UpdatingState || selected is null || selected.Identity == vm.SelectedDevice?.Identity)
+        { RequestDeviceSelectionSync(); return; }
+        var current = vm.Devices.FirstOrDefault(device => device.Identity == selected.Identity);
+        if (current is null) { RequestDeviceSelectionSync(); return; }
         _selectingDevice = true;
-        try { await vm.SelectDeviceAsync(DevicePicker.SelectedItem as UiDevice); DevicePicker.SelectedItem = vm.SelectedDevice; }
-        finally { _selectingDevice = false; RequestDeviceCenter(); }
+        try { await vm.SelectDeviceAsync(current); }
+        finally { _selectingDevice = false; RequestDeviceSelectionSync(); RequestDeviceCenter(); }
+    }
+
+    private void RequestDeviceSelectionSync()
+    {
+        if (_deviceSelectionSyncQueued) return;
+        _deviceSelectionSyncQueued = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _deviceSelectionSyncQueued = false;
+            if (_selectingDevice) return; // The switch's finally block requests another sync.
+            var vm = ViewModel;
+            var selected = vm?.Devices.FirstOrDefault(device => device.Identity == vm.SelectedDevice?.Identity);
+            if (ReferenceEquals(DevicePicker.SelectedItem, selected)) return;
+            _selectingDevice = true;
+            try { DevicePicker.SetCurrentValue(ListBox.SelectedItemProperty, selected); }
+            finally { _selectingDevice = false; }
+            RequestDeviceCenterIfChanged();
+        }, DispatcherPriority.Loaded);
     }
     private async void FitTest_Click(object? sender, RoutedEventArgs e)
     {

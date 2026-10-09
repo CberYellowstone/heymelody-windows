@@ -46,20 +46,14 @@ public sealed partial class MainViewModel
             SetStatus(Sanitize(notification.Message), true);
         if (notification.Kind == "catalog" && notification.Devices is { } devices)
         {
-            _devices = ComposeDevices(devices);
             if (!_managingDevices)
             {
-                var selected = _devices.FirstOrDefault(device => device.Identity == _selectedDevice?.Identity);
-                if (_selectedDevice is not null && selected is null)
-                {
-                    AdvanceSession();
-                    _selectedDevice = null;
-                    _sessionIdentity = null;
-                    InvalidateSnapshot();
-                    SetStatus("所选耳机已移出设备列表，请选择其他耳机。", true);
-                }
-                else if (selected is not null) _selectedDevice = selected;
+                var changed = PresentDevices(devices, _selectedDevice?.Identity);
+                // Selection owns only the display target. A catalog update must
+                // not send another Select RPC or restart the shared connection.
+                if (changed || _snapshot is null) PresentSelectedBackendSnapshot();
             }
+            else _devices = ComposeDevices(devices);
             NotifyState();
         }
         if (notification.Snapshot is { } snapshot && CacheSnapshot(snapshot) && !Closing
@@ -107,7 +101,7 @@ public sealed partial class MainViewModel
             if (snapshot.DeviceGeneration == previous.DeviceGeneration && snapshot.Revision == previous.Revision)
                 return ReferenceEquals(snapshot, previous);
             if (snapshot.Identity == _sessionIdentity && (snapshot.DeviceGeneration != previous.DeviceGeneration
-                || previous.ControlReady && !snapshot.ControlReady))
+                || IsVerifiedControl(previous) && !IsVerifiedControl(snapshot)))
                 AdvanceSession();
         }
         _backendSnapshots[snapshot.Identity] = snapshot;
@@ -131,12 +125,14 @@ public sealed partial class MainViewModel
     }
 
     private static bool IsVerifiedControl(UiSnapshot? snapshot) => snapshot is
-        { Connected: true, SupportedModel: true, Failure: null }
+        { PresentationCached: false,
+          Connected: true, SupportedModel: true, Failure: null }
         && (string.IsNullOrEmpty(snapshot.BackendInstanceId) || snapshot.ControlReady);
 
     private bool CurrentBackendTarget(PendingAction intent) => EventService is null
-        || _snapshot is { } snapshot && snapshot.BackendInstanceId == intent.BackendInstanceId
-            && snapshot.DeviceGeneration == intent.DeviceGeneration && snapshot.ControlReady;
+        || _liveSnapshot is { } snapshot && IsVerifiedControl(snapshot)
+            && snapshot.BackendInstanceId == intent.BackendInstanceId
+            && snapshot.DeviceGeneration == intent.DeviceGeneration;
 
     private Task<UiSnapshot> ReadSelectedAsync(RefreshScope scope, CancellationToken token) =>
         IsDemoSelected && _demoSnapshot is { } demo ? Task.FromResult(demo) : EventService is { } events && _sessionIdentity is { } identity

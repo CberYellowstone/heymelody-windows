@@ -139,6 +139,7 @@ try
     await VmTests.RunAsync(Test);
     await SharedBridgeTests.RunAsync(Test);
     await EventVmTests.RunAsync(Test);
+    await SelectionPresentationTests.RunAsync(Test);
     await ResourceVmTests.RunAsync(Test);
     await ResourceVmTests.RunArtworkAsync(Test);
     await AncVmTests.RunAsync(Test);

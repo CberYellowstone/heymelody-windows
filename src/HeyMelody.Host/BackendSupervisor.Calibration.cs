@@ -145,7 +145,11 @@ internal sealed partial class BackendSupervisor
             lock (_sync)
             { if (generation != peer.Generation || peer.Worker is not ICalibrationPeerWorker target || !EligibleLocked(peer)) throw new InvalidOperationException("后台或连接已变化，未提交设置。"); worker = target; }
             var profiles = await worker.HearingProfilesAsync(peer.Lifetime.Token);
-            lock (_sync) { if (peer.Generation == generation && peer.Spp is { } spp) { spp.HearingProfiles = profiles; PublishLocked(peer); } }
+            lock (_sync)
+            {
+                if (peer.Generation == generation && peer.Spp is { } spp)
+                { spp.HearingProfiles = profiles; RememberPresentationLocked(peer); PublishLocked(peer); }
+            }
             return profiles;
         }
         finally { peer.Commands.Release(); }

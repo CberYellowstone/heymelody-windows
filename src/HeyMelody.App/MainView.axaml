@@ -100,6 +100,12 @@
                         IsOpen="{Binding IsDemoSelected}" IsVisible="{Binding IsDemoSelected}"
                         Title="布局演示" Message="所有控件仅模拟交互。外观使用 Enco Free4 丹拿版的三维模型；关闭窗口后演示设备自动移除。"
                         Margin="0,0,0,12" />
+          <fa:FAInfoBar x:Name="CachedSettingsNotice" Severity="Informational" IsClosable="False"
+                        IsOpen="{Binding PresentationCached}" IsVisible="{Binding PresentationCached}"
+                        Message="当前显示上次读取的设置，连接耳机并完成读取后更新。" Margin="0,0,0,12">
+            <TextBlock Text="{Binding PresentationSampleTime, StringFormat='读取时间：{0:yyyy-MM-dd HH:mm:ss zzz}', TargetNullValue='读取时间：—'}"
+                       Classes="caption" TextWrapping="Wrap" />
+          </fa:FAInfoBar>
           <fa:FAInfoBar Severity="Warning" IsClosable="False" IsOpen="{Binding StatusWarning}" IsVisible="{Binding StatusWarning}"
                         Message="{Binding Status}" Margin="0,0,0,12" />
           <fa:FAInfoBar Severity="Informational" IsClosable="False" IsOpen="{Binding HasWarnings}" IsVisible="{Binding HasWarnings}"
@@ -196,24 +202,24 @@
           </fa:FASettingsExpanderItem>
           <fa:FASettingsExpander x:Name="DeviceInfoPanel" Header="设备信息" Description="型号与固件" IsExpanded="False">
             <fa:FASettingsExpander.IconSource><fa:FASymbolIconSource Symbol="ContactInfo" /></fa:FASettingsExpander.IconSource>
-            <fa:FASettingsExpander.Footer>
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBlock x:Name="DeviceInfoCopyStatus" Classes="caption" VerticalAlignment="Center" />
-                <Button x:Name="CopyDeviceInfoButton" Click="CopyDeviceInfo_Click" IsEnabled="False"
-                        ToolTip.Tip="复制设备名称、产品编号与固件版本" AutomationProperties.Name="复制设备信息">
-                  <StackPanel Orientation="Horizontal" Spacing="8">
-                    <fa:FASymbolIcon Symbol="Copy" FontSize="16" />
-                    <TextBlock Text="复制" />
-                  </StackPanel>
-                </Button>
-              </StackPanel>
-            </fa:FASettingsExpander.Footer>
             <Border Padding="20,16">
-              <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
-                <TextBlock Text="设备名称" Classes="muted" /><TextBlock Grid.Column="1" Text="{Binding Title}" TextWrapping="Wrap" />
-                <TextBlock Grid.Row="1" Text="产品编号" Classes="muted" /><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ProductId, TargetNullValue=—}" />
-                <TextBlock Grid.Row="2" Text="固件版本" Classes="muted" /><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Firmware, TargetNullValue=—}" />
-              </Grid>
+              <StackPanel Spacing="16">
+                <Grid x:Name="DeviceInfoFields" ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
+                  <TextBlock Text="设备名称" Classes="muted" /><TextBlock Grid.Column="1" Text="{Binding Title}" TextWrapping="Wrap" />
+                  <TextBlock Grid.Row="1" Text="产品编号" Classes="muted" /><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ProductId, TargetNullValue=—}" />
+                  <TextBlock Grid.Row="2" Text="固件版本" Classes="muted" /><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Firmware, TargetNullValue=—}" />
+                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                  <TextBlock x:Name="DeviceInfoCopyStatus" Classes="caption" VerticalAlignment="Center" />
+                  <Button x:Name="CopyDeviceInfoButton" Click="CopyDeviceInfo_Click" IsEnabled="False"
+                          ToolTip.Tip="复制设备名称、产品编号与固件版本" AutomationProperties.Name="复制设备信息">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <fa:FASymbolIcon Symbol="Copy" FontSize="16" />
+                      <TextBlock Text="复制" />
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+              </StackPanel>
             </Border>
           </fa:FASettingsExpander>
           <Expander x:Name="OperationLogPanel" Header="操作记录" IsExpanded="False" Margin="0,8,0,0" HorizontalAlignment="Stretch">
@@ -239,9 +245,17 @@
                 <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="8" /></ItemsPanelTemplate></ListBox.ItemsPanel>
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="contracts:UiDevice">
-                    <Grid x:Name="DeviceCardContent" ColumnDefinitions="Auto"
+                    <Grid x:Name="DeviceCardContent" ColumnDefinitions="32,Auto" ColumnSpacing="12"
                           HorizontalAlignment="Center" VerticalAlignment="Center">
-                      <StackPanel x:Name="DeviceText" Spacing="4" MaxWidth="220">
+                      <Viewbox x:Name="DeviceIcon" Width="28" Height="28" Stretch="Uniform" IsHitTestVisible="False"
+                               HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Canvas Width="24" Height="24">
+                          <Path Data="M4,14 L4,11 A8,8 0 0 1 20,11 L20,14 M4,13 L7,13 L7,21 L4,21 Q2,21 2,19 L2,15 Q2,13 4,13 M20,13 L17,13 L17,21 L20,21 Q22,21 22,19 L22,15 Q22,13 20,13"
+                                Stroke="{DynamicResource TextFillColorPrimaryBrush}" StrokeThickness="1.5"
+                                StrokeLineCap="Round" StrokeJoin="Round" />
+                        </Canvas>
+                      </Viewbox>
+                      <StackPanel x:Name="DeviceText" Grid.Column="1" Spacing="4" MaxWidth="220">
                         <TextBlock x:Name="DeviceNameText" Text="{Binding Name}" FontWeight="SemiBold"
                                    TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
                         <TextBlock Text="{Binding ., Converter={StaticResource DemoDeviceCaptionConverter}}" Classes="caption" />

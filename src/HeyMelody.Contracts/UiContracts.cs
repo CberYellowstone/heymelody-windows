@@ -8,6 +8,7 @@ namespace HeyMelodyWindows.App;
 // BCL-only contracts. Identity values stay in memory and must never enter logs.
 public sealed record UiDevice(string Identity, string Name, bool Connected)
 {
+    public bool IsPreferredSelection { get; init; }
     // Appearance hints remembered from earlier verified sessions or associated broadcasts.
     // They select artwork only and never grant control, capabilities or settings.
     public string? ProductId { get; init; }
@@ -31,6 +32,9 @@ public enum ApplyFailure
 
 public sealed class UiSnapshot
 {
+    // Cached settings may be presented offline; these never authorize control.
+    public bool PresentationCached { get; set; }
+    public DateTimeOffset? PresentationSampleTime { get; set; }
     public string BackendInstanceId { get; set; } = "";
     public long DeviceGeneration { get; set; }
     public long Revision { get; set; }

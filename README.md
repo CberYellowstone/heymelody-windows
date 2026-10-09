@@ -1,6 +1,8 @@
 # HeyMelody for Windows
 
-**0.8.6** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型和动画展示。
+**0.8.7** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型和动画展示。
+
+0.8.7 恢复底部设备栏的通用耳机图标，仍移除 Enco X4 专属图片，并将复制按钮放到设备信息展开内容的底部。设备连接状态刷新时保留选择与高亮，重启后恢复上次选择的已启用设备。连接成功后缓存功能、选项和设置值；未连接时显示并禁用缓存控件，重新连接并读取后更新，包括固件新增或删除的功能。缓存说明见 [设备选择与离线控件](docs/device-state.md)。
 
 0.8.6 恢复默认 GPU 优先渲染，保留已保存的渲染选择及软件回退。底部设备卡片只显示名称与状态，左侧外观下方不再重复设备文字；降噪使用常显圆角区域，其他设置默认折叠。设备信息提供带图标的“复制”按钮，复制当前显示的名称、产品编号和固件版本，贴合度测试与设备信息之间保留一致间距。
 
@@ -33,7 +35,7 @@
 
 布局调试：在主界面按住设备添加键“+”满 2 秒，添加并选中一台临时 demo；重复长按不会添加第二台，短击仍打开 Windows 蓝牙设置。Demo 展示全部已实现的主界面控件，开关、选项、滑块、文本和 EQ 仅修改内存中的模拟数据，测试按钮不会启动真实测试。关闭主窗口即移除 demo，托盘后台不会保存它。正常启动仍要求有效白名单；无需真实设备时可运行 `Run-3D-Demo.ps1`、`Run-3D-Demo.cmd` 或发布包的 `Start-3D-Demo.cmd`，也可直接传入 `--3d-demo`。
 
-Demo 使用预装的 Enco Free4 丹拿版（`06C010`、色号 `3`）三维模型，来源及原始文件校验见 [模型验证记录](docs/research/enco-free4-dynaudio-model.md)。模拟功能集合用于检查全部已实现控件的布局，不代表该型号的实际能力。模型支持拖动旋转、惯性及空闲自转，默认使用软件渲染；添加 demo 不需要联网。
+Demo 使用预装的 Enco Free4 丹拿版（`06C010`、色号 `3`）三维模型，来源及原始文件校验见 [模型验证记录](docs/research/enco-free4-dynaudio-model.md)。模拟功能集合用于检查全部已实现控件的布局，不代表该型号的实际能力。模型支持拖动旋转、惯性及空闲自转，沿用应用的 GPU 优先设置和已保存的软件选择；添加 demo 不需要联网。
 
 耳机设置和手机推送共用每台设备的持续接收通道。回执、设备确认和观测状态分别处理，丢失回执不自动重放操作；未提交的 EQ 草稿保留。校准期间限制同一设备的冲突写入，其他设备继续工作；关闭、断连、休眠和切换资源来源会终止当前校准并回读状态。
 
@@ -43,7 +45,7 @@ Demo 使用预装的 Enco Free4 丹拿版（`06C010`、色号 `3`）三维模型
 dotnet build src/HeyMelody.App/HeyMelody.App.csproj -c Release
 dotnet run --project tests/HeyMelody.Resources.Tests
 dotnet run --project tests/HeyMelody.Calibration.Tests
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.6
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.7
 ```
 
 常规构建和离线测试使用仓库中的资源包，不需要本地 APK。重新提取资源需要 `research/apps/` 和 `research/screenshots/` 中的固定输入及各专题保留的原件，入口是 `tools/bundle_resources.py`；目录组织、提交边界与历史路径映射见 [研究资料归档](docs/research/README.md)。运行中的软件不读取研究目录。原始资源版权与溯源保留在发布包的 notices 和资源清单中。

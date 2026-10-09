@@ -100,7 +100,7 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
                     await supervisor.RefreshCatalogAsync(client.Lifetime.Token); data = supervisor.Catalog(); break;
                 case "saveWhitelist":
                     data = await supervisor.SaveWhitelistAsync(request.DeviceIdentities ?? throw new InvalidDataException(), client.Lifetime.Token); break;
-                case "select": case "connect": data = supervisor.Select(Identity()); break;
+                case "select": case "connect": data = supervisor.Select(Identity(), rememberSelection: client.Role == "main"); break;
                 case "pause": data = supervisor.Pause(Identity()); break;
                 case "resume": data = supervisor.Resume(Identity()); break;
                 case "refresh": data = await supervisor.RefreshAsync(Identity(), request.RefreshScope ?? RefreshScope.Full, client.Lifetime.Token); break;

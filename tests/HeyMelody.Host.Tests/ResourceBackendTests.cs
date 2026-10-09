@@ -266,6 +266,7 @@ internal static class ResourceBackendTests
         {
             InitialColor = product == Configuration.ObservedProduct ? Configuration.ObservedColor : null;
             _snapshot = new() { Identity = identity, DeviceName = name, ProductId = product, Revision = 1, Connected = true,
+                ResourceSource = Configuration.Source,
                 ConnectionState = ConnectionState.Connected, ControlReady = true, SupportedModel = true, CanSetGameMode = true,
                 CanFitTest = true, CanSetupHearing = true, LeftPlacement = EarbudPlacement.InEar, RightPlacement = EarbudPlacement.InEar, Color = InitialColor };
             SnapshotChanged?.Invoke(_snapshot); return Task.FromResult(_snapshot);

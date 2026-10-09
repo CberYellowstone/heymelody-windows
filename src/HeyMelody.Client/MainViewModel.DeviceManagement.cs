@@ -65,8 +65,7 @@ public sealed partial class MainViewModel
                 var devices = ComposeDevices(saved ? await _service.EnumerateAsync(_lifetime.Token) : _managementDevices!);
                 if (Closing) return;
                 _devices = devices;
-                _selectedDevice = devices.FirstOrDefault(device => device.Identity == _managementSelectedIdentity)
-                    ?? devices.FirstOrDefault();
+                _selectedDevice = ChooseDevice(devices, _managementSelectedIdentity);
                 _title = _selectedDevice?.Name ?? "选择一副耳机";
                 ResetSelection();
                 completed = devices.Count != 0;
@@ -84,7 +83,7 @@ public sealed partial class MainViewModel
             if (!Closing)
             {
                 _devices = ComposeDevices([]);
-                _selectedDevice = _devices.FirstOrDefault();
+                _selectedDevice = ChooseDevice(_devices, _managementSelectedIdentity);
                 _title = _selectedDevice?.Name ?? "选择一副耳机";
                 ResetSelection();
                 if (IsDemoSelected) { AttachDemo(); completed = true; }
@@ -107,6 +106,14 @@ public sealed partial class MainViewModel
         var epoch = _sessionEpoch;
         if (EqDirty && !IsDemoSelected && !await ConfirmAsync(title, message, _sessionWork.Token)) return false;
         if (Closing || epoch != _sessionEpoch) return false;
+        if (device is not null)
+        {
+            // The confirmation may outlive catalog refreshes. Adopt the current
+            // object only if the user-selected identity remains in the list.
+            var current = Devices.FirstOrDefault(candidate => candidate.Identity == device.Identity);
+            if (current is null) return false;
+            device = current;
+        }
         AdvanceSession();
         var hadSession = _sessionIdentity is not null;
         var previousWasDemo = IsDemoSelected;

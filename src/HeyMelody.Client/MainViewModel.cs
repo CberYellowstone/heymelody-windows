@@ -43,7 +43,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private int? _eqDraftId;
     private bool _refreshing, _lifecyclePending, _closeDialogRunning;
     private Task? _refreshTask;
-    private UiSnapshot? _snapshot;
+    private UiSnapshot? _snapshot, _liveSnapshot;
     private string? _sessionIdentity;
     private UiDevice? _selectedDevice;
     private UiEqEntry? _selectedEqEntry;
@@ -90,8 +90,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool Closing => _closing || _closeRequested;
     public bool UpdatingState => _displaying;
     public DialogCoordinator Dialogs { get; }
-    public bool HasVerifiedSnapshot => IsVerifiedControl(_snapshot)
-        && _snapshot?.Identity == _sessionIdentity && _sessionIdentity == SelectedDevice?.Identity;
+    public bool HasVerifiedSnapshot => IsVerifiedControl(_liveSnapshot)
+        && _liveSnapshot?.Identity == _sessionIdentity && _sessionIdentity == SelectedDevice?.Identity
+        && (IsDemoSelected || EventService is null || _liveSnapshot?.BackendInstanceId == _backendInstanceId);
+    public bool PresentationCached => _snapshot?.PresentationCached == true;
+    public DateTimeOffset? PresentationSampleTime => _snapshot?.PresentationSampleTime;
     private bool CanWrite => HasVerifiedSnapshot && !Closing && !_lifecyclePending;
     public bool CanConnect => !Closing && !_lifecyclePending && SelectedDevice is not null;
     public bool CanRefreshDevices => !Closing && !_lifecyclePending;
@@ -106,7 +109,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool CanSetAnc => CanChooseAnc && !_pending.ContainsKey("Anc");
     public bool CanSetAncMode => CanChooseAncMode && !_pending.ContainsKey("Anc");
     public bool CanSetEqualizer => CanChoosePreset && !_pending.ContainsKey("Equalizer");
-    public bool CanSetCustomEqualizer => CanEditEq && !_pending.ContainsKey("Equalizer");
+    public bool CanSetCustomEqualizer => CanEditEq && EqLayoutCompatible && !_pending.ContainsKey("Equalizer");
     public bool CanSetSpatial => CanChooseSpatial && !_pending.ContainsKey("Audio");
     public bool CanSetDualConnection => CanWrite && _snapshot!.CanSetDualConnection && _snapshot.DualConnection is not null && !_pending.ContainsKey("DualConnection");
     public bool CanSetGameMode => CanWrite && _snapshot!.CanSetGameMode && _snapshot.GameMode is not null && !_pending.ContainsKey("GameMode");
@@ -118,7 +121,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public string DualStateText => PendingState("DualConnection") ?? BooleanState(_snapshot?.DualConnection);
     public string GameStateText => PendingState("GameMode") ?? BooleanState(_snapshot?.GameMode);
     public string HiResStateText => PendingState("Audio") ?? BooleanState(_snapshot?.HiRes);
-    private bool HasFreshObservation => EventService is null || HasVerifiedSnapshot || _snapshot?.ObservationFresh == true;
+    private bool HasFreshObservation => EventService is null || HasVerifiedSnapshot || _liveSnapshot?.ObservationFresh == true;
     public string LeftBatteryText => Battery(HasFreshObservation ? _snapshot?.LeftBattery : null);
     public string RightBatteryText => Battery(HasFreshObservation ? _snapshot?.RightBattery : null);
     public string CaseBatteryText => Battery(HasFreshObservation ? _snapshot?.CaseBattery : null);
@@ -147,6 +150,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool EqDirty => _eqDirty;
     public string EqDirtyText => EqDirty ? "有未保存的调整" : "";
     public string EqHint => IsDemoSelected ? "调节各频段查看布局，演示均衡器只保留到关闭界面。"
+        : PresentationCached ? "显示上次读取的均衡器，连接耳机后才可编辑。"
+        : EqDirty && !EqLayoutCompatible ? "耳机的均衡器频段已变化，请先重置当前草稿后再保存。"
         : _snapshot?.CanSetCustomEqualizer == true ? "调节各频段，然后将整组设置写入耳机。" : "连接支持自定义 EQ 的耳机后可编辑。";
 
     public IAsyncRelayCommand RefreshDevicesCommand { get; }
@@ -203,16 +208,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private Task EnumerateAsync(IReadOnlyList<UiDevice>? initialDevices = null) => RunAsync("正在查找已配对耳机…", async () =>
     {
-        var devices = ComposeDevices(initialDevices ?? await _service.EnumerateAsync(_lifetime.Token));
-        var selected = devices.FirstOrDefault(d => d.Identity == SelectedDevice?.Identity) ?? devices.FirstOrDefault();
-        if (selected?.Identity != SelectedDevice?.Identity)
+        var devices = initialDevices ?? await _service.EnumerateAsync(_lifetime.Token);
+        var previousIdentity = SelectedDevice?.Identity;
+        var disconnect = EventService is null && _sessionIdentity is not null && !IsDemoSelected
+            && ChooseDevice(ComposeDevices(devices), previousIdentity)?.Identity != previousIdentity;
+        if (disconnect) await _service.DisconnectAsync(_lifetime.Token);
+        var changed = PresentDevices(devices, previousIdentity);
+        if (EventService is not null || IsDemoSelected)
         {
-            AdvanceSession();
-            if (EventService is null && _sessionIdentity is not null && !IsDemoSelected) await _service.DisconnectAsync(_lifetime.Token);
-            _sessionIdentity = null; ResetSelection();
+            if (changed) await AttachSelectedBackendAsync(); else if (_snapshot is null) PresentSelectedBackendSnapshot();
+            NotifyState(); return;
         }
-        _devices = devices; _selectedDevice = selected; _title = selected?.Name ?? "选择一副耳机";
-        if (EventService is not null || IsDemoSelected) { await AttachSelectedBackendAsync(); NotifyState(); return; }
         SetStatus(_service is UnsupportedPlatformService ? UnsupportedPlatformService.Message : devices.Count == 0 ? "未发现已配对耳机" : _snapshot is { Connected: true } ? "设备列表已刷新 · 耳机保持连接" : "选择耳机后连接", _service is UnsupportedPlatformService);
         NotifyState();
     });
@@ -223,16 +229,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             if (EqDirty && !IsDemoSelected && !await ConfirmAsync("刷新设备", "刷新设备后，若连接变化，未保存的均衡器调整会被丢弃。继续刷新吗？")) return;
             // Enumerate directly because the operation gate is already held.
-            var devices = ComposeDevices(await _service.EnumerateAsync(_lifetime.Token));
-            var selected = devices.FirstOrDefault(d => d.Identity == SelectedDevice?.Identity) ?? devices.FirstOrDefault();
-            if (selected?.Identity != SelectedDevice?.Identity)
+            var devices = await _service.EnumerateAsync(_lifetime.Token);
+            var previousIdentity = SelectedDevice?.Identity;
+            var disconnect = EventService is null && _sessionIdentity is not null && !IsDemoSelected
+                && ChooseDevice(ComposeDevices(devices), previousIdentity)?.Identity != previousIdentity;
+            if (disconnect) await _service.DisconnectAsync(_lifetime.Token);
+            var changed = PresentDevices(devices, previousIdentity);
+            if (EventService is not null || IsDemoSelected)
             {
-                AdvanceSession();
-                if (EventService is null && _sessionIdentity is not null && !IsDemoSelected) await _service.DisconnectAsync(_lifetime.Token);
-                _sessionIdentity = null; ResetSelection();
+                if (changed) await AttachSelectedBackendAsync(); else if (_snapshot is null) PresentSelectedBackendSnapshot();
+                NotifyState(); return;
             }
-            _devices = devices; _selectedDevice = selected; _title = selected?.Name ?? "选择一副耳机";
-            if (EventService is not null || IsDemoSelected) { await AttachSelectedBackendAsync(); NotifyState(); return; }
             SetStatus(_service is UnsupportedPlatformService ? UnsupportedPlatformService.Message : devices.Count == 0 ? "未发现已配对耳机" : _snapshot is { Connected: true } ? "设备列表已刷新 · 耳机保持连接" : "选择耳机后连接", _service is UnsupportedPlatformService);
             NotifyState();
         });
@@ -353,10 +360,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (snapshot.Identity != _sessionIdentity
             || EventService is null && (snapshot.Failure is not null || !snapshot.Connected))
         { InvalidateSnapshot(); return false; }
-        _snapshot = snapshot; _displaying = true;
+        _snapshot = snapshot;
+        // A current backend snapshot can combine cached settings with fresh BLE
+        // telemetry. Keep that observation, but IsVerifiedControl rejects its cache flag.
+        _liveSnapshot = snapshot;
+        _displaying = true;
         UpdateResourcePresentation(snapshot);
         _title = snapshot.DeviceName;
-        _subtitle = IsDemoSelected ? "布局演示 · 全部控件 · 关闭界面后自动移除" : IsVerifiedControl(snapshot)
+        _subtitle = IsDemoSelected ? "布局演示 · 全部控件 · 关闭界面后自动移除"
+            : snapshot.PresentationCached ? "显示上次读取的设置 · 当前只读" : IsVerifiedControl(snapshot)
             ? $"已连接{(snapshot.Firmware is null ? "" : $" · 固件 {snapshot.Firmware}")}"
             : snapshot.MonitoringState switch
             {
@@ -397,9 +409,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         return true;
     }
 
-    private void InvalidateSnapshot()
+    private void InvalidateSnapshot(bool clearPresentation = false)
     {
-        _snapshot = null; _displaying = true;
+        _liveSnapshot = null;
+        _snapshot = !clearPresentation && EventService is not null && _snapshot is { } previous
+            ? ReadOnlyPresentation(previous) : null;
+        _displaying = true;
+        if (_snapshot is not null)
+        {
+            _subtitle = "连接不可用 · 显示上次读取的设置（只读）";
+            NotifyState(); _displaying = false; return;
+        }
         if (!_pendingAnc) SelectedAnc = null;
         if (!_pendingPreset) SelectedPreset = null;
         if (!_pendingSpatial) SelectedSpatial = null;
@@ -413,11 +433,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _pendingAncKey = _pendingPresetKey = _pendingSpatialKey = null;
         _pendingAncPrimary = null;
         _ancOptions = []; _presetOptions = []; _spatialOptions = []; _actionWarnings.Clear();
-        _eqEntries = []; LoadEntry(null); InvalidateSnapshot();
+        _ancModes = []; _selectedAncMode = null; _selectedAncSubmode = null;
+        _featureSections = []; _featureContext = "";
+        _hearingProfiles = []; _selectedHearingProfile = null;
+        _eqEntries = []; _snapshot = _liveSnapshot = null; LoadEntry(null); InvalidateSnapshot(clearPresentation: true);
     }
 
     private Task ApplyOptionAsync(string kind, UiOption? option) => option is null ? Task.CompletedTask : ApplyAsync(new(kind, option.Key));
-    private bool Supports(UiAction action) => _snapshot is { } s && action.Kind switch
+    private bool Supports(UiAction action) => _liveSnapshot is { } s && !s.PresentationCached && action.Kind switch
     {
         "Anc" => s.CanSetAnc && s.AncOptions.Any(x => x.Key == action.Value),
         "AncMode" => s.CanSetAncMode && AncModes.Any(x => x.Key == action.Value),
@@ -426,7 +449,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         "DualConnection" => s.CanSetDualConnection && s.DualConnection is not null,
         "GameMode" => s.CanSetGameMode && s.GameMode is not null,
         "HiRes" => s.CanSetHiRes && s.HiRes is not null,
-        "CustomEqualizer" => s.CanSetCustomEqualizer && action.EqualizerEntry is not null,
+        "CustomEqualizer" => s.CanSetCustomEqualizer && action.EqualizerEntry is { } entry
+            && (s.EqualizerFrequencies.Count == 0 || entry.Bands.Select(band => band.FrequencyHz).SequenceEqual(s.EqualizerFrequencies)),
         "CustomSelect" => s.CanSetCustomEqualizer && s.EqualizerEntries.Any(x => x.Id == action.Value && x.Id > 0),
         "Feature" => s.FeatureSections.SelectMany(x => x.Controls).Any(x => x.Id == action.FeatureId && x.CanWrite &&
             (x.Kind == "Text" || action.Value >= x.Minimum && action.Value <= x.Maximum && (x.Options is null || x.Options.Count == 0 || x.Options.Any(o => o.Key == action.Value)))),

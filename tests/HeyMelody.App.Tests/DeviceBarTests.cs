@@ -168,10 +168,12 @@ internal static class DeviceBarTests
                         Check(content.Bounds.Width < card.Bounds.Width - 32
                             && Math.Abs(origin.X + content.Bounds.Width / 2 - card.Bounds.Width / 2) <= 1
                             && Math.Abs(origin.Y + content.Bounds.Height / 2 - card.Bounds.Height / 2) <= 1,
-                            "The name and status form a centered group inside each device card.");
-                        Check(!content.GetVisualDescendants().OfType<Control>().Any(control => control.Name == "DeviceIcon")
+                            "The generic headphone icon, name and status form a centered group inside each device card.");
+                        var icon = content.GetVisualDescendants().OfType<Viewbox>().Single(control => control.Name == "DeviceIcon");
+                        Check(icon.IsEffectivelyVisible && icon.Bounds.Width == 28 && icon.Bounds.Height == 28
+                            && icon.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single().Data is not null
                             && !content.GetVisualDescendants().OfType<Image>().Any(),
-                            "Device cards display their text without custom artwork icons.");
+                            "Every device card uses a fixed vector headphone icon without a product image.");
                     }
                     CheckBottomBar(view, window);
                 }
