@@ -1,8 +1,10 @@
 # HeyMelody for Windows
 
-**0.8.5** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型和动画展示。
+**0.8.6** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型和动画展示。
 
-0.8.5 修正软件三维模型过亮、曲面缺少层次的问题：按每个网格实际使用的贴图区域估算金属度、粗糙度和发光参数，并调整软件光照。保留原始模型、基础色贴图及旋转交互；切换到 GPU 时恢复原始材质与原有光照。GPU 加速仍默认关闭，自动模式实际退回软件时也应用修正。依据与限制见 [软件模型材质研究](docs/research/software-model-materials.md)。
+0.8.6 恢复默认 GPU 优先渲染，保留已保存的渲染选择及软件回退。底部设备卡片只显示名称与状态，左侧外观下方不再重复设备文字；降噪使用常显圆角区域，其他设置默认折叠。设备信息提供带图标的“复制”按钮，复制当前显示的名称、产品编号和固件版本，贴合度测试与设备信息之间保留一致间距。
+
+0.8.5 修正软件三维模型过亮、曲面缺少层次的问题：按每个网格实际使用的贴图区域估算金属度、粗糙度和发光参数，并调整软件光照。保留原始模型、基础色贴图及旋转交互；切换到 GPU 时恢复原始材质与原有光照。该版默认关闭 GPU 加速；软件修正在 0.8.6 的软件选择与自动回退时继续应用。依据与限制见 [软件模型材质研究](docs/research/software-model-materials.md)。
 
 0.8.4 修正 Enco X4 的产品动画，并让耳机外观在第一次取得后持续可用：
 
@@ -41,7 +43,7 @@ Demo 使用预装的 Enco Free4 丹拿版（`06C010`、色号 `3`）三维模型
 dotnet build src/HeyMelody.App/HeyMelody.App.csproj -c Release
 dotnet run --project tests/HeyMelody.Resources.Tests
 dotnet run --project tests/HeyMelody.Calibration.Tests
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.5
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.6
 ```
 
 常规构建和离线测试使用仓库中的资源包，不需要本地 APK。重新提取资源需要 `research/apps/` 和 `research/screenshots/` 中的固定输入及各专题保留的原件，入口是 `tools/bundle_resources.py`；目录组织、提交边界与历史路径映射见 [研究资料归档](docs/research/README.md)。运行中的软件不读取研究目录。原始资源版权与溯源保留在发布包的 notices 和资源清单中。

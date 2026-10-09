@@ -1,20 +1,22 @@
-# HeyMelody Avalonia 界面（0.7.0）
+# HeyMelody Avalonia 界面（0.8.6）
 
-0.6.0 完成 Windows Enco X4 功能的 Avalonia 初版迁移，0.6.1 改进后台刷新、交互及失败处理。当前界面使用 Avalonia 12.1.3、FluentAvaloniaUI 3.1.0 和 CommunityToolkit.Mvvm 8.4.2。其他耳机型号与 macOS/Linux 的实现暂缓。界面和客户端状态模型分别位于 `HeyMelody.App` 与 `HeyMelody.Client`；DTO、schema-2 双向命名管道契约及私有 worker 的 stdio 契约位于 `HeyMelody.Contracts`。`HeyMelody.Host` 独立托盘后台监管每台耳机的原生 worker，Windows 蓝牙调用不进入界面线程。
+0.6.0 完成 Windows Enco X4 功能的 Avalonia 初版迁移，0.6.1 改进后台刷新、交互及失败处理。当前界面使用 Avalonia 12.1.3、FluentAvaloniaUI 3.1.0 和 CommunityToolkit.Mvvm 8.4.2，功能随资源目录及实际设备能力提供。界面和客户端状态模型分别位于 `HeyMelody.App` 与 `HeyMelody.Client`；DTO、schema-3 双向命名管道契约及私有 worker 的 stdio 契约位于 `HeyMelody.Contracts`。`HeyMelody.Host` 独立托盘后台监管每台耳机的原生 worker，Windows 蓝牙调用不进入界面线程。
 
-当前源码及发布脚本默认版本均为 0.7.0。现有布局、FluentAvalonia 控件、设备白名单、X4 图片及可扩展展示 View 保留。主界面和管理器接收共享后台的状态推送，已移除主界面的八秒轮询。开盖弹窗组件尚未实现；后台已发布 caseOpen 事件供后续独立组件使用。历史发布与验证记录保留在本文后半部分；当前默认 338 项测试及原生窗口验证范围见 [仓库说明](../REPOSITORY.md)。
+当前源码及发布脚本默认版本均为 0.8.6。主界面底部设备卡片仅显示名称与状态，删除专用图标宿主、转换器及图标解析请求；左侧产品外观下方不再显示重复的两行文字。降噪在常显圆角区域内显示，均衡器、资源设置、黄金听感、设备信息和操作记录默认折叠，演示设备同样如此。用户主动展开的设置仍在状态推送、资源替换及设备切换时保留。
+
+设备信息新增“复制”按钮，左侧为复制图标，右侧为文字。复制内容与该区显示一致，包含设备名称、产品编号和固件版本，未取得的值使用“—”；点击时读取当前设备值。贴合度测试与设备信息之间增加与其他设置一致的 8px 间距。三维模型默认 GPU 优先，已保存的软件选择及自动软件回退保留，见 [渲染设置](model-rendering.md)。主界面和管理器继续接收共享后台状态推送；本轮验证及历史范围见 [仓库说明](../REPOSITORY.md)。
 
 ## 界面与现有功能
 
-参考 `research/main-page.png` 和 `research/headphone-configs.png`，默认窗口 1280×900，最小 900×640：左侧展示产品，右侧显示身份、电量和设置，底部固定设备选择区。宽度小于 1080 时改为上下布局，设置区域单独滚动。X4 产品大图使用用户提供的 `research/x4-pods-with-earphones.png`，底栏 X4 图标使用 `research/x4-both-earphones.png`；两张原始 1440×1440 透明 PNG 复制到 App 的 `Assets/Devices/EncoX4` 并作为 Avalonia 资源嵌入，运行时不依赖 `research` 目录。其他设备沿用通用图形。
+参考 `research/main-page.png` 和 `research/headphone-configs.png`，默认窗口 1280×900，最小 900×640：左侧展示产品，右侧显示身份、电量和设置，底部固定设备选择区。宽度小于 1080 时改为上下布局，设置区域单独滚动。内嵌 X4 产品大图使用用户提供的 `research/x4-pods-with-earphones.png`；两张原始 1440×1440 透明 PNG 仍嵌入 App 的 `Assets/Devices/EncoX4`，运行时不依赖 `research` 目录，历史底栏素材不再用作设备卡片图标。
 
 上述路径是图像采用时的原始出处。2026-10-08 归档后的访问入口为 [主界面参考](../research/screenshots/main-page.png)、[设置参考](../research/screenshots/headphone-configs.png)、[X4 产品大图](../research/screenshots/x4-pods-with-earphones.png) 与 [X4 底栏图标](../research/screenshots/x4-both-earphones.png)；文件仍仅在本地保存，组织规则见 [研究资料归档](research/README.md)。
 
 早期按蓝牙名称识别 X4 的规则已在 0.8.1 移除。当前外观只依据实际产品 ID 与协议颜色：来源是 Host 按设备持久化的外观提示（`UiDevice.ProductId/Color`），以及所选设备会话中的实时值，不从蓝牙名称推断。美术目录中的已知值只增不减，资源版本号前进时在后台重新解析，内容相同时保留原渲染控件；没有资源服务的预览模式仍按产品 ID 显示内嵌的 X4 PNG。外观提示只影响显示，不授予控制能力。详见 [外观资源持久化](artwork-persistence.md)；应用设置已改为设置卡片，并提供“重新下载在线资源”。
 
-`ProductArtwork` 和 `DeviceIconView` 分别作为大图与底栏图标宿主，通过 `Visual` 展示数据及 `VisualTemplate`（`IDataTemplate`）呈现内容；宿主不读取蓝牙状态，也不硬编码 X4 判断。当前实现 PNG 和通用图形模板，未来可用新的展示数据及模板接入字体字符、矢量、Lottie 或可交互 3D 控件，本轮不引入这些渲染依赖。大图保留响应式尺寸限制和输入能力，图片模板等比居中，不在宿主统一套用 Viewbox；小图保持 28×28 占位。素材延迟加载并共享 Bitmap，加载流及时关闭，应用结束时释放资源；各宿主独立创建呈现控件。视觉更新保留原有 `UiDevice` 列表及选择绑定，不重建列表或改变滚动位置。
+`ProductArtwork` 通过 `Visual` 展示数据及 `VisualTemplate`（`IDataTemplate`）呈现产品大图，支持 PNG、动态 WebP、Lottie、三维模型和通用回退；宿主不读取蓝牙状态，也不硬编码 X4 判断。大图保留响应式尺寸限制和输入能力，图片模板等比居中，不在宿主统一套用 Viewbox。素材延迟加载，加载流及时关闭，应用结束时释放共享资源；各宿主独立创建呈现控件。底栏图标的专用宿主和加载逻辑已移除，视觉更新继续保留原有 `UiDevice` 列表及选择绑定，不重建列表或改变滚动位置。
 
-当前源码已移除最底部状态/版本栏，以及设备栏的“我的设备”标题和刷新按钮。底栏采用 300×64 的横向设备卡片，图标与名称/状态作为一组居中，选中项使用动态主题强调色边框，其他项使用主题灰色描边；长名称省略显示并提供完整名称提示。设备卡片与末尾的“+”放在同一个水平滚动区域，空间足够时整组居中；溢出时不添加首尾空白，首次打开、切换设备及调整窗口宽度后将选中卡片尽量移到视口中央，偏移受实际内容边界限制。首项选中时停在最左侧，末项选中时停在最右侧且“+”完整可见；靠近两端的选中设备完整显示，中间设备可居中。普通鼠标滚轮、触控板及滚动条均可横向滚动，用户滚动后保留当前位置。“+”通过 Avalonia Launcher 打开 Windows 蓝牙设置（`ms-settings:bluetooth`），失败提示与应用设置共用对话框协调器；非 Windows 预览禁用该入口。设备栏只显示当前有效的白名单设备；后台监听 Windows 配对和连接事件并推送目录变化，切换选择不影响其他耳机的监听。
+当前源码已移除最底部状态/版本栏，以及设备栏的“我的设备”标题和刷新按钮。底栏采用 300×64 的横向设备卡片，名称/状态作为一组居中，选中项使用动态主题强调色边框，其他项使用主题灰色描边；长名称省略显示并提供完整名称提示。设备卡片与末尾的“+”放在同一个水平滚动区域，空间足够时整组居中；溢出时不添加首尾空白，首次打开、切换设备及调整窗口宽度后将选中卡片尽量移到视口中央，偏移受实际内容边界限制。首项选中时停在最左侧，末项选中时停在最右侧且“+”完整可见；靠近两端的选中设备完整显示，中间设备可居中。普通鼠标滚轮、触控板及滚动条均可横向滚动，用户滚动后保留当前位置。“+”通过 Avalonia Launcher 打开 Windows 蓝牙设置（`ms-settings:bluetooth`），失败提示与应用设置共用对话框协调器；非 Windows 预览禁用该入口。设备栏只显示当前有效的白名单设备；后台监听 Windows 配对和连接事件并推送目录变化，切换选择不影响其他耳机的监听。
 
 独立 `HeyMelody.DeviceManager` 使用相同的 UI 依赖和主题偏好，默认 520×720、最小 400×480，允许双向拉伸，仅有关闭按钮。候选为已配对 Classic 音频设备，按 Authenticated 和缓存 CoD 筛选，不扫描、不连接；错误或缺失的 CoD 可能导致设备暂不显示。名单键保存到 `%LOCALAPPDATA%/HeyMelody/devices.json`，使用稳定地址的带用途前缀 SHA-256；界面仍只持有 Host 会话 Identity。保存会重新验证所选设备，原子替换文件；枚举失败不清空历史名单，损坏配置可以显式打开管理器重新保存修复。
 
@@ -57,9 +59,13 @@ dotnet run --project tests/HeyMelody.DeviceManager.Tests -c Release -- --native-
 dotnet run --project tests/HeyMelody.DeviceManager.Tests -c Release -- --native-alt-f4-smoke
 ```
 
-App.Tests 使用真实 Skia 绘制 Avalonia 控件，覆盖连接、无设备、未知型号、部分读取、断开五种状态的浅色/深色和 1280×900/900×640，在 Windows 上共 47 项检查，包括 20 张截图、原有交互与设备栏检查、3 组卡片/整栏居中、自然滚动边界及手动滚动检查、5 组设备外观和展示模板检查、7 项启动与管理进程生命周期检查及设置到管理器的对话框释放检查。系统入口测试注入模拟 Launcher，不打开 Windows 设置；非 Windows 预期总计 44 项。默认输出在 `artifacts/avalonia-ui-*`，包含 PNG 哈希与 `validation.json`，也可通过 `--output-dir` 指定新输出目录。测试仅使用模拟服务，不调用原生蓝牙。Headless 调度显式使用 `Dispatch<bool>`，避免无返回值 async 委托变为 `async void` 而漏报失败；在外部调用线程等待及释放会话。
+0.8.6 的 Release App.Tests 已通过 84 项，报告为 [validation.json](../artifacts/avalonia-ui-20261008-235907-07a68893/validation.json)。本次新增真实／演示设备的浅色、深色、宽窄默认折叠及设备信息区域截图，核对降噪常显、文字设备卡片、复制按钮与 8px 实际间距；复制测试覆盖当前字段、失败重试、并发和切换／关闭后的迟到反馈。交互检查等待展开动画完成并确认实际鼠标命中目标控件，剪贴板写入使用替身，未验证系统剪贴板往返。另行运行的原生主窗口检查通过 59 项，使用内存服务，不提交耳机设置。
 
-`--native-smoke` 单独在 Windows 创建屏幕外真实 Win32 `FAAppWindow`，共 54 项检查，验证标题栏、产品图片和底栏图标、两个主题和宽窄布局、设置及重试/失败对话框和服务只释放一次。使用 8 台模拟设备验证底栏溢出、不额外留白及启动/调整尺寸后的选中卡片按自然边界定位。该测试同样使用内存服务，不启动蓝牙后台。交互测试另外覆盖读取阻塞期间的真实鼠标提交、继续编辑、对话框串行和关闭取消。
+0.8.6 的原生演示检查通过 [40 项](../artifacts/native-demo-086-agent-20261009a/native-demo-receipts.json)，隔离未写入的临时偏好以验证新默认 `Automatic`，本机实际为 OpenGL GPU。丹拿版保留 20 个 mesh、94,927 个三角形并生成四张原生模型帧；动态分组默认折叠，主动展开并完成布局后全部 34 个控件可用。它与 headless 布局报告都只验证源码测试窗口，不是完整发布客户端或 ARM64 硬件执行记录。
+
+以下 App.Tests 47／44 项计数描述 0.7.0 的历史基线；当前 runner 已扩展用例并自行报告总数。App.Tests 使用真实 Skia 绘制 Avalonia 控件，覆盖连接、无设备、未知型号、部分读取、断开五种状态的浅色/深色和 1280×900/900×640，在 Windows 上共 47 项检查，包括 20 张截图、原有交互与设备栏检查、3 组卡片/整栏居中、自然滚动边界及手动滚动检查、5 组设备外观和展示模板检查、7 项启动与管理进程生命周期检查及设置到管理器的对话框释放检查。系统入口测试注入模拟 Launcher，不打开 Windows 设置；非 Windows 预期总计 44 项。默认输出在 `artifacts/avalonia-ui-*`，包含 PNG 哈希与 `validation.json`，也可通过 `--output-dir` 指定新输出目录。测试仅使用模拟服务，不调用原生蓝牙。Headless 调度显式使用 `Dispatch<bool>`，避免无返回值 async 委托变为 `async void` 而漏报失败；在外部调用线程等待及释放会话。
+
+`--native-smoke` 单独在 Windows 创建屏幕外真实 Win32 `FAAppWindow`。0.7.0 的历史运行共 54 项，验证标题栏、产品图片和当时的底栏图标；0.8.6 改为检查文字设备卡片与新面板布局。历史运行还覆盖两个主题和宽窄布局、设置及重试/失败对话框和服务只释放一次。使用 8 台模拟设备验证底栏溢出、不额外留白及启动/调整尺寸后的选中卡片按自然边界定位。该测试同样使用内存服务，不启动蓝牙后台。交互测试另外覆盖读取阻塞期间的真实鼠标提交、继续编辑、对话框串行和关闭取消。
 
 X4 素材与展示 View 在发布打包前已完成 Release 源码构建。修正型号身份匹配后的最终 App 检查 45 项通过，报告为 `artifacts/x4-visuals-b3241436/headless-final/validation.json`，执行日志为 `artifacts/x4-visuals-b3241436/headless-final.log`；主程序原生窗口 54 项检查通过，日志为 `artifacts/x4-visuals-b3241436/native-smoke.log`；Client 的 74 项检查通过，日志为 `artifacts/x4-visuals-b3241436/client-tests.log`。三个测试回执的原生蓝牙调用均为 0，原生窗口测试的设置提交为 0，系统设置没有打开。已检查连接状态下浅色 1280×900、深色 1280×900 和深色 900×640 截图中的 PNG、图标及响应式布局，最终截图位于 `headless-final`。汇总报告 `artifacts/x4-visuals-b3241436/validation-summary.json` 记录最终测试、截图及源文件与嵌入素材的哈希。这组普通源码检查使用默认 `0.6.0` 版本，不是各架构发布包的专属执行回执；当时没有运行完整发布脚本或生成新 ZIP，随后 0.6.5 发布构建另行记录。
 

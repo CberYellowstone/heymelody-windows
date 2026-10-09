@@ -18,7 +18,7 @@ internal static class DeviceVisualTests
         Run("artwork requires actual PID and does not infer models from Bluetooth names", IdentityAsync);
         Run("source changes reject old artwork requests and release their leases", SourceAsync);
         Run("colour changes cancel stale requests and resolve the replacement artwork", ColorAsync);
-        Run("X4 uses its own two PNG assets with independent presentation controls", PngAsync);
+        Run("X4 product PNG uses independent presentation controls and shared bitmap data", PngAsync);
         Run("active renderer leases outlive catalog replacement and release exactly once", LeaseAsync);
         Run("Skottie renders embedded and package images and rejects escaped paths", LottieAsync);
         Run("original hearing Lottie renders a frame, pauses while hidden, and releases on detach", OriginalLottieAsync);
@@ -57,22 +57,22 @@ internal static class DeviceVisualTests
         foreach (var request in service.Requests.ToArray()) request.Completion.TrySetResult(Art(request.Role, "HeyMelody"));
         await Task.Delay(10); Dispatcher.UIThread.RunJobs();
         Check(Equals(catalog.ProductFor(device), DeviceVisuals.GenericProduct), "A response from another resource source cannot be displayed.");
-        Check(service.Releases.Count == 4, "Both stale and wrong-source leases are released.");
+        Check(service.Requests.Count == 2 && service.Requests.All(request => request.Role == "hero")
+            && service.Releases.Count == 2, "Stale and wrong-source hero leases are released without requesting device icons.");
     }
     private static Task PngAsync()
     {
         var hero = new ProductArtwork { Visual = DeviceVisuals.X4Product, Width = 240, Height = 180 };
         var second = new ProductArtwork { Visual = new BitmapVisual(DeviceVisuals.X4Product.Source), Width = 240, Height = 180 };
-        var icon = new DeviceIconView { Visual = DeviceVisuals.X4Icon, Width = 28, Height = 28 };
-        var window = new Window { Content = new StackPanel { Children = { hero, second, icon } }, Width = 300, Height = 420 };
+        var window = new Window { Content = new StackPanel { Children = { hero, second } }, Width = 300, Height = 420 };
         try
         {
             window.Show(); Dispatcher.UIThread.RunJobs();
             var image = hero.GetVisualDescendants().OfType<Image>().Single();
             var another = second.GetVisualDescendants().OfType<Image>().Single();
             Check(!ReferenceEquals(image, another) && ReferenceEquals(image.Source, another.Source), "Hosts own their image controls and share decoded bundled bitmap data.");
-            Check(image.Stretch == Stretch.Uniform && DeviceVisuals.X4Product.Source.AbsolutePath.EndsWith("x4-pods-with-earphones.png")
-                && DeviceVisuals.X4Icon.Source.AbsolutePath.EndsWith("x4-both-earphones.png"), "Hero and card use the two X4 originals.");
+            Check(image.Stretch == Stretch.Uniform && DeviceVisuals.X4Product.Source.AbsolutePath.EndsWith("x4-pods-with-earphones.png"),
+                "The main product view keeps its original X4 artwork.");
             Check(!hero.GetVisualDescendants().OfType<DeviceModelView>().Any(), "X4 PNG does not display Free4's model.");
         }
         finally { window.Close(); }
@@ -86,12 +86,13 @@ internal static class DeviceVisualTests
         catalog.Update([device], device, "068C10", 1, "HeyMelody", artwork: service);
         var stale = service.Requests.ToArray();
         catalog.Update([device], device, "068C10", 2, "HeyMelody", artwork: service);
-        Check(service.Requests.Count == 4, "Changing colour starts fresh hero and capsule requests without waiting for the old requests.");
+        Check(service.Requests.Count == 2 && service.Requests.All(request => request.Role == "hero"),
+            "Changing colour starts fresh hero requests without waiting for old requests or fetching device icons.");
         foreach (var request in stale) request.Completion.TrySetResult(Art(request.Role, "HeyMelody"));
         foreach (var request in service.Requests.Except(stale)) request.Completion.TrySetResult(Art(request.Role, "HeyMelody"));
         await Task.Delay(10); Dispatcher.UIThread.RunJobs();
-        Check(catalog.ProductFor(device) is FileBitmapVisual && service.Releases.Count == 2,
-            "Only the replacement colour is accepted; the two stale package leases are released.");
+        Check(catalog.ProductFor(device) is FileBitmapVisual && service.Releases.Count == 1,
+            "Only the replacement colour is accepted; the stale hero package lease is released.");
     }
     private static Task LeaseAsync()
     {

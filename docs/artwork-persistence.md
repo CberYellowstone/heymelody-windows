@@ -2,7 +2,9 @@
 
 本文说明 0.8.4 的外观资源行为：主界面左侧的图片、三维模型和动画在第一次取得后持续可用，应用设置新增“重新下载在线资源”。另外新增 GitHub Actions，构建 Windows x64 与 ARM64 包。
 
-2026-10-09 已用真实官方 X4 包纠正此前未验证的 Lottie 推断：旋转展示来自外观模块 14 的 **动态 WebP**，control 包中的 Lottie 是捏柄／滑动操作教程。两种来源均按 `model3D → modelWebp → detailImageRes` 选择主展示，教程不再成为 hero。取得条件、原包摘要与 APK 调用依据见 [X4 美术复核](research/enco-x4-artwork-audit.md)。三维模型新增默认关闭的 [GPU 加速开关](model-rendering.md)，关闭后保留软件三维渲染与交互。
+0.8.6 主界面底部设备卡片改为仅名称与状态，删除自定义图标控件、转换器和图标美术槽位请求。左侧产品主图的缓存、解析、租约及外观持久化继续使用原机制；其下方的两行标题／说明也已移除。三维渲染当前默认 GPU 优先，已保存的软件选择与自动软件回退保留，见 [渲染设置](model-rendering.md)。
+
+2026-10-09 已用真实官方 X4 包纠正此前未验证的 Lottie 推断：旋转展示来自外观模块 14 的 **动态 WebP**，control 包中的 Lottie 是捏柄／滑动操作教程。两种来源均按 `model3D → modelWebp → detailImageRes` 选择主展示，教程不再成为 hero。取得条件、原包摘要与 APK 调用依据见 [X4 美术复核](research/enco-x4-artwork-audit.md)。0.8.4 新增当时默认关闭的 [GPU 加速开关](model-rendering.md)，关闭后保留软件三维渲染与交互。
 
 ## 原来的问题
 

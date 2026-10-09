@@ -40,8 +40,8 @@ public class DeviceModelView : UserControl
 
     public Ava3DView Viewport { get; } = new()
     {
-        // Set before the control is attached, so the default never initializes a model GPU backend.
-        PreferredBackend = RenderBackendKind.Software,
+        // The constructor applies an explicit saved software choice before attachment.
+        PreferredBackend = RenderBackendKind.Automatic,
         AutoFit = false,
         IsOrbitEnabled = false, IsZoomEnabled = false, IsPanEnabled = false,
         IsPickingEnabled = false, IsAnimationEnabled = false,

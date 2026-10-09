@@ -29,6 +29,8 @@ internal static class NativeSoftwareSmoke
             var oldPreference = ModelRenderingPreferences.UseGpuAcceleration;
             ThemePreferences.SettingsPathOverride = Path.Combine(output, "unwritten-preferences.json");
             ModelRenderingPreferences.Reload();
+            // CPU verification must explicitly opt out of the application's GPU default.
+            ModelRenderingPreferences.Apply(false);
             try
             {
                 AppBuilder.Configure<SmokeApplication>().UsePlatformDetect().LogToTrace()
@@ -57,7 +59,7 @@ internal static class NativeSoftwareSmoke
             var desktop = (IClassicDesktopStyleApplicationLifetime)ApplicationLifetime!;
             var model = new EncoFree4DynaudioModelView();
             _state.Check(model.Viewport.PreferredBackend == RenderBackendKind.Software,
-                "Default model selects software before visual-tree attachment");
+                "Explicit CPU preference selects software before visual-tree attachment");
             var window = new Window
             {
                 Title = "HeyMelody · CPU model validation", Content = model, Width = 640, Height = 580,

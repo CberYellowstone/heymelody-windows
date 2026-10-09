@@ -22,12 +22,20 @@ internal static class NativeDemoSmoke
         if (output is not null) Directory.CreateDirectory(output);
         var thread = new Thread(() =>
         {
+            var oldPath = ThemePreferences.SettingsPathOverride;
+            var oldPreference = ModelRenderingPreferences.UseGpuAcceleration;
+            _state.PreferencesPath = Path.Combine(output ?? Path.GetTempPath(),
+                "unwritten-demo-preferences-" + Guid.NewGuid().ToString("N") + ".json");
+            ThemePreferences.SettingsPathOverride = _state.PreferencesPath;
             try
             {
+                ModelRenderingPreferences.Reload();
                 AppBuilder.Configure<SmokeApplication>().UsePlatformDetect().LogToTrace()
                     .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
+                Check(!File.Exists(_state.PreferencesPath), "Native demo verification never writes user preferences.");
             }
             catch (Exception error) { _state.Failure = error.ToString(); }
+            finally { ThemePreferences.SettingsPathOverride = oldPath; ModelRenderingPreferences.Apply(oldPreference); }
         }) { IsBackground = true, Name = "HeyMelody native demo smoke" };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
@@ -39,6 +47,8 @@ internal static class NativeDemoSmoke
             nativeBluetoothCalls = 0, calibrationProcessLaunches = _state.CalibrationLaunches,
             headsetOrArtworkCalls = _state.Service.ForbiddenCalls, initialMockEnumerations = _state.Service.Enumerations,
             modelSha256 = DynaudioModelTests.ExpectedSha256, _state.FirstRenderedTriangles, _state.FirstRenderedSceneItems,
+            _state.PreferredBackend, _state.ActiveBackend, controlLayouts = _state.ControlLayouts,
+            preferencesWritten = _state.PreferencesPath is { } preferencePath && File.Exists(preferencePath),
             screenshots = _state.Screenshots,
             scope = "real Win32 demo startup, model scene and animation, themes, responsive layout, local action guards and dirty close; optional native Ava3D model-frame captures; no Bluetooth backend",
             failure = _state.Failure
@@ -55,10 +65,12 @@ internal static class NativeDemoSmoke
         public bool Completed, Closed;
         public string? Failure;
         public string? Output;
+        public string? PreferencesPath, PreferredBackend, ActiveBackend;
         public long FirstRenderedTriangles;
         public int FirstRenderedSceneItems;
         public DemoService Service { get; } = new();
         public List<object> Screenshots { get; } = [];
+        public List<object> ControlLayouts { get; } = [];
     }
 
     public sealed class SmokeApplication : App
@@ -91,12 +103,27 @@ internal static class NativeDemoSmoke
             Check(vm.Devices.Count == 1 && vm.CanFitTest && vm.CanSetupHearing, "All demo actions are available without a real backend.");
             var hero = page.FindControl<ProductArtwork>("HeroArt")!;
             Check(vm.ProductId == "06C010" && DemoDeviceData.Color == 3 && hero.Visual is EncoFree4DynaudioModelVisual
-                && page.FindControl<TextBlock>("HeroCaption")!.Text == "Enco Free4 丹拿版 · 布局演示",
-                "Demo startup selects and labels the Dynaudio model instead of ordinary Free4.");
+                && page.FindControl<Grid>("HeroPanel")!.Children.Count == 1,
+                "Demo startup selects the Dynaudio model without duplicate artwork captions.");
+            await UntilAsync(() => vm.FeatureSections.Sum(section => section.Controls.Count) == 34
+                && page.GetVisualDescendants().OfType<FeatureSectionView>().Count() == vm.FeatureSections.Count
+                && page.GetVisualDescendants().OfType<FeatureSectionView>().All(section => section.Content is FASettingsExpander),
+                "The demo's dynamic section containers materialize before inspecting or expanding their editors.");
+            RecordControlLayout(page, vm, "collapsed");
+            Check(page.FindControl<Border>("AncPanel") is { IsVisible: true }
+                && page.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => !expander.IsExpanded)
+                && !page.FindControl<Expander>("OperationLogPanel")!.IsExpanded,
+                "ANC remains visible while the demo's other groups start collapsed.");
+            // The following native checks inspect all editors; explicitly open them
+            // after verifying the same collapsed defaults offered to real users.
             await UntilAsync(() => hero.GetVisualDescendants().OfType<EncoFree4DynaudioModelView>().Any(model => model.ModelReady
                 && model.Viewport.Info.FramesRendered > 0 && model.Viewport.Info.Triangles > 0),
                 "The bundled Dynaudio scene renders on the first native window load.");
             var model = hero.GetVisualDescendants().OfType<DeviceModelView>().Single();
+            _state.PreferredBackend = model.Viewport.PreferredBackend.ToString();
+            _state.ActiveBackend = model.Viewport.Info.ActiveBackend.ToString();
+            Check(model.Viewport.PreferredBackend == RenderBackendKind.Automatic,
+                "A fresh native demo session uses the default Automatic renderer preference.");
             Check(model.LoadError is null && model.AnimationActive, "Demo model is ready and its animation is active.");
             _state.FirstRenderedTriangles = model.Viewport.Info.Triangles;
             _state.FirstRenderedSceneItems = model.Viewport.Info.SceneItems;
@@ -107,6 +134,16 @@ internal static class NativeDemoSmoke
             await DynaudioModelTests.VerifyAsync();
             Check(_state.Service.Enumerations == 1 && _state.Service.ForbiddenCalls == 0,
                 "First-load Dynaudio model integrity and Opaque correction require no headset or artwork request.");
+            page.ExpandAllSettings();
+            try
+            {
+                await UntilAsync(() => page.GetVisualDescendants().OfType<FeatureControlView>().Count() == 34,
+                    "Every dynamic demo control materializes after its section is explicitly expanded.");
+                // Let the native expander animation finish before resizing and
+                // inspecting geometry. This is intentionally separate from VM readiness.
+                await Task.Delay(350);
+            }
+            finally { RecordControlLayout(page, vm, "expanded"); }
 
             foreach (bool dark in new[] { false, true })
             foreach (var size in new[] { new Size(1280, 900), new Size(900, 640) })
@@ -117,8 +154,10 @@ internal static class NativeDemoSmoke
                 Check(window.ActualThemeVariant == (dark ? ThemeVariant.Dark : ThemeVariant.Light), "Demo follows the window theme.");
                 Check(page.IsCompact == (page.Bounds.Width < 1080), "Demo follows the responsive breakpoint.");
                 DeviceBarTests.CheckBottomBar(page, page);
-                Check(page.GetVisualDescendants().OfType<FeatureControlView>().Count() == 34,
-                    "Every dynamic demo control is loaded in the native window.");
+                var actualControlCount = page.GetVisualDescendants().OfType<FeatureControlView>().Count();
+                RecordControlLayout(page, vm, $"{(dark ? "dark" : "light")}-{(int)size.Width}x{(int)size.Height}");
+                Check(actualControlCount == 34,
+                    $"Every dynamic demo control is loaded in the native window; actual={actualControlCount}, expected=34.");
                 if (_state.Output is not null)
                 {
                     window.Activate();
@@ -145,12 +184,14 @@ internal static class NativeDemoSmoke
                         source = "native Ava3D model frame; complete UI layout is covered separately by headless screenshots",
                         sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant(),
                         model.Viewport.Info.Triangles, model.Viewport.Info.SceneItems, model.Viewport.Info.FramesRendered,
+                        preferredBackend = model.Viewport.PreferredBackend.ToString(),
                         backend = model.Viewport.Info.ActiveBackend.ToString() });
                 }
             }
 
             page.RequestFitTest = () => { _state.CalibrationLaunches++; return Task.CompletedTask; };
             page.RequestHearingSetup = () => { _state.CalibrationLaunches++; return Task.CompletedTask; };
+            page.FindControl<FASettingsExpander>("HearingPanel")!.IsExpanded = true;
             foreach (string label in new[] { "开始测试", "设置黄金听感" })
             {
                 var button = page.GetVisualDescendants().OfType<Button>().Single(candidate => Equals(candidate.Content, label));
@@ -179,6 +220,26 @@ internal static class NativeDemoSmoke
             if (!_state.Closed) { await vm.DisposeAsync(); window.Close(); }
             desktop.Shutdown(_state.Failure is null ? 0 : 1);
         }
+    }
+
+    private static void RecordControlLayout(MainView page, MainViewModel vm, string phase)
+    {
+        var sections = page.GetVisualDescendants().OfType<FeatureSectionView>().ToArray();
+        var controls = page.GetVisualDescendants().OfType<FeatureControlView>().Count();
+        _state.ControlLayouts.Add(new
+        {
+            phase, expectedSections = vm.FeatureSections.Count, actualSections = sections.Length,
+            expectedControls = vm.FeatureSections.Sum(section => section.Controls.Count), actualControls = controls,
+            sections = sections.Select(section => new
+            {
+                id = (section.DataContext as FeatureSectionViewModel)?.Id,
+                expectedControls = (section.DataContext as FeatureSectionViewModel)?.Controls.Count,
+                expanded = (section.Content as FASettingsExpander)?.IsExpanded,
+                actualControls = section.GetVisualDescendants().OfType<FeatureControlView>().Count(),
+                width = section.Bounds.Width, height = section.Bounds.Height
+            }).ToArray()
+        });
+        Console.WriteLine($"LAYOUT {phase}: sections={sections.Length}/{vm.FeatureSections.Count}, controls={controls}/{vm.FeatureSections.Sum(section => section.Controls.Count)}");
     }
 
     private static async Task UntilAsync(Func<bool> ready, string message)

@@ -168,7 +168,10 @@ internal static class DeviceBarTests
                         Check(content.Bounds.Width < card.Bounds.Width - 32
                             && Math.Abs(origin.X + content.Bounds.Width / 2 - card.Bounds.Width / 2) <= 1
                             && Math.Abs(origin.Y + content.Bounds.Height / 2 - card.Bounds.Height / 2) <= 1,
-                            "The icon, name and status form a centered group inside each device card.");
+                            "The name and status form a centered group inside each device card.");
+                        Check(!content.GetVisualDescendants().OfType<Control>().Any(control => control.Name == "DeviceIcon")
+                            && !content.GetVisualDescendants().OfType<Image>().Any(),
+                            "Device cards display their text without custom artwork icons.");
                     }
                     CheckBottomBar(view, window);
                 }

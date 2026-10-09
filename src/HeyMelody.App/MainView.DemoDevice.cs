@@ -16,7 +16,7 @@ public partial class MainView
     private bool _suppressAddDeviceClick, _addingDemoDevice;
     private Window? _addDeviceGestureWindow;
     private bool _demoPresentationInitialized, _presentingDemo, _restoringFixedExpansion;
-    private (string Id, FASettingsExpander Control, bool Initial)[] _fixedExpanders = [];
+    private (string Id, FASettingsExpander Control)[] _fixedExpanders = [];
 
     // A monotonic clock also lets the interaction tests verify a release whose
     // timer callback has not yet been dispatched.
@@ -57,9 +57,8 @@ public partial class MainView
             _addDeviceGestureWindow = null;
         };
 
-        _fixedExpanders = [("anc", AncPanel, AncPanel.IsExpanded), ("eq", EqualizerPanel, EqualizerPanel.IsExpanded),
-            ("hearing", HearingPanel, HearingPanel.IsExpanded), ("information", DeviceInfoPanel, DeviceInfoPanel.IsExpanded)];
-        foreach (var (id, expander, _) in _fixedExpanders)
+        _fixedExpanders = [("eq", EqualizerPanel), ("hearing", HearingPanel), ("information", DeviceInfoPanel)];
+        foreach (var (id, expander) in _fixedExpanders)
             expander.PropertyChanged += (_, e) =>
             {
                 if (!_restoringFixedExpansion && e.Property == FASettingsExpander.IsExpandedProperty)
@@ -160,7 +159,6 @@ public partial class MainView
     private void UpdateDemoPresentation()
     {
         var demo = ViewModel?.IsDemoSelected == true;
-        HeroCaption.Text = demo || _modelDemo ? "Enco Free4 丹拿版 · 布局演示" : "耳机外观";
         UpdateHeroVisual();
         if (_demoPresentationInitialized && demo == _presentingDemo) return;
         _demoPresentationInitialized = true;
@@ -168,8 +166,8 @@ public partial class MainView
         _restoringFixedExpansion = true;
         try
         {
-            foreach (var (id, expander, initial) in _fixedExpanders)
-                expander.IsExpanded = _sectionExpansion.GetValueOrDefault((demo ? "demo/" : "real/") + "fixed:" + id, demo || initial);
+            foreach (var (id, expander) in _fixedExpanders)
+                expander.IsExpanded = _sectionExpansion.GetValueOrDefault((demo ? "demo/" : "real/") + "fixed:" + id, false);
         }
         finally { _restoringFixedExpansion = false; }
     }

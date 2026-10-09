@@ -19,16 +19,17 @@ public sealed class FeatureSectionView : UserControl
         _section = DataContext as FeatureSectionViewModel;
         if (_section is not { } section) { Content = null; return; }
         _owner = this.FindAncestorOfType<MainView>();
-        _expander = new FASettingsExpander { Header = section.Header, Description = section.Description,
-            IsExpanded = _owner?.SectionExpanded(section.Id, section.DefaultExpanded) ?? section.DefaultExpanded };
-        _expander.Items.Add(new ItemsControl { ItemsSource = section.Controls,
+        var expander = new FASettingsExpander { Header = section.Header, Description = section.Description,
+            IsExpanded = _owner?.SectionExpanded(section.Id) ?? false };
+        _expander = expander;
+        expander.Items.Add(new ItemsControl { ItemsSource = section.Controls,
             ItemTemplate = new FuncDataTemplate<FeatureControlViewModel>((control, _) => new FeatureControlView { DataContext = control }) });
-        _expander.PropertyChanged += (_, e) =>
+        expander.PropertyChanged += (_, e) =>
         {
             if (!_restoring && e.Property == FASettingsExpander.IsExpandedProperty)
-                _owner?.RememberSectionExpansion(section.Id, _expander.IsExpanded);
+                _owner?.RememberSectionExpansion(section.Id, expander.IsExpanded);
         };
-        Content = _expander;
+        Content = expander;
     }
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -37,7 +38,7 @@ public sealed class FeatureSectionView : UserControl
         if (_section is { } section && _expander is { } expander)
         {
             _restoring = true;
-            expander.IsExpanded = _owner?.SectionExpanded(section.Id, section.DefaultExpanded) ?? section.DefaultExpanded;
+            expander.IsExpanded = _owner?.SectionExpanded(section.Id) ?? false;
             _restoring = false;
         }
     }

@@ -30,7 +30,7 @@ public partial class MainView
     private void RequestDeviceCenterIfChanged()
     {
         // State notifications also mention unchanged device properties during polling.
-        // Updating their picture or status must preserve the user's manual scroll position.
+        // Updating their connection status must preserve the user's manual scroll position.
         if (!ReferenceEquals(_centeringDevices, ViewModel?.Devices)
             || _centeringDeviceIdentity != ViewModel?.SelectedDevice?.Identity)
             RequestDeviceCenter();

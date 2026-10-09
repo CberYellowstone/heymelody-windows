@@ -151,8 +151,8 @@ internal static class DemoDeviceTests
         Check(vm.ProductId == "06C010" && DemoDeviceData.Color == 3 && vm.Title == "Demo · Enco Free4 丹拿版",
             "The demo identifies the model and color used to obtain the Dynaudio resource.");
         Check(view.FindControl<ProductArtwork>("HeroArt")!.Visual is EncoFree4DynaudioModelVisual
-            && view.FindControl<TextBlock>("HeroCaption")!.Text == "Enco Free4 丹拿版 · 布局演示",
-            "The demo selects and labels the bundled Dynaudio model.");
+            && view.FindControl<Grid>("HeroPanel")!.Children.Count == 1,
+            "The demo selects the bundled Dynaudio model without duplicate captions beneath it.");
         Check(view.FindControl<FAInfoBar>("DemoNotice")!.Message?.Contains("Enco Free4 丹拿版", StringComparison.Ordinal) == true,
             "The temporary-device notice describes the actual Dynaudio appearance.");
     }
@@ -164,6 +164,8 @@ internal static class DemoDeviceTests
         int launches = 0;
         fixture.View.RequestFitTest = () => { launches++; return Task.CompletedTask; };
         fixture.View.RequestHearingSetup = () => { launches++; return Task.CompletedTask; };
+        fixture.View.FindControl<FASettingsExpander>("HearingPanel")!.IsExpanded = true;
+        Dispatcher.UIThread.RunJobs();
         foreach (var label in new[] { "开始测试", "设置黄金听感" })
         {
             var button = fixture.View.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, label));
@@ -187,8 +189,10 @@ internal static class DemoDeviceTests
         Check(view.IsCompact == (size.Width < 1080), "The demo uses the existing responsive breakpoint.");
         Check(view.FindControl<FAInfoBar>("DemoNotice") is { IsOpen: true, IsVisible: true }, "The temporary-device notice is visible.");
         CheckDynaudioPresentation(view, fixture.Vm);
-        Check(view.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => expander.IsExpanded),
-            "Every demo settings group starts expanded.");
+        Check(view.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => !expander.IsExpanded)
+            && !view.FindControl<Expander>("OperationLogPanel")!.IsExpanded,
+            "Demo settings and operation history start collapsed like real-device settings.");
+        await MainUiTestLayout.ExpandSettingsAsync(view);
         Check(view.FindControl<ItemsControl>("BandEditor")!.Items.Count == 10, "The complete ten-band EQ editor is present.");
         DeviceBarTests.CheckBottomBar(view, window);
         var picker = view.FindControl<ListBox>("DevicePicker")!;

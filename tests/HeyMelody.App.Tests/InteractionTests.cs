@@ -40,7 +40,7 @@ internal static class InteractionTests
         var window = CreateWindow(view);
         try
         {
-            window.Show(); view.ExpandAllSettings(); Dispatcher.UIThread.RunJobs();
+            window.Show(); await MainUiTestLayout.ExpandSettingsAsync(view);
             var originalAnc = FeatureTestData.Anc(view);
             var originalEq = view.GetVisualDescendants().OfType<EqualizerChoiceView>().Single().GetVisualDescendants().OfType<RadioButton>().First();
             FeatureTestData.Anc(view).SelectedItem = vm.SelectedAncMode!.Options.Last();
@@ -73,7 +73,7 @@ internal static class InteractionTests
         var window = CreateWindow(view);
         try
         {
-            window.Show(); view.ExpandAllSettings(); Dispatcher.UIThread.RunJobs();
+            window.Show(); await MainUiTestLayout.ExpandSettingsAsync(view);
             service.BlockNextRead = true;
             var read = vm.PollAsync();
             await service.ReadStarted.Task.WaitAsync(TimeSpan.FromSeconds(3)); Dispatcher.UIThread.RunJobs();
@@ -219,12 +219,22 @@ internal static class InteractionTests
         {
             window.Show(); Dispatcher.UIThread.RunJobs();
             var section = view.GetVisualDescendants().OfType<FASettingsExpander>().Single(expander => Equals(expander.Header, "连接与体验"));
-            Check(section.IsExpanded, "A resource's default-expanded hint is used on first display.");
-            section.IsExpanded = false;
+            Check(!section.IsExpanded && view.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => !expander.IsExpanded),
+                "Every main settings group starts collapsed, including resources whose old hint requested expansion.");
+            var original = section;
+            section.IsExpanded = true;
+            view.FindControl<FASettingsExpander>("EqualizerPanel")!.IsExpanded = true;
             var snapshot = service.Next(); snapshot.GameMode = true;
             service.Push(FeatureTestData.Decorate(snapshot)); Dispatcher.UIThread.RunJobs();
             section = view.GetVisualDescendants().OfType<FASettingsExpander>().Single(expander => Equals(expander.Header, "连接与体验"));
-            Check(!section.IsExpanded, "A new definition with the same section ID retains the user's collapse choice.");
+            Check(!ReferenceEquals(section, original) && section.IsExpanded
+                && view.FindControl<FASettingsExpander>("EqualizerPanel")!.IsExpanded,
+                "A replacement definition with the same section ID and fixed groups retain the user's expansion choice.");
+            section.IsExpanded = false;
+            snapshot = service.Next(); snapshot.GameMode = false;
+            service.Push(FeatureTestData.Decorate(snapshot)); Dispatcher.UIThread.RunJobs();
+            section = view.GetVisualDescendants().OfType<FASettingsExpander>().Single(expander => Equals(expander.Header, "连接与体验"));
+            Check(!section.IsExpanded, "Another replacement retains the user's subsequent collapse choice.");
         }
         finally { window.Close(); }
     }
@@ -249,7 +259,7 @@ internal static class InteractionTests
         var view = new MainView { DataContext = vm }; var window = CreateWindow(view);
         try
         {
-            window.Show(); view.ExpandAllSettings(); Dispatcher.UIThread.RunJobs();
+            window.Show(); await MainUiTestLayout.ExpandSettingsAsync(view);
             var selector = view.GetVisualDescendants().OfType<AncModeSelector>().Single();
             var adaptive = selector.GetVisualDescendants().OfType<RadioButton>()
                 .Single(x => AutomationProperties.GetName(x) == "自适应降噪");
@@ -277,7 +287,7 @@ internal static class InteractionTests
         var view = new MainView { DataContext = vm }; var window = CreateWindow(view);
         try
         {
-            window.Show(); view.ExpandAllSettings(); Dispatcher.UIThread.RunJobs();
+            window.Show(); await MainUiTestLayout.ExpandSettingsAsync(view);
             var snapshot = service.Next(); AddAdaptiveMode(snapshot);
             snapshot.AncPrimary = 11; snapshot.Anc = null;
             service.Push(snapshot); Dispatcher.UIThread.RunJobs();

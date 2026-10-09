@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Controls;
@@ -20,7 +21,10 @@ public partial class MainView : UserControl
     private bool _openingBluetoothSettings;
     private bool _closingWindow;
     private bool _modelDemo;
+    private bool _copyingDeviceInfo;
+    private long _deviceInfoCopyVersion;
     internal ILauncher? LauncherOverride { get; set; }
+    internal Func<string, Task>? WriteClipboardOverride { get; set; }
     internal Func<Task>? ManageDevicesRequested { get; set; }
     internal Func<Task>? RequestFitTest { get; set; }
     internal Func<Task>? RequestHearingSetup { get; set; }
@@ -58,6 +62,7 @@ public partial class MainView : UserControl
             }
             UpdateArtwork();
             UpdateDemoPresentation();
+            ResetDeviceInfoCopyFeedback();
             RequestDeviceCenter();
         };
     }
@@ -69,6 +74,9 @@ public partial class MainView : UserControl
             or nameof(MainViewModel.ArtworkEpoch) or nameof(MainViewModel.DeviceColor)) UpdateArtwork();
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices)) RequestDeviceCenterIfChanged();
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.IsDemoSelected)) UpdateDemoPresentation();
+        if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice)
+            or nameof(MainViewModel.Title) or nameof(MainViewModel.ProductId) or nameof(MainViewModel.Firmware)
+            or nameof(MainViewModel.Closing)) ResetDeviceInfoCopyFeedback();
     }
 
     public void SetPlatformNotice(bool visible) => PlatformNotice.IsOpen = PlatformNotice.IsVisible = visible;
@@ -77,13 +85,12 @@ public partial class MainView : UserControl
         _modelDemo = true;
         AddDeviceHost.IsEnabled = false;
         PlatformNotice.IsOpen = PlatformNotice.IsVisible = false;
-        HeroCaption.Text = "Enco Free4 丹拿版 · 布局演示";
         UpdateHeroVisual();
     }
     public bool IsCompact { get; private set; }
     public void ExpandAllSettings()
     { foreach (var section in this.GetVisualDescendants().OfType<FASettingsExpander>()) section.IsExpanded = true; }
-    internal bool SectionExpanded(string id, bool initial) => _sectionExpansion.GetValueOrDefault(ExpansionKey(id), ViewModel?.IsDemoSelected == true || initial);
+    internal bool SectionExpanded(string id) => _sectionExpansion.GetValueOrDefault(ExpansionKey(id), false);
     internal void RememberSectionExpansion(string id, bool expanded) => _sectionExpansion[ExpansionKey(id)] = expanded;
 
     private void UpdateArtwork()
@@ -107,8 +114,6 @@ public partial class MainView : UserControl
             DeviceArea.RowDefinitions.Add(new RowDefinition(GridLength.Star));
             Grid.SetColumn(ControlScroll, 0); Grid.SetRow(ControlScroll, 1);
             HeroPanel.Margin = new Thickness(0); HeroArt.MaxHeight = 150;
-            // The control header already identifies the device at narrow sizes.
-            ((StackPanel)HeroPanel.Children[1]).IsVisible = false;
         }
         else
         {
@@ -116,7 +121,6 @@ public partial class MainView : UserControl
             DeviceArea.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(500)));
             Grid.SetColumn(ControlScroll, 1); Grid.SetRow(ControlScroll, 0);
             HeroPanel.Margin = new Thickness(8, 0, 32, 0); HeroArt.MaxHeight = 520;
-            ((StackPanel)HeroPanel.Children[1]).IsVisible = true;
         }
     }
 
@@ -139,6 +143,42 @@ public partial class MainView : UserControl
     }
 
     private async void AppSettings_Click(object? sender, RoutedEventArgs e) => await OpenSettingsDialogAsync();
+
+    private void ResetDeviceInfoCopyFeedback()
+    {
+        ++_deviceInfoCopyVersion;
+        DeviceInfoCopyStatus.Text = "";
+        UpdateDeviceInfoCopyAvailability();
+    }
+
+    private void UpdateDeviceInfoCopyAvailability() => CopyDeviceInfoButton.IsEnabled = !_copyingDeviceInfo
+        && !_closingWindow && ViewModel is { Closing: false, SelectedDevice: not null };
+
+    private async void CopyDeviceInfo_Click(object? sender, RoutedEventArgs e) => await CopyDeviceInfoAsync();
+
+    internal async Task CopyDeviceInfoAsync()
+    {
+        if (_copyingDeviceInfo || _closingWindow || ViewModel is not { Closing: false, SelectedDevice: not null } vm) return;
+        var text = $"设备名称：{vm.Title}{Environment.NewLine}产品编号：{vm.ProductId ?? "—"}{Environment.NewLine}固件版本：{vm.Firmware ?? "—"}";
+        var version = _deviceInfoCopyVersion;
+        _copyingDeviceInfo = true;
+        DeviceInfoCopyStatus.Text = "";
+        UpdateDeviceInfoCopyAvailability();
+        try
+        {
+            if (WriteClipboardOverride is { } write) await write(text);
+            else if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard) await clipboard.SetTextAsync(text);
+            else throw new InvalidOperationException("Clipboard unavailable.");
+            if (version == _deviceInfoCopyVersion && ReferenceEquals(vm, ViewModel) && !_closingWindow && !vm.Closing)
+                DeviceInfoCopyStatus.Text = "已复制";
+        }
+        catch (Exception)
+        {
+            if (version == _deviceInfoCopyVersion && ReferenceEquals(vm, ViewModel) && !_closingWindow && !vm.Closing)
+                DeviceInfoCopyStatus.Text = "复制失败，请重试";
+        }
+        finally { _copyingDeviceInfo = false; UpdateDeviceInfoCopyAvailability(); }
+    }
 
     private async void AddDevice_Click(object? sender, RoutedEventArgs e)
     {
@@ -213,6 +253,7 @@ public partial class MainView : UserControl
     public async Task DismissSettingsDialogAsync()
     {
         _closingWindow = true;
+        ResetDeviceInfoCopyFeedback();
         CancelAddDeviceHold();
         AddDeviceHost.IsEnabled = false;
         _bluetoothSettingsCancellation?.Cancel();
@@ -227,6 +268,7 @@ public partial class MainView : UserControl
     public void ResumeSettingsDialogs()
     {
         _closingWindow = false;
+        UpdateDeviceInfoCopyAvailability();
         AddDeviceHost.IsEnabled = !_modelDemo && OperatingSystem.IsWindows() && !_openingBluetoothSettings;
     }
 

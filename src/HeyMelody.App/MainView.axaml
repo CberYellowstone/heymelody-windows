@@ -7,7 +7,6 @@
              x:Class="HeyMelodyWindows.App.MainView" x:DataType="vm:MainViewModel"
              Background="{DynamicResource ApplicationPageBackgroundThemeBrush}">
   <UserControl.Resources>
-    <local:DeviceIconVisualConverter x:Key="DeviceIconVisualConverter" />
     <local:DemoDeviceCaptionConverter x:Key="DemoDeviceCaptionConverter" />
     <ControlTheme x:Key="DeviceCardTheme" TargetType="ListBoxItem">
       <Setter Property="Width" Value="300" />
@@ -70,13 +69,9 @@
   </UserControl.Styles>
   <Grid x:Name="MainLayout" RowDefinitions="*,Auto">
     <Grid x:Name="DeviceArea" ColumnDefinitions="*,500" Margin="24,12,24,0">
-      <Grid x:Name="HeroPanel" Margin="8,0,32,0" RowDefinitions="*,Auto">
+      <Grid x:Name="HeroPanel" Margin="8,0,32,0">
         <local:ProductArtwork x:Name="HeroArt" Margin="0,16" MaxWidth="600" MaxHeight="520"
                               VerticalAlignment="Center" HorizontalAlignment="Stretch" />
-        <StackPanel Grid.Row="1" HorizontalAlignment="Center" Margin="0,0,0,32" Spacing="6">
-          <TextBlock Text="{Binding Title}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" />
-          <TextBlock x:Name="HeroCaption" Text="耳机外观" Classes="caption" HorizontalAlignment="Center" />
-        </StackPanel>
       </Grid>
       <ScrollViewer x:Name="ControlScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto"
                     HorizontalScrollBarVisibility="Disabled">
@@ -130,11 +125,21 @@
               </StackPanel>
             </Grid>
           </Border>
-          <fa:FASettingsExpander x:Name="AncPanel" Header="降噪" Description="调整你听见的环境声音" IsExpanded="True">
-            <fa:FASettingsExpander.IconSource><fa:FASymbolIconSource Symbol="Audio" /></fa:FASettingsExpander.IconSource>
-            <local:AncModeSelector />
-          </fa:FASettingsExpander>
-          <fa:FASettingsExpander x:Name="EqualizerPanel" Header="均衡器" Description="预设与自定义 EQ" IsExpanded="True">
+          <Border x:Name="AncPanel" Margin="0,0,0,8" CornerRadius="6" BorderThickness="1"
+                  Background="{DynamicResource ControlFillColorDefaultBrush}"
+                  BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
+            <StackPanel>
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16" Margin="20,16">
+                <fa:FASymbolIcon Symbol="Audio" FontSize="20" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Spacing="4">
+                  <TextBlock Text="降噪" FontWeight="SemiBold" />
+                  <TextBlock Text="调整你听见的环境声音" Classes="caption" TextWrapping="Wrap" />
+                </StackPanel>
+              </Grid>
+              <local:AncModeSelector />
+            </StackPanel>
+          </Border>
+          <fa:FASettingsExpander x:Name="EqualizerPanel" Header="均衡器" Description="预设与自定义 EQ" IsExpanded="False">
             <fa:FASettingsExpander.IconSource><fa:FASymbolIconSource Symbol="MusicInfo" /></fa:FASettingsExpander.IconSource>
             <Border Padding="20,16">
               <StackPanel Spacing="12">
@@ -172,7 +177,7 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-          <fa:FASettingsExpander x:Name="HearingPanel" Header="黄金听感" Description="选择已有配置，或建立适合自己的听感">
+          <fa:FASettingsExpander x:Name="HearingPanel" Header="黄金听感" Description="选择已有配置，或建立适合自己的听感" IsExpanded="False">
             <Border Padding="20,16">
               <StackPanel Spacing="12">
                 <ComboBox x:Name="HearingProfileCombo" ItemsSource="{Binding HearingProfiles}"
@@ -184,13 +189,25 @@
               </StackPanel>
             </Border>
           </fa:FASettingsExpander>
-          <fa:FASettingsExpanderItem Content="耳塞贴合度测试" Description="检查两耳的佩戴贴合度">
+          <fa:FASettingsExpanderItem x:Name="FitTestPanel" Content="耳塞贴合度测试" Description="检查两耳的佩戴贴合度" Margin="0,0,0,8">
             <fa:FASettingsExpanderItem.Footer>
               <Button Content="开始测试" Click="FitTest_Click" IsEnabled="{Binding CanFitTest}" />
             </fa:FASettingsExpanderItem.Footer>
           </fa:FASettingsExpanderItem>
-          <fa:FASettingsExpander x:Name="DeviceInfoPanel" Header="设备信息" Description="型号与固件">
+          <fa:FASettingsExpander x:Name="DeviceInfoPanel" Header="设备信息" Description="型号与固件" IsExpanded="False">
             <fa:FASettingsExpander.IconSource><fa:FASymbolIconSource Symbol="ContactInfo" /></fa:FASettingsExpander.IconSource>
+            <fa:FASettingsExpander.Footer>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock x:Name="DeviceInfoCopyStatus" Classes="caption" VerticalAlignment="Center" />
+                <Button x:Name="CopyDeviceInfoButton" Click="CopyDeviceInfo_Click" IsEnabled="False"
+                        ToolTip.Tip="复制设备名称、产品编号与固件版本" AutomationProperties.Name="复制设备信息">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <fa:FASymbolIcon Symbol="Copy" FontSize="16" />
+                    <TextBlock Text="复制" />
+                  </StackPanel>
+                </Button>
+              </StackPanel>
+            </fa:FASettingsExpander.Footer>
             <Border Padding="20,16">
               <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
                 <TextBlock Text="设备名称" Classes="muted" /><TextBlock Grid.Column="1" Text="{Binding Title}" TextWrapping="Wrap" />
@@ -199,7 +216,7 @@
               </Grid>
             </Border>
           </fa:FASettingsExpander>
-          <Expander Header="操作记录" Margin="0,8,0,0" HorizontalAlignment="Stretch">
+          <Expander x:Name="OperationLogPanel" Header="操作记录" IsExpanded="False" Margin="0,8,0,0" HorizontalAlignment="Stretch">
             <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
                      MaxHeight="200" FontSize="12" AutomationProperties.Name="操作记录" />
           </Expander>
@@ -222,18 +239,9 @@
                 <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="8" /></ItemsPanelTemplate></ListBox.ItemsPanel>
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="contracts:UiDevice">
-                    <Grid x:Name="DeviceCardContent" ColumnDefinitions="32,Auto" ColumnSpacing="12"
+                    <Grid x:Name="DeviceCardContent" ColumnDefinitions="Auto"
                           HorizontalAlignment="Center" VerticalAlignment="Center">
-                      <local:DeviceIconView x:Name="DeviceIcon" Width="28" Height="28" VerticalAlignment="Center">
-                        <local:DeviceIconView.Visual>
-                          <MultiBinding Converter="{StaticResource DeviceIconVisualConverter}">
-                            <Binding Path="." />
-                            <Binding Path="VisualCatalog" RelativeSource="{RelativeSource AncestorType={x:Type local:MainView}}" />
-                            <Binding Path="VisualCatalog.Revision" RelativeSource="{RelativeSource AncestorType={x:Type local:MainView}}" />
-                          </MultiBinding>
-                        </local:DeviceIconView.Visual>
-                      </local:DeviceIconView>
-                      <StackPanel x:Name="DeviceText" Grid.Column="1" Spacing="4" MaxWidth="220">
+                      <StackPanel x:Name="DeviceText" Spacing="4" MaxWidth="220">
                         <TextBlock x:Name="DeviceNameText" Text="{Binding Name}" FontWeight="SemiBold"
                                    TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
                         <TextBlock Text="{Binding ., Converter={StaticResource DemoDeviceCaptionConverter}}" Classes="caption" />

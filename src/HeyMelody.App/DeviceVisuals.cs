@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Shapes;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml.MarkupExtensions;
@@ -9,7 +8,6 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using FluentAvalonia.UI.Controls;
 using HeyMelodyWindows.Resources;
-using Path = Avalonia.Controls.Shapes.Path;
 
 namespace HeyMelodyWindows.App;
 
@@ -18,17 +16,13 @@ public sealed record BitmapVisual(Uri Source);
 public sealed record EncoFree4ModelVisual;
 public sealed record EncoFree4DynaudioModelVisual;
 public sealed record GenericProductVisual;
-public sealed record GenericDeviceIconVisual;
 
 /// <summary>Built-in presentation data and its default template, independent of device identification.</summary>
 public static class DeviceVisuals
 {
     public static BitmapVisual X4Product { get; } = new(new Uri(
         "avares://HeyMelody/Assets/Devices/EncoX4/x4-pods-with-earphones.png"));
-    public static BitmapVisual X4Icon { get; } = new(new Uri(
-        "avares://HeyMelody/Assets/Devices/EncoX4/x4-both-earphones.png"));
     public static GenericProductVisual GenericProduct { get; } = new();
-    public static GenericDeviceIconVisual GenericIcon { get; } = new();
     public static IDataTemplate DefaultTemplate { get; } = new DeviceVisualTemplate();
 
     private static readonly object BitmapLock = new();
@@ -81,7 +75,7 @@ public static class DeviceVisuals
 
     private sealed class DeviceVisualTemplate : IDataTemplate
     {
-        public bool Match(object? data) => data is BitmapVisual or FileBitmapVisual or DeviceModelVisual or LottieVisual or AnimatedWebpVisual or EncoFree4ModelVisual or EncoFree4DynaudioModelVisual or GenericProductVisual or GenericDeviceIconVisual;
+        public bool Match(object? data) => data is BitmapVisual or FileBitmapVisual or DeviceModelVisual or LottieVisual or AnimatedWebpVisual or EncoFree4ModelVisual or EncoFree4DynaudioModelVisual or GenericProductVisual;
 
         public Control? Build(object? data) => data switch
         {
@@ -93,7 +87,6 @@ public static class DeviceVisuals
             EncoFree4ModelVisual => new EncoFree4ModelView(),
             EncoFree4DynaudioModelVisual => new EncoFree4DynaudioModelView(),
             GenericProductVisual => CreateGenericProduct(),
-            GenericDeviceIconVisual => CreateGenericIcon(),
             _ => null
         };
 
@@ -112,21 +105,6 @@ public static class DeviceVisuals
             };
             shell.Bind(Border.BackgroundProperty, new DynamicResourceExtension("ControlFillColorDefaultBrush"));
             return new Viewbox { Stretch = Stretch.Uniform, MaxWidth = 220, MaxHeight = 220, Child = shell };
-        }
-
-        private static Control CreateGenericIcon()
-        {
-            var outline = new Path
-            {
-                Data = Geometry.Parse("M4,14 L4,11 A8,8 0 0 1 20,11 L20,14 M4,13 L7,13 L7,21 L4,21 Q2,21 2,19 L2,15 Q2,13 4,13 M20,13 L17,13 L17,21 L20,21 Q22,21 22,19 L22,15 Q22,13 20,13"),
-                StrokeThickness = 1.5,
-                StrokeLineCap = PenLineCap.Round,
-                StrokeJoin = PenLineJoin.Round
-            };
-            outline.Bind(Shape.StrokeProperty, new DynamicResourceExtension("TextFillColorPrimaryBrush"));
-            var canvas = new Canvas { Width = 24, Height = 24 };
-            canvas.Children.Add(outline);
-            return new Viewbox { Stretch = Stretch.Uniform, Child = canvas };
         }
     }
 }

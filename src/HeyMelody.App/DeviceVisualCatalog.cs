@@ -9,10 +9,9 @@ namespace HeyMelodyWindows.App;
 // verified observations or the selected device's live snapshot, never from a Bluetooth name.
 public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
 {
-    private static readonly string[] Roles = ["hero", "icon"];
     private readonly Dictionary<string, Appearance> _appearances = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Slot> _slots = new(StringComparer.Ordinal);
-    // identity/role -> slot whose visual is displayed; replaced only once the desired slot is ready.
+    // identity/hero -> slot whose visual is displayed; replaced only once the desired slot is ready.
     private readonly Dictionary<string, string> _shown = new(StringComparer.Ordinal);
     private readonly DispatcherTimer _retry = new();
     private string _source = "";
@@ -27,10 +26,9 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
     public DeviceVisualCatalog() => _retry.Tick += (_, _) => RetryDue();
 
     private sealed record Appearance(string ProductId, int? Color);
-    private sealed class Slot(string key, string role, string productId, int? color)
+    private sealed class Slot(string key, string productId, int? color)
     {
         public string Key { get; } = key;
-        public string Role { get; } = role;
         public string ProductId { get; } = productId;
         public int? Color { get; } = color;
         public object? Visual;
@@ -86,25 +84,22 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
             _shown.Remove(removed);
         if (_artwork is not null)
             foreach (var (identity, appearance) in _appearances)
-                foreach (string role in Roles)
-                {
-                    var slot = Ensure(role, appearance);
-                    if (NeedsResolve(slot)) Resolve(slot);
-                    changed |= Show(identity, slot);
-                }
+            {
+                var slot = Ensure(appearance);
+                if (NeedsResolve(slot)) Resolve(slot);
+                changed |= Show(identity, slot);
+            }
         Collect();
         if (changed) Changed();
     }
 
     internal object ProductFor(UiDevice? device) => MainViewModel.IsDemoDevice(device) ? new EncoFree4DynaudioModelVisual()
-        : Displayed(device, "hero") ?? (_artwork is null && IsX4(device) ? DeviceVisuals.X4Product : DeviceVisuals.GenericProduct);
-    internal object IconFor(UiDevice? device) => MainViewModel.IsDemoDevice(device) ? DeviceVisuals.GenericIcon
-        : Displayed(device, "icon") ?? (_artwork is null && IsX4(device) ? DeviceVisuals.X4Icon : DeviceVisuals.GenericIcon);
+        : Displayed(device) ?? (_artwork is null && IsX4(device) ? DeviceVisuals.X4Product : DeviceVisuals.GenericProduct);
 
     internal bool IsX4(UiDevice? device) => device is not null && _appearances.TryGetValue(device.Identity, out var appearance)
         && StringComparer.OrdinalIgnoreCase.Equals(appearance.ProductId, "06EC10");
 
-    private object? Displayed(UiDevice? device, string role) => device is not null && _shown.TryGetValue(device.Identity + "/" + role, out var key)
+    private object? Displayed(UiDevice? device) => device is not null && _shown.TryGetValue(device.Identity + "/hero", out var key)
         && _slots.TryGetValue(key, out var slot) ? slot.Visual : null;
 
     /// <summary>Learned values only accumulate: an unknown value never clears a known one.</summary>
@@ -115,7 +110,7 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         if (!_appearances.TryGetValue(identity, out var old) || old.ProductId != actual)
         {
             // Another model must not keep borrowing the previous model's artwork while its own loads.
-            if (old is not null) foreach (string role in Roles) _shown.Remove(identity + "/" + role);
+            if (old is not null) _shown.Remove(identity + "/hero");
             _appearances[identity] = new(actual, color);
             return true;
         }
@@ -124,17 +119,17 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         return true;
     }
 
-    private static string KeyFor(string role, Appearance appearance) =>
-        role + "/" + appearance.ProductId + "/" + (appearance.Color?.ToString(CultureInfo.InvariantCulture) ?? "-");
-    private Slot Ensure(string role, Appearance appearance)
+    private static string KeyFor(Appearance appearance) =>
+        "hero/" + appearance.ProductId + "/" + (appearance.Color?.ToString(CultureInfo.InvariantCulture) ?? "-");
+    private Slot Ensure(Appearance appearance)
     {
-        string key = KeyFor(role, appearance);
-        if (!_slots.TryGetValue(key, out var slot)) _slots[key] = slot = new(key, role, appearance.ProductId, appearance.Color);
+        string key = KeyFor(appearance);
+        if (!_slots.TryGetValue(key, out var slot)) _slots[key] = slot = new(key, appearance.ProductId, appearance.Color);
         return slot;
     }
     private bool Show(string identity, Slot desired)
     {
-        string place = identity + "/" + desired.Role;
+        string place = identity + "/hero";
         // Until the desired slot is ready, keep showing the previous one (e.g. art resolved before the color was known).
         if (desired.Visual is null || _shown.TryGetValue(place, out var shown) && shown == desired.Key) return false;
         _shown[place] = desired.Key;
@@ -155,8 +150,8 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         UiArtwork? main = null, fallback = null;
         try
         {
-            main = await service.AcquireArtworkAsync(slot.ProductId, slot.Color, slot.Role == "icon" ? "capsule" : "hero", token);
-            if (slot.Role == "hero" && main?.Kind.ToLowerInvariant() is "model" or "glb" or "lottie" or "animated-webp")
+            main = await service.AcquireArtworkAsync(slot.ProductId, slot.Color, "hero", token);
+            if (main?.Kind.ToLowerInvariant() is "model" or "glb" or "lottie" or "animated-webp")
             {
                 try { fallback = await service.AcquireArtworkAsync(slot.ProductId, slot.Color, "detail", token); }
                 catch (Exception error) when (error is not OperationCanceledException) { }
@@ -200,7 +195,7 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         }
         var lease = main is null ? null : new SharedArtworkLease(new BackendArtworkLease(service, main.LeaseId));
         var fallbackLease = fallback is null ? null : new SharedArtworkLease(new BackendArtworkLease(service, fallback.LeaseId));
-        object placeholder = slot.Role == "hero" ? DeviceVisuals.GenericProduct : DeviceVisuals.GenericIcon;
+        object placeholder = DeviceVisuals.GenericProduct;
         object visual = placeholder;
         if (main is not null)
         {
@@ -219,7 +214,7 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         slot.Lease?.Dispose(); slot.FallbackLease?.Dispose();
         slot.Visual = visual; slot.Content = content; slot.Lease = lease; slot.FallbackLease = fallbackLease;
         foreach (var (identity, appearance) in _appearances)
-            if (KeyFor(slot.Role, appearance) == slot.Key) Show(identity, slot);
+            if (KeyFor(appearance) == slot.Key) Show(identity, slot);
         Collect();
         Changed();
     }
@@ -261,7 +256,7 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
     /// <summary>Releases slots that no device wants or still displays.</summary>
     private void Collect()
     {
-        var wanted = _appearances.Values.SelectMany(appearance => Roles.Select(role => KeyFor(role, appearance)))
+        var wanted = _appearances.Values.Select(KeyFor)
             .Concat(_shown.Values).ToHashSet(StringComparer.Ordinal);
         foreach (var slot in _slots.Values.Where(slot => !wanted.Contains(slot.Key)).ToArray())
         { slot.Release(); _slots.Remove(slot.Key); }
@@ -290,13 +285,6 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         Revision++;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Revision)));
     }
-}
-
-public sealed class DeviceIconVisualConverter : IMultiValueConverter
-{
-    public object Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
-        => values.Count >= 2 && values[0] is UiDevice device && values[1] is DeviceVisualCatalog catalog
-            ? catalog.IconFor(device) : DeviceVisuals.GenericIcon;
 }
 
 public sealed class DemoDeviceCaptionConverter : IValueConverter

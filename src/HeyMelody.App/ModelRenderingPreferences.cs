@@ -1,6 +1,6 @@
 namespace HeyMelodyWindows.App;
 
-/// <summary>Local rendering choice, shared by current and subsequently created model views.</summary>
+/// <summary>Local rendering choice, defaulting to GPU and shared by current and subsequently created model views.</summary>
 internal static class ModelRenderingPreferences
 {
     private static bool _useGpuAcceleration = ThemePreferences.LoadModelGpuAcceleration();

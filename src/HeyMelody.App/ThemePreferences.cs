@@ -16,7 +16,8 @@ internal static class ThemePreferences
             && theme is "light" or "dark" ? theme : "system";
     }
 
-    internal static bool LoadModelGpuAcceleration() => Read()["modelGpuAcceleration"]?.GetValueKind() == JsonValueKind.True;
+    // Only an explicit saved false opts into software; older or invalid settings use the GPU default.
+    internal static bool LoadModelGpuAcceleration() => Read()["modelGpuAcceleration"]?.GetValueKind() != JsonValueKind.False;
 
     public static bool Save(string theme, bool? modelGpuAcceleration = null)
     {

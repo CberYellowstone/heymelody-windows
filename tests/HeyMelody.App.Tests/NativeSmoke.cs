@@ -129,6 +129,9 @@ internal static class NativeSmoke
                 var pageOrigin = page.TranslatePoint(default, window) ?? throw new InvalidOperationException("View is detached.");
                 Check(page.Bounds.Width > 0 && page.Bounds.Height > 0 && pageOrigin.Y >= window.TitleBar.Height - 1, "Content fits below titlebar.");
                 Check(page.IsCompact == (page.Bounds.Width < 1080), "Native responsive breakpoint.");
+                Check(page.FindControl<Border>("AncPanel") is { IsVisible: true }
+                    && page.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => !expander.IsExpanded),
+                    "The native ANC card is always present and other main settings start collapsed.");
                 var hero = page.FindControl<ProductArtwork>("HeroArt") ?? throw new InvalidOperationException("Product artwork missing.");
                 Check(Equals(hero.Visual, DeviceVisuals.X4Product)
                     && hero.GetVisualDescendants().OfType<Image>().SingleOrDefault() is not null,
@@ -149,10 +152,12 @@ internal static class NativeSmoke
                     "The native overflowing strip ends at its actual contents without artificial centering space.");
                 var selectedCard = picker.ContainerFromIndex(picker.SelectedIndex) as ListBoxItem
                     ?? throw new InvalidOperationException("Selected native device card was not realized.");
-                var icon = selectedCard.GetVisualDescendants().OfType<DeviceIconView>().Single();
-                Check(Equals(icon.Visual, DeviceVisuals.X4Icon) && icon.Bounds.Size == new Size(28, 28)
-                    && icon.GetVisualDescendants().OfType<Image>().SingleOrDefault() is { Source: not null },
-                    "The native X4 card uses the embedded earphones PNG in its fixed icon slot.");
+                var card = selectedCard.GetVisualDescendants().OfType<Grid>().Single(control => control.Name == "DeviceCardContent");
+                Check(card.ColumnDefinitions.Count == 1
+                    && !selectedCard.GetVisualDescendants().OfType<Control>().Any(control => control.Name == "DeviceIcon")
+                    && selectedCard.GetVisualDescendants().OfType<TextBlock>().Any(control => control.Name == "DeviceNameText"
+                        && control.Text == vm.SelectedDevice!.Name),
+                    "The native device card retains its name and status without a redundant product icon.");
                 var selectedOrigin = selectedCard.TranslatePoint(default, scroll)
                     ?? throw new InvalidOperationException("Selected native device card is detached.");
                 var selectedCenter = selectedOrigin.X + selectedCard.Bounds.Width / 2;

@@ -43,12 +43,13 @@ internal static class ArtworkPersistenceTests
         using var catalog = new DeviceVisualCatalog();
         var device = new UiDevice("earbuds", "耳机", false) { ProductId = "060410", Color = 0 };
         catalog.Update([device], device, null, null, "HeyMelody", "backend:1", service);
-        Check(service.Requests.Count == 2 && service.Requests.All(r => r.ProductId == "060410" && r.Color == 0), "Hints alone request hero and icon art.");
+        Check(service.Requests.Count == 1 && service.Requests.All(r => r.ProductId == "060410" && r.Color == 0 && r.Role == "hero"),
+            "Hints request main product artwork without fetching removed device icons.");
         service.CompleteAll(sha: "a");
         await PumpAsync(() => catalog.ProductFor(device) is FileBitmapVisual);
-        var hero = catalog.ProductFor(device); var icon = catalog.IconFor(device);
+        var hero = catalog.ProductFor(device);
         catalog.Update([device with { ProductId = null, Color = null }], device, null, null, "HeyMelody", "backend:1", service);
-        Check(ReferenceEquals(hero, catalog.ProductFor(device)) && ReferenceEquals(icon, catalog.IconFor(device)) && service.Requests.Count == 2,
+        Check(ReferenceEquals(hero, catalog.ProductFor(device)) && service.Requests.Count == 1,
             "Losing the snapshot or hints never clears or re-requests remembered artwork.");
     }
 
@@ -61,12 +62,12 @@ internal static class ArtworkPersistenceTests
         service.CompleteAll(sha: "same"); await PumpAsync(() => catalog.ProductFor(device) is FileBitmapVisual);
         var hero = catalog.ProductFor(device);
         catalog.Update([device], device, "060410", 0, "HeyMelody", "backend:2", service);
-        Check(service.Requests.Count == 4 && ReferenceEquals(hero, catalog.ProductFor(device)), "A revision keeps the shown art while checking.");
-        service.CompleteAll(sha: "same"); await PumpAsync(() => service.Releases.Count == 2);
+        Check(service.Requests.Count == 2 && ReferenceEquals(hero, catalog.ProductFor(device)), "A revision keeps the shown art while checking.");
+        service.CompleteAll(sha: "same"); await PumpAsync(() => service.Releases.Count == 1);
         Check(ReferenceEquals(hero, catalog.ProductFor(device)), "Identical packages keep the attached renderer.");
         catalog.Update([device], device, "060410", 0, "HeyMelody", "backend:3", service);
         service.CompleteAll(sha: "changed"); await PumpAsync(() => !ReferenceEquals(hero, catalog.ProductFor(device)));
-        Check(catalog.ProductFor(device) is FileBitmapVisual && service.Releases.Count >= 4, "A changed package replaces the art and releases the old lease.");
+        Check(catalog.ProductFor(device) is FileBitmapVisual && service.Releases.Count >= 2, "A changed package replaces the art and releases the old lease.");
     }
 
     private static async Task ColorLearnedAsync()
@@ -78,11 +79,11 @@ internal static class ArtworkPersistenceTests
         service.CompleteAll(sha: "uncolored"); await PumpAsync(() => catalog.ProductFor(device) is FileBitmapVisual);
         var uncolored = catalog.ProductFor(device);
         catalog.Update([device], device, "060410", 2, "HeyMelody", "backend:1", service);
-        Check(service.Requests.Count(r => r.Color == 2) == 2 && ReferenceEquals(uncolored, catalog.ProductFor(device)), "No generic flash while the colored package loads.");
+        Check(service.Requests.Count(r => r.Color == 2) == 1 && ReferenceEquals(uncolored, catalog.ProductFor(device)), "No generic flash while the colored package loads.");
         service.CompleteAll(sha: "colored"); await PumpAsync(() => !ReferenceEquals(uncolored, catalog.ProductFor(device)));
-        await PumpAsync(() => service.Releases.Count == 2);
+        await PumpAsync(() => service.Releases.Count == 1);
         catalog.Update([device], device, null, null, "HeyMelody", "backend:1", service);
-        Check(!ReferenceEquals(uncolored, catalog.ProductFor(device)) && service.Requests.Count == 4, "A cleared color does not fall back to the uncolored art.");
+        Check(!ReferenceEquals(uncolored, catalog.ProductFor(device)) && service.Requests.Count == 2, "A cleared color does not fall back to the uncolored art.");
     }
 
     private static async Task RetryAsync()
@@ -91,9 +92,9 @@ internal static class ArtworkPersistenceTests
         using var catalog = new DeviceVisualCatalog { RetryDelays = [TimeSpan.FromMilliseconds(20)] };
         var device = new UiDevice("earbuds", "耳机", false) { ProductId = "060410", Color = 0 };
         catalog.Update([device], device, null, null, "HeyMelody", "backend:1", service);
-        await PumpAsync(() => service.Requests.Count(r => r.Completion.Task.IsCompleted) == 2 && service.Requests.Count == 4);
+        await PumpAsync(() => service.Requests.Count(r => r.Completion.Task.IsCompleted) == 2 && service.Requests.Count == 3);
         service.CompleteAll(sha: "a");
-        await PumpAsync(() => catalog.ProductFor(device) is FileBitmapVisual && catalog.IconFor(device) is FileBitmapVisual);
+        await PumpAsync(() => catalog.ProductFor(device) is FileBitmapVisual);
     }
 
     private static async Task ProductChangeAsync()
@@ -168,8 +169,8 @@ internal static class ArtworkPersistenceTests
             var hero = view.FindControl<ProductArtwork>("HeroArt")!;
             await PumpAsync(() => hero.GetVisualDescendants().OfType<Image>().Any(image => image.Source is Bitmap));
             Check(vm.ProductId is null && !vm.HasVerifiedSnapshot && service.Connects == 0
-                && service.Requests.Contains(("06EC10", 0, "hero")) && service.Requests.Contains(("06EC10", 0, "capsule")),
-                "Remembered hints request art for a device that has no control session.");
+                && service.Requests.Contains(("06EC10", 0, "hero")) && service.Requests.All(request => request.Role == "hero"),
+                "Remembered hints request main art without a control session or device-icon request.");
             Save(window, output, "remembered-disconnected-light-1280x900.png", receipts);
         }
         finally { window.Close(); }
@@ -286,7 +287,7 @@ internal static class ArtworkPersistenceTests
         public Task<UiArtwork?> AcquireArtworkAsync(string productId, int? color, string role, CancellationToken token)
         {
             Requests.Add((productId, color, role));
-            var asset = _bundle.FindAsset(ResourceSource.HeyMelody, productId, color, role == "capsule" ? "capsule" : "detail")
+            var asset = _bundle.FindAsset(ResourceSource.HeyMelody, productId, color, "detail")
                 ?? throw new InvalidOperationException("Bundled X4 art missing.");
             string path = _bundle.FullPath(asset);
             return Task.FromResult<UiArtwork?>(new(Guid.NewGuid().ToString("N"), path, asset.Kind, Path.GetDirectoryName(path)!, asset.Sha256, asset.Length, "HeyMelody", 1));

@@ -105,10 +105,9 @@ try
             await vm.RefreshStateCommand.ExecuteAsync(null);
             Dispatcher.UIThread.RunJobs();
             Check(service.Submissions == 1, "Refreshed bindings never SET");
-            view.ExpandAllSettings(); Dispatcher.UIThread.RunJobs();
+            await MainUiTestLayout.ExpandSettingsAsync(view);
             var toggle = FeatureTestData.Switch(view, "dual");
-            toggle.BringIntoView(); Dispatcher.UIThread.RunJobs();
-            point = toggle.TranslatePoint(new Point(16, toggle.Bounds.Height / 2), window)!.Value;
+            point = await MainUiTestLayout.ClickPointAsync(window, toggle, x: 16);
             window.MouseDown(point, MouseButton.Left); window.MouseUp(point, MouseButton.Left);
             Dispatcher.UIThread.RunJobs();
             Check(service.Submissions == 2 && service.LastAction is { Kind: "Feature", FeatureId: "dual", Value: 0 }, $"Generic toggle click submits desired value once: {service.Submissions} {service.LastAction}");
@@ -129,10 +128,12 @@ try
     passed += animationChecks;
     var demoChecks = DemoDeviceTests.Run(session, output, receipts);
     passed += demoChecks;
+    var layoutChecks = MainLayoutTests.Run(session, output, receipts);
+    passed += layoutChecks;
     var startupChecks = StartupTests.Run(session);
     var settingsManagementChecks = SettingsManagementTests.Run(session);
     passed += startupChecks + settingsManagementChecks;
-    Check(passed == (OperatingSystem.IsWindows() ? 63 : 60) + demoChecks + renderingChecks + animationChecks, "Every UI scenario and interaction case must finish");
+    Check(passed == (OperatingSystem.IsWindows() ? 63 : 60) + demoChecks + renderingChecks + animationChecks + layoutChecks, "Every UI scenario and interaction case must finish");
     var report = new { schemaVersion = 1, version = AppVersion.Display, passed, success = true, nativeBluetoothCalls = 0,
         verificationScope = "source/mock checks; not a packaged executable or hardware execution receipt",
         screenshotScope = "headless Skia layout/content only; native titlebar and real 3D renderer pixels are not verified", screenshots = receipts };

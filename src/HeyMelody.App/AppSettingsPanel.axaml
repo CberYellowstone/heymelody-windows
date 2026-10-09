@@ -25,7 +25,7 @@
     </fa:FASettingsExpanderItem>
 
     <TextBlock Classes="settings-group" Text="耳机资源" />
-    <fa:FASettingsExpanderItem Content="三维模型 GPU 加速" Description="默认关闭，使用软件渲染；保存后立即生效">
+    <fa:FASettingsExpanderItem Content="三维模型 GPU 加速" Description="默认开启 GPU 加速，关闭后使用软件渲染；保存后立即生效">
       <fa:FASettingsExpanderItem.IconSource><fa:FASymbolIconSource Symbol="Sync" /></fa:FASettingsExpanderItem.IconSource>
       <fa:FASettingsExpanderItem.Footer>
         <ToggleSwitch x:Name="ModelGpuSwitch" OnContent="开" OffContent="关" AutomationProperties.Name="三维模型 GPU 加速" />
