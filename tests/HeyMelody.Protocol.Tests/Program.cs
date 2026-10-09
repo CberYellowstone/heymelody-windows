@@ -450,4 +450,5 @@ Test("setting synchronization commands are notification-only, spatial requests i
         && !new RequestKey(0x0418,7).MatchesResponse(new(0x0506,7,[0])));
 });
 OppoAdvertisementTests.Run(Test);
+CalibrationCodecTests.Run(Test);
 Console.WriteLine($"{passed} offline protocol tests passed.");

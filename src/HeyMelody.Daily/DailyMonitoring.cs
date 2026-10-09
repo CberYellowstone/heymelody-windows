@@ -48,15 +48,32 @@ public sealed partial class DailyClient
             _registeredSession = session; return;
         }
         byte[] offered = NotificationParsers.ParseSupportedEvents(capability.Payload!);
-        byte[] ids = offered.Where(id => id is 1 or 2 or 3 or 4 or 5 or 6 or 14 or 15).ToArray();
+        lock (_stateGate) _advertisedEvents.UnionWith(offered);
+        byte[] ids = offered.Where(id => id is 1 or 2 or 3 or 4 or 5 or 6 or 8 or 14 or 15).ToArray();
         if (ids.Length != 0)
         {
             if (_commands.Supports(0x0205))
             {
                 var reply = await session.RequestAsync(0x0205, [(byte)ids.Length, .. ids], token);
                 if (!reply.Matched || !session.Usable) throw new IOException("Notification registration failed.");
-                if (reply.Status != 0) _monitoringWarning = "设备拒绝了状态通知订阅。";
-                else lock (_stateGate) _registeredEvents.UnionWith(ids);
+                // 8205 status 0 confirms the batch, not every subscription. X4
+                // rejects event 4/8 with per-event 02 but still emits passive results.
+                byte[]? data = reply.Payload;
+                if (reply.Status == 0 && data is { Length: >= 2 } && data[1] == ids.Length
+                    && data.Length == 2 + ids.Length * 2)
+                {
+                    var results = new Dictionary<byte, byte>();
+                    for (int i = 2; i < data.Length; i += 2)
+                        if (!ids.Contains(data[i]) || !results.TryAdd(data[i], data[i + 1]))
+                        { results.Clear(); break; }
+                    if (results.Count == ids.Length)
+                    {
+                        lock (_stateGate) _registeredEvents.UnionWith(results.Where(x => x.Value == 0).Select(x => x.Key));
+                        if (results.Values.Any(x => x != 0)) _monitoringWarning = "部分状态通知不可用，仍可手动刷新状态。";
+                    }
+                    else _monitoringWarning = "状态通知未得到完整确认，仍可手动刷新状态。";
+                }
+                else _monitoringWarning = "状态通知未得到完整确认，仍可手动刷新状态。";
             }
             else foreach (byte id in ids)
             {
@@ -276,6 +293,6 @@ public sealed partial class DailyClient
         }
     }
     private static string ReadGroup(ushort command) => command switch {
-        0x0106 => "battery:", 0x0107 => "placement:", 0x010C => "anc", 0x010D => "feature:",
+        0x0106 => "battery:", 0x0109 => "placement:", 0x010C => "anc", 0x010D => "feature:",
         0x010F => "preset", 0x0122 => "equalizers", 0x012A => "spatial", 0x0124 => "bass", _ => "information" };
 }

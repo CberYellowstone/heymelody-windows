@@ -11,10 +11,11 @@ internal sealed partial class BackendSupervisor
         internal readonly ICalibrationPeerWorker Worker = worker;
         internal string Owner = owner;
         internal bool Claimed;
+        internal bool StopUnconfirmed;
         internal UiCalibrationState State = new() { Handle = handle, Workflow = kind, Identity = peer.Identity, Generation = peer.Generation };
     }
     private readonly Dictionary<string, CalibrationLease> _calibrations = [];
-    private static bool IsActiveCalibration(CalibrationLease lease) => lease.State.Stage is not ("Completed" or "Failed" or "Cancelled");
+    private static bool IsActiveCalibration(CalibrationLease lease) => lease.StopUnconfirmed || lease.State.Stage is not ("Completed" or "Failed" or "Cancelled");
     private bool HasCalibrationLocked(Peer peer) => _calibrations.Values.Any(l => l.Peer == peer && l.Generation == peer.Generation && IsActiveCalibration(l));
     private CalibrationLease FindCalibrationLocked(string owner, string handle, bool claim = false, string? role = null)
     {
@@ -92,17 +93,27 @@ internal sealed partial class BackendSupervisor
     }
     private async Task<UiCalibrationState> CancelLeaseAsync(CalibrationLease lease)
     {
+        lock (_sync) lease.StopUnconfirmed = IsActiveCalibration(lease);
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var state = await lease.Worker.CancelCalibrationAsync(lease.State.Handle, timeout.Token);
-            lock (_sync) { AdoptCalibrationLocked(lease, state); return lease.State; }
+            lock (_sync)
+            {
+                lease.StopUnconfirmed = state.Stage != "Cancelled";
+                // An earlier IPC failure may have published a synthetic revision.
+                // This correlated STOP response still establishes its result.
+                if (state.Revision <= lease.State.Revision) state = state with { Revision = lease.State.Revision + 1 };
+                AdoptCalibrationLocked(lease, state); return lease.State;
+            }
         }
         catch
         {
             lock (_sync)
             {
-                lease.State = lease.State with { Stage = "Cancelled", Revision = lease.State.Revision + 1, Message = "连接已变化，测试已停止。" };
+                if (lease.State.Stage == "Cancelled") { lease.StopUnconfirmed = false; return lease.State; }
+                lease.StopUnconfirmed = true;
+                lease.State = lease.State with { Stage = "Failed", Revision = lease.State.Revision + 1, Message = "停止测试尚未得到确认，请重新连接耳机后核实。" };
                 EmitLocked(new() { Kind = "calibration", Calibration = lease.State }); PublishLocked(lease.Peer); return lease.State;
             }
         }
@@ -123,6 +134,7 @@ internal sealed partial class BackendSupervisor
     private void AdoptCalibrationLocked(CalibrationLease lease, UiCalibrationState state)
     {
         if (state.Revision < lease.State.Revision) return;
+        if (state.Stage == "Cancelled") lease.StopUnconfirmed = false;
         lease.State = state with { BackendInstanceId = InstanceId, Generation = lease.Generation, Identity = lease.Peer.Identity };
         EmitLocked(new() { Kind = "calibration", Calibration = lease.State }); PublishLocked(lease.Peer);
         if (_catalogPending && !_calibrations.Values.Any(IsActiveCalibration)) _ = AdoptResourcesSafelyAsync(true);
@@ -131,7 +143,8 @@ internal sealed partial class BackendSupervisor
     {
         foreach (var lease in _calibrations.Values.Where(x => x.Peer == peer && IsActiveCalibration(x)))
         {
-            lease.State = lease.State with { Stage = "Cancelled", Revision = lease.State.Revision + 1, Message = "设备连接已变化，测试已停止。" };
+            lease.StopUnconfirmed = false;
+            lease.State = lease.State with { Stage = "Cancelled", Revision = lease.State.Revision + 1, Message = "设备连接已变化，测试已中断。" };
             EmitLocked(new() { Kind = "calibration", Calibration = lease.State });
         }
     }

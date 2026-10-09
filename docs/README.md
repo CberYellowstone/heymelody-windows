@@ -6,6 +6,7 @@
 
 ## 当前实现
 
+- [黄金听感与贴合度组件修复](research/calibration-repair.md)：2026-10-09将两APK与X4 v116研究用于现有组件，覆盖真实佩戴查询、滤波完整性、滑块确认、暂停恢复、试听与保存读回。
 - [外观资源持久化与重新下载](artwork-persistence.md)：0.8.4 的外观提示持久化、SPP 颜色读取、缓存优先解析、X4 动态 WebP、教程与产品主图分离、设置卡片中的“重新下载在线资源”，以及 Windows x64/ARM64 CI。
 - [X4 美术复核](research/enco-x4-artwork-audit.md)：两来源官方旋转 WebP、控制 Lottie 教程的角色区分、模块获取与实际帧验证。
 - [三维模型渲染设置](model-rendering.md)：0.8.6 默认 GPU 优先、已保存选择与即时切换，保留 0.8.5 软件材质与光照修正。
@@ -22,6 +23,8 @@
 
 ## 研究与历史
 
+- [黄金听感与贴合度重新研究](research/calibration-reassessment.md)：2026-10-09从两原APK与X4 v116固件重新核对，纠正V1/V2路由、filter结构、停止/保存流程和名称字节边界；研究阶段与后续应用修复分别记录。
+- [X4 v116追加实测](../research/calibration-reassessment-20261009/LIVE-TEST.md)：贴合度双耳良好；黄金听感12项、两类filter、保存/读回及旧公开字段恢复；保留断线、0107误读与研究UI音量纠错。
 - [研究资料归档与提交边界](research/README.md)：专题目录、原始输入与上游仓库、新旧路径映射及本地保全规则。
 - [两个 OppoPods 项目的适配调查](research/oppopods-comparison-2026-10-08/README.md)：官方型号表、协议与系统集成对照，证据位置及值得继续验证的经验。
 - [设备适配研究交接与验收入口](research/device-adaptation-handoff.md)：下一会话的阅读入口、离线复现与原件保全清单。

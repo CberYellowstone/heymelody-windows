@@ -2,12 +2,17 @@
 
 研究报告与复现脚本放在 `docs/research/`；研究时使用的安装包、截图、模型、原始资源和完整证据放在仓库根 [research/](../../research/README.md)，按用途与研究主题分类。文档直接链接本地证据，原始内容保留，不新增脱敏处理。
 
+2026-10-09 黄金听感与贴合度的完整重新研究按本轮要求存放在 [research/calibration-reassessment-20261009/](../../research/calibration-reassessment-20261009/README.md)，这里保存 [受版本管理的纠正摘要](calibration-reassessment.md) 和 [后续组件修复](calibration-repair.md)。旧 [校准实现记录](calibration-codecs.md) 保留为修复前基线，不再作为当前实现或原厂完整协议证明。
+
 ## 报告与工具
 
 先读 [设备适配交接](device-adaptation-handoff.md)、[云配置](cloud-device-configuration.md)、[云美术](cloud-device-artwork.md)。当前实现索引见 [docs/README.md](../README.md)。
 
 | 文档入口 | 内容 |
 | --- | --- |
+| [黄金听感与贴合度重新研究](calibration-reassessment.md) | 两 APK 独立复核、X4 v116 交叉验证、UI路由/filter等纠正与完整研究入口 |
+| [黄金听感与贴合度组件修复](calibration-repair.md) | 现有组件改动、当前协议与界面行为、回归验证及验证边界 |
+| [X4 v116追加实测](../../research/calibration-reassessment-20261009/LIVE-TEST.md) | 双耳贴合度良好，12项测听/滤波/保存/读回，旧公开字段恢复；失败、重试与研究UI音量纠错 |
 | [earbud-artwork/](earbud-artwork/README.md) | 2D／功能美术研究与提取、合并、验证脚本 |
 | [online-whitelist/](online-whitelist/README.md) | 内置／云配置、认证与版本规则及验证脚本 |
 | [online-artwork/](online-artwork/README.md) | 云模型、格式、材质与验证脚本 |
@@ -22,6 +27,8 @@
 | 本地目录 | 内容 |
 | --- | --- |
 | [research/apps/](../../research/apps/) | 欢律 APK、OPPO 第一方无线耳机组件 APK |
+| [research/calibration-reassessment-20261009/](../../research/calibration-reassessment-20261009/README.md) | 重新研究全过程、专题报告、原DEX/fallback、反编译、固件指令与配置矩阵 |
+| [research/OPPO_Enco_X4_v116_reconstruction/](../../research/OPPO_Enco_X4_v116_reconstruction/README_zh.md) | 用户提供的可信X4 v116固件重建包；本轮保留不修改 |
 | [research/installers/](../../research/installers/) | Surface MSIXbundle 等研究参考安装包 |
 | [research/screenshots/](../../research/screenshots/) | 界面参考截图、用户提供的 X4 PNG 原件 |
 | [research/upstreams/](../../research/upstreams/) | OppoPods1、OppoPods2、SteamTools 完整源码副本及 Git 元数据 |

@@ -21,13 +21,18 @@ public sealed partial class DailyClient
         {
             previous = _session; _session = null; _commands = null; _profile = null;
             _registeredSession = null; _monitoringWarning = null; _changes.Clear(); _invalidated.Clear();
-            _registeredEvents.Clear();
+            _registeredEvents.Clear(); _advertisedEvents.Clear();
         }
         if (previous is not null) await previous.DisposeAsync();
     }
     private async Task EnsureSessionAsync(CancellationToken token)
     {
         if (_session is { Usable: true, Remaining: >= 32 }) return;
+        if (_calibrationActive)
+        {
+            if (_session is { Usable: true, Remaining: > 8 }) return;
+            throw new IOException("测试期间不会自动重建控制连接，请结束测试后重新连接。");
+        }
         await DropSessionAsync();
         var session = new DailySession(await _connector.OpenAsync(token));
         lock (_stateGate) _session = session;
@@ -97,6 +102,7 @@ public sealed partial class DailyClient
                 Publish(s);
                 return s;
             }
+            catch (Exception) when (_calibrationActive) { throw; }
             catch (Exception) when (!token.IsCancellationRequested)
             {
                 await DropSessionAsync();
@@ -116,6 +122,8 @@ public sealed partial class DailyClient
     }
     private async Task<byte[]?> GetAsync(ushort command, byte[] payload, DailySnapshot s, CancellationToken token)
     {
+        if (_calibrationActive && _session!.Remaining <= 8)
+            throw new IOException("本次连接的控制次数已用完，请结束测试并重新连接后重试。");
         var reply = await _session!.RequestAsync(command, payload, token);
         if (!reply.Matched || !_session.Usable) throw new IOException();
         if (reply.Status != 0)
@@ -208,7 +216,7 @@ public sealed partial class DailyClient
                     if (!reply.Success) throw new FormatException();
                     s.CodecRaw = (byte)reply.Data["codecRaw"]!;
                 });
-                await Parse(0x0107, [], data => {
+                await Parse(0x0109, [], data => {
                     if (data.Length < 1 || data[0] != 0) throw new FormatException();
                     DateTimeOffset observed = DateTimeOffset.UtcNow;
                     foreach (var pair in NotificationParsers.ParseComponentPairs(data.AsSpan(1)))

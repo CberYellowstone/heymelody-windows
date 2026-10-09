@@ -5,7 +5,7 @@ using HeyMelodyWindows.Protocol;
 namespace HeyMelodyWindows.Daily;
 
 internal sealed record DailyResponse(bool Submitted, bool Matched, byte? Status, byte[]? Payload,
-    bool ConnectionInterrupted = false);
+    bool ConnectionInterrupted = false, byte? Sequence = null);
 internal sealed class DailySession : IAsyncDisposable
 {
     private readonly IControlTransport _transport;
@@ -13,6 +13,7 @@ internal sealed class DailySession : IAsyncDisposable
     private readonly PacketDecoder _decoder = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _pendingGate = new();
+    private readonly Dictionary<ushort, byte> _filterSequences = [];
     private Task _reader = Task.CompletedTask;
     private RequestKey? _key;
     private TaskCompletionSource<Packet>? _reply;
@@ -42,6 +43,9 @@ internal sealed class DailySession : IAsyncDisposable
             if (_reply is not null) throw new InvalidOperationException("Requests must be serialized.");
             if (!Usable) throw new IOException("Daily session unavailable.");
             _key = new(command, seq); _reply = completion;
+            // A hearing-filter request begins/retries the entire pair of filter loads.
+            if (command == 0x0116) _filterSequences.Remove(0x011F);
+            if (command is 0x0116 or 0x011F) _filterSequences[command] = seq;
         }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
         timeout.CancelAfter(optionalTimeout ?? TimeSpan.FromSeconds(4));
@@ -54,7 +58,7 @@ internal sealed class DailySession : IAsyncDisposable
             Packet packet = await completion.Task.WaitAsync(timeout.Token);
             byte? status = packet.Payload.Length == 0 ? null : packet.Payload[0];
             if (status is null) Stop(new FormatException("Missing response status."));
-            return new(submitted, true, status, packet.Payload);
+            return new(submitted, true, status, packet.Payload, Sequence: packet.Sequence);
         }
         catch (OperationCanceledException) when (optionalTimeout is not null && sent && Usable
             && !token.IsCancellationRequested && !_lifetime.IsCancellationRequested)
@@ -93,13 +97,16 @@ internal sealed class DailySession : IAsyncDisposable
                 if (count < 0 || count > buffer.Length) throw new FormatException("Invalid transport read size.");
                 foreach (Packet packet in _decoder.Feed(buffer.AsSpan(0, count)))
                 {
-                    bool matched;
+                    bool matched, currentFilter;
+                    bool filter = packet.Command is 0x8116 or 0x811F;
                     lock (_pendingGate)
                     {
                         matched = _key is RequestKey key && key.MatchesResponse(packet);
                         if (matched) _reply!.TrySetResult(packet);
+                        currentFilter = filter && _filterSequences.TryGetValue((ushort)(packet.Command & 0x7FFF), out byte sequence)
+                            && sequence == packet.Sequence;
                     }
-                    if (packet.Command == 0x8116 || !matched && NotificationParsers.IsNotificationCommand(packet.Command))
+                    if (currentFilter || !filter && !matched && NotificationParsers.IsNotificationCommand(packet.Command))
                         Notification?.Invoke(packet);
                 }
             }

@@ -535,6 +535,7 @@ await Test("disposing idle persistent reader cancels the pending read", async ()
 await DailyFeatureTests.Run(Test, (value, message) => Check(value, message));
 await ResourceContextTests.RunAsync(Test);
 await AncModeTests.RunAsync(Test);
+await CalibrationTransportTests.RunAsync(Test);
 Console.WriteLine($"Daily tests: {passed} passed; no native devices accessed.");
 
 sealed class Fake : IControlConnector
@@ -557,7 +558,7 @@ sealed class Fake : IControlConnector
     private int _activeSend;
     public Dictionary<int,List<byte>> SequenceSets = [];
     private Transport? _currentTransport;
-    public void Push(ushort command, byte[] payload) => _currentTransport!.Push(command, payload);
+    public void Push(ushort command, byte[] payload, byte sequence = 240) => _currentTransport!.Push(command, payload, sequence);
     public Packet? NotificationBeforeNextBatteryReply;
     public Packet? NotificationWithNextSetReply;
     public bool LegacyRegistration;
@@ -641,9 +642,11 @@ sealed class Fake : IControlConnector
             0x0114 => [0,8],
             0x010D => FeatureReply(p.Payload),
             0x0106 => [0,3,1,75,2,80,3,90],
-            0x0107 => [0,3,1,0,2,0,3,0],
+            0x0107 => [0,2,1,3,2,0], // OTA support, never placement.
+            0x0109 => [0,3,1,0,2,0,3,0],
             0x0200 => [0,8,1,2,3,5,6,15,240,241],
-            0x0205 or 0x0201 => [0],
+            0x0205 => [0,p.Payload[0],..p.Payload.Skip(1).SelectMany(id => new byte[] {id,0})],
+            0x0201 => [0],
             0x010C => AncReply(AncLevel),
             0x010F => [0,Preset],
             0x0122 => p.Payload.Length==0 ? EncodeEntries(Entries) : throw new Exception("GET 0122 requires empty official payload"),
@@ -670,7 +673,7 @@ sealed class Fake : IControlConnector
     private sealed class Transport(Fake owner,int id):IControlTransport
     {
         private readonly Channel<byte[]> _received=Channel.CreateUnbounded<byte[]>();
-        public void Push(ushort command, byte[] payload) => _received.Writer.TryWrite(PacketEncoder.Encode(command, 240, payload));
+        public void Push(ushort command, byte[] payload, byte sequence = 240) => _received.Writer.TryWrite(PacketEncoder.Encode(command, sequence, payload));
         public async Task SendAsync(ReadOnlyMemory<byte> bytes,CancellationToken token)
         {
             token.ThrowIfCancellationRequested();int concurrent=Interlocked.Increment(ref owner._activeSend);

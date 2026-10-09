@@ -76,19 +76,20 @@ public sealed partial class NativeHeadsetService
         if (_calibrationContext is null || _client is null) return false;
         var c = _client.CalibrationContext(_stableKey, _generation);
         bool Commands(params ushort[] ids) => ids.All(c.Commands.Contains);
-        return kind == "fit" ? c.Fit && c.Events.Contains(4) && Commands(0x0107, 0x0405)
-            : (c.HearingV1 || c.HearingV2) && Commands(0x0107, 0x040D, 0x040E, 0x0115, 0x0403)
-                && (!c.EarScan || c.Events.Contains(14) && Commands(0x011E, 0x0415));
+        return kind == "fit" ? c.Fit && Commands(0x0109, 0x0405)
+            : (c.HearingV1 || c.HearingV2) && Commands(0x0109, 0x040D, 0x040E, 0x0115, 0x0116, 0x0118, 0x0411, 0x010D, 0x0403)
+                && (!c.EarScan || Commands(0x011E, 0x011F, 0x0415));
     }
     internal UiCalibrationState CreateCalibration(string handle, string kind)
     {
         if (kind is not ("fit" or "hearing") || !CalibrationAvailable(kind) || handle.Length != 32)
-            throw new InvalidOperationException("当前设备不支持此测试，或必要的状态通知不可用。");
+            throw new InvalidOperationException("当前设备不支持此测试，或必要的控制指令不可用。");
         if (_calibrationState is { Stage: not ("Completed" or "Failed" or "Cancelled") })
             throw new InvalidOperationException("请先完成或取消当前测试。");
         _calibrationState = new() { Handle = handle, Identity = _selected!, Generation = _generation,
             Revision = ++_calibrationRevision, Workflow = kind, Stage = "Ready",
             HearingVersion = _calibrationContext!.HearingV2 ? "V2" : "V1", SupportsEarScan = _calibrationContext.EarScan };
+        _client!.SetCalibrationActive(true);
         return _calibrationState;
     }
     internal UiCalibrationState GetCalibration(string handle) => _calibrationState is { } state && state.Handle == handle
@@ -116,6 +117,12 @@ public sealed partial class NativeHeadsetService
                 else await _calibration.ContinueAsync(token);
                 break;
             case "previous": await _calibration.PreviousAsync(token); break;
+            case "pause": await _calibration.PauseHearingAsync(token); break;
+            case "resume": await _calibration.ResumeAsync(token); break;
+            case "retry-curves": await _calibration.ReadCurvesAsync(token); break;
+            case "preview-original": await _calibration.PreviewAsync(CalibrationPreviewMode.Original, token); break;
+            case "preview-enhanced": await _calibration.PreviewAsync(CalibrationPreviewMode.Enhanced, token); break;
+            case "preview-stop": await _calibration.PreviewAsync(CalibrationPreviewMode.Stopped, token); break;
             case "save":
                 int? replace = null;
                 var history = await _hearingHistory.ReadAsync(_stableKey, token);
@@ -125,7 +132,6 @@ public sealed partial class NativeHeadsetService
                 try
                 {
                     await _calibration.SaveHearingAsync(input.Name ?? "", input.AllowReplacement, token, replace);
-                    await EnableHearingAsync(true, token);
                     await ReadHearingProfilesAsync(token);
                     if (_client is not null)
                     {
@@ -137,10 +143,11 @@ public sealed partial class NativeHeadsetService
                 }
                 catch (Exception) when (_calibration.State.Stage == CalibrationStage.Completed)
                 {
-                    // The profile write finished; a failed enable/readback must not offer
-                    // the user a second save that could replace another device profile.
+                    // The engine already verified the write and enable. A failed UI
+                    // metadata refresh must not offer another profile write.
                     _calibrationState = GetCalibration(handle) with { Stage = "Completed", Revision = ++_calibrationRevision,
-                        Message = "配置已保存，启用状态尚未确认。请回到主界面刷新并选择配置。" };
+                        Message = "配置已保存并启用，主界面状态尚未刷新。请返回主界面后刷新核实。" };
+                    _client?.SetCalibrationActive(false);
                     CalibrationChanged?.Invoke(_calibrationState);
                 }
                 finally { _savingHearing = false; }
@@ -167,23 +174,55 @@ public sealed partial class NativeHeadsetService
         if (_savingHearing && snapshot.Stage == CalibrationStage.Completed) stage = "Saving";
         if (snapshot.Workflow == CalibrationWorkflow.EarScan)
             stage = snapshot.Stage == CalibrationStage.Completed ? "ScanCompleted" : snapshot.Stage == CalibrationStage.Measuring ? "Scanning" : stage;
-        else if (snapshot.Stage == CalibrationStage.Paused && snapshot.StepIndex == 12) stage = "Results";
+        else if (snapshot.Stage == CalibrationStage.ResultReady) stage = "Results";
+        else if (snapshot.Stage == CalibrationStage.Interrupted) stage = "Paused";
+        _client?.SetCalibrationActive(stage is not ("Completed" or "Failed" or "Cancelled"));
+        int? frequencyHz = _calibrationContext?.ProductId == "06EC10" && snapshot.FrequencyType is >= 1 and <= 6
+            ? new[] { 500, 1000, 2000, 4000, 6000, 8000 }[snapshot.FrequencyType - 1] : null;
         _calibrationState = old with { Revision = ++_calibrationRevision, Stage = stage, Uid = snapshot.Uid,
-            Side = snapshot.Side, FrequencyType = snapshot.FrequencyType, StepIndex = snapshot.StepIndex, StepCount = snapshot.StepCount,
-            LevelIndex = snapshot.LevelIndex, Decibels = snapshot.Decibels, RawStatus = snapshot.RawStatus,
+            Side = snapshot.Side, FrequencyType = snapshot.FrequencyType, FrequencyHz = frequencyHz, StepIndex = snapshot.StepIndex, StepCount = snapshot.StepCount,
+            LevelIndex = snapshot.LevelIndex, DesiredLevelIndex = snapshot.DesiredLevelIndex, Decibels = snapshot.Decibels,
+            ToneAcknowledged = snapshot.ToneAcknowledged, FiltersReady = snapshot.FiltersReady,
+            CanPreview = snapshot.CanPreview, PreviewMode = snapshot.PreviewMode.ToString(),
+            CanResume = snapshot.CanResume, NoiseWarning = snapshot.NoiseWarning, HasInterEarDifference = snapshot.HasInterEarDifference,
+            RawStatus = snapshot.RawStatus,
             Message = CalibrationMessage(snapshot), FitResults = snapshot.FitResults.Select(x => new UiFitResult(x.Key, x.Value)).ToArray(),
             HearingLevels = snapshot.HearingLevels.Select(x => new UiHearingPoint(x.Side, x.Type, x.Decibels)).ToArray() };
         CalibrationChanged?.Invoke(_calibrationState);
     }
-    private static string CalibrationMessage(CalibrationSnapshot state) => state.RawStatus switch
-    { 0x09 => "另一台设备正在使用耳机，请断开它后重试。", 0x0F => "耳机音频通道被占用，请停止播放后重试。",
-      0x10 => "耳机电量不足，请充电至 20% 以上后重试。", _ => state.Stage == CalibrationStage.Failed ? "测试未能完成，请确认双耳佩戴和连接状态后重试。" : "" };
+    private static string CalibrationMessage(CalibrationSnapshot state) => state.Stage == CalibrationStage.Interrupted
+        ? state.CanResume ? "测试已暂停，可以恢复并继续当前频段。" : state.RawStatus switch
+        { 1 => "音乐播放打断了测试，请停止播放后继续。", 3 => "通话打断了测试，请结束通话后继续。",
+          5 => "请重新正常佩戴两只耳机后继续。", _ => "测试已暂停，请恢复双耳佩戴并停止音乐或通话。" }
+        : state.RawStatus switch
+        {
+            0x08 => "耳机音频通道暂不可用，请停止播放后重试。",
+            0x09 => "通话正在使用耳机，请结束通话后重试。",
+            0x0A => "两耳连接尚未就绪，请等待两耳连接后重试。",
+            0x0B => "请正常佩戴两只耳机后重试。",
+            0x0F => "耳机正在进行其他检测，请稍后重试。",
+            0x10 => "耳机电量不足，请充电后重试。",
+            _ => state.Stage == CalibrationStage.Failed ? state.Message ?? "测试未能完成，请确认双耳佩戴和连接状态后重试。"
+                : state.NoiseWarning ? "环境噪声较大，请在安静环境继续测试。"
+                : state.HasInterEarDifference ? "左右耳结果差异较大，建议重新检查佩戴并核实测试结果。" : ""
+        };
     internal async Task<UiCalibrationState> CancelCalibrationAsync(string handle, CancellationToken token)
     {
         var state = GetCalibration(handle);
         if (_calibration is not null && state.Stage != "Ready")
-        { try { await _calibration.CancelAsync(token); } catch (Exception) { } }
+        {
+            try { await _calibration.CancelAsync(token); }
+            catch (Exception)
+            {
+                string failedStage = _calibration.State.Stage == CalibrationStage.Cancelling ? "Cancelling" : "Failed";
+                _calibrationState = GetCalibration(handle) with { Stage = failedStage, Revision = ++_calibrationRevision,
+                    Message = "停止测试尚未得到确认，请重新连接耳机后核实。" };
+                _client?.SetCalibrationActive(failedStage == "Cancelling");
+                CalibrationChanged?.Invoke(_calibrationState); return _calibrationState;
+            }
+        }
         _calibrationState = GetCalibration(handle) with { Stage = "Cancelled", Revision = ++_calibrationRevision };
+        _client?.SetCalibrationActive(false);
         CalibrationChanged?.Invoke(_calibrationState); return _calibrationState;
     }
     internal async Task<IReadOnlyList<UiHearingProfile>> ReadHearingProfilesAsync(CancellationToken token)
@@ -191,7 +230,8 @@ public sealed partial class NativeHeadsetService
         if (!CalibrationAvailable("hearing") || _client is null || _calibrationContext is null) return [];
         var history = await _hearingHistory.ReadAsync(_stableKey, token);
         var profiles = history.Select(x => new UiHearingProfile(x.Uid, x.Name, false,
-            (x.Version == HearingVersion.V2 ? _calibrationContext.HearingV2 : _calibrationContext.HearingV1)
+            !(_calibrationContext.ProductId == "06EC10" && x.Uid == 0)
+                && (x.Version == HearingVersion.V2 ? _calibrationContext.HearingV2 : _calibrationContext.HearingV1)
                 && (!_calibrationContext.EarScan || x.ScanData?.Length > 0))).ToList();
         _currentHearingUid = null;
         try
@@ -271,6 +311,7 @@ public sealed partial class NativeHeadsetService
         var engine = _calibration; _calibration = null;
         try { await engine.CancelAsync(); } catch { }
         engine.Changed -= EngineChanged; await engine.DisposeAsync();
+        _client?.SetCalibrationActive(false);
         try { await _calibrationBackground; } catch { }
         _calibrationState = null; _calibrationContext = null; _hearingProfiles = [];
     }

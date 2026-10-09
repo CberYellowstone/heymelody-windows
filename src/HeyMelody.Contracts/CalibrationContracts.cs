@@ -17,10 +17,19 @@ public sealed record UiCalibrationState
     public int? Uid { get; set; }
     public int Side { get; set; } = 1;
     public int FrequencyType { get; set; } = 1;
+    public int? FrequencyHz { get; set; }
     public int StepIndex { get; set; }
     public int StepCount { get; set; } = 12;
     public int LevelIndex { get; set; } = 5;
+    public int DesiredLevelIndex { get; set; } = 5;
     public int Decibels { get; set; } = -19;
+    public bool ToneAcknowledged { get; set; }
+    public bool FiltersReady { get; set; }
+    public bool CanPreview { get; set; }
+    public string PreviewMode { get; set; } = "Stopped";
+    public bool CanResume { get; set; }
+    public bool NoiseWarning { get; set; }
+    public bool HasInterEarDifference { get; set; }
     public byte? RawStatus { get; set; }
     public string Message { get; set; } = "";
     public IReadOnlyList<UiFitResult> FitResults { get; set; } = [];

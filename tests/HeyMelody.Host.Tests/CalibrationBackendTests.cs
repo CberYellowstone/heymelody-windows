@@ -9,6 +9,35 @@ internal static class CalibrationBackendTests
 {
     internal static async Task RunAsync(Func<string, Func<Task>, Task> test, string scratch)
     {
+        await test("unconfirmed calibration STOP stays failed and leased until an acknowledged retry", async () =>
+        {
+            foreach (bool throwFailure in new[] { false, true })
+            {
+                await using var fixture = await Fixture.Create(scratch);
+                var snapshot = fixture.Snapshots()[0]; var worker = fixture.Workers[0];
+                var ready = await fixture.Backend.CreateCalibrationAsync("editor", snapshot.Identity, snapshot.DeviceGeneration, "fit", default);
+                worker.FailCancel = true; worker.ThrowCancel = throwFailure;
+                var failed = await fixture.Backend.CancelCalibrationAsync("editor", ready.Handle);
+                Check(failed.Stage == "Failed" && !fixture.Backend.Select(snapshot.Identity).ControlReady, "Unconfirmed STOP released the lease or claimed cancellation");
+                await Throws<InvalidOperationException>(() => fixture.Backend.CreateCalibrationAsync("other", snapshot.Identity, snapshot.DeviceGeneration, "fit", default));
+                worker.FailCancel = false;
+                var stopped = await fixture.Backend.CancelCalibrationAsync("editor", ready.Handle);
+                Check(stopped.Stage == "Cancelled" && stopped.Revision > failed.Revision && fixture.Backend.Select(snapshot.Identity).ControlReady,
+                    "Acknowledged STOP retry failed to release the lease");
+            }
+        });
+        await test("late confirmed cancellation releases a lease after an IPC failure", async () =>
+        {
+            await using var fixture = await Fixture.Create(scratch);
+            var snapshot = fixture.Snapshots()[0]; var worker = fixture.Workers[0];
+            var ready = await fixture.Backend.CreateCalibrationAsync("editor", snapshot.Identity, snapshot.DeviceGeneration, "fit", default);
+            worker.FailCancel = worker.ThrowCancel = true;
+            var failed = await fixture.Backend.CancelCalibrationAsync("editor", ready.Handle);
+            Check(!fixture.Backend.Select(snapshot.Identity).ControlReady, "Failed stop released lease");
+            worker.EmitCalibration(ready with { Stage = "Cancelled", Revision = failed.Revision + 1 });
+            Check(fixture.Backend.GetCalibration("editor", ready.Handle, null).Stage == "Cancelled"
+                && fixture.Backend.Select(snapshot.Identity).ControlReady, "Late confirmed stop kept the device blocked");
+        });
         await test("calibration lease excludes ordinary SET on its device and preserves other devices", async () =>
         {
             await using var fixture = await Fixture.Create(scratch, 2);
@@ -150,6 +179,7 @@ internal static class CalibrationBackendTests
         private UiCalibrationState _state = new();
         internal UiCalibrationState State => _state;
         internal int Applies, Advances, Cancels, Refreshes;
+        internal bool FailCancel, ThrowCancel;
         public Task<UiSnapshot> InitializeAsync(ulong address, string identity, string name, CancellationToken token)
         {
             _snapshot = new() { Identity = identity, DeviceName = name, ProductId = "06EC10", Revision = 1, Connected = true,
@@ -174,7 +204,12 @@ internal static class CalibrationBackendTests
         }
         internal void EmitCalibration(UiCalibrationState state) { _state = state; CalibrationChanged?.Invoke(state); }
         public Task<UiCalibrationState> CancelCalibrationAsync(string handle, CancellationToken token)
-        { Cancels++; _state = _state with { Revision = _state.Revision + 1, Stage = "Cancelled" }; CalibrationChanged?.Invoke(_state); return Task.FromResult(_state); }
+        {
+            Cancels++;
+            if (FailCancel && ThrowCancel) throw new IOException("STOP response unavailable.");
+            _state = _state with { Revision = _state.Revision + 1, Stage = FailCancel ? "Failed" : "Cancelled" };
+            CalibrationChanged?.Invoke(_state); return Task.FromResult(_state);
+        }
         public Task<IReadOnlyList<UiHearingProfile>> HearingProfilesAsync(CancellationToken token) => Task.FromResult<IReadOnlyList<UiHearingProfile>>([]);
         public Task<UiApplyResult> SelectHearingAsync(int? uid, CancellationToken token) => Task.FromResult(new UiApplyResult { TargetSubmitted = true });
         public ValueTask DisposeAsync() { Unavailable?.Invoke(); return ValueTask.CompletedTask; }
