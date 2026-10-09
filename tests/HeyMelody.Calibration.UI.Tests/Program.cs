@@ -136,6 +136,32 @@ try
         Check(service.Inputs.Count == 1 && model.State.Stage == "Cancelled", "Closing removes delayed slider input before it can send.");
     }
     Console.WriteLine("PASS trailing slider debounce and delayed-input cancellation"); passed++;
+
+    foreach (var (kind, scan, path) in new (string, bool, (string Stage, CalibrationPhase Phase, bool Scanned)[])[]
+    {
+        ("hearing", true, [("Starting", CalibrationPhase.EarScan, false), ("Scanning", CalibrationPhase.EarScan, false), ("Failed", CalibrationPhase.EarScan, false),
+            ("Starting", CalibrationPhase.EarScan, false), ("CheckingWear", CalibrationPhase.EarScan, false), ("Scanning", CalibrationPhase.EarScan, false),
+            ("ScanCompleted", CalibrationPhase.EarScan, true), ("Starting", CalibrationPhase.Hearing, true), ("CheckingWear", CalibrationPhase.Hearing, true),
+            ("AwaitingAnswer", CalibrationPhase.Hearing, true), ("Paused", CalibrationPhase.Hearing, true), ("AwaitingAnswer", CalibrationPhase.Hearing, true),
+            ("LoadingCurves", CalibrationPhase.Results, true), ("Failed", CalibrationPhase.Results, true), ("Results", CalibrationPhase.Results, true),
+            ("Previewing", CalibrationPhase.Results, true), ("Saving", CalibrationPhase.Results, true), ("Completed", CalibrationPhase.Done, true)]),
+        ("hearing", false, [("Starting", CalibrationPhase.Hearing, false), ("AwaitingAnswer", CalibrationPhase.Hearing, false), ("Results", CalibrationPhase.Results, false)]),
+        ("fit", false, [("Starting", CalibrationPhase.Hearing, false), ("Measuring", CalibrationPhase.Hearing, false), ("Completed", CalibrationPhase.Done, false),
+            ("Starting", CalibrationPhase.Hearing, false), ("Failed", CalibrationPhase.Hearing, false), ("Starting", CalibrationPhase.Hearing, false)])
+    })
+    {
+        service = new TestService();
+        service.State = service.State with { HearingVersion = scan ? "V2" : "V1", SupportsEarScan = scan };
+        await using var model = new CalibrationViewModel(service, "operation", kind);
+        await model.InitializeAsync();
+        Check(model.Phase == CalibrationPhase.Intro && !model.EarScanCompleted, "Every wizard opens on its introduction page.");
+        foreach (var (stage, phase, scanned) in path)
+        {
+            service.State = service.State with { Revision = service.State.Revision + 1, Stage = stage }; model.Adopt(service.State);
+            Check(model.Phase == phase && model.EarScanCompleted == scanned, $"{kind}/{scan}: {stage} presents {phase} with scan completion {scanned}.");
+        }
+    }
+    Console.WriteLine("PASS wizard phases follow scan, test, retry and result transitions"); passed++;
     passed += CalibrationVisualTests.Run();
     Console.WriteLine($"{{\"success\":true,\"passed\":{passed},\"nativeBluetoothCalls\":0}}");
     return 0;

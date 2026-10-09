@@ -5,6 +5,9 @@ using HeyMelodyWindows.App;
 
 namespace HeyMelodyWindows.Calibration.UI;
 
+/// <summary>Wizard page group derived from Host stages; it only selects presentation.</summary>
+public enum CalibrationPhase { Intro, EarScan, Hearing, Results, Done }
+
 /// <summary>Reusable presentation of one Host-owned operation, without owning the earbud connection.</summary>
 public sealed class CalibrationViewModel(ICalibrationService service, string handle, string kind) : INotifyPropertyChanged, IAsyncDisposable
 {
@@ -21,10 +24,15 @@ public sealed class CalibrationViewModel(ICalibrationService service, string han
     private int _selectedLevel = 5;
     private bool _selectionActive;
     private string _resourceSource = "HeyMelody";
+    private CalibrationPhase _phase;
+    private bool _earScanCompleted;
     public event PropertyChangedEventHandler? PropertyChanged;
     public UiCalibrationState State => _state;
     public string Kind => kind;
     public string ResourceSource => _resourceSource;
+    public CalibrationPhase Phase => _phase;
+    /// <summary>True once this hearing run has a completed ear scan; drives the stepper only.</summary>
+    public bool EarScanCompleted => _earScanCompleted;
     public bool Busy => _busy || _cancelBusy;
     public bool CancellationRequested => _cancelled;
     public bool CancellationPending => _cancelBusy;
@@ -65,9 +73,39 @@ public sealed class CalibrationViewModel(ICalibrationService service, string han
         }
         if (state.Stage != _state.Stage && state.Stage != "Failed")
         { _error = ""; Changed(nameof(Error)); }
+        var previous = _state.Stage;
         _state = state;
+        UpdatePhase(previous);
         if (!_selectionActive) _selectedLevel = state.LevelIndex;
         Changed(nameof(State)); SelectionChanged();
+    }
+    private void UpdatePhase(string previous)
+    {
+        var scanFirst = kind == "hearing" && _state.SupportsEarScan;
+        // Wear checks and start-up stages are shared by the scan and the test; their origin decides the page.
+        var phase = _state.Stage switch
+        {
+            "Ready" or "Idle" => CalibrationPhase.Intro,
+            "Scanning" or "ScanCompleted" => CalibrationPhase.EarScan,
+            "AwaitingAnswer" or "Measuring" or "Paused" or "Interrupted" => CalibrationPhase.Hearing,
+            "LoadingCurves" or "LoadingFilters" or "Results" or "ResultReady" or "Previewing" or "Saving" => CalibrationPhase.Results,
+            "Completed" => CalibrationPhase.Done,
+            "CheckingWear" or "Starting" => previous switch
+            {
+                "Ready" or "Idle" or "Failed" or "Completed" => scanFirst ? CalibrationPhase.EarScan : CalibrationPhase.Hearing,
+                "ScanCompleted" => CalibrationPhase.Hearing,
+                _ => _phase
+            },
+            _ => _phase
+        };
+        var scanned = phase switch
+        {
+            CalibrationPhase.Intro => false,
+            CalibrationPhase.EarScan => _state.Stage == "ScanCompleted",
+            _ => scanFirst
+        };
+        if (phase != _phase) { _phase = phase; Changed(nameof(Phase)); }
+        if (scanned != _earScanCompleted) { _earScanCompleted = scanned; Changed(nameof(EarScanCompleted)); }
     }
     public void BackendUnavailable(string message)
     {

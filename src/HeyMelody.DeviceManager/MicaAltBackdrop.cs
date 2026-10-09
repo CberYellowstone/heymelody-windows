@@ -6,9 +6,10 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Windowing;
 
-namespace HeyMelodyWindows.DeviceManager;
+namespace HeyMelodyWindows.Windowing;
 
 /// <summary>Uses the documented Windows 11 Mica Alt backdrop; older systems remain opaque.</summary>
+/// <remarks>DeviceManager owns this source; Calibration.UI compiles the same file so both windows share one backdrop.</remarks>
 internal sealed class MicaAltBackdrop : IDisposable
 {
     private readonly FAAppWindow _window;

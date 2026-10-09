@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Ellipse = Avalonia.Controls.Shapes.Ellipse;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -22,10 +23,11 @@ internal static class CalibrationVisualTests
         session.Dispatch<bool>(async () =>
         {
             var service = new TestService();
+            service.State = service.State with { HearingVersion = "V2", SupportsEarScan = true };
             await using var model = new CalibrationViewModel(service, "operation", "hearing");
             await model.InitializeAsync();
             var view = new CalibrationView(model);
-            var window = new Window { Content = view, Width = 540, Height = 580, WindowDecorations = WindowDecorations.None };
+            var window = new Window { Content = view, Width = 520, Height = 720, WindowDecorations = WindowDecorations.None };
             try
             {
                 window.Show(); Dispatcher.UIThread.RunJobs();
@@ -36,16 +38,27 @@ internal static class CalibrationVisualTests
                 for (int frame = 0; frame < 15; frame++)
                 { using var tick = window.CaptureRenderedFrame(); await Task.Delay(100); Dispatcher.UIThread.RunJobs(); }
                 Check(guide.RenderedFrameCount > 1, "The setup guide produces actual Avalonia compositor frames.");
+                CheckActionBar(view, "开始");
+                Check(Visible(view, "耳道扫描") && Visible(view, "听音测试"), "An ear-scan wizard shows its two-step progress header.");
                 Capture(window, "hearing-ready");
+                Push(service.State with { Stage = "Scanning" });
+                Check(model.Phase == CalibrationPhase.EarScan && view.GetVisualDescendants().OfType<Ellipse>().Any(x => x.Classes.Contains("ripple"))
+                    && !HasButton("开始"), "The ear scan page animates its hero and offers only cancellation.");
+                Capture(window, "hearing-scan");
+                Push(service.State with { Stage = "ScanCompleted" });
+                Check(model.EarScanCompleted && HasButton("下一步"), "A completed scan marks its step and continues to the hearing test.");
 
-                Push(service.State with { Stage = "AwaitingAnswer", HearingVersion = "V1", ToneAcknowledged = true });
+                Push(service.State with { Stage = "AwaitingAnswer", HearingVersion = "V1", SupportsEarScan = false, ToneAcknowledged = true });
                 Check(HasButton("听到了") && HasButton("没听到") && !view.GetVisualDescendants().OfType<Slider>().Any(),
                     "The V1 workflow uses two answer buttons.");
                 Capture(window, "hearing-v1");
-                Push(service.State with { Stage = "AwaitingAnswer", HearingVersion = "V2", StepIndex = 1, LevelIndex = 8, FrequencyType = 2, FrequencyHz = 1000 });
+                Push(service.State with { Stage = "AwaitingAnswer", HearingVersion = "V2", SupportsEarScan = true, StepIndex = 1, LevelIndex = 8, FrequencyType = 2, FrequencyHz = 1000 });
                 var slider = view.GetVisualDescendants().OfType<Slider>().Single();
-                Check(slider.Value == 8 && HasButton("继续") && HasButton("上一步") && service.Inputs.Count == 0,
+                Check(slider.Value == 8 && HasButton("下一步") && HasButton("上一步") && service.Inputs.Count == 0,
                     "V2 has its discrete level slider and both navigation buttons; remote state updates send no command.");
+                CheckActionBar(view, "上一步", "下一步");
+                Check(Segments() is [100, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    "Twelve ProgressBars show completed steps full, the current frequency half filled and later steps empty.");
                 Push(service.State with { LevelIndex = 9 });
                 Check(slider.Value == 9 && service.Inputs.Count == 0, "A pushed level changes the existing slider without starting a measurement command.");
                 Check(view.GetVisualDescendants().OfType<TextBlock>().Any(x => x.Text?.Contains("1000 Hz") == true),
@@ -61,7 +74,7 @@ internal static class CalibrationVisualTests
                 await Until(() => service.Inputs.Count > 0 && !model.LevelPending);
                 Check(slider.Value == 8 && service.Inputs is [{ Action: "level", LevelIndex: 8, Released: true }] && model.CanContinue,
                     "Actual slider keyboard input sends the final changed level and enables Next only after its ACK.");
-                FindButton("继续").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                FindButton("下一步").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 await Until(() => service.Inputs.Last().Action == "next" && !model.Busy);
                 Check(view.GetVisualDescendants().OfType<Slider>().Single().Value == 5,
                     "A real Next click displays the following step's middle level.");
@@ -70,6 +83,14 @@ internal static class CalibrationVisualTests
                     && !view.GetVisualDescendants().OfType<TextBlock>().Any(x => x.Text?.Contains("4000 Hz") == true),
                     "An unverified model displays a frequency identifier rather than claiming the X4 Hz mapping.");
                 Capture(window, "hearing-v2");
+                Push(service.State with { StepIndex = 7, Side = 2, FrequencyType = 2, FrequencyHz = 1000 });
+                var glyph = view.GetVisualDescendants().OfType<Control>().Single(x => x.Name == "HeroGlyph");
+                Check(glyph.RenderTransform is ScaleTransform { ScaleX: -1 } && Visible(view, "当前测试右耳 · 1000 Hz")
+                    && Segments() is [100, 100, 100, 100, 100, 100, 100, 50, 0, 0, 0, 0],
+                    "The right-ear group continues the progress strip and mirrors the hero toward the tested ear.");
+                window.RequestedThemeVariant = ThemeVariant.Dark; Dispatcher.UIThread.RunJobs();
+                Capture(window, "hearing-v2-dark");
+                window.RequestedThemeVariant = ThemeVariant.Light; Dispatcher.UIThread.RunJobs();
                 Push(service.State with { Stage = "Interrupted", CanResume = false, ToneAcknowledged = false });
                 Check(!view.GetVisualDescendants().OfType<Slider>().Any() && !FindButton("继续测试").IsEnabled,
                     "A hardware interruption removes answer controls until the earphones can resume.");
@@ -89,8 +110,9 @@ internal static class CalibrationVisualTests
                 Push(service.State with { FiltersReady = true, CanPreview = true, HasInterEarDifference = true });
                 Check(view.GetVisualDescendants().OfType<TextBox>().Count() == 1 && HasButton("保存并启用"),
                     "The result page names and saves a profile, separately from the main-window selector.");
-                Check(view.GetVisualDescendants().OfType<TextBlock>().Any(x => x.Text?.Contains("左右耳在部分频段的选择差异较大") == true),
-                    "The result reports an inter-ear selection difference without assigning a hearing diagnosis.");
+                Check(view.GetVisualDescendants().OfType<TextBlock>().Count(x => x.Text?.Contains("左右耳在部分频段的选择差异较大") == true) == 1,
+                    "The result reports an inter-ear selection difference once, without assigning a hearing diagnosis.");
+                CheckActionBar(view, "保存并启用");
                 var editor = view.GetVisualDescendants().OfType<TextBox>().Single(); editor.Text = "我的听感";
                 foreach (var (text, action, mode) in new[] { ("原音", "preview-original", "Original"), ("黄金听感", "preview-enhanced", "Enhanced"), ("结束试听", "preview-stop", "Stopped") })
                 {
@@ -105,6 +127,7 @@ internal static class CalibrationVisualTests
             return true;
             bool HasButton(string name) => view.GetVisualDescendants().OfType<Button>().Any(button => Equals(button.Content, name));
             Button FindButton(string name) => view.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, name));
+            double[] Segments() => view.GetVisualDescendants().OfType<ProgressBar>().Where(x => x.Classes.Contains("segment")).Select(x => x.Value).ToArray();
             void Push(UiCalibrationState state)
             { service.State = state with { Revision = model.State.Revision + 1 }; model.Adopt(service.State); Dispatcher.UIThread.RunJobs(); }
         }, CancellationToken.None).GetAwaiter().GetResult();
@@ -116,10 +139,13 @@ internal static class CalibrationVisualTests
             await using var model = new CalibrationViewModel(service, "operation", "fit");
             await model.InitializeAsync();
             var view = new CalibrationView(model);
-            var window = new Window { Content = view, Width = 540, Height = 580, WindowDecorations = WindowDecorations.None };
+            var window = new Window { Content = view, Width = 520, Height = 720, WindowDecorations = WindowDecorations.None };
             try
             {
-                window.Show(); Dispatcher.UIThread.RunJobs(); Capture(window, "fit-ready");
+                window.Show(); Dispatcher.UIThread.RunJobs();
+                CheckActionBar(view, "开始");
+                Check(!Visible(view, "耳道扫描"), "The fit test has no hearing stepper.");
+                Capture(window, "fit-ready");
                 service.FailNextStart = true;
                 view.GetVisualDescendants().OfType<Button>().Single(x => Equals(x.Content, "开始")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 await Until(() => model.State.Stage == "Failed" && !model.Busy);
@@ -129,10 +155,13 @@ internal static class CalibrationVisualTests
                 model.Adopt(service.State);
                 Dispatcher.UIThread.RunJobs();
                 var labels = view.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text).ToArray();
-                Check(labels.Contains("贴合良好") && labels.Contains("贴合较差，请调整佩戴或更换耳塞")
+                Check(labels.Contains("贴合良好") && labels.Contains("贴合较差") && labels.Contains("请调整佩戴位置，或更换尺寸合适的耳塞后重新测试。")
                     && view.GetVisualDescendants().OfType<Button>().Any(button => Equals(button.Content, "重新测试")),
-                    "Fit results distinguish left/right and offer a retry.");
+                    "Fit results distinguish left/right, advise on a poor fit and offer a retry.");
+                CheckActionBar(view, "重新测试");
                 Capture(window, "fit-results");
+                window.RequestedThemeVariant = ThemeVariant.Dark; Dispatcher.UIThread.RunJobs();
+                Capture(window, "fit-results-dark");
             }
             finally { window.Close(); }
             return true;
@@ -147,6 +176,8 @@ internal static class CalibrationVisualTests
             window.Show(); Dispatcher.UIThread.RunJobs();
             try
             {
+                Check(window.ShowAsDialog && window.Icon is not null && window.Width == 520 && window.MinWidth == 400,
+                    "The production wizard window uses the device manager's dialog chrome, icon and portrait size.");
                 window.Close();
                 await Until(() => service.Cancels == 1 && Button(window, "重试停止")?.IsEnabled == true);
                 Check(window.IsVisible && !service.Disposed && service.State.Stage == "Failed",
@@ -180,6 +211,18 @@ internal static class CalibrationVisualTests
         }
     }
     private static void Check(bool passed, string message) { if (!passed) throw new InvalidOperationException(message); }
+    private static bool Visible(Control view, string text) =>
+        view.GetVisualDescendants().OfType<TextBlock>().Any(x => x.Text == text && x.IsEffectivelyVisible);
+    /// <summary>The 72 px action bar is bottom-aligned over the page and holds the page commands in order before cancel/close.</summary>
+    private static void CheckActionBar(Control view, params string[] commands)
+    {
+        var bar = view.GetVisualDescendants().OfType<Border>().Single(x => x.Name == "ActionBar");
+        var bottom = bar.TranslatePoint(new Point(0, bar.Bounds.Height), view)?.Y ?? -1;
+        var buttons = bar.GetVisualDescendants().OfType<Button>().Where(x => x.IsEffectivelyVisible).Select(x => x.Content as string).ToArray();
+        Check(bar.Bounds.Height == 72 && Math.Abs(bottom - view.Bounds.Height) <= 1 && buttons.Length == commands.Length + 1
+            && buttons.Take(commands.Length).SequenceEqual(commands) && buttons[^1] is "取消" or "关闭",
+            "The action bar keeps the device manager's height and the Windows wizard command order: " + string.Join(", ", buttons));
+    }
     private static async Task Until(Func<bool> condition)
     {
         for (var attempt = 0; attempt < 300 && !condition(); attempt++)

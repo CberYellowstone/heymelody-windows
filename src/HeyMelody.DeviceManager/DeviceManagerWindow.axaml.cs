@@ -4,6 +4,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Windowing;
 using HeyMelodyWindows.App;
+using HeyMelodyWindows.Windowing;
 
 namespace HeyMelodyWindows.DeviceManager;
 

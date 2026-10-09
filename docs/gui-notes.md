@@ -1,8 +1,10 @@
-# HeyMelody Avalonia 界面（0.8.8）
+# HeyMelody Avalonia 界面（0.8.9）
 
 0.6.0 完成 Windows Enco X4 功能的 Avalonia 初版迁移，0.6.1 改进后台刷新、交互及失败处理。当前界面使用 Avalonia 12.1.3、FluentAvaloniaUI 3.1.0 和 CommunityToolkit.Mvvm 8.4.2，功能随资源目录及实际设备能力提供。界面和客户端状态模型分别位于 `HeyMelody.App` 与 `HeyMelody.Client`；DTO、schema-3 双向命名管道契约及私有 worker 的 stdio 契约位于 `HeyMelody.Contracts`。`HeyMelody.Host` 独立托盘后台监管每台耳机的原生 worker，Windows 蓝牙调用不进入界面线程。
 
-当前源码及发布脚本默认版本均为 0.8.8。
+当前源码及发布脚本默认版本均为 0.8.9。
+
+0.8.9 重新设计贴合度测试与黄金听感两个独立窗口，主窗口不变，见下方 [校准窗口](#校准窗口)。
 
 0.8.8 重新整理右侧控制面板。设备名称、状态点、副标题以及连接／断开与刷新按钮组成固定页头，不随设置滚动。名称左侧的圆点用绿、黄、灰分别表示已验证控制、正在连接或写入（包括排队中的设置提交）、未连接；后台读取不改变圆点。连接时副标题只显示“已连接”，固件版本仍在设备信息中。离线展示缓存时，名称下方显示“上次连接 yyyy/M/d HH:mm”，取代原先的缓存提示信息条；时间取自 Host 缓存的最后一次核验采样（`PresentationSampleTime`）。其余副标题去掉“· 设置暂不可用”等重复后缀。页头下方是常驻 3px 的 ProgressBar 槽位，活动时淡入、空闲时淡出并停止动画，显示和消失都不改变下方布局。
 
@@ -49,6 +51,16 @@
 
 “连接或同一设备身份无法核实”包括：后台进程崩溃、超时或返回损坏/不匹配的 RPC 记录，导致客户端没有完整回执；重新读取时无法取得有效型号、能力或连接状态；返回的设备身份与当前选择/连接会话不一致；后台重启后丢失原地址到随机身份的映射。此时设置可能已经到达耳机，不能把旧请求转移到另一副同名耳机。程序提示并只读刷新，身份映射丢失时要求重新选择并连接。手机修改某个设置本身不属于身份无法核实，也不能仅凭一次 GET 超时断言蓝牙已断开。
 
+## 校准窗口
+
+`HeyMelody.FitTest` 与 `HeyMelody.HearingSetup` 共用 `HeyMelody.Calibration.UI` 的 `CalibrationWindow`／`CalibrationView`。0.8.9 起窗口外观与设备管理器一致：`FAAppWindow` 仅保留关闭按钮，默认 520×720、最小 400×520，可拉伸；构造时先注册 `MicaAltBackdrop`，Windows 11 build 22621 及以上使用 DWM Mica Alt，其余情况回退为主题实色。该类源码仍属设备管理器，命名空间改为 `HeyMelodyWindows.Windowing` 后由两个项目共同编译，不新增程序集。页面由固定页头、滚动内容和覆盖在底部的 72px 操作栏组成，操作栏使用 `LayerOnMicaBaseAltFillColorDefaultBrush`，内容底部留出 84px 以便最后一项可滚到操作栏上方。按钮按 Windows 向导惯例右对齐为“上一步 · 下一步（强调色）· 取消”；完成后取消变为强调色“关闭”，停止失败时为“重试停止”。左侧状态文字显示“第 x / 12 步”或“正在停止测试…”。
+
+页头含标题、步骤指示和固定 3px 活动进度条（淡入淡出，不移动内容）。支持耳道扫描的黄金听感显示“耳道扫描 → 听音测试”两步：当前步为强调色圆形，完成后显示对勾，未开始为灰色圆环；图标为 OPPO `melody_ui_gold_hearing_detect_ear_tag` 的耳朵轮廓和五段波形。阶段由 `CalibrationViewModel.Phase` 根据 Host 阶段的先后推导：`Starting`／`CheckingWear` 从就绪或失败进入时属于扫描（无扫描型号属于测听），从 `ScanCompleted` 进入时属于测听，失败、取消过程保留原阶段；它只决定显示，不改变命令。
+
+主图沿用 ColorOS 向导的同心波纹，改为随主题变化的强调色圆环，中心为耳朵或左右耳塞矢量；扫描、贴合度检测进行中以及测试音已确认时显示扩散波纹，测右耳时耳朵镜像。测听页依次为主说明“左右拖动音量条，找到“滴滴”声刚好消失的临界点”、副说明“当前测试左耳 · 1000 Hz”（未验证型号显示“频段 N”），以及左右耳各 6 段、共 12 个 `ProgressBar` 组成的进度：已完成为 100、当前为 50、未开始为 0，模板中的轨道与指示条统一为 4px 圆角，下方标注左耳／右耳并突出当前组。音量条为 0–11 档原生 `Slider`，在下方显示刻度，两端为音量图标；拖动、键盘与释放沿用原有防抖和 ACK 确认，下方显示当前档位与“重试播放”。V1 型号改为两个等宽的“听到了／没听到”。暂停时保留进度，原因显示在信息栏。
+
+就绪页显示所选资源来源的官方音量指引 Lottie（V2）或主图，以及“佩戴好两只耳机”“保持环境安静”两张说明卡。结果页先等待两类滤波完整，再显示“试听对比”卡（原音／黄金听感两个切换按钮跟随 Host 的试听模式，点击当前模式不重复发送，另有“结束试听”）和“配置名称”卡；“保存并启用”位于操作栏，替换确认对话框不变。左右耳差异提示只在信息栏显示一次，Host 的暂停、拒绝和噪声消息同样进入信息栏，不再覆盖或追加到正文。贴合度结果为左右两张卡片，以绿色、橙色、红色圆形耳塞图标表示“贴合良好／一般／较差”（协议 1／0／6），下方信息栏给出调整建议。设计参考为用户提供的 ColorOS 截图，原件与取舍记录在本地 [research/calibration-wizard-design-20261009](../research/calibration-wizard-design-20261009/README.md)，不随 Git 分发。
+
 ## 构建与界面验证
 
 ```powershell
@@ -63,7 +75,11 @@ dotnet run --project tests/HeyMelody.App.Tests -c Release -- --native-startup-sm
 dotnet run --project tests/HeyMelody.DeviceManager.Tests -c Release
 dotnet run --project tests/HeyMelody.DeviceManager.Tests -c Release -- --native-smoke
 dotnet run --project tests/HeyMelody.DeviceManager.Tests -c Release -- --native-alt-f4-smoke
+dotnet run --project tests/HeyMelody.Calibration.UI.Tests -c Release
+dotnet run --project tests/HeyMelody.Calibration.UI.Tests -c Release -- --native
 ```
+
+0.8.9 在 Linux x64 上以 Release 配置运行默认测试中可在该平台执行的 11 个 runner，共 545 项通过：Protocol 64、Resources 25、Calibration 48、Calibration.UI 11、Devices 19、Control 19、Daily 110、Probe 23、Client 137、App 81、DeviceManager 8。Calibration.UI 新增阶段推导检查，并在无头窗口中核对步骤指示、底部 72px 操作栏及按钮顺序、左右两组进度条数值（已完成 100、当前 50、未开始 0）、测右耳时主图镜像、差异提示只出现一次和对话框窗口外观，输出浅色与深色截图。FitTest、HearingSetup、DeviceManager 另以 `win-x64` 构建，Host 启用 Windows 目标构建，均无警告。未运行 Host.Tests、Windows.OfflineChecks、校准与设备管理器的 `--native` 原生窗口检查、真实 Mica Alt 渲染、打包及两个静态校验器；Linux 截图缺少中文字体，只用于核对布局。未使用蓝牙，也未进行声学测试。
 
 0.8.8 在 Linux x64 上以 Release 配置运行默认测试中可在该平台执行的 11 个 runner，共 483 项通过：Protocol 47、Resources 25、Calibration 18、Calibration.UI 5、Devices 19、Control 19、Daily 101、Probe 23、Client 137、App 81、DeviceManager 8。App.Tests 在非 Windows 上为 81 项（Windows 预期 89 项），新增固定页头、三态状态点、上次连接副标题、卡片图标与描述，以及阻塞读取和排队写入期间进度槽位与内容坐标完全不变的检查。App 另行交叉编译 `win-x64`，Host.Tests 在启用 Windows 目标后编译通过。未运行面向 Windows 的 Host.Tests、Windows.OfflineChecks、各 `--native-*` 原生窗口检查、打包及两个静态校验器；Linux 截图缺少中文字体，只用于核对布局与图标。
 

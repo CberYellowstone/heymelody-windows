@@ -33,6 +33,7 @@
 | [research/OPPO_Enco_X4_v116_reconstruction/](../../research/OPPO_Enco_X4_v116_reconstruction/README_zh.md) | 用户提供的可信X4 v116固件重建包；本轮保留不修改 |
 | [research/installers/](../../research/installers/) | Surface MSIXbundle 等研究参考安装包 |
 | [research/screenshots/](../../research/screenshots/) | 界面参考截图、用户提供的 X4 PNG 原件 |
+| [research/calibration-wizard-design-20261009/](../../research/calibration-wizard-design-20261009/README.md) | 用户提供的 ColorOS 黄金听感向导截图原件、摘要及 0.8.9 校准窗口设计取舍 |
 | [research/upstreams/](../../research/upstreams/) | OppoPods1、OppoPods2、SteamTools 完整源码副本及 Git 元数据 |
 | [research/earbud-artwork/](../../research/earbud-artwork/) | 2D 原图、功能素材、图册、预览、库存和完整证据 |
 | [research/online-whitelist/](../../research/online-whitelist/) | 厂商配置、下载记录、静态契约、完整 run |

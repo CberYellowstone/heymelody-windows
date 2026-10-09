@@ -1,11 +1,13 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using FluentAvalonia.Styling;
 using FluentAvalonia.UI.Windowing;
 using HeyMelodyWindows.App;
+using HeyMelodyWindows.Windowing;
 
 namespace HeyMelodyWindows.Calibration.UI;
 
@@ -35,13 +37,17 @@ public sealed class CalibrationWindow : FAAppWindow
     private readonly CalibrationViewModel _model;
     private readonly ICalibrationService _service;
     private readonly IHeadsetEventService? _events;
+    private readonly MicaAltBackdrop _backdrop;
     private bool _closing, _closed, _completed, _allowLocalClose;
     public CalibrationWindow(ICalibrationService service, string handle, string kind)
     {
+        // Register the backdrop's window-style callback before any window property is assigned, as DeviceManager does.
+        _backdrop = new MicaAltBackdrop(this);
         _service = service; _events = service as IHeadsetEventService;
         _model = new CalibrationViewModel(service, handle, kind);
         Title = kind == "fit" ? "耳塞贴合度测试" : "设置黄金听感";
-        Width = 540; Height = 580; MinWidth = 440; MinHeight = 400;
+        Icon = new Avalonia.Media.Imaging.Bitmap(AssetLoader.Open(new Uri("avares://HeyMelody.Calibration.UI/Assets/HeyMelody.ico")));
+        Width = 520; Height = 720; MinWidth = 400; MinHeight = 520; CanResize = true; ShowAsDialog = true;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         var view = new CalibrationView(_model); Content = view;
         view.CloseRequested += () => { Close(); return Task.CompletedTask; };
@@ -55,6 +61,7 @@ public sealed class CalibrationWindow : FAAppWindow
         Closed += (_, _) =>
         {
             if (_events is not null) _events.EventReceived -= OnEvent;
+            _backdrop.Dispose();
             if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
                 desktop.Shutdown(_completed && _model.StopConfirmed ? 0 : 1);
         };

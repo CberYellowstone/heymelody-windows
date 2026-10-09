@@ -66,7 +66,7 @@ internal static class NativeCalibrationSmoke
                     Check(slider.Value == 5 && model.State.Decibels == -19, "Factory middle level is the initial native slider value.");
                     slider.Focus(); PressKey(slider, Key.Right);
                     await service.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
-                    Check(!Button(view, "继续").IsEnabled, "Native Next is disabled while the tone ACK is pending.");
+                    Check(!Button(view, "下一步").IsEnabled, "Native Next is disabled while the tone ACK is pending.");
                     service.ReleaseLevel.TrySetResult(); await Until(() => !model.LevelPending);
                     Check(service.Inputs.Last() is { Action: "level", LevelIndex: 6 } && model.State.Decibels == -11,
                         "Native slider keyboard input sends the higher level.");
@@ -125,7 +125,7 @@ internal static class NativeCalibrationSmoke
     private static FAAppWindow CreateWindow(CalibrationView view, string title)
     {
         view.Background = new SolidColorBrush(Color.FromRgb(243, 243, 243));
-        return new() { Content = view, Title = title, Width = 540, Height = 580, ShowActivated = false, Position = new PixelPoint(-32000, -32000) };
+        return new() { Content = view, Title = title, Width = 520, Height = 720, ShowActivated = false, Position = new PixelPoint(-32000, -32000) };
     }
     private static async Task CheckWindowClosingAsync()
     {

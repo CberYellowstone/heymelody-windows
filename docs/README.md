@@ -1,6 +1,6 @@
 # 文档索引
 
-当前版本为 0.8.8。除 Markdown 链接外，文档中的路径均相对于仓库根目录；历史记录中的 `reference/` 等旧路径保留其原始含义。完整研究对象、理解、结论及产物位于 `research/`，本目录保存整理后适宜公布的结果，维护中的研究工具位于 `tools/research/`。具体约定见 [研究资料规范](research/organization.md)，位置见 [研究资料索引](research/README.md)。构建、发布和验证入口见 [REPOSITORY.md](../REPOSITORY.md)。
+当前版本为 0.8.9。除 Markdown 链接外，文档中的路径均相对于仓库根目录；历史记录中的 `reference/` 等旧路径保留其原始含义。完整研究对象、理解、结论及产物位于 `research/`，本目录保存整理后适宜公布的结果，维护中的研究工具位于 `tools/research/`。具体约定见 [研究资料规范](research/organization.md)，位置见 [研究资料索引](research/README.md)。构建、发布和验证入口见 [REPOSITORY.md](../REPOSITORY.md)。
 
 - [设备选择与离线控件](device-state.md)：0.8.7 的选择恢复、完整功能缓存、只读离线展示与重新连接刷新；0.8.8 改为在页头显示上次连接时间。
 
@@ -16,7 +16,7 @@
 - [Enco X4 控制连接回归与 0.8.1 实机验证](research/enco-x4-0.8.1.md)：控制服务校验修复、型号提示及两套预装／缓存资源的只读验证。
 - [Free4 三维模型与 0.7.1 体验包](research/enco-free4-0.7.1.md)：已迁入当前分支的模型控件、拖动与惯性、自转，以及迁移前独立工作区验证。
 - [后台架构](backend-architecture.md)：托盘、共享 IPC、多设备监听、BLE 观测、设置与退出生命周期。
-- [界面说明](gui-notes.md)：现有 Avalonia/FluentAvalonia 布局、编辑保护和界面验证。
+- [界面说明](gui-notes.md)：现有 Avalonia/FluentAvalonia 布局、编辑保护和界面验证；0.8.9 新增贴合度测试与黄金听感窗口的设计说明。
 - [日常控制层](daily-notes.md)：GET/SET、通知订阅、字段合并与结果证据。
 - [CLI 工具](cli-tools.md)：保留的只读查询和受控 Hi-Res 实验，其边界独立于当前 GUI。
 - [发布说明来源](../packaging/README.md) 与 [来源及许可](../packaging/SOURCE-NOTES.md)：构建时复制到发布包。

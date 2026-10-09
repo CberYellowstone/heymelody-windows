@@ -1,10 +1,12 @@
 # HeyMelody for Windows
 
-**0.8.8** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型和动画展示。
+**0.8.9** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型和动画展示。
 
-2026-10-09完成 [黄金听感与耳机贴合度重新研究](docs/research/calibration-reassessment.md)，并据此[修复现有校准组件](docs/research/calibration-repair.md)：改正佩戴查询、测听路由、双耳滤波解析、滑块调档与扫描/保存流程。完整研究过程和结果在 [research/](research/calibration-reassessment-20261009/README.md)。本次提交修复源码，发布版本号仍为0.8.8。
+2026-10-09完成 [黄金听感与耳机贴合度重新研究](docs/research/calibration-reassessment.md)，并据此[修复现有校准组件](docs/research/calibration-repair.md)：改正佩戴查询、测听路由、双耳滤波解析、滑块调档与扫描/保存流程。完整研究过程和结果在 [research/](research/calibration-reassessment-20261009/README.md)。该次源码修复当时未改变版本号，随 0.8.9 一并发布。
 
 用户授权的[X4 v116实测](research/calibration-reassessment-20261009/LIVE-TEST.md)已完成：贴合度双耳良好；黄金听感12项手动测听、两类滤波、保存/启用与读回成功，原方案公开字段恢复并逐字节核对。实测使用研究工具；本次应用修复的验证范围与该实测分别记录，不将其当成修复后的完整客户端实测。
+
+0.8.9 重新设计贴合度测试与黄金听感两个独立窗口：沿用设备管理器的上部 Mica Alt 与底部不透明操作栏，按钮按 Windows 向导顺序排列为“上一步 · 下一步 · 取消”。黄金听感参照 ColorOS 设置向导，显示“耳道扫描 → 听音测试”步骤、随主题变化的波纹主图、居中说明与“当前测试左耳/右耳”，进度由左右两组共 12 个进度条组成，当前频段显示为半满；音量条使用原生刻度。结果页用切换按钮比较原音与黄金听感，再命名保存；贴合度结果改为左右耳状态卡片加建议提示。暂停原因、设备拒绝与错误统一显示在信息栏中。详见 [界面说明](docs/gui-notes.md#校准窗口)。
 
 0.8.8 重新整理右侧控制面板：设备名称、连接状态点和连接操作固定在顶部，圆点以绿、黄、灰表示已连接、正在连接或写入、未连接；连接时不再在“已连接”后显示固件版本，离线时在名称下方显示上次连接时间，取代原先的缓存提示框。进度条使用固定槽位淡入淡出，显示和消失都不会推动下方控件。各卡片补齐 Segoe Fluent Icons 风格图标（无对应字形时使用 OPPO 无线耳机资源中的矢量图标）和简短描述，动态功能行按原生设置条目对齐，电量卡改为图标加充电标记。详见 [界面说明](docs/gui-notes.md)。
 
@@ -51,7 +53,7 @@ Demo 使用预装的 Enco Free4 丹拿版（`06C010`、色号 `3`）三维模型
 dotnet build src/HeyMelody.App/HeyMelody.App.csproj -c Release
 dotnet run --project tests/HeyMelody.Resources.Tests
 dotnet run --project tests/HeyMelody.Calibration.Tests
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.8
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.9
 ```
 
 常规构建和离线测试使用仓库中的资源包，不需要本地 APK。重新提取资源需要 `research/apps/` 和 `research/screenshots/` 中的固定输入及各专题保留的原件，入口是 `tools/bundle_resources.py`；目录组织、提交边界与历史路径映射见 [研究资料归档](docs/research/README.md)。运行中的软件不读取研究目录。原始资源版权与溯源保留在发布包的 notices 和资源清单中。
