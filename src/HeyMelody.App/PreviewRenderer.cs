@@ -56,13 +56,25 @@ internal static class PreviewRenderer
                 if ((options.Live || options.Scenario == "connected") && !vm.HasVerifiedSnapshot)
                     throw new InvalidOperationException("没有可信的耳机状态，无法生成连接预览。");
                 var view = new MainView { DataContext = vm };
-                if (options.ExpandSettings) view.ExpandAllSettings();
                 var window = new Window { Width = options.Width, Height = options.Height, Content = view, WindowDecorations = WindowDecorations.None };
                 try
                 {
                     window.Show();
                     Dispatcher.UIThread.RunJobs();
+                    if (options.ExpandSettings)
+                    {
+                        // Expanders exist only after the templates are realized, and their clip animates open.
+                        view.ExpandAllSettings();
+                        var timer = System.Diagnostics.Stopwatch.StartNew();
+                        while (timer.Elapsed < TimeSpan.FromMilliseconds(350))
+                        {
+                            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                            Dispatcher.UIThread.RunJobs();
+                            await Task.Delay(20);
+                        }
+                    }
                     AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                    Dispatcher.UIThread.RunJobs();
                     using var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("渲染器未生成图像。");
                     using var output = new FileStream(Path.GetFullPath(options.Output), FileMode.CreateNew, FileAccess.Write);
                     frame.Save(output, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);

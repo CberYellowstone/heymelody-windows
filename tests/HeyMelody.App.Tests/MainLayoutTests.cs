@@ -16,7 +16,8 @@ internal static class MainLayoutTests
         Run("real-device layout keeps ANC visible and other panels collapsed", () => LayoutAsync(false));
         Run("demo layout uses the same collapsed defaults and eight-pixel spacing", () => LayoutAsync(true));
         Run("device information copies current fields and handles pending, failed and stale requests", CopyAsync);
-        return 3;
+        Run("pinned header keeps its status dot and activity slot stable during reads and writes", HeaderActivityAsync);
+        return 4;
 
         void Run(string name, Func<Task> action)
         {
@@ -50,13 +51,16 @@ internal static class MainLayoutTests
                         var selector = anc.GetVisualDescendants().OfType<AncModeSelector>().Single();
                         Check(anc.CornerRadius == new CornerRadius(6) && anc.IsVisible && selector.IsVisible
                             && selector.Bounds.Width > 0 && selector.Bounds.Height > 0
-                            && anc.GetVisualDescendants().OfType<FASymbolIcon>().Any(icon => icon.Symbol == FASymbol.Audio)
+                            && view.FindControl<FAIconSourceElement>("AncIcon") is { IconSource: not null } ancIcon
+                            && anc.GetVisualDescendants().Contains(ancIcon) && ancIcon.Bounds.Width > 0
                             && anc.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == "调整你听见的环境声音"),
-                            "ANC is a rounded card with its header, description and functional selector always present.");
+                            "ANC is a rounded card with its header icon, description and functional selector always present.");
                         Check(view.GetVisualDescendants().OfType<FASettingsExpander>().Any()
                             && view.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => !expander.IsExpanded)
-                            && !view.FindControl<Expander>("OperationLogPanel")!.IsExpanded,
-                            "All optional main-interface groups start collapsed, including demo groups.");
+                            && !view.FindControl<FASettingsExpander>("OperationLogPanel")!.IsExpanded,
+                            "All optional main-interface groups start collapsed, including demo groups and the operation log.");
+                        CheckHeader(view, vm, window);
+                        CheckIcons(view);
                         var fit = view.FindControl<FASettingsExpanderItem>("FitTestPanel")!;
                         var hearing = view.FindControl<FASettingsExpander>("HearingPanel")!;
                         var information = view.FindControl<FASettingsExpander>("DeviceInfoPanel")!;
@@ -70,7 +74,7 @@ internal static class MainLayoutTests
                         var copy = view.FindControl<Button>("CopyDeviceInfoButton")!;
                         var copyContent = (StackPanel)copy.Content!;
                         Check(copy.IsEnabled && information.Footer is null && !information.IsExpanded
-                            && copyContent.Children[0] is FASymbolIcon { Symbol: FASymbol.Copy }
+                            && copyContent.Children[0] is FAIconSourceElement { IconSource: FAFontIconSource { Glyph: "\uE8C8" } }
                             && copyContent.Children[1] is TextBlock { Text: "复制" },
                             "Copy keeps its icon and text in the expanded information content, not in the header.");
                         var picker = view.FindControl<ListBox>("DevicePicker")!;
@@ -198,6 +202,81 @@ internal static class MainLayoutTests
             Check(!button.IsEnabled, "Closing the view disables device-information copying.");
         }
         finally { window.Close(); }
+    }
+
+    private static async Task HeaderActivityAsync()
+    {
+        var service = new InteractionTests.BlockingService();
+        await using var vm = new MainViewModel(service, new NoConfirm());
+        await vm.InitializeAsync(); await vm.ConnectCommand.ExecuteAsync(null);
+        var view = new MainView { DataContext = vm };
+        var window = new Window { Content = view, Width = 1280, Height = 900, WindowDecorations = WindowDecorations.None };
+        try
+        {
+            window.Show(); Dispatcher.UIThread.RunJobs();
+            var bar = view.FindControl<ProgressBar>("ActivityBar")!;
+            var dot = view.FindControl<Avalonia.Controls.Shapes.Ellipse>("ConnectionDot")!;
+            var scroll = view.FindControl<ScrollViewer>("ControlScroll")!;
+            var battery = view.FindControl<Border>("BatteryPanel")!;
+            (double Scroll, double Battery, Rect Bar) Positions() => (scroll.TranslatePoint(default, window)!.Value.Y,
+                battery.TranslatePoint(default, window)!.Value.Y, new Rect(bar.TranslatePoint(default, window)!.Value, bar.Bounds.Size));
+            var idle = Positions();
+            Check(!vm.HasActivity && bar.IsVisible && !bar.IsIndeterminate && !bar.Classes.Contains("active")
+                && Math.Abs(bar.Bounds.Height - 3) < .01 && vm.Indicator == ConnectionIndicator.Online && dot.Classes.Contains("online"),
+                "An idle activity bar keeps its three-pixel slot while the connected dot is green.");
+            service.BlockNextRead = true;
+            var read = vm.PollAsync();
+            await service.ReadStarted.Task.WaitAsync(TimeSpan.FromSeconds(3)); Dispatcher.UIThread.RunJobs();
+            Check(vm.IsRefreshing && bar.IsIndeterminate && bar.Classes.Contains("active") && Positions() == idle
+                && vm.Indicator == ConnectionIndicator.Online,
+                "A background read shows activity without moving content or implying a connection change.");
+            var action = vm.SelectAncModeAsync(vm.AncModes.Single(mode => mode.Key == 0)); Dispatcher.UIThread.RunJobs();
+            Check(!action.IsCompleted && vm.Indicator == ConnectionIndicator.Pending && dot.Classes.Contains("pending")
+                && !dot.Classes.Contains("online") && Positions() == idle,
+                "A queued write turns the dot yellow while the layout stays fixed.");
+            service.ReleaseRead.TrySetResult();
+            await action.WaitAsync(TimeSpan.FromSeconds(3)); await read.WaitAsync(TimeSpan.FromSeconds(3)); Dispatcher.UIThread.RunJobs();
+            Check(!vm.HasActivity && !bar.IsIndeterminate && !bar.Classes.Contains("active") && Positions() == idle
+                && vm.Indicator == ConnectionIndicator.Online && dot.Classes.Contains("online") && !dot.Classes.Contains("pending"),
+                "Finishing the read and write hides activity in place and restores the green dot.");
+        }
+        finally { service.ReleaseRead.TrySetResult(); window.Close(); }
+    }
+
+    private static void CheckHeader(MainView view, MainViewModel vm, Window window)
+    {
+        var header = view.FindControl<Grid>("DeviceHeader")!;
+        var dot = view.FindControl<Avalonia.Controls.Shapes.Ellipse>("ConnectionDot")!;
+        var title = view.FindControl<TextBlock>("DeviceTitle")!;
+        var subtitle = view.FindControl<TextBlock>("DeviceSubtitle")!;
+        var bar = view.FindControl<ProgressBar>("ActivityBar")!;
+        var scroll = view.FindControl<ScrollViewer>("ControlScroll")!;
+        var dotCentre = dot.TranslatePoint(new Point(dot.Bounds.Width / 2, dot.Bounds.Height / 2), window)!.Value;
+        var titleTop = title.TranslatePoint(default, window)!.Value;
+        var subtitleTop = subtitle.TranslatePoint(default, window)!.Value;
+        var barTop = bar.TranslatePoint(default, window)!.Value.Y;
+        var scrollTop = scroll.TranslatePoint(default, window)!.Value.Y;
+        Check(dotCentre.X < titleTop.X && Math.Abs(dotCentre.Y - (titleTop.Y + title.Bounds.Height / 2)) < 1
+            && Math.Abs(subtitleTop.X - titleTop.X) < .6 && subtitleTop.Y >= titleTop.Y + title.Bounds.Height - .6
+            && subtitle.Text == vm.Subtitle && !vm.Subtitle.Contains("固件", StringComparison.Ordinal)
+            && dot.Classes.Contains("online") == (vm.Indicator == ConnectionIndicator.Online),
+            "The status dot sits left of the name, and the caption below it omits firmware.");
+        Check(!scroll.GetVisualDescendants().Contains(header) && barTop >= header.TranslatePoint(default, window)!.Value.Y + header.Bounds.Height
+            && scrollTop >= barTop + bar.Bounds.Height && bar.IsVisible && view.FindControl<Control>("CachedSettingsNotice") is null,
+            "The header and activity slot stay pinned above the scrolling settings.");
+    }
+
+    private static void CheckIcons(MainView view)
+    {
+        var expanders = view.GetVisualDescendants().OfType<FASettingsExpander>().ToArray();
+        var sections = view.GetVisualDescendants().OfType<FeatureSectionView>().Select(section => (FASettingsExpander)section.Content!).ToArray();
+        Check(expanders.All(expander => expander.IconSource is not null && !string.IsNullOrEmpty(expander.Description))
+            && view.FindControl<FASettingsExpander>("EqualizerPanel")!.IconSource is FAFontIconSource { Glyph: "\uE9E9" }
+            && view.FindControl<FASettingsExpanderItem>("FitTestPanel")!.IconSource is not null
+            && sections.Length == ((MainViewModel)view.DataContext!).FeatureSections.Count
+            && view.FindControl<Border>("BatteryPanel")!.GetVisualDescendants().OfType<FAIconSourceElement>()
+                .Count(icon => icon.IconSource is FAPathIconSource) == 3,
+            "Every settings card, dynamic section and battery cell has an icon, and every card has a description.");
     }
 
     private static string Expected(MainViewModel vm) => $"设备名称：{vm.Title}{Environment.NewLine}产品编号：{vm.ProductId ?? "—"}{Environment.NewLine}固件版本：{vm.Firmware ?? "—"}";

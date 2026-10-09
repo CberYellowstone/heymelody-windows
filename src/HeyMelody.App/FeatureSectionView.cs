@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using Avalonia.VisualTree;
 using FluentAvalonia.UI.Controls;
 
@@ -19,11 +18,11 @@ public sealed class FeatureSectionView : UserControl
         _section = DataContext as FeatureSectionViewModel;
         if (_section is not { } section) { Content = null; return; }
         _owner = this.FindAncestorOfType<MainView>();
-        var expander = new FASettingsExpander { Header = section.Header, Description = section.Description,
+        var expander = new FASettingsExpander { Header = section.Header, IconSource = AppIcons.Source(IconFor(section.Id)),
+            Description = string.IsNullOrWhiteSpace(section.Description) ? DescriptionFor(section.Id) : section.Description,
             IsExpanded = _owner?.SectionExpanded(section.Id) ?? false };
         _expander = expander;
-        expander.Items.Add(new ItemsControl { ItemsSource = section.Controls,
-            ItemTemplate = new FuncDataTemplate<FeatureControlViewModel>((control, _) => new FeatureControlView { DataContext = control }) });
+        foreach (var control in section.Controls) expander.Items.Add(new FeatureControlView { DataContext = control });
         expander.PropertyChanged += (_, e) =>
         {
             if (!_restoring && e.Property == FASettingsExpander.IsExpandedProperty)
@@ -31,6 +30,21 @@ public sealed class FeatureSectionView : UserControl
         };
         Content = expander;
     }
+    // Device resources define these groups without icons or captions.
+    internal static AppIcon IconFor(string id) => id switch
+    {
+        "audio-features" or "audio" => AppIcon.Sound,
+        "device-features" => AppIcon.Earbuds,
+        "gesture-features" => AppIcon.Gestures,
+        _ => AppIcon.Settings
+    };
+    internal static string? DescriptionFor(string id) => id switch
+    {
+        "audio-features" or "audio" => "音效、低延迟与音质",
+        "device-features" => "连接、佩戴与提示音",
+        "gesture-features" => "左右耳手势",
+        _ => null
+    };
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);

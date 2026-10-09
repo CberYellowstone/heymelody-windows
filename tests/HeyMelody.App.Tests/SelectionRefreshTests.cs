@@ -123,7 +123,11 @@ internal static class SelectionRefreshTests
             Check(!FeatureTestData.Anc(view).IsEnabled && !FeatureTestData.Switch(view, "game").IsEnabled
                 && !view.FindControl<ItemsControl>("BandEditor")!.IsEnabled && !vm.CanFitTest && !vm.CanSetupHearing,
                 "All device operations are disabled without hiding the last controls.");
-            Check(view.FindControl<Control>("CachedSettingsNotice")!.IsVisible, "The offline cache notice is visible.");
+            var subtitle = view.FindControl<TextBlock>("DeviceSubtitle")!;
+            var lastConnected = "上次连接 " + vm.PresentationSampleTime!.Value.ToLocalTime().ToString("yyyy/M/d HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+            Check(view.FindControl<Control>("CachedSettingsNotice") is null && subtitle.Text == lastConnected
+                && vm.Indicator == ConnectionIndicator.Offline && !view.FindControl<Avalonia.Controls.Shapes.Ellipse>("ConnectionDot")!.Classes.Contains("online"),
+                "The header shows the last connection time beneath the name instead of a cache notice.");
             foreach (var dark in new[] { false, true })
             foreach (var size in new[] { new Size(1280, 900), new Size(900, 640) })
             {
@@ -148,7 +152,9 @@ internal static class SelectionRefreshTests
             Check(vm.HasVerifiedSnapshot && vm.Firmware == "0.8.7-test"
                 && vm.FeatureSections.SelectMany(section => section.Controls).Select(control => control.Id).SequenceEqual(["new-control"]),
                 "Fresh firmware features replace the cache, including removal of previous controls.");
-            Check(!view.FindControl<Control>("CachedSettingsNotice")!.IsVisible, "Fresh state hides the offline cache notice.");
+            Check(subtitle.Text == "已连接" && vm.Indicator == ConnectionIndicator.Online
+                && view.FindControl<Avalonia.Controls.Shapes.Ellipse>("ConnectionDot")!.Classes.Contains("online"),
+                "Fresh state replaces the last connection time with the connected caption and green dot.");
             Check(service.Actions.Count == 0, "Reconnect does not replay offline actions.");
         }
         finally { window.Close(); }

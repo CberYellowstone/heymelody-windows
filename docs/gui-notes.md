@@ -1,14 +1,20 @@
-# HeyMelody Avalonia 界面（0.8.7）
+# HeyMelody Avalonia 界面（0.8.8）
 
 0.6.0 完成 Windows Enco X4 功能的 Avalonia 初版迁移，0.6.1 改进后台刷新、交互及失败处理。当前界面使用 Avalonia 12.1.3、FluentAvaloniaUI 3.1.0 和 CommunityToolkit.Mvvm 8.4.2，功能随资源目录及实际设备能力提供。界面和客户端状态模型分别位于 `HeyMelody.App` 与 `HeyMelody.Client`；DTO、schema-3 双向命名管道契约及私有 worker 的 stdio 契约位于 `HeyMelody.Contracts`。`HeyMelody.Host` 独立托盘后台监管每台耳机的原生 worker，Windows 蓝牙调用不进入界面线程。
 
-当前源码及发布脚本默认版本均为 0.8.7。主界面底部设备卡片显示统一的通用矢量耳机图标、名称与状态，不使用 Enco X4 专属图片或图标资源请求。设备信息的复制按钮位于展开内容底部。设备连接状态刷新时保留选择及高亮，重启后恢复上次选择；未连接时保留上次读取的控件并禁用设备操作，见 [设备选择与离线控件](device-state.md)。左侧外观下方没有重复文字；降噪常显，其他设置默认折叠，用户主动展开的状态继续保留。
+当前源码及发布脚本默认版本均为 0.8.8。
+
+0.8.8 重新整理右侧控制面板。设备名称、状态点、副标题以及连接／断开与刷新按钮组成固定页头，不随设置滚动。名称左侧的圆点用绿、黄、灰分别表示已验证控制、正在连接或写入（包括排队中的设置提交）、未连接；后台读取不改变圆点。连接时副标题只显示“已连接”，固件版本仍在设备信息中。离线展示缓存时，名称下方显示“上次连接 yyyy/M/d HH:mm”，取代原先的缓存提示信息条；时间取自 Host 缓存的最后一次核验采样（`PresentationSampleTime`）。其余副标题去掉“· 设置暂不可用”等重复后缀。页头下方是常驻 3px 的 ProgressBar 槽位，活动时淡入、空闲时淡出并停止动画，显示和消失都不改变下方布局。
+
+所有卡片补齐图标与描述。图标按 Segoe Fluent Icons 码位解析：系统装有 Segoe Fluent Icons（Windows 11）时使用系统字体，否则使用 FluentAvalonia 自带的同码位符号字体；Segoe 没有对应字形的降噪、黄金听感、单只耳塞及左右耳／充电盒电量图标，改用 OPPO 无线耳机 17.6.3 资源中的矢量路径（`OppoGlyphs.cs`）。修正均衡器图标空白的问题。声音、耳机设置、操控三个动态分组补充描述；每个功能行直接作为原生设置条目显示，开关与标签居中对齐，开关右缘与其他编辑控件对齐。电量卡用图标区分左右耳和充电盒，充电时显示闪电图标，详细充电状态移入提示文字。黄金听感改为“听感配置”“建立听感”两条设置条目，贴合度测试使用与其他卡片相同的外观和高度，操作记录改为设置卡片并记住展开状态。降噪卡在尚无模式时显示说明文字，演示和非 Windows 预览提示均已精简。
+
+0.8.7 起主界面底部设备卡片显示统一的通用矢量耳机图标、名称与状态，不使用 Enco X4 专属图片或图标资源请求。设备信息的复制按钮位于展开内容底部。设备连接状态刷新时保留选择及高亮，重启后恢复上次选择；未连接时保留上次读取的控件并禁用设备操作，见 [设备选择与离线控件](device-state.md)。左侧外观下方没有重复文字；降噪常显，其他设置默认折叠，用户主动展开的状态继续保留。
 
 设备信息新增“复制”按钮，左侧为复制图标，右侧为文字。复制内容与该区显示一致，包含设备名称、产品编号和固件版本，未取得的值使用“—”；点击时读取当前设备值。贴合度测试与设备信息之间增加与其他设置一致的 8px 间距。三维模型默认 GPU 优先，已保存的软件选择及自动软件回退保留，见 [渲染设置](model-rendering.md)。主界面和管理器继续接收共享后台状态推送；本轮验证及历史范围见 [仓库说明](../REPOSITORY.md)。
 
 ## 界面与现有功能
 
-参考 `research/main-page.png` 和 `research/headphone-configs.png`，默认窗口 1280×900，最小 900×640：左侧展示产品，右侧显示身份、电量和设置，底部固定设备选择区。宽度小于 1080 时改为上下布局，设置区域单独滚动。内嵌 X4 产品大图使用用户提供的 `research/x4-pods-with-earphones.png`；两张原始 1440×1440 透明 PNG 仍嵌入 App 的 `Assets/Devices/EncoX4`，运行时不依赖 `research` 目录，历史底栏素材不再用作设备卡片图标。
+参考 `research/main-page.png` 和 `research/headphone-configs.png`，默认窗口 1280×900，最小 900×640：左侧展示产品，右侧顶部固定显示身份、连接状态与操作，其下为电量和设置，底部固定设备选择区。宽度小于 1080 时改为上下布局，右侧页头仍固定，设置区域单独滚动。内嵌 X4 产品大图使用用户提供的 `research/x4-pods-with-earphones.png`；两张原始 1440×1440 透明 PNG 仍嵌入 App 的 `Assets/Devices/EncoX4`，运行时不依赖 `research` 目录，历史底栏素材不再用作设备卡片图标。
 
 上述路径是图像采用时的原始出处。2026-10-08 归档后的访问入口为 [主界面参考](../research/screenshots/main-page.png)、[设置参考](../research/screenshots/headphone-configs.png)、[X4 产品大图](../research/screenshots/x4-pods-with-earphones.png) 与 [X4 底栏图标](../research/screenshots/x4-both-earphones.png)；文件仍仅在本地保存，组织规则见 [研究资料归档](research/README.md)。
 
@@ -59,6 +65,8 @@ dotnet run --project tests/HeyMelody.DeviceManager.Tests -c Release -- --native-
 dotnet run --project tests/HeyMelody.DeviceManager.Tests -c Release -- --native-alt-f4-smoke
 ```
 
+0.8.8 在 Linux x64 上以 Release 配置运行默认测试中可在该平台执行的 11 个 runner，共 483 项通过：Protocol 47、Resources 25、Calibration 18、Calibration.UI 5、Devices 19、Control 19、Daily 101、Probe 23、Client 137、App 81、DeviceManager 8。App.Tests 在非 Windows 上为 81 项（Windows 预期 89 项），新增固定页头、三态状态点、上次连接副标题、卡片图标与描述，以及阻塞读取和排队写入期间进度槽位与内容坐标完全不变的检查。App 另行交叉编译 `win-x64`，Host.Tests 在启用 Windows 目标后编译通过。未运行面向 Windows 的 Host.Tests、Windows.OfflineChecks、各 `--native-*` 原生窗口检查、打包及两个静态校验器；Linux 截图缺少中文字体，只用于核对布局与图标。
+
 0.8.7 的 Release App.Tests 通过 [88 项](../artifacts/avalonia-ui-20261009-064833-8db56972/validation.json)，新增实际 ListBox 绑定的连接刷新、多设备排序、空选择恢复及后台重启检查，以及四张明暗主题／宽窄离线缓存截图。复制按钮默认折叠时不可点击，展开后位于字段下方并通过实际鼠标命中验证；通用图标与文字整组居中。另行运行的原生主窗口检查通过 [59 项](../artifacts/release-087-20261009/native-main.log)，原生 Demo 通过 [40 项](../artifacts/native-demo-087-20261009/native-demo-receipts.json)，Automatic 在本机实际使用 OpenGL GPU，保留 20 个 mesh、94,927 个三角形，展开后全部 34 个控件可用。以上为源码／模拟服务验证；剪贴板使用替身，未验证真实耳机、完整发布客户端启动、系统剪贴板往返或原生 ARM64 硬件。
 
 0.8.6 的 Release App.Tests 已通过 84 项，报告为 [validation.json](../artifacts/avalonia-ui-20261008-235907-07a68893/validation.json)。当时新增真实／演示设备的浅色、深色、宽窄默认折叠及设备信息区域截图，核对降噪常显、文字设备卡片、复制按钮与 8px 实际间距；复制测试覆盖当前字段、失败重试、并发和切换／关闭后的迟到反馈。交互检查等待展开动画完成并确认实际鼠标命中目标控件，剪贴板写入使用替身，未验证系统剪贴板往返。另行运行的原生主窗口检查通过 59 项，使用内存服务，不提交耳机设置。
@@ -87,7 +95,7 @@ dotnet src/HeyMelody.App/bin/Release/net10.0/HeyMelody.dll --ui-preview artifact
 dotnet src/HeyMelody.App/bin/Release/net10.0/HeyMelody.dll --ui-preview artifacts/preview-eq.png --size 1280x1800 --expand-settings
 ```
 
-`--scenario` 可选 `connected`、`empty`、`unsupported`、`partial`、`disconnected`。模拟服务与预览状态模型分别拒绝设置写入。预览不包含系统原生标题栏。
+`--scenario` 可选 `connected`、`empty`、`unsupported`、`partial`、`disconnected`。模拟服务与预览状态模型分别拒绝设置写入。预览不包含系统原生标题栏。0.8.8 起 `--expand-settings` 在窗口显示、模板实例化后再展开并等待展开动画；此前在显示前调用，实际不会展开任何分组。
 
 `--ui-live-preview <新PNG路径>` 通过只读包装访问原 Windows 后台，仅允许唯一已连接且名称精确为 OPPO Enco X4 的设备。没有可信快照即退出 1，不生成连接截图；结束时释放自己的客户端订阅与管道，共享 Host 继续运行。只读包装允许枚举、选择和读取，不恢复已被用户暂停的控制会话，不允许设置写入，也不启动轮询；共享后台仍可能对其他已连接白名单耳机执行正常监听。
 

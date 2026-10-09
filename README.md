@@ -1,6 +1,8 @@
 # HeyMelody for Windows
 
-**0.8.7** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型和动画展示。
+**0.8.8** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型和动画展示。
+
+0.8.8 重新整理右侧控制面板：设备名称、连接状态点和连接操作固定在顶部，圆点以绿、黄、灰表示已连接、正在连接或写入、未连接；连接时不再在“已连接”后显示固件版本，离线时在名称下方显示上次连接时间，取代原先的缓存提示框。进度条使用固定槽位淡入淡出，显示和消失都不会推动下方控件。各卡片补齐 Segoe Fluent Icons 风格图标（无对应字形时使用 OPPO 无线耳机资源中的矢量图标）和简短描述，动态功能行按原生设置条目对齐，电量卡改为图标加充电标记。详见 [界面说明](docs/gui-notes.md)。
 
 0.8.7 恢复底部设备栏的通用耳机图标，仍移除 Enco X4 专属图片，并将复制按钮放到设备信息展开内容的底部。设备连接状态刷新时保留选择与高亮，重启后恢复上次选择的已启用设备。连接成功后缓存功能、选项和设置值；未连接时显示并禁用缓存控件，重新连接并读取后更新，包括固件新增或删除的功能。缓存说明见 [设备选择与离线控件](docs/device-state.md)。
 
@@ -45,7 +47,7 @@ Demo 使用预装的 Enco Free4 丹拿版（`06C010`、色号 `3`）三维模型
 dotnet build src/HeyMelody.App/HeyMelody.App.csproj -c Release
 dotnet run --project tests/HeyMelody.Resources.Tests
 dotnet run --project tests/HeyMelody.Calibration.Tests
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.7
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.8
 ```
 
 常规构建和离线测试使用仓库中的资源包，不需要本地 APK。重新提取资源需要 `research/apps/` 和 `research/screenshots/` 中的固定输入及各专题保留的原件，入口是 `tools/bundle_resources.py`；目录组织、提交边界与历史路径映射见 [研究资料归档](docs/research/README.md)。运行中的软件不读取研究目录。原始资源版权与溯源保留在发布包的 notices 和资源清单中。

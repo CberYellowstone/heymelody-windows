@@ -316,7 +316,7 @@ internal static class InteractionTests
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private sealed class BlockingService : IHeadsetService
+    internal sealed class BlockingService : IHeadsetService
     {
         private readonly PreviewService _inner = new();
         private UiSnapshot? _snapshot;

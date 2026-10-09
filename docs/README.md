@@ -1,8 +1,8 @@
 # 文档索引
 
-当前版本为 0.8.7。除 Markdown 链接外，文档中的 `src/`、`tests/`、`docs/research/`、`reference/`、`artifacts/` 和 `release/` 路径均相对于仓库根目录。研究结论和工具位于 `docs/research/`，原始材料位于根目录 `research/`，具体位置见 [研究资料归档](research/README.md)。构建、发布和验证入口见 [REPOSITORY.md](../REPOSITORY.md)。
+当前版本为 0.8.8。除 Markdown 链接外，文档中的 `src/`、`tests/`、`docs/research/`、`reference/`、`artifacts/` 和 `release/` 路径均相对于仓库根目录。研究结论和工具位于 `docs/research/`，原始材料位于根目录 `research/`，具体位置见 [研究资料归档](research/README.md)。构建、发布和验证入口见 [REPOSITORY.md](../REPOSITORY.md)。
 
-- [设备选择与离线控件](device-state.md)：0.8.7 的选择恢复、完整功能缓存、只读离线展示与重新连接刷新。
+- [设备选择与离线控件](device-state.md)：0.8.7 的选择恢复、完整功能缓存、只读离线展示与重新连接刷新；0.8.8 改为在页头显示上次连接时间。
 
 ## 当前实现
 

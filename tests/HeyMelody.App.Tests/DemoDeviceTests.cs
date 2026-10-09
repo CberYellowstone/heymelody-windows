@@ -153,8 +153,9 @@ internal static class DemoDeviceTests
         Check(view.FindControl<ProductArtwork>("HeroArt")!.Visual is EncoFree4DynaudioModelVisual
             && view.FindControl<Grid>("HeroPanel")!.Children.Count == 1,
             "The demo selects the bundled Dynaudio model without duplicate captions beneath it.");
-        Check(view.FindControl<FAInfoBar>("DemoNotice")!.Message?.Contains("Enco Free4 丹拿版", StringComparison.Ordinal) == true,
-            "The temporary-device notice describes the actual Dynaudio appearance.");
+        Check(view.FindControl<FAInfoBar>("DemoNotice")!.Message == "控件仅模拟交互，关闭窗口后自动移除。"
+            && vm.Subtitle == "演示设备" && view.FindControl<Avalonia.Controls.Shapes.Ellipse>("ConnectionDot")!.Classes.Contains("online"),
+            "The temporary-device notice and header stay brief while marking the demo as connected.");
     }
 
     private static async Task CalibrationButtonsAsync()
@@ -190,7 +191,7 @@ internal static class DemoDeviceTests
         Check(view.FindControl<FAInfoBar>("DemoNotice") is { IsOpen: true, IsVisible: true }, "The temporary-device notice is visible.");
         CheckDynaudioPresentation(view, fixture.Vm);
         Check(view.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => !expander.IsExpanded)
-            && !view.FindControl<Expander>("OperationLogPanel")!.IsExpanded,
+            && !view.FindControl<FASettingsExpander>("OperationLogPanel")!.IsExpanded,
             "Demo settings and operation history start collapsed like real-device settings.");
         await MainUiTestLayout.ExpandSettingsAsync(view);
         Check(view.FindControl<ItemsControl>("BandEditor")!.Items.Count == 10, "The complete ten-band EQ editor is present.");
@@ -203,7 +204,7 @@ internal static class DemoDeviceTests
         // Inspect each row's actual editor, excluding hidden template parts such
         // as a non-editable ComboBox's internal TextBox.
         var editors = view.GetVisualDescendants().OfType<FeatureControlView>()
-            .Select(control => ((FASettingsExpanderItem)control.Content!).Footer as Control
+            .Select(control => control.Footer as Control
                 ?? throw new InvalidOperationException("A demo control has no editor.")).ToArray();
         Check(editors.Length == fixture.Vm.FeatureSections.Sum(section => section.Controls.Count),
             "Every dynamic control has an instantiated editor.");
@@ -215,7 +216,7 @@ internal static class DemoDeviceTests
                 $"Demo editor {((FeatureControlViewModel)editor.DataContext!).Id} fits within the control column: " +
                 $"enabled={editor.IsEffectivelyEnabled}, bounds={editor.Bounds}, origin={origin}, scroll={scroll.Bounds}");
         }
-        var log = view.GetVisualDescendants().OfType<Expander>().Single(expander => Equals(expander.Header, "操作记录"));
+        var log = view.GetVisualDescendants().OfType<FASettingsExpander>().Single(expander => Equals(expander.Header, "操作记录"));
         log.IsExpanded = true; Dispatcher.UIThread.RunJobs();
         var maximum = Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height);
         var step = Math.Max(1, scroll.Viewport.Height * 0.8);

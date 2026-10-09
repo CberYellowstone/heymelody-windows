@@ -65,7 +65,14 @@ public sealed class AncModeSelector : UserControl
             _radios[mode.Key] = (radio, circle);
             modes.Children.Add(radio);
         }
-        panel.Children.Add(modes);
+        if (model.AncModes.Count != 0) panel.Children.Add(modes);
+        else
+        {
+            // Keep the always-visible card from looking broken before modes are read.
+            var empty = new TextBlock { Text = "暂无可用的降噪模式", HorizontalAlignment = HorizontalAlignment.Center };
+            empty.Classes.Add("caption");
+            panel.Children.Add(empty);
+        }
         var combo = new ComboBox { Name = "AncCombo", ItemsSource = model.SelectedAncMode?.Options ?? [],
             SelectedItem = model.SelectedAncSubmode, MinWidth = 200, HorizontalAlignment = HorizontalAlignment.Center,
             IsEnabled = model.CanSetAnc, IsVisible = model.HasAncSubmodes, PlaceholderText = "档位未确认",

@@ -56,6 +56,8 @@ try
                 DeviceBarTests.CheckBottomBar(view, window);
                 var anc = FeatureTestData.Anc(view);
                 Check(anc.IsEnabled == (scenario is "connected" or "partial"), "Only verified models enable controls");
+                Check(view.FindControl<Avalonia.Controls.Shapes.Ellipse>("ConnectionDot")!.Classes.Contains("online") == vm.HasVerifiedSnapshot,
+                    "The header dot is green only for verified control");
                 DeviceVisualTests.CheckScenario(view, scenario);
                 if (scenario == "partial")
                 {

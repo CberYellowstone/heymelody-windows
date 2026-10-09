@@ -10,19 +10,22 @@ using FluentAvalonia.UI.Controls;
 namespace HeyMelodyWindows.App;
 
 /// <summary>Windows presentation for the small, explicitly supported value-control vocabulary.</summary>
-public sealed class FeatureControlView : UserControl
+/// <remarks>Each control is itself a settings row, so its section lays it out like any native expander item.</remarks>
+public sealed class FeatureControlView : FASettingsExpanderItem
 {
     public FeatureControlView() => DataContextChanged += (_, _) => Build();
+    protected override Type StyleKeyOverride => typeof(FASettingsExpanderItem);
 
     private void Build()
     {
-        if (DataContext is not FeatureControlViewModel model) { Content = null; return; }
-        var row = new FASettingsExpanderItem { Content = model.Label, Description = model.Description };
+        if (DataContext is not FeatureControlViewModel model) { Hide(); return; }
         Control editor;
         switch (model.Kind)
         {
             case "Switch":
-                var toggle = new ToggleSwitch { OnContent = "", OffContent = "" };
+                // The template keeps an empty header margin and a 12px column for the on/off text;
+                // offset both so the knob is centred and aligns with other right-hand editors.
+                var toggle = new ToggleSwitch { OnContent = "", OffContent = "", Margin = new Thickness(0, -4, -12, 0) };
                 toggle.Bind(ToggleSwitch.IsCheckedProperty, new Binding(nameof(model.BooleanValue)) { Mode = BindingMode.OneWay });
                 toggle.Click += async (_, _) => { model.BooleanValue = toggle.IsChecked == true; await model.SubmitAsync(); };
                 editor = toggle;
@@ -69,14 +72,23 @@ public sealed class FeatureControlView : UserControl
                 editor = combo;
                 break;
             default:
-                Content = null;
+                Hide();
                 return;
         }
         editor.DataContext = model;
         editor.Bind(IsEnabledProperty, new Binding(nameof(model.CanEdit)));
         Avalonia.Automation.AutomationProperties.SetName(editor, model.Label);
         editor.HorizontalAlignment = HorizontalAlignment.Right;
-        row.Footer = editor;
-        Content = row;
+        Content = model.Label;
+        // An empty description still reserves a caption line and lifts the label off-centre.
+        Description = string.IsNullOrEmpty(model.Description) ? null : model.Description;
+        Footer = editor;
+        IsVisible = true;
+    }
+
+    private void Hide()
+    {
+        Content = null; Description = null; Footer = null;
+        IsVisible = false;
     }
 }

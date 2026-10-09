@@ -41,6 +41,7 @@ public partial class MainView : UserControl
         InitializeComponent();
         InitializeDeviceBar();
         InitializeDemoDeviceInteraction();
+        UpdateConnectionIndicator();
         VisualCatalog.PropertyChanged += (_, _) => UpdateHeroVisual();
         UserInputCommit.Combo(HearingProfileCombo, async () =>
         {
@@ -63,6 +64,7 @@ public partial class MainView : UserControl
             }
             UpdateArtwork();
             UpdateDemoPresentation();
+            UpdateConnectionIndicator();
             ResetDeviceInfoCopyFeedback();
             RequestDeviceSelectionSync();
             RequestDeviceCenter();
@@ -83,6 +85,22 @@ public partial class MainView : UserControl
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice)
             or nameof(MainViewModel.Title) or nameof(MainViewModel.ProductId) or nameof(MainViewModel.Firmware)
             or nameof(MainViewModel.Closing)) ResetDeviceInfoCopyFeedback();
+        if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName == nameof(MainViewModel.Indicator)) UpdateConnectionIndicator();
+    }
+
+    private void UpdateConnectionIndicator()
+    {
+        var indicator = ViewModel?.Indicator ?? ConnectionIndicator.Offline;
+        ConnectionDot.Classes.Set("pending", indicator == ConnectionIndicator.Pending);
+        ConnectionDot.Classes.Set("online", indicator == ConnectionIndicator.Online);
+        var text = indicator switch
+        {
+            ConnectionIndicator.Online => "已连接",
+            ConnectionIndicator.Pending => "正在连接或写入",
+            _ => "未连接"
+        };
+        ToolTip.SetTip(ConnectionDot, text);
+        Avalonia.Automation.AutomationProperties.SetName(ConnectionDot, "连接状态：" + text);
     }
 
     public void SetPlatformNotice(bool visible) => PlatformNotice.IsOpen = PlatformNotice.IsVisible = visible;
@@ -118,14 +136,14 @@ public partial class MainView : UserControl
             DeviceArea.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
             DeviceArea.RowDefinitions.Add(new RowDefinition(new GridLength(170)));
             DeviceArea.RowDefinitions.Add(new RowDefinition(GridLength.Star));
-            Grid.SetColumn(ControlScroll, 0); Grid.SetRow(ControlScroll, 1);
+            Grid.SetColumn(ControlPane, 0); Grid.SetRow(ControlPane, 1);
             HeroPanel.Margin = new Thickness(0); HeroArt.MaxHeight = 150;
         }
         else
         {
             DeviceArea.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
             DeviceArea.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(500)));
-            Grid.SetColumn(ControlScroll, 1); Grid.SetRow(ControlScroll, 0);
+            Grid.SetColumn(ControlPane, 1); Grid.SetRow(ControlPane, 0);
             HeroPanel.Margin = new Thickness(8, 0, 32, 0); HeroArt.MaxHeight = 520;
         }
     }

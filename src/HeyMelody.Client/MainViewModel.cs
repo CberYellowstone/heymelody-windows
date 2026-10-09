@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -21,6 +22,9 @@ public sealed class EqBandViewModel : ObservableObject
     public int Minimum { get => _minimum; internal set => SetProperty(ref _minimum, value); }
     public int Maximum { get => _maximum; internal set => SetProperty(ref _maximum, value); }
 }
+
+/// <summary>Header status: verified control, connection or write in progress, or no verified control.</summary>
+public enum ConnectionIndicator { Offline, Pending, Online }
 
 /// <summary>UI-independent editing, prioritized device work and bounded user-authorized retries.</summary>
 public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
@@ -52,7 +56,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private IReadOnlyList<UiDevice> _devices = [];
     private IReadOnlyList<UiOption> _ancOptions = [], _presetOptions = [], _spatialOptions = [];
     private IReadOnlyList<UiEqEntry> _eqEntries = [];
-    private string _title = "选择一副耳机", _subtitle = "连接耳机后查看设备状态", _status = "选择耳机后连接", _eqName = "我的均衡器";
+    private string _title = "选择一副耳机", _subtitle = "未连接", _status = "选择耳机后连接", _eqName = "我的均衡器";
     private bool _displaying, _eqDirty, _pendingAnc, _pendingPreset, _pendingSpatial, _closing, _closeRequested, _statusWarning;
     private Task? _disposeTask;
 
@@ -99,9 +103,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool CanConnect => !Closing && !_lifecyclePending && SelectedDevice is not null;
     public bool CanRefreshDevices => !Closing && !_lifecyclePending;
     public bool CanRefreshState => !Closing && !_lifecyclePending && _sessionIdentity is not null;
-    public string ConnectButtonText => IsDemoSelected ? "演示设备" : EventService is not null
-        ? _snapshot is null || _snapshot.MonitoringState == MonitoringState.Paused ? "连接耳机" : "断开客户端"
-        : _sessionIdentity is null ? "连接耳机" : "断开客户端";
+    public bool ShowsDisconnect => !IsDemoSelected && (EventService is not null
+        ? _snapshot is not null && _snapshot.MonitoringState != MonitoringState.Paused
+        : _sessionIdentity is not null);
+    public string ConnectButtonText => IsDemoSelected ? "演示设备" : ShowsDisconnect ? "断开客户端" : "连接耳机";
+    // Background reads are excluded: non-event sessions poll continuously and would flicker.
+    public ConnectionIndicator Indicator => Closing ? ConnectionIndicator.Offline
+        : _pending.Count != 0 || _hearingPending || _snapshot?.MonitoringState == MonitoringState.Connecting
+            || _lifecyclePending && !ManagingDevices && SelectedDevice is not null ? ConnectionIndicator.Pending
+        : HasVerifiedSnapshot ? ConnectionIndicator.Online : ConnectionIndicator.Offline;
     public bool CanChooseAnc => CanWrite && _snapshot!.CanSetAnc;
     public bool CanChooseAncMode => CanWrite && _snapshot!.CanSetAncMode;
     public bool CanChoosePreset => CanWrite && _snapshot!.CanSetEqualizer;
@@ -128,6 +138,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public string LeftChargeText => Charge(HasFreshObservation ? _snapshot?.LeftCharging : null, HasFreshObservation ? _snapshot?.LeftBattery : null);
     public string RightChargeText => Charge(HasFreshObservation ? _snapshot?.RightCharging : null, HasFreshObservation ? _snapshot?.RightBattery : null);
     public string CaseChargeText => Charge(HasFreshObservation ? _snapshot?.CaseCharging : null, HasFreshObservation ? _snapshot?.CaseBattery : null);
+    public bool LeftCharging => HasFreshObservation && _snapshot?.LeftCharging == true;
+    public bool RightCharging => HasFreshObservation && _snapshot?.RightCharging == true;
+    public bool CaseCharging => HasFreshObservation && _snapshot?.CaseCharging == true;
     public string? Firmware => _snapshot?.Firmware;
     public string? ProductId => _snapshot is { } snapshot
         && snapshot.Identity == _sessionIdentity && _sessionIdentity == SelectedDevice?.Identity
@@ -367,18 +380,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _displaying = true;
         UpdateResourcePresentation(snapshot);
         _title = snapshot.DeviceName;
-        _subtitle = IsDemoSelected ? "布局演示 · 全部控件 · 关闭界面后自动移除"
-            : snapshot.PresentationCached ? "显示上次读取的设置 · 当前只读" : IsVerifiedControl(snapshot)
-            ? $"已连接{(snapshot.Firmware is null ? "" : $" · 固件 {snapshot.Firmware}")}"
+        _subtitle = IsDemoSelected ? "演示设备"
+            : snapshot.PresentationCached ? snapshot.MonitoringState == MonitoringState.Connecting ? "正在连接…" : LastConnectedText(snapshot)
+            : IsVerifiedControl(snapshot) ? "已连接"
             : snapshot.MonitoringState switch
             {
-                MonitoringState.Unsupported => "该型号的设置尚未适配",
-                MonitoringState.Paused => "控制连接已暂停 · 设置暂不可用",
-                MonitoringState.Connecting => "正在建立耳机控制连接…",
-                MonitoringState.Unavailable => "耳机控制连接暂不可用",
-                _ when EventService is not null && snapshot.ObservationFresh => "耳机广播状态 · 控制连接未就绪",
-                MonitoringState.WaitingForConnection => "等待耳机连接 · 设置暂不可用",
-                _ => "控制连接未就绪，设置暂不可用"
+                MonitoringState.Unsupported => "该型号尚未适配",
+                MonitoringState.Paused => "控制连接已暂停",
+                MonitoringState.Connecting => "正在连接…",
+                MonitoringState.Unavailable => "控制连接不可用",
+                _ when EventService is not null && snapshot.ObservationFresh => "已收到耳机广播",
+                MonitoringState.WaitingForConnection => "等待耳机连接",
+                _ => "控制连接未就绪"
             };
         var anc = _pendingAnc ? _pendingAncKey : snapshot.Anc;
         var preset = _pendingPreset ? _pendingPresetKey : snapshot.Equalizer;
@@ -417,15 +430,19 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _displaying = true;
         if (_snapshot is not null)
         {
-            _subtitle = "连接不可用 · 显示上次读取的设置（只读）";
+            _subtitle = LastConnectedText(_snapshot);
             NotifyState(); _displaying = false; return;
         }
         if (!_pendingAnc) SelectedAnc = null;
         if (!_pendingPreset) SelectedPreset = null;
         if (!_pendingSpatial) SelectedSpatial = null;
-        _subtitle = "当前状态未确认，刷新成功后才可修改";
+        _subtitle = SelectedDevice is null ? "未连接" : "状态未确认";
         NotifyState(); _displaying = false;
     }
+
+    // The cached presentation time is the Host's last verified-control sample for this device.
+    private static string LastConnectedText(UiSnapshot snapshot) => snapshot.PresentationSampleTime is { } time
+        ? "上次连接 " + time.ToLocalTime().ToString("yyyy/M/d HH:mm", CultureInfo.InvariantCulture) : "未连接";
 
     private void ResetSelection()
     {

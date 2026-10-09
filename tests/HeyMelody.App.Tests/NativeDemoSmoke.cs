@@ -112,7 +112,7 @@ internal static class NativeDemoSmoke
             RecordControlLayout(page, vm, "collapsed");
             Check(page.FindControl<Border>("AncPanel") is { IsVisible: true }
                 && page.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => !expander.IsExpanded)
-                && !page.FindControl<Expander>("OperationLogPanel")!.IsExpanded,
+                && !page.FindControl<FASettingsExpander>("OperationLogPanel")!.IsExpanded,
                 "ANC remains visible while the demo's other groups start collapsed.");
             // The following native checks inspect all editors; explicitly open them
             // after verifying the same collapsed defaults offered to real users.
