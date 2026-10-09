@@ -11,6 +11,7 @@
 | [inspect_oppo_apk.py](inspect_oppo_apk.py) | APK来源与内置配置检查 |
 | [event_dex_audit.py](event_dex_audit.py)、[anc_dex_audit.py](anc_dex_audit.py)、[equalizer_dex_audit.py](equalizer_dex_audit.py) | 固定APK中事件、ANC与EQ相关DEX依据 |
 | [preset_name_audit.py](preset_name_audit.py) | 官方预设名称的资源依据 |
+| [game_audio_spatial_audit.py](game_audio_spatial_audit.py) | 固定两APK与X4固件的游戏／Hi-Res／空间离线审计；保存原件、原DEX、callback原字节和8源配置矩阵，默认另建research输出 |
 
 21个专题脚本原先位于 `docs/research/<专题>/scripts/`，2026-10-09迁到此处，旧路径解析与专题依赖同步更新。原字节版本位于本地 `research/<专题>/archive-2026-10-09/scripts/`，用于保留研究历史；运行入口使用此处维护版本。
 

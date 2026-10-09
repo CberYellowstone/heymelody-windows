@@ -223,7 +223,7 @@ internal static class RefreshInteractionTests
                 else Check(dialogs.Alerts == 0 && !vm.EqDirty && vm.SelectedEqEntry?.Id == 3 && vm.EqName == "创建后未激活" && vm.Bands[0].Gain == 4,
                     "Selecting an unchanged recovered entry must finish the original EQ save");
             });
-        await test("a partially submitted mutex transition requires explicit retry consent", async () =>
+        await test("an older partial-effect receipt retains explicit retry consent without an initial audio confirmation", async () =>
         {
             var service = new Service { HiRes = true }; var dialogs = new Dialogs { RetryAnswer = true };
             service.Write = (action, count, _) =>
@@ -235,7 +235,8 @@ internal static class RefreshInteractionTests
             };
             await using var vm = await Connected(service, dialogs); vm.SelectedSpatial = vm.SpatialOptions.Last();
             await vm.ApplySpatialCommand.ExecuteAsync(null);
-            Check(dialogs.Confirmations == 1 && dialogs.Retries == 1 && service.Actions.Count == 2, "Initial mutex consent does not authorize a later replay of partial work");
+            Check(dialogs.Confirmations == 0 && dialogs.Retries == 1 && service.Actions.Count == 2
+                && service.Actions.All(action => !action.AllowMutexChange), "Legacy partial effects remain evidence without introducing an audio prerequisite");
         });
         await test("cancelling an unsafe retry discards all drafts and queued writes before a full refresh", async () =>
         {
@@ -315,15 +316,17 @@ internal static class RefreshInteractionTests
             release.TrySetResult(); await Task.WhenAll(poll, write, change).WaitAsync(Deadline);
             Check(service.Actions.Count == 0 && service.Disconnections == 1 && vm.SelectedDevice?.Identity == "device-b" && !vm.HasVerifiedSnapshot, "The old generation must not publish snapshots or send queued settings after device change");
         });
-        await test("disconnecting during initial mutex consent prevents the first setter even after approval", async () =>
+        await test("disconnecting while an audio setting waits behind a read prevents its first setter", async () =>
         {
-            var service = new Service { HiRes = true }; var dialogs = new Dialogs { ConfirmationRelease = Answer() };
+            var service = new Service { HiRes = true }; var dialogs = new Dialogs(); var entered = Signal(); var release = Signal();
+            service.Read = async (_, _, token) => { entered.TrySetResult(); await release.Task.WaitAsync(token); return service.Snapshot(); };
             await using var vm = await Connected(service, dialogs); vm.SelectedSpatial = vm.SpatialOptions.Last();
-            var apply = vm.ApplySpatialCommand.ExecuteAsync(null); await dialogs.ConfirmationEntered.Task.WaitAsync(Deadline);
+            var poll = vm.PollAsync(); await entered.Task.WaitAsync(Deadline);
+            var apply = vm.ApplySpatialCommand.ExecuteAsync(null);
             var disconnect = vm.ConnectCommand.ExecuteAsync(null);
-            dialogs.ConfirmationRelease.SetResult(true); await Task.WhenAll(apply, disconnect).WaitAsync(Deadline);
-            Check(dialogs.Confirmations == 1 && service.Actions.Count == 0 && service.Disconnections == 1 && !vm.HasVerifiedSnapshot,
-                "A lifecycle request made during consent must supersede the older setting before its first submission");
+            release.TrySetResult(); await Task.WhenAll(poll, apply, disconnect).WaitAsync(Deadline);
+            Check(dialogs.Confirmations == 0 && service.Actions.Count == 0 && service.Disconnections == 1 && !vm.HasVerifiedSnapshot,
+                "A lifecycle request must supersede the queued audio setting before its first submission");
         });
         await test("closing cancels a background query and every queued write", async () =>
         {

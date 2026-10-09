@@ -33,10 +33,12 @@ public sealed partial class DailyClient(IControlConnector connector,
         ApplyCoreAsync("game", value ? (byte)1 : (byte)0, 0, null, false, token);
     public Task<DailyApplyResult> SetSpatialModeAsync(byte mode, CancellationToken token = default) =>
         SetSpatialModeAsync(mode, false, token);
+    /// <summary>The compatibility argument is retained; only the requested setting is submitted.</summary>
     public Task<DailyApplyResult> SetSpatialModeAsync(byte mode, bool allowMutexChange, CancellationToken token = default) =>
         ApplyCoreAsync("spatial", mode, 0, null, allowMutexChange, token);
     public Task<DailyApplyResult> SetHiResAsync(bool value, CancellationToken token = default) =>
         SetHiResAsync(value, false, token);
+    /// <summary>The compatibility argument is retained; only the requested setting is submitted.</summary>
     public Task<DailyApplyResult> SetHiResAsync(bool value, bool allowMutexChange, CancellationToken token = default) =>
         ApplyCoreAsync("hires", value ? (byte)1 : (byte)0, 0, null, allowMutexChange, token);
     public async ValueTask DisposeAsync()

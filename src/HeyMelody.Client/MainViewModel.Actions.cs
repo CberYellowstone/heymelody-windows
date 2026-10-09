@@ -90,13 +90,6 @@ public sealed partial class MainViewModel
     {
         if (!Current(intent)) return;
         var action = intent.Action;
-        if (_snapshot is { } initial && NeedsMutex(action, initial))
-        {
-            var consent = await Dialogs.RunAsync(token => _confirmations.ConfirmAsync("切换音频模式", MutexMessage(action), token), intent.Token);
-            if (!Current(intent) || _lifecyclePending) return;
-            if (!consent) { await CancelAndRefreshAsync(); return; }
-            action = action with { AllowMutexChange = true };
-        }
         if (!Current(intent) || _lifecyclePending || !Supports(action)) return;
         var first = await SubmitAsync(intent, action);
         if (!Current(intent)) return;
@@ -106,6 +99,21 @@ public sealed partial class MainViewModel
         { await FailAndRefreshAsync(intent, first, second: false); return; }
         if (first.ReadbackMatches == true && HasVerifiedSnapshot && GoalMatches(intent, intent.Action, _snapshot!))
         { FinishObserved(intent, first); return; }
+        if (IsGameSoundAction(action))
+        {
+            // These setters can change the active sound mode and play a headset prompt.
+            // Reconcile an uncertain result by reading, without replaying the user's click.
+            if (first.FailureKind is not (ApplyFailure.PeerRejected or ApplyFailure.Validation or ApplyFailure.StateUnavailable or ApplyFailure.MutexConsentRequired))
+            {
+                intent.Stage = "正在核对"; NotifyState();
+                var observed = await ReadFullAsync(intent.Epoch);
+                if (!Current(intent) || _lifecyclePending) return;
+                if (observed is not null && HasVerifiedSnapshot && observed.ConnectionState == ConnectionState.Connected
+                    && GoalMatches(intent, action, observed))
+                { FinishObserved(intent, first); return; }
+            }
+            await FailAndRefreshAsync(intent, first, second: false); return;
+        }
 
         var repeatable = Repeatable(action, first, _snapshot);
         if (repeatable)
@@ -157,24 +165,6 @@ public sealed partial class MainViewModel
         {
             await FailAndRefreshAsync(intent, new() { BackendReceiptReceived = true, ConnectionState = ConnectionState.Connected,
                 FailureKind = ApplyFailure.Validation, Message = "设备最新能力或条目已改变，无法再次写入。" }, second: true); return;
-        }
-        if (NeedsMutex(action, beforeRetry))
-        {
-            if (repeatable)
-            {
-                // The phone may have changed the other mode since the previous verification.
-                var approved = await Dialogs.RunAsync(token => _confirmations.ConfirmRetryAsync("是否再次写入？",
-                    RetryMessage(action, first), token), intent.Token);
-                if (!Current(intent) || _lifecyclePending) return;
-                if (!approved) { await CancelAndRefreshAsync(); return; }
-                beforeRetry = await ReadFullAsync(intent.Epoch);
-                if (!Current(intent) || _lifecyclePending) return;
-                if (beforeRetry is null || !HasVerifiedSnapshot || beforeRetry.ConnectionState != ConnectionState.Connected)
-                { await FailAndRefreshAsync(intent, UnknownReadResult(beforeRetry), second: true); return; }
-                if (GoalMatches(intent, intent.Action, beforeRetry))
-                { FinishObserved(intent, first); return; }
-            }
-            action = action with { AllowMutexChange = true };
         }
         var second = await SubmitAsync(intent, action);
         if (!Current(intent)) return;
@@ -250,9 +240,10 @@ public sealed partial class MainViewModel
     {
         SettleDraft(intent);
         if (_snapshot is { } snapshot) DisplaySnapshot(snapshot);
-        var message = result.Accepted ? "当前状态已符合请求。" : result.AcknowledgementUnknown || result.AckStatus is null
+        bool acknowledgementConfirmed = result.Accepted && !result.AcknowledgementUnknown;
+        var message = acknowledgementConfirmed ? "当前状态已符合请求。" : result.AcknowledgementUnknown || result.AckStatus is null
             ? "响应未确认，当前状态已符合请求；未再次写入。" : "请求曾被设备拒绝，当前状态已符合目标；未再次写入。";
-        if (!result.Accepted) _actionWarnings[intent.Group] = message;
+        if (!acknowledgementConfirmed) _actionWarnings[intent.Group] = message;
         else _actionWarnings.Remove(intent.Group);
         SetStatus(message); Log(message);
     }
@@ -310,19 +301,12 @@ public sealed partial class MainViewModel
         }
     }
 
-    private static string AudioActionKind(UiAction action) => action.Kind == "Feature" ? action.FeatureId switch { "spatial" => "Spatial", "hires" => "HiRes", _ => action.Kind } : action.Kind;
-    private static bool NeedsMutex(UiAction action, UiSnapshot snapshot) => snapshot.SpatialHiResMutex
-        && (AudioActionKind(action) == "Spatial" && action.Value != 0 && snapshot.HiRes == true
-            || AudioActionKind(action) == "HiRes" && action.Value == 1 && snapshot.Spatial is > 0);
-    private static string MutexMessage(UiAction action) => AudioActionKind(action) == "Spatial"
-        ? "开启空间音频需要先关闭 Hi-Res，音频连接可能短暂中断。继续吗？"
-        : "开启 Hi-Res 需要先关闭空间音频，音频连接可能短暂中断。继续吗？";
+    private static bool IsGameSoundAction(UiAction action) => action.Kind == "Feature"
+        && action.FeatureId is "game-sound" or "game-sound-enabled";
     private string RetryMessage(UiAction action, UiApplyResult result)
     {
         var message = "上次设置未能完整确认。是否再次写入本次选择的设置？";
         if (action is { Kind: "CustomEqualizer", EqualizerEntry.Id: 0 }) message += "\n上次 EQ 可能已经创建；再次写入可能创建重复条目。将先核对已有条目。";
-        if (result.PrerequisiteSubmitted || action.Kind is "Spatial" or "HiRes")
-            message += "\n将按当前状态完成目标，可能关闭另一个互斥音频模式，并短暂中断音频。";
         if (!string.IsNullOrWhiteSpace(result.Message)) message += Environment.NewLine + Sanitize(result.Message);
         return message;
     }
@@ -332,15 +316,15 @@ public sealed partial class MainViewModel
         if (!result.BackendReceiptReceived || result.PrerequisiteSubmitted
             || result.FailureKind is ApplyFailure.Validation or ApplyFailure.StateUnavailable or ApplyFailure.MutexConsentRequired
                 or ApplyFailure.WorkerUnavailable or ApplyFailure.Disconnected
-            || snapshot is null || !HasVerifiedSnapshot || !Supports(action) || NeedsMutex(action, snapshot)) return false;
+            || snapshot is null || !HasVerifiedSnapshot || !Supports(action)) return false;
         return action.Kind switch
         {
             "Anc" => snapshot.Anc is not null,
             "Equalizer" => snapshot.Equalizer is not null,
             "DualConnection" => snapshot.DualConnection is not null,
             "GameMode" => snapshot.GameMode is not null,
-            "Spatial" => snapshot.Spatial is not null && (action.Value == 0 || snapshot.HiRes is not null),
-            "HiRes" => snapshot.HiRes is not null && (action.Value == 0 || snapshot.Spatial is not null),
+            "Spatial" => snapshot.Spatial is not null,
+            "HiRes" => snapshot.HiRes is not null,
             "CustomSelect" => snapshot.EqualizerEntries.Any(x => x.Id == action.Value),
             "CustomEqualizer" => action.EqualizerEntry is { Id: > 0 } entry && snapshot.EqualizerEntries.Any(x =>
                 x.Id == entry.Id && x.MinimumGain == entry.MinimumGain && x.MaximumGain == entry.MaximumGain),

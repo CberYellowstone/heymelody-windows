@@ -1,5 +1,7 @@
 # 日常控制的协议证据与适配边界
 
+**2026-10-10 游戏音效纠正：** 开关为 `0403 [27,value]`；类型为 `0423 [type,01]`，第二字节是原厂 `game_sound_type_enable`，不是开关状态。类型 `0` 的原厂名称是“关闭”；`gameSoundMutexes` 是带包名和操作方向的界面策略，不能直接禁止开启游戏音效。两包原 DEX、X4 原始固件及 Hi-Res／空间分支的复核见 [游戏音效与空间音效](game-audio-spatial.md)。本次修改前全文已逐字节归档到 [本地原稿](../../research/game-audio-spatial-20261010/original-documents/docs/research/daily-feature-codecs.md)，日期、来源和历史测试范围保持可追溯。
+
 **2026-10-10 实施决定：** 0.8.10 对所有型号统一隐藏 `controlAutoVolumeSupport` / `1C`，停止常规查询、写入及通知联动；下文保留历史协议映射，不能据此认定该项仍在当前应用开放。`adaptiveVolume` / `30` 继续独立处理。决定与依据见 [智能音量处理记录](auto-volume.md)。
 
 **2026-10-09 补充纠正：** 下文的 `controlAutoVolumeSupport` / feature `1C` 原厂名称为“智能音量调节”，显示还要求 `0100` 能力 bit 45；型号字段为1不足以证明耳机开放该功能。X4 v116缺少该能力且GET省略状态，项目误显示禁用行；本轮右上警告另由通知能力不完整触发。完整适配结论见 [重新研究](auto-volume.md)。本页其余日期与静态验证范围保留历史值，补充前原稿另存完整档案。
@@ -19,12 +21,12 @@
 | 二值功能 | `010D [count, featureId…]` / `[status,count,(featureId,value)…]` | `0403 [featureId,value]` | SDK `commands.n.m @ 57C574` 的功能映射与现有 feature codec |
 | 低音强度 | `0124 []` / `[status,min:i8,max:i8,current:i8]` | **`041B [current:i8,max:i8,min:i8]`** | `commands.d.c @ 5780C4`；`commands.n.M` 的 `8124` 分支 `57DA6C`；`HeadsetCoreService.F0 @ 5760F8` |
 | 提示音音量 | `0130 []` / `[status,value:u8]` | `0427 [value]` | `HeadsetCoreService.l0 @ 573650`、`n1 @ 577798`；`commands.n.M` 的 `8130` 分支 `57D6BE` |
-| 游戏音效类型 | `012B []` / `[status,selectedType,count,supportedTypes…]` | `0423 [selectedType,enabled:0/1]` | `commands.n.M` 的 `812B` 分支 `57D784`；`HeadsetCoreService.Q0 @ 5768E4` |
+| 游戏音效类型 | `012B []` / `[status,selectedType,count,supportedTypes…]` | `0423 [selectedType,typeEnable:0/1]`；手动选类型用 `01` | `commands.n.M` 的 `812B` 分支 `57D784`；`HeadsetCoreService.Q0 @ 5768E4`；两包 `GameSetViewModel.h/i` |
 | 普通手势赋值 | `0108 [3,2,3,1]` / `[status,count,(device,button,action,function)…]` | `0401 [1,device,button,action,function]` | `commands.n.t @ 57BDF0`；`KeyFunctionInfo.<init>(I,[B) @ 5687F0`；`8108` 分支 `57EA16`；`HeadsetCoreService.X0 @ 576EDC`；`BluetoothService` 默认 `0401` 分支 `56E724` |
 
 低音 GET 与 SET 的字段顺序不同。写入时使用最新 GET 返回的 min/max，不能固定为 `-6..6` 或沿用界面过期范围。解析器拒绝不完整布局、反向范围、超范围当前值，以及手势中重复的 `(device,button,action)` 键。
 
-游戏音效的 `selectedType` 与启用状态是两个独立值：启用状态从 `010D` 的 feature `27` 读取。类型 `0` 不是“关闭”的代名词。选择类型时保留当前 enabled，切换开关时保留当前 selectedType；选项由资源声明、固件条件与 `012B` 返回支持列表交集决定。
+游戏音效的 `selectedType` 与 feature `27` 是两个分别读取的值：开关从 `010D` 的 feature `27` 读取，以 `0403 [27,value]` 设置；类型从 `012B` 读取，以 `0423 [selectedType,01]` 手动选择。第二字节的原参数名为 `param_game_sound_type_enable`，不是当前 feature `27` 状态。类型 `0` 的原厂名称为“关闭”，`1` 为“和平精英职业联赛游戏音效”，`3` 为“射击类游戏音效”。选项由资源声明、固件条件与 `012B` 返回支持列表交集决定；当前类型 `0`、未知类型或关闭的开关不阻止选择合法目标。设备内部可能联动，最终状态按各自读回显示，不合成另一个值。
 
 提示音原厂 `PromptVolumeBarPreference` 构造器 `29F59C/29F5DC/29F61C` 的范围默认 `1..10`。资源 `promptVolumeRange.min/max` 非 `-1` 时覆盖。不存在范围声明时可采用该已证默认值；存在但类型或范围非法时禁止设置，不能回退成可写范围。SET 的传输值仍为一个字节。
 
@@ -79,13 +81,13 @@ OnePlus Buds / Buds Z 的上一首掩码采用 `0040`，定位 `B1/b.J @ 19E6EC`
 
 设置只使用 GET 已返回的左/右耳 `(device,button,action)` 键，并与同 action/button、版本条件通过的源 `control` 选项匹配。未知当前 function 保留原值，用户仍可选择已声明的原生选项。手机助手、收藏音乐、翻译、AI 摘要、Gemini 等选项没有 Windows 对应服务路径，暂不发送。`controlList`、`calControl`、`musControl` 等额外来源分组尚未统一解释，本实现不凭字段名补出手势写入。
 
-## 游戏音效互斥必须区分来源
+## 游戏音效互斥必须区分包名与操作方向
 
 `GameSetItem.<init> @ 26E8A4` 将当前 JSON `gameSoundMutexes` 中的 `1→ma/m.b`、`2→ma/m.a`、`3→ma/m.c`、`4→ma/m.d` 写入地址键控的布尔 map。它们不是协议 feature ID。
 
-OEM 包下，`ca/r.h @ 1A2514` 对 `key_bass_engine_switch` 检查 map `c`，随后 `ca/r.I @ 1A3E9C` 经 repository `Q0` 设置 feature `1D`。`HearingOptimizeItem.checkGameSoundMutexDialog @ 271200` 检查 map `d`，`setHearingOptimizeEnable @ 271A98` 设置 feature `38`。所以 **无线耳机来源**的 `3/4` 可分别以最新 `1D/38` 状态判断是否允许开启游戏音效：都关闭时放行，开启时要求用户先明确关闭，未知时禁止开启。
+对应关系为 `1→b→EQ`、`2→a→空间音效`、`3→c→低音增强`、`4→d→听感优化`。`ca/r.h @ 1A2514` 对 `key_bass_engine_switch` 检查 map `c`，随后 `ca/r.I @ 1A3E9C` 经 repository `Q0` 设置 feature `1D`；`HearingOptimizeItem.checkGameSoundMutexDialog @ 271200` 检查 map `d`，`setHearingOptimizeEnable @ 271A98` 设置 feature `38`。这些入口处理的是修改低音／听感等设置时是否先关闭游戏音效，不能倒推成“禁止开启游戏音效”。
 
-这两个界面方法都有 `com.heytap.headset` 包名分支，欢律路径改读 map `a`。不能对欢律来源沿用 OEM `3/4` 规则。当前实现只有 `DeviceProfile.Provenance.ArchivePath == "WirelessEarphones"` 才允许上述细分校验；欢律/未知来源声明 `3/4` 时明确显示未核实原因并禁用启用。`1/2` 和其他未核实规则同样禁止启用。已经开启的游戏音效仍允许关闭，不为未知互斥规则自动关闭其他功能。
+相关 helper 检查当前 Android 包名是否为 `com.heytap.headset`。该条件在欢律成立，在无线耳机正常包名 `com.oplus.melody` 下不成立；它不是配置来源判断。欢律路径仍按各自 map `b/a/c/d` 处理，不是全部改读 `a`。X4 的 `[1,3]` 表示 EQ／低音相关界面策略，不能解释成未知 ID 而禁止游戏开关。2026-10-10 修复移除依据资源来源或互斥数字禁止开启游戏音效的推断；原始字段仍保留，不自动关闭另一项。
 
 对话框共享 RID `7f1103e0/3df` 的文案为“自适应听感”、`940/93f` 为空间音效、`93e/93d` 为调音，不能只凭对话框数字或文案反推 map/feature。上面的映射依据实际控件键、map 字段和 repository SET 参数。
 
@@ -97,6 +99,8 @@ OEM `HeadsetCoreService.m0 @ 5736B0` 的 `0500..051D` switch 中，`0508` 分支
 
 本次没有从该 `0500..051D` 分发链确认提示音音量、游戏音效类型列表、手势赋值的专用通知布局；不能据此声称所有 APK/固件都没有这些通知。上述状态由已证 GET 刷新；没有猜测新的通知 ID、事件订阅或 SET。游戏音效启用状态的 `0503` 不等于完整类型列表推送。
 
-所有新设置写前重新读取身份、命令能力、固件/来源条件与当前状态。ACK 缺失、拒绝或传输中断均不重发 SET；即使回读吻合也不会把未知/拒绝 ACK 报作成功。当前日常测试合计 **85 项通过**，其中新增通用控制测试覆盖字段顺序、未知版本、范围变更、两源互斥差异、推送竞争、非法资源和 ACK 不确定性。其他设备与固件仍需真实硬件验证。
+所有新设置写前重新读取身份、命令能力、固件/来源条件与当前状态。ACK 缺失、拒绝或传输中断均不重发 SET；即使回读吻合也不会把未知/拒绝 ACK 报作成功。**历史记录（2026-10-08）：日常测试合计 85 项通过**，当时新增通用控制测试覆盖字段顺序、未知版本、范围变更、两源互斥差异、推送竞争、非法资源和 ACK 不确定性；其中游戏路由和互斥假设已被本轮重新研究纠正，历史通过数不代表本轮修复验收。其他设备与固件仍需真实硬件验证。
 
 **资料归档（2026-10-08）：** 本文访问链接与复现路径已按新目录更新；研究时的原始位置为仓库根 `research/`，原报告与 manifest 内路径保留不变。新旧映射及提交边界见 [资料归档入口](README.md)。
+
+**2026-10-10 验证追加：** X4 v116 的游戏开关、类型、空间与 Hi-Res 共7项目标操作已实际核对单次 SET、ACK0及目标读回，含恢复共8次 SET；详细范围见 [本轮验收](game-audio-spatial.md)。用户随后报告测试中听到了游戏音效切换，之后有两次耳机重连提示音，未确认各次声音对应的操作。听感原文单独 [归档](../../research/game-audio-spatial-20261010/user-feedback/README.md)，仅作整体用户反馈，未分别确认游戏开启／关闭的各次提示；按用户要求只记录，不探究原因，原始实机收据不改写。

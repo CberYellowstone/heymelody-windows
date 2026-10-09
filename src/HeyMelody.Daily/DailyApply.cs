@@ -68,42 +68,11 @@ public sealed partial class DailyClient
                     if (!caps.SpatialMode || value > 2 || !_profile!.SpatialTypes.Contains(value) ||
                         caps.SpatialRoute == "legacy" && value > 1)
                         return Reject(result, "当前空间模式不在已核实的协议能力中。");
-                    if (value > 0 && caps.SpatialHiResMutex)
-                    {
-                        if (before.HiRes is null) return Reject(result, "Hi-Res 状态未知，不能安全开启空间模式。");
-                        if (before.HiRes == true)
-                        {
-                            if (!allowMutexChange) return Reject(result, "开启空间模式需要先关闭 Hi-Res，请明确确认联动。", DailyApplyFailure.MutexConsentRequired);
-                            if (!caps.HiRes) return Reject(result, "Hi-Res 无法设置，未发送空间模式。");
-                            if (!await SetPrerequisiteAsync(0x0403, [0x18, 0], s => s.HiRes == false,
-                                "已关闭 Hi-Res", result, token)) return Finish(result);
-                            caps = result.After!.Capabilities;
-                            if (!caps.SpatialMode || result.After.HiRes != false ||
-                                caps.SpatialRoute == "legacy" && value > 1)
-                                return Reject(result, "联动后的空间能力或 Hi-Res 状态已改变，未继续发送设置。");
-                        }
-                    }
                     cmd = caps.SpatialRoute == "modern" ? (ushort)0x0422 : (ushort)0x0403;
                     payload = caps.SpatialRoute == "modern" ? [value] : [0x1B, value];
                     target = s => s.SpatialMode == value; break;
                 case "hires":
                     if (!caps.HiRes) return Reject(result, "Hi-Res 状态未知或不可设置。");
-                    if (value == 1 && caps.SpatialHiResMutex)
-                    {
-                        if (before.SpatialMode is null) return Reject(result, "空间模式状态未知，不能安全开启 Hi-Res。");
-                        if (before.SpatialMode > 0)
-                        {
-                            if (!allowMutexChange) return Reject(result, "开启 Hi-Res 需要先关闭空间模式，请明确确认联动。", DailyApplyFailure.MutexConsentRequired);
-                            if (!caps.SpatialMode) return Reject(result, "空间模式无法设置，未发送 Hi-Res。");
-                            ushort prerequisite = caps.SpatialRoute == "modern" ? (ushort)0x0422 : (ushort)0x0403;
-                            byte[] off = caps.SpatialRoute == "modern" ? [0] : [0x1B, 0];
-                            if (!await SetPrerequisiteAsync(prerequisite, off, s => s.SpatialMode == 0,
-                                "已关闭空间模式", result, token)) return Finish(result);
-                            caps = result.After!.Capabilities;
-                            if (!caps.HiRes || result.After.SpatialMode != 0)
-                                return Reject(result, "联动后的 Hi-Res 能力或空间状态已改变，未继续发送设置。");
-                        }
-                    }
                     cmd = 0x0403; payload = [0x18, value]; target = s => s.HiRes == (value == 1); break;
                 default: return Reject(result, "未知设置请求。");
             }
@@ -127,12 +96,11 @@ public sealed partial class DailyClient
         finally { _gate.Release(); }
     }
     private async Task SendAndObserveAsync(ushort command, byte[] payload, Func<DailySnapshot, bool> target,
-        DailyApplyResult result, CancellationToken token, bool prerequisite = false,
+        DailyApplyResult result, CancellationToken token,
         Func<DailySnapshot, bool>? targetKnown = null)
     {
         var reply = await _session!.RequestAsync(command, payload, token);
-        if (prerequisite) result.PrerequisiteSubmitted |= reply.Submitted;
-        else { result.TargetSubmitted |= reply.Submitted; result.AckStatus = reply.Status; }
+        result.TargetSubmitted |= reply.Submitted; result.AckStatus = reply.Status;
         MergeAck(result, reply);
         // Reads may reconnect; a setter is never retried, including partial-send failures.
         if (_session is not { Usable: true }) await DropSessionAsync();
@@ -155,25 +123,10 @@ public sealed partial class DailyClient
         0x0403 => snapshot.RawFeatures.TryGetValue(payload[0], out byte value) && value <= 1,
         0x041B => snapshot.BassEngine is not null,
         0x0427 => snapshot.PromptVolume is not null,
-        0x0423 => snapshot.GameSound is not null && snapshot.RawFeatures.TryGetValue(0x27, out byte enabled) && enabled <= 1,
+        0x0423 => snapshot.GameSound is not null,
         0x0401 => payload.Length == 5 && snapshot.Gestures.Any(x => x.Device == payload[1] && x.Button == payload[2] && x.Action == payload[3]),
         _ => false
     };
-    private async Task<bool> SetPrerequisiteAsync(ushort command, byte[] payload, Func<DailySnapshot, bool> target,
-        string description, DailyApplyResult result, CancellationToken token)
-    {
-        await SendAndObserveAsync(command, payload, target, result, token, prerequisite: true);
-        bool verified = result.AckAccepted == true && result.ReadbackVerified;
-        // Record even an uncertain prerequisite conservatively; no compensating write or later setter follows it.
-        result.PartialEffects.Add(verified ? description : description + "的请求已提交，结果未完整确认。");
-        if (!verified) { result.Success = false; result.ReadbackMatches = null; return false; }
-        result.Success = false; result.ReadbackMatches = null;
-        // Refresh may have changed capabilities. Never use stale route/command information for the final setter.
-        if (result.After is not { Connected: true, ProfileVerified: true } ||
-            result.After.ProductId != result.Before!.ProductId)
-        { result.Error = "联动后设备身份或连接状态改变，已停止后续设置。"; return false; }
-        return true;
-    }
     private static void MergeAck(DailyApplyResult result, DailyResponse response)
     {
         bool first = !result.SubmissionAttempted;

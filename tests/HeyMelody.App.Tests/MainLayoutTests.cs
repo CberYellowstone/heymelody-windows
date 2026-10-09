@@ -14,7 +14,7 @@ internal static class MainLayoutTests
     internal static int Run(HeadlessUnitTestSession session, string output, List<object> receipts)
     {
         Run("real-device layout keeps ANC visible and other panels collapsed", () => LayoutAsync(false));
-        Run("demo layout uses the same collapsed defaults and eight-pixel spacing", () => LayoutAsync(true));
+        Run("demo layout uses the same expanded ANC default and eight-pixel spacing", () => LayoutAsync(true));
         Run("device information copies current fields and handles pending, failed and stale requests", CopyAsync);
         Run("pinned header keeps its status dot and activity slot stable during reads and writes", HeaderActivityAsync);
         return 4;
@@ -47,16 +47,15 @@ internal static class MainLayoutTests
                         Check(hero.Children.Count == 1 && hero.Children[0] == view.FindControl<ProductArtwork>("HeroArt")
                             && view.FindControl<TextBlock>("HeroCaption") is null,
                             "Product artwork occupies its own panel without repeated title or caption rows.");
-                        var anc = view.FindControl<Border>("AncPanel")!;
+                        var anc = view.FindControl<FASettingsExpander>("AncPanel")!;
                         var selector = anc.GetVisualDescendants().OfType<AncModeSelector>().Single();
-                        Check(anc.CornerRadius == new CornerRadius(6) && anc.IsVisible && selector.IsVisible
+                        Check(anc.IsVisible && anc.IsExpanded && Equals(anc.Header, "降噪") && selector.IsVisible
                             && selector.Bounds.Width > 0 && selector.Bounds.Height > 0
-                            && view.FindControl<FAIconSourceElement>("AncIcon") is { IconSource: not null } ancIcon
-                            && anc.GetVisualDescendants().Contains(ancIcon) && ancIcon.Bounds.Width > 0
-                            && anc.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == "调整你听见的环境声音"),
-                            "ANC is a rounded card with its header icon, description and functional selector always present.");
+                            && anc.IconSource is not null && anc.Description == "调整你听见的环境声音",
+                            "ANC starts expanded with its header icon, description and functional selector.");
                         Check(view.GetVisualDescendants().OfType<FASettingsExpander>().Any()
-                            && view.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => !expander.IsExpanded)
+                            && view.GetVisualDescendants().OfType<FASettingsExpander>()
+                                .Where(expander => !ReferenceEquals(expander, anc)).All(expander => !expander.IsExpanded)
                             && !view.FindControl<FASettingsExpander>("OperationLogPanel")!.IsExpanded,
                             "All optional main-interface groups start collapsed, including demo groups and the operation log.");
                         CheckHeader(view, vm, window);
@@ -113,7 +112,8 @@ internal static class MainLayoutTests
                         Check(fitTop >= -.6 && informationTop + information.Bounds.Height <= scroll.Viewport.Height + .6
                             && !information.IsExpanded
                             && !CanHit(window, copy)
-                            && view.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => !expander.IsExpanded),
+                            && view.GetVisualDescendants().OfType<FASettingsExpander>()
+                                .Where(expander => !ReferenceEquals(expander, anc)).All(expander => !expander.IsExpanded),
                             "The collapsed information card remains beside fit-test with no clickable Copy action.");
                         await ExpandInformationAsync(information);
                         information.BringIntoView(); Dispatcher.UIThread.RunJobs();
@@ -130,8 +130,9 @@ internal static class MainLayoutTests
                             && copyInInformation + copy.Bounds.Height <= information.Bounds.Height + .6
                             && copyTop >= -.6 && copyTop + copy.Bounds.Height <= scroll.Viewport.Height + .6
                             && view.GetVisualDescendants().OfType<FASettingsExpander>()
-                                .Where(expander => !ReferenceEquals(expander, information)).All(expander => !expander.IsExpanded),
-                            "Expanding information reveals Copy below every field while the other settings stay collapsed.");
+                                .Where(expander => !ReferenceEquals(expander, information) && !ReferenceEquals(expander, anc))
+                                .All(expander => !expander.IsExpanded),
+                            "Expanding information reveals Copy below every field while optional settings stay collapsed.");
                         using var informationFrame = window.CaptureRenderedFrame()
                             ?? throw new InvalidOperationException("Missing device-information layout pixels.");
                         var informationName = $"main-information-{(demo ? "demo" : "real")}-{(dark ? "dark" : "light")}-{(int)size.Width}x{(int)size.Height}.png";

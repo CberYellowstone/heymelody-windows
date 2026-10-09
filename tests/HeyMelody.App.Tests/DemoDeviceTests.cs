@@ -190,9 +190,11 @@ internal static class DemoDeviceTests
         Check(view.IsCompact == (size.Width < 1080), "The demo uses the existing responsive breakpoint.");
         Check(view.FindControl<FAInfoBar>("DemoNotice") is { IsOpen: true, IsVisible: true }, "The temporary-device notice is visible.");
         CheckDynaudioPresentation(view, fixture.Vm);
-        Check(view.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => !expander.IsExpanded)
+        var anc = view.FindControl<FASettingsExpander>("AncPanel")!;
+        Check(anc.IsExpanded && view.GetVisualDescendants().OfType<FASettingsExpander>()
+                .Where(expander => !ReferenceEquals(expander, anc)).All(expander => !expander.IsExpanded)
             && !view.FindControl<FASettingsExpander>("OperationLogPanel")!.IsExpanded,
-            "Demo settings and operation history start collapsed like real-device settings.");
+            "Demo ANC starts expanded while optional settings and operation history start collapsed like real-device settings.");
         await MainUiTestLayout.ExpandSettingsAsync(view);
         Check(view.FindControl<ItemsControl>("BandEditor")!.Items.Count == 10, "The complete ten-band EQ editor is present.");
         DeviceBarTests.CheckBottomBar(view, window);

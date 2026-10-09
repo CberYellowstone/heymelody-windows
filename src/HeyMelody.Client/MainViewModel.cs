@@ -472,7 +472,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             && (s.EqualizerFrequencies.Count == 0 || entry.Bands.Select(band => band.FrequencyHz).SequenceEqual(s.EqualizerFrequencies)),
         "CustomSelect" => s.CanSetCustomEqualizer && s.EqualizerEntries.Any(x => x.Id == action.Value && x.Id > 0),
         "Feature" => s.FeatureSections.SelectMany(x => x.Controls).Any(x => x.Id == action.FeatureId && x.CanWrite &&
-            (x.Kind == "Text" || action.Value >= x.Minimum && action.Value <= x.Maximum && (x.Options is null || x.Options.Count == 0 || x.Options.Any(o => o.Key == action.Value)))),
+            (x.Kind switch
+            {
+                "Text" => true,
+                "Combo" or "Radio" => x.Options?.Any(o => o.Key == action.Value) == true,
+                "Switch" => action.Value is 0 or 1,
+                "Slider" => action.Value >= x.Minimum && action.Value <= x.Maximum,
+                _ => false
+            })),
         _ => false
     };
 

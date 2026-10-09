@@ -1,5 +1,7 @@
 # 日常控制层（0.7.0 当前实现）
 
+2026-10-10 补充：游戏音效与 Hi-Res／空间音效的当前行为已按[原 APK／固件复核](research/game-audio-spatial.md)纠正。本文修改前原稿已[逐字节归档](../research/game-audio-spatial-20261010/original-documents/docs/daily-notes.md)，历史阶段验证范围保持原值。
+
 实现位于 `src/HeyMelody.Daily/`，公开命名空间为 `HeyMelodyWindows.Daily`。库使用 .NET 10 BCL 和已有 Protocol、Devices、Control 接口，不增加第三方依赖、蓝牙扫描、驱动安装或系统设置；显式监听入口会按设备能力注册已核实通知。项目为 AnyCPU，Windows 原生传输和三个架构的应用发布由宿主集成。
 
 `DailyClient(IControlConnector)` 的构造不连接设备。刷新和用户设置通过同一信号量串行执行，每个物理控制会话有独立的序号分配器和解码器。序号不会在一个连接内复用；余量不足时，下一轮读取先换连接。每次设置之前进行完整 GET，重新读取产品 ID、能力位图和日常状态，仅已核实的 06EC10 / OPPO Enco X4 配置允许设置。当前 Avalonia 客户端的推送同步、手动读取和最多一次应用层重试见下文；阶段五原始验证记录仍保留在本文末尾。
@@ -24,13 +26,13 @@
 | `SetSpatialModeAsync(byte)` | 优先 012A/0422；不足时用已报告的 legacy 1B |
 | `SetHiResAsync(bool)` | feature 18 |
 
-空间和 Hi-Res 两个方法还有显式 `allowMutexChange` 重载。省略这个参数等于 false。新鲜状态显示开启目标需要先关闭互斥项时，默认不提交任何 SET。获得允许后，先提交关闭互斥项、匹配 ACK 并回读，再核对最新能力与状态，最后提交目标。前置操作没有完整确认就停止；不会进行补偿写入或自动重发。
+空间和 Hi-Res 两个方法保留 `allowMutexChange` 重载以兼容调用方；当前日常路径均只写用户请求的目标，不先关闭另一项、不要求另一项状态已知。各自的资源声明、版本、命令能力和目标状态仍须通过核实。`SpatialHiResMutex` 元数据保留，实际另一项状态由耳机读回决定。独立实验工具 `HeyMelody.Control/HiResWorkflow.cs` 保留其历史实验策略。
 
-`DailyApplyResult.SubmissionAttempted` 表示本次任一 SET 曾进入传输提交步骤，含前置互斥操作和部分发送失败；`TargetSubmitted` 和 `PrerequisiteSubmitted` 分别记录目标与前置步骤。它们都不证明设备已接收或设置已生效。`ResponseMatched` 表示全部已提交步骤的响应命令、响应位和序号匹配。`AckAccepted` 使用 nullable bool，空响应或响应未获得为 null，明确非零状态为 false；`AckStatus` 保留目标 SET 的状态字节，前置步骤不会冒充目标 ACK。
+`DailyApplyResult.SubmissionAttempted` 表示 SET 曾进入传输提交步骤，含部分发送失败；`TargetSubmitted` 记录目标步骤。`PrerequisiteSubmitted` 保留字段兼容，当前日常路径不提交前置互斥步骤。它们都不证明设备已接收或设置已生效。`ResponseMatched` 表示响应命令、响应位和序号匹配。`AckAccepted` 使用 nullable bool，空响应或响应未获得为 null，明确非零状态为 false；`AckStatus` 保留目标 SET 的状态字节。
 
-`ReadbackMatches` 为 true 表示最终目标匹配，为 false 表示已取得有效目标状态但不匹配，为 null 表示未取得可验证的目标回读。`ReadbackVerified` 等价于 `ReadbackMatches == true`。`Success` 要求所有已提交 ACK 为零且最终回读一致；当前状态已符合请求时，可以返回 Success=true、SubmissionAttempted=false。未知或拒绝的 ACK 不会因后来状态匹配而改成接受。PartialEffects 包括确认完成的前置操作，也会明确记录已经提交但未完整确认的前置请求。自定义 EQ 保存路径可通过 `ObservedEqualizerId` 返回唯一完整内容匹配的设备条目 ID，未知 ACK 或未选中时也可能观察到该 ID。
+`ReadbackMatches` 为 true 表示最终目标匹配，为 false 表示已取得有效目标状态但不匹配，为 null 表示未取得可验证的目标回读。`ReadbackVerified` 等价于 `ReadbackMatches == true`。`Success` 要求已提交 ACK 为零且最终回读一致；当前状态已符合请求时，可以返回 Success=true、SubmissionAttempted=false。未知或拒绝的 ACK 不会因后来状态匹配而改成接受。PartialEffects 记录已观察到的效果及结果未完整确认的设置。自定义 EQ 保存路径可通过 `ObservedEqualizerId` 返回唯一完整内容匹配的设备条目 ID，未知 ACK 或未选中时也可能观察到该 ID。
 
-每个协议请求使用四秒超时。一次读取遇到连接故障最多重新打开一次；新的会话重新验证身份。Daily 和 Host 的每次 Apply 都是单次尝试：目标 SET 最多提交一次，获得显式互斥同意时可先提交一个关闭另一项的 SET；两步之间核对回读，任一步不确定就停止。库不会因超时、取消、断开、空响应或发送异常重放 SET，客户端桥接层也不重放 IPC。四秒期限不能保证同步 SDP 和异常内核传输在四秒内退出，宿主仍在独立工作进程中处理原生调用并施加总预算。
+每个协议请求使用四秒超时。一次读取遇到连接故障最多重新打开一次；新的会话重新验证身份。Daily 和 Host 的每次 Apply 都是单次尝试，目标 SET 最多提交一次，Hi-Res／空间不提交前置互斥 SET。库不会因超时、取消、断开、空响应或发送异常重放 SET，客户端桥接层也不重放 IPC。四秒期限不能保证同步 SDP 和异常内核传输在四秒内退出，宿主仍在独立工作进程中处理原生调用并施加总预算。
 
 ## 分区刷新、连接证据和客户端重试
 
@@ -54,6 +56,8 @@
 
 重试由 `HeyMelody.Client/MainViewModel.Actions.cs` 管理，Daily/Host/Bridge 没有隐藏重试。Windows 显式提交的目标在点击时固定，后台仍依据每次最新 GET 校验能力、条目和互斥条件；手机在提交前改变旧值不会仅因值不同触发冲突提示。第一次失败后，只有收到完整结果、同一设备仍可验证、动作可以安全重复且没有部分互斥操作时，才在重新完整读取后自动再尝试一次。若最新状态已符合目标，只结束操作并保留原始 ACK 事实，不再发送。
 
+游戏音效开关与类型是上述重试策略的例外：每次界面操作最多一次 SET，明确失败只提示一次，不邀请立即重写；未知响应只用 GET 核对。匹配的观察值不会改写原 ACK 事实。失败后复用的控件恢复观察值，其他草稿与较新的编辑仍保留。Combo／Radio 按选项 ID 集合验证，不能把默认数值范围 `0..1` 用于拒绝合法的类型 `3` 或空间模式 `2`。
+
 已知断连或无法确认结果/身份时第一次即提示失败，不再次写入。设备仍可验证连接、但动作不能安全自动重复时，显示重试/取消确认；确认后仍需完整读取并重新校验。新建 EQ 的未知结果需确认，先按原列表 ID 和完整内容核对新增条目；唯一匹配时复用实际 ID，歧义或名称冲突时不再创建。第二次尝试仍失败时提示后完整刷新，没有第三次尝试。取消重试会丢弃全部本地草稿和排队写入，再完整刷新设备信息。
 
 协议没有状态版本、修改来源或 compare-and-set。回读只能说明观察到的状态，不能证明是哪台手机或客户端修改；本地预检也不能消除预检与 SET 之间的竞争。
@@ -70,6 +74,8 @@
 | 自定义 EQ | 0122 / empty | 0418 / action + min + max + ID + UTF8 名长/名称 + 段数 + (频率 LE16,增益 S8) |
 | 双连 | 010D 的明确 feature 列表 | 0403 / 11 + 0或1；回读 11 |
 | 游戏 | 同上 | 0403 / 实际报告的 28 或 06 + 0或1 |
+| 游戏音效开关 | 010D 的 feature 27 | 0403 / 27 + 0或1 |
+| 游戏音效类型 | 012B / empty | 0423 / 合法类型 + 01；只核对类型读回 |
 | 空间 | 012A / empty，或 feature 1B | 0422 / 0,1,2；legacy 只允许 0,1 |
 | Hi-Res | feature 18 | 0403 / 18 + 0或1 |
 

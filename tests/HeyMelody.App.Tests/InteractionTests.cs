@@ -17,7 +17,7 @@ internal static class InteractionTests
         Run("settings waits for the shared dialog owner and cancels cleanly", SettingsSerializationAsync);
         Run("resource settings keep keys separate and release the dialog before EQ confirmation", ResourceSettingsAsync);
         Run("retry and alert dialogs use the required buttons", DialogButtonsAsync);
-        Run("resource section expansion survives replacement definitions", ExpansionPersistenceAsync);
+        Run("ANC and resource expansion choices survive refreshes and presentation switches", ExpansionPersistenceAsync);
         Run("ANC radio sends a parent and explicit dropdown sends only a child", AncModeInteractionAsync);
         Run("ANC parent-only pushes select the radio without selecting or writing a child", AncParentPushAsync);
         Run("status notice shows notification guidance and clears after a healthy push", WarningNoticeAsync);
@@ -245,8 +245,16 @@ internal static class InteractionTests
         {
             window.Show(); Dispatcher.UIThread.RunJobs();
             var section = view.GetVisualDescendants().OfType<FASettingsExpander>().Single(expander => Equals(expander.Header, "连接与体验"));
-            Check(!section.IsExpanded && view.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => !expander.IsExpanded),
-                "Every main settings group starts collapsed, including resources whose old hint requested expansion.");
+            var anc = view.FindControl<FASettingsExpander>("AncPanel")!;
+            Check(anc.IsExpanded && !section.IsExpanded && view.GetVisualDescendants().OfType<FASettingsExpander>()
+                .Where(expander => !ReferenceEquals(expander, anc)).All(expander => !expander.IsExpanded),
+                "ANC starts expanded while optional settings start collapsed, including resources with old expansion hints.");
+            var ancHeader = anc.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == "降噪"
+                && !text.GetVisualAncestors().OfType<AncModeSelector>().Any())
+                .GetVisualAncestors().OfType<Avalonia.Controls.Primitives.ToggleButton>().First();
+            var point = await MainUiTestLayout.ClickPointAsync(window, ancHeader);
+            window.MouseDown(point, MouseButton.Left); window.MouseUp(point, MouseButton.Left); Dispatcher.UIThread.RunJobs();
+            Check(!anc.IsExpanded, "The user can collapse the initially expanded ANC panel through its header.");
             var original = section;
             section.IsExpanded = true;
             view.FindControl<FASettingsExpander>("EqualizerPanel")!.IsExpanded = true;
@@ -254,13 +262,27 @@ internal static class InteractionTests
             service.Push(FeatureTestData.Decorate(snapshot)); Dispatcher.UIThread.RunJobs();
             section = view.GetVisualDescendants().OfType<FASettingsExpander>().Single(expander => Equals(expander.Header, "连接与体验"));
             Check(!ReferenceEquals(section, original) && section.IsExpanded
-                && view.FindControl<FASettingsExpander>("EqualizerPanel")!.IsExpanded,
+                && view.FindControl<FASettingsExpander>("EqualizerPanel")!.IsExpanded && !anc.IsExpanded,
                 "A replacement definition with the same section ID and fixed groups retain the user's expansion choice.");
             section.IsExpanded = false;
             snapshot = service.Next(); snapshot.GameMode = false;
             service.Push(FeatureTestData.Decorate(snapshot)); Dispatcher.UIThread.RunJobs();
             section = view.GetVisualDescendants().OfType<FASettingsExpander>().Single(expander => Equals(expander.Header, "连接与体验"));
-            Check(!section.IsExpanded, "Another replacement retains the user's subsequent collapse choice.");
+            Check(!section.IsExpanded && !anc.IsExpanded, "Another replacement retains the user's subsequent collapse choice, including ANC.");
+            await vm.RefreshStateCommand.ExecuteAsync(null); Dispatcher.UIThread.RunJobs();
+            Check(!anc.IsExpanded, "An ordinary state refresh cannot reopen the user's collapsed ANC panel.");
+            var real = vm.SelectedDevice;
+            await vm.AddDemoDeviceAsync(); Dispatcher.UIThread.RunJobs();
+            Check(anc.IsExpanded, "The first demo presentation has its own expanded ANC default.");
+            anc.IsExpanded = false;
+            await vm.SelectDeviceAsync(real); Dispatcher.UIThread.RunJobs();
+            Check(!anc.IsExpanded, "Returning to a real device restores its independent ANC collapse choice.");
+            anc.IsExpanded = true;
+            await vm.SelectDeviceAsync(vm.Devices.Single(MainViewModel.IsDemoDevice)); Dispatcher.UIThread.RunJobs();
+            Check(!anc.IsExpanded, "Returning to the demo restores its independent ANC collapse choice.");
+            await vm.SelectDeviceAsync(real); Dispatcher.UIThread.RunJobs();
+            Check(anc.IsExpanded && service.Actions.Count == 0,
+                "Returning to real settings restores its later expansion choice without submitting a headset setting.");
         }
         finally { window.Close(); }
     }

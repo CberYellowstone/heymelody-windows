@@ -56,7 +56,7 @@ public static class DemoDeviceData
                     new("bass", "低音强度", "Slider", 5, Maximum: 10, CanWrite: true),
                     Switch("adaptive-volume", "自适应音量"), Switch("adaptive-ear", "自适应听感"),
                     Switch("speech-perception", "人声感知"), Switch("hearing-optimize", "听感优化"), Switch("game-sound-enabled", "游戏音效"),
-                    new("game-sound", "游戏音效类型", "Combo", 0, Options: [new(0, "默认音效"), new(3, "射击游戏")], Maximum: 3, CanWrite: true)]),
+                    new("game-sound", "游戏音效类型", "Combo", 0, Options: [new(0, "关闭"), new(3, "射击类游戏音效")], Maximum: 3, CanWrite: true)]),
                 new("device-features", "耳机设置", true, [Switch("dual", "双设备连接", true), Switch("wear", "入耳检测", true),
                     Switch("long-power", "长续航模式"), Switch("smart-call", "智能通话", true),
                     Switch("long-press-volume", "长按调节音量", true), Switch("incoming-call", "来电控制", true), Switch("sleep-detection", "睡眠检测"),

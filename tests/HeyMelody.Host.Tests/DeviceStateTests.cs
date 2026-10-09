@@ -260,11 +260,11 @@ internal static class DeviceStateTests
                 && empty.FeatureSections.Count == 0 && empty.AncOptions.Count == 0 && empty.EqualizerEntries.Count == 0,
                 "Wrong-source SPP was copied as a no-cache fallback");
         });
-        await test("real bundled X4 and Free4 feature projections fit the display cache without losing valid controls", async () =>
+        await test("real bundled X4, Buds3 and Free4 projections preserve discrete audio options and independent controls", async () =>
         {
             var bundled = new BundledResourceStore(); string directory = DirectoryFor("profiles"); var state = new DeviceStateStore(Path.Combine(directory, "device-state.json"));
             foreach (ResourceSource source in Enum.GetValues<ResourceSource>())
-            foreach (string productId in new[] { "06EC10", "06C010" })
+            foreach (string productId in new[] { "06EC10", "063C14", "06C010" })
             {
                 var resource = bundled.GetCatalog(source).Find(productId) ?? throw new InvalidOperationException("Bundled profile missing");
                 var profile = DeviceProfile.FromResource(resource.Raw, source.ToString(), "fixture");
@@ -274,8 +274,9 @@ internal static class DeviceStateTests
                 var daily = new DailySnapshot { Revision = 1, Connected = true, ProfileVerified = true, ProductId = productId,
                     FirmwareVersion = "123.123.123", ObservedAtUtc = DateTimeOffset.UtcNow, CustomEqualizerCapacity = profile.CustomEqualizerCapacity,
                     EqualizerFrequencies = profile.CustomEqFrequencies.Select(x => (ushort)x).ToArray(),
-                    RawFeatures = Enumerable.Range(0, 64).ToDictionary(x => (byte)x, _ => (byte)0), SpatialMode = 1,
-                    BassEngine = new(-6, 6, 2), PromptVolume = 5, GameSound = new(3, new byte[] { 0, 3 }),
+                    RawFeatures = Enumerable.Range(0, 64).ToDictionary(x => (byte)x, x => x == 0x18 ? (byte)1 : (byte)0), SpatialMode = 1,
+                    BassEngine = new(-6, 6, 2), PromptVolume = 5,
+                    GameSound = productId == "063C14" ? new(1, new byte[] { 0, 1 }) : new(3, new byte[] { 0, 3 }),
                     Gestures = [new(1, 0, 1, 1), new(2, 0, 1, 1), new(1, 0, 2, 6), new(2, 0, 2, 6)],
                     AncOptions = profile.NoiseReductionModes.SelectMany(p => (p.Children.Count == 0 ? new[] { p } : p.Children).Select(c =>
                         new AncOption((byte)p.ProtocolIndex, (byte)c.ProtocolIndex, c.ModeType, "模式"))).ToList() };
@@ -283,6 +284,24 @@ internal static class DeviceStateTests
                 await using var native = new NativeHeadsetService(() => throw new InvalidOperationException("Projection enumerated Bluetooth"), Whitelist(directory, 1));
                 var ui = (UiSnapshot)typeof(NativeHeadsetService).GetMethod("Map", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(native, [daily])!;
                 Check(ui.FeatureSections.Count > 0, "Real profile produced no controls");
+                var controls = ui.FeatureSections.SelectMany(section => section.Controls).ToArray();
+                var hires = controls.Single(control => control.Id == "hires");
+                var spatial = controls.Single(control => control.Id == "spatial");
+                Check(hires is { Value: 1, CanWrite: true } && spatial is { Value: 1, CanWrite: true },
+                    "Host projection must keep Hi-Res and spatial independently writable and preserve both observed values.");
+                if (productId == "06EC10")
+                    Check(spatial.Maximum == 1 && spatial.Options!.Any(option => option.Key == 2),
+                        "Spatial mode 2 is a discrete option even when numeric bounds default to 0..1.");
+                if (productId != "06C010")
+                {
+                    int type = productId == "063C14" ? 1 : 3;
+                    var gameType = controls.Single(control => control.Id == "game-sound");
+                    Check(gameType.CanWrite && gameType.Value == type && gameType.Maximum == 1
+                        && gameType.Options!.Select(option => option.Key).SequenceEqual(new[] { type, 0 })
+                        && gameType.Options!.Single(option => option.Key == 0).Name == "关闭"
+                        && controls.Single(control => control.Id == "game-sound-enabled") is { Value: 0, CanWrite: true },
+                        "Each source must retain its model's game IDs with type selection available while the switch is off.");
+                }
                 string key = DeviceWhitelistStore.KeyFor(Convert.ToUInt64(productId, 16));
                 state.Remember(key, source.ToString(), DevicePresentation.From(ui, DateTimeOffset.UtcNow));
                 var stored = state.Find(key, source.ToString())?.ToSnapshot();

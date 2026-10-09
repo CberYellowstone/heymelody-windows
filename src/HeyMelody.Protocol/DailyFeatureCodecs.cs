@@ -33,7 +33,11 @@ public static class DailyFeatureCodecs
         byte[] types = bytes[3..].ToArray(); Require(types.Distinct().Count() == types.Length);
         return new(bytes[1], Array.AsReadOnly(types));
     }
-    public static byte[] GameSound(byte type, bool enabled) => [type, enabled ? (byte)1 : (byte)0];
+    // The second byte enables this type assignment. It is not the independent
+    // feature 0x27 switch, which is written through 0x0403 instead.
+    public static byte[] GameSoundType(byte type, bool typeEnabled = true) => [type, typeEnabled ? (byte)1 : (byte)0];
+    /// <summary>Compatibility encoder for the type assignment's enable byte, not feature 0x27.</summary>
+    public static byte[] GameSound(byte type, bool enabled) => GameSoundType(type, enabled);
     // n.t @ 0x57BDF0: normal (non-TV) query asks components 2,3,1.
     public static byte[] GestureQuery() => [3, 2, 3, 1];
     // KeyFunctionInfo.<init>(I,[B) @ 0x5687F0; n.M 8108 @ 0x57EA16.

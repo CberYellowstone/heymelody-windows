@@ -89,13 +89,14 @@ public sealed partial class DailyClient
             var versions = new DeviceVersionContext(s.FirmwareVersion, _appVersionMarker);
             var options = _profile.GameSoundModes.Where(x => x.Type is >= 0 and <= 255 && x.Conditions.Evaluate(versions) == VersionConditionStatus.Pass
                 && s.GameSound?.SupportedTypes.Contains((byte)x.Type) == true).Select(x => new DailyFeatureOption(x.Type,
-                    x.Type switch { 0 => "默认音效", 3 => "射击游戏", _ => $"游戏音效 {x.Type}" })).DistinctBy(x => x.Value).ToArray();
-            bool valid = s.GameSound is not null && options.Any(x => x.Value == s.GameSound.SelectedType) && BinaryValue(s, 0x27).HasValue;
-            string? blocked = GameSoundEnableBlock(s);
-            sound.Add(new("game-sound-enabled", "游戏音效", "switch", BinaryValue(s, 0x27), blocked, [], 0, 1,
-                allowed && valid && GeneralCommands(0x012B, 0x0423) && GeneralCommands(0x010D, 0x0423) && (BinaryValue(s, 0x27) == 1 || blocked is null)));
+                    x.Type switch { 0 => "关闭", 1 => "和平精英职业联赛游戏音效", 3 => "射击类游戏音效", _ => $"游戏音效 {x.Type}" })).DistinctBy(x => x.Value).ToArray();
+            // GameSoundMutexes describes prompts on other settings in the official UI,
+            // not a prerequisite for sending a game sound command. The boolean and type
+            // have separate commands and can be offered independently.
+            sound.Add(new("game-sound-enabled", "游戏音效", "switch", BinaryValue(s, 0x27), null, [], 0, 1,
+                allowed && BinaryValue(s, 0x27).HasValue && GeneralCommands(0x010D, 0x0403)));
             sound.Add(new("game-sound", "游戏音效类型", "combo", s.GameSound?.SelectedType, null, options, null, null,
-                allowed && valid && GeneralCommands(0x012B, 0x0423) && (BinaryValue(s, 0x27) == 0 || blocked is null)));
+                allowed && s.GameSound is not null && options.Length > 0 && GeneralCommands(0x012B, 0x0423)));
         }
         foreach (var assignment in s.Gestures)
         {
@@ -113,27 +114,6 @@ public sealed partial class DailyClient
         s.FeatureSections = sections.AsReadOnly();
     }
     private static string GestureId(GestureAssignment x) => $"gesture:{x.Device}:{x.Button}:{x.Action}";
-    private string? GameSoundEnableBlock(DailySnapshot s)
-    {
-        foreach (int mutex in _profile!.GameSoundMutexes)
-        {
-            // OEM GameSetItem @ 26E8A4 + Bass EQ fragment @ 1A2514 / HearingOptimizeItem @ 2711xx.
-            // IDs 1/2 have not been mapped to a confirmed firmware state query.
-            // Do not claim that turning off a setting resolves a policy that has not been audited.
-            string function = mutex switch { 3 => "bassEngineSupport", 4 => "hearingOptimize", _ => "" };
-            if (function.Length == 0) return $"该资源的游戏音效联动规则 {mutex} 尚未核实，暂不能安全开启。";
-            // The package branch selects map a for HeyMelody, rather than OEM maps c/d.
-            // Only the explicitly qualified OEM source may use the mappings below.
-            if (!string.Equals(_profile.Provenance.ArchivePath, "WirelessEarphones", StringComparison.Ordinal))
-                return $"当前资源来源的游戏音效联动规则 {mutex} 尚未核实，暂不能安全开启。";
-            if (_profile.FunctionVersion(function) is null or 0) continue;
-            byte id = mutex == 3 ? (byte)0x1D : (byte)0x38;
-            int? current = BinaryValue(s, id);
-            if (!current.HasValue) return mutex == 3 ? "低音增强状态未知，暂不能开启游戏音效。" : "听感优化状态未知，暂不能开启游戏音效。";
-            if (current == 1) return mutex == 3 ? "请先关闭低音增强，再开启游戏音效。" : "请先关闭听感优化，再开启游戏音效。";
-        }
-        return null;
-    }
     // OEM repository L.d @ 2212B0 translates source gesture styles to firmware actions.
     private static int ProtocolAction(int action) => action switch
     {
@@ -214,14 +194,16 @@ public sealed partial class DailyClient
             {
                 command = 0x0427; payload = DailyFeatureCodecs.PromptVolume(value); target = s => s.PromptVolume == value;
             }
-            else if (id is "game-sound" or "game-sound-enabled")
+            else if (id == "game-sound-enabled")
             {
-                bool enable = id == "game-sound-enabled" ? value == 1 : BinaryValue(before, 0x27) == 1;
-                byte type = id == "game-sound" ? checked((byte)value) : before.GameSound!.SelectedType;
-                if (enable && GameSoundEnableBlock(before) is { } blocked)
-                    return Reject(result, blocked, DailyApplyFailure.MutexConsentRequired);
-                command = 0x0423; payload = DailyFeatureCodecs.GameSound(type, enable);
-                target = s => s.GameSound?.SelectedType == type && BinaryValue(s, 0x27) == (enable ? 1 : 0);
+                command = 0x0403; payload = [0x27, (byte)value];
+                target = s => BinaryValue(s, 0x27) == value;
+            }
+            else if (id == "game-sound")
+            {
+                byte type = checked((byte)value);
+                command = 0x0423; payload = DailyFeatureCodecs.GameSoundType(type);
+                target = s => s.GameSound?.SelectedType == type;
             }
             else if (id.StartsWith("gesture:", StringComparison.Ordinal))
             {

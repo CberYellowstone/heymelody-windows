@@ -97,30 +97,32 @@ await Test("unknown feature state blocks setter", async () =>
     var f = new Fake(); f.Features[0x11] = 2; await using var c = new DailyClient(f);
     var r = await c.SetDualConnectionAsync(true); Check(!r.SubmissionAttempted && f.Writes.Count == 0);
 });
-await Test("spatial mutual exclusion requires explicit fresh consent", async () =>
+await Test("spatial submits only its mode while HiRes remains enabled", async () =>
 {
     var f = new Fake(); await using var c = new DailyClient(f);
-    Check(!(await c.SetSpatialModeAsync(2)).SubmissionAttempted && f.Writes.Count == 0);
-    var r = await c.SetSpatialModeAsync(2,true); Check(r.Success && r.PartialEffects.Count == 1);
-    Check(f.Writes.Select(x => x.Command).SequenceEqual(new ushort[] {0x0403,0x0422}) && f.Features[0x18] == 0 && f.Spatial == 2);
+    var r = await c.SetSpatialModeAsync(2); Check(r.Success && r.PartialEffects.Count == 0 && !r.PrerequisiteSubmitted);
+    Check(f.Writes.Single().Command == 0x0422 && f.Writes.Single().Payload.SequenceEqual(new byte[] {2})
+        && r.After?.HiRes == true && r.After.SpatialMode == 2);
 });
-await Test("HiRes reverse exclusion closes spatial before enabling", async () =>
+await Test("HiRes submits only feature18 while spatial remains enabled", async () =>
 {
     var f = new Fake { Spatial = 1 }; f.Features[0x18] = 0; await using var c = new DailyClient(f);
-    Check(!(await c.SetHiResAsync(true)).SubmissionAttempted);
-    Check((await c.SetHiResAsync(true,true)).Success);
-    Check(f.Writes.Select(x => x.Command).SequenceEqual(new ushort[] {0x0422,0x0403}));
+    var r = await c.SetHiResAsync(true); Check(r.Success && !r.PrerequisiteSubmitted && r.PartialEffects.Count == 0);
+    Check(f.Writes.Single().Command == 0x0403 && f.Writes.Single().Payload.SequenceEqual(new byte[] {0x18,1})
+        && r.After?.HiRes == true && r.After.SpatialMode == 1);
 });
-await Test("prerequisite rejection stops transaction and exposes partial request", async () =>
+await Test("spatial rejection submits one target even with compatibility consent", async () =>
 {
     var f = new Fake { SetterStatus = 1 }; await using var c = new DailyClient(f);
     var r = await c.SetSpatialModeAsync(1,true);
-    Check(!r.Success && r.SubmissionAttempted && r.AckAccepted == false && f.Writes.Count == 1 && r.PartialEffects.Count == 1);
+    Check(!r.Success && r.TargetSubmitted && !r.PrerequisiteSubmitted && r.AckAccepted == false
+        && f.Writes.Single().Command == 0x0422 && r.PartialEffects.Count == 0);
 });
-await Test("post-prerequisite capability race blocks final setter", async () =>
+await Test("compatibility consent does not disable HiRes before spatial", async () =>
 {
     var f = new Fake { HideSpatialAfterHiResOff = true }; await using var c = new DailyClient(f);
-    var r = await c.SetSpatialModeAsync(2,true); Check(!r.Success && f.Writes.Count == 1 && r.PartialEffects.Count == 1);
+    var r = await c.SetSpatialModeAsync(2,true); Check(r.Success && f.Writes.Single().Command == 0x0422
+        && r.After?.HiRes == true && r.After.SpatialMode == 2 && r.PartialEffects.Count == 0);
 });
 await Test("partial transport send is never replayed", async () =>
 {
@@ -399,11 +401,11 @@ await Test("missing readback differs from an observed mismatch in the apply rece
     Check(r.TargetSubmitted && !r.PrerequisiteSubmitted && r.AckStatus == 0 && r.ReadbackMatches is null &&
         r.FailureKind == DailyApplyFailure.ReadbackUnavailable && f.Writes.Count == 1);
 });
-await Test("mutex prerequisite submission is distinct from target submission", async () =>
+await Test("spatial rejection receipt refers to the requested setting", async () =>
 {
     var f = new Fake { SetterStatus = 1 }; await using var c = new DailyClient(f);
     var r = await c.SetSpatialModeAsync(2, true);
-    Check(r.PrerequisiteSubmitted && !r.TargetSubmitted && r.AckStatus is null && r.ReadbackMatches is null &&
+    Check(!r.PrerequisiteSubmitted && r.TargetSubmitted && r.AckStatus == 1 && r.ReadbackMatches == true &&
         r.FailureKind == DailyApplyFailure.PeerRejected && f.Writes.Count == 1);
 });
 await Test("existing selected matching EQ saves no duplicate SET", async () =>
@@ -533,6 +535,7 @@ await Test("disposing idle persistent reader cancels the pending read", async ()
     Check(f.ActiveReaders==0);
 });
 await DailyFeatureTests.Run(Test, (value, message) => Check(value, message));
+await AudioFeatureCompatibilityTests.Run(Test, (value, message) => Check(value, message));
 await ResourceContextTests.RunAsync(Test);
 await AncModeTests.RunAsync(Test);
 await CalibrationTransportTests.RunAsync(Test);
@@ -549,6 +552,8 @@ sealed class Fake : IControlConnector
     public Dictionary<byte,byte> Features = new() { [0x11]=0,[0x06]=0,[0x28]=0,[0x18]=1,[0x1B]=0 };
     public BassEngineRange Bass = new(-6, 6, 0);
     public byte PromptVolume = 6, GameSoundType;
+    public byte? GameSoundFeatureAfterTypeSet;
+    public string ProductId = "06EC10";
     public byte[] GameSoundTypes = [0,3];
     public List<GestureAssignment> Gestures = [new(1,0,2,6), new(2,0,2,1)];
     public byte[]? CapabilityOverride;
@@ -615,7 +620,11 @@ sealed class Fake : IControlConnector
                 case 0x0422: Spatial=p.Payload[0];break;
                 case 0x041B: Bass = new(unchecked((sbyte)p.Payload[2]),unchecked((sbyte)p.Payload[1]),unchecked((sbyte)p.Payload[0]));break;
                 case 0x0427: PromptVolume = p.Payload[0];break;
-                case 0x0423: GameSoundType = p.Payload[0]; Features[0x27] = p.Payload[1];break;
+                case 0x0423:
+                    if (p.Payload.Length != 2 || p.Payload[1] != 1) throw new Exception("Type assignment requires its enable byte");
+                    GameSoundType = p.Payload[0];
+                    if (GameSoundFeatureAfterTypeSet is { } feature) Features[0x27] = feature;
+                    break;
                 case 0x0401:
                     var gesture = new GestureAssignment(p.Payload[1],p.Payload[2],p.Payload[3],p.Payload[4]);
                     Gestures.RemoveAll(x=>x.Device==gesture.Device&&x.Button==gesture.Button&&x.Action==gesture.Action);Gestures.Add(gesture);break;
@@ -635,7 +644,7 @@ sealed class Fake : IControlConnector
         if (ReadReplies.TryGetValue(p.Command, out var overridden)) return overridden;
         return p.Command switch
         {
-            0x0103 => UnsupportedProduct?[0,1,2,3]:[0,0x10,0xEC,6],
+            0x0103 => UnsupportedProduct?[0,1,2,3]:[0,..Convert.FromHexString(ProductId).Reverse()],
             0x010B => Color is { } color ? [0,color] : [1],
             0x0100 => [0,..Capabilities()],
             0x0105 => [0,3,..Encoding.UTF8.GetBytes("1,2,116,2,2,116,3,2,100")],

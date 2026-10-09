@@ -193,19 +193,10 @@
                 </StackPanel>
               </Grid>
             </Border>
-            <Border x:Name="AncPanel" Classes="card">
-              <StackPanel>
-                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="20" Margin="16,0" MinHeight="{DynamicResource SettingsExpanderMinHeight}">
-                  <fa:FAIconSourceElement x:Name="AncIcon" IconSource="{local:AppIcon NoiseControl}" Width="20" Height="20" VerticalAlignment="Center" />
-                  <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                    <TextBlock Text="降噪" />
-                    <TextBlock Text="调整你听见的环境声音" Classes="caption" TextWrapping="Wrap" />
-                  </StackPanel>
-                </Grid>
-                <Border Height="1" Background="{DynamicResource CardStrokeColorDefaultBrush}" />
-                <local:AncModeSelector />
-              </StackPanel>
-            </Border>
+            <fa:FASettingsExpander x:Name="AncPanel" Header="降噪" Description="调整你听见的环境声音"
+                                   IconSource="{local:AppIcon NoiseControl}" IsExpanded="True">
+              <local:AncModeSelector />
+            </fa:FASettingsExpander>
             <fa:FASettingsExpander x:Name="EqualizerPanel" Header="均衡器" Description="预设与自定义均衡器"
                                    IconSource="{local:AppIcon Equalizer}" IsExpanded="False">
               <Border Padding="20,16">

@@ -129,9 +129,11 @@ internal static class NativeSmoke
                 var pageOrigin = page.TranslatePoint(default, window) ?? throw new InvalidOperationException("View is detached.");
                 Check(page.Bounds.Width > 0 && page.Bounds.Height > 0 && pageOrigin.Y >= window.TitleBar.Height - 1, "Content fits below titlebar.");
                 Check(page.IsCompact == (page.Bounds.Width < 1080), "Native responsive breakpoint.");
-                Check(page.FindControl<Border>("AncPanel") is { IsVisible: true }
-                    && page.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => !expander.IsExpanded),
-                    "The native ANC card is always present and other main settings start collapsed.");
+                var anc = page.FindControl<FASettingsExpander>("AncPanel")!;
+                Check(anc is { IsVisible: true, IsExpanded: true }
+                    && page.GetVisualDescendants().OfType<FASettingsExpander>()
+                        .Where(expander => !ReferenceEquals(expander, anc)).All(expander => !expander.IsExpanded),
+                    "The native ANC panel starts expanded and optional settings start collapsed.");
                 var hero = page.FindControl<ProductArtwork>("HeroArt") ?? throw new InvalidOperationException("Product artwork missing.");
                 Check(Equals(hero.Visual, DeviceVisuals.X4Product)
                     && hero.GetVisualDescendants().OfType<Image>().SingleOrDefault() is not null,

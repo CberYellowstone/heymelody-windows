@@ -12,12 +12,13 @@ internal static class DailyFeatureTests
     {
         void Check(bool value) => check(value, "daily feature assertion");
         void Bad(Action action) { try { action(); } catch (FormatException) { return; } throw new Exception("expected strict feature rejection"); }
-        await test("native daily codecs preserve signed bass and independent game enable", () => {
+        await test("native daily codecs preserve signed bass and game type assignment enable", () => {
             Check(DailyFeatureCodecs.ParseBass([0,250,6,253]) == new BassEngineRange(-6,6,-3));
             Check(DailyFeatureCodecs.Bass(new(-6,6,-3),-2).SequenceEqual(new byte[]{254,6,250}));
             Check(DailyFeatureCodecs.PromptVolume(10).SequenceEqual(new byte[]{10}));
             Check(DailyFeatureCodecs.ParseGameSound([0,3,2,0,3]).SupportedTypes.SequenceEqual(new byte[]{0,3}));
             Check(DailyFeatureCodecs.GameSound(3,false).SequenceEqual(new byte[]{3,0}));
+            Check(DailyFeatureCodecs.GameSoundType(0).SequenceEqual(new byte[]{0,1}));
             Check(DailyFeatureCodecs.Gesture(new(2,0,3,6),1).SequenceEqual(new byte[]{1,2,0,3,1}));
             Bad(()=>DailyFeatureCodecs.ParseBass([0,6,250,0])); Bad(()=>DailyFeatureCodecs.Bass(new(-6,6,0),7));
             Bad(()=>DailyFeatureCodecs.ParsePromptVolume([0,6,7])); Bad(()=>DailyFeatureCodecs.ParseGameSound([0,3,2,3,3]));
@@ -181,30 +182,32 @@ internal static class DailyFeatureTests
         await test("game sound selection and enable are independent and supported intersect source", async () => {
             var f=new Fake();f.Features[0x27]=0;await using var c=new DailyClient(f,_=>Profile("{\"gameSoundList\":[{\"type\":0},{\"type\":3},{\"type\":7}]}"));
             var s=await c.RefreshAsync();Check(Control(s,"game-sound").Options.Select(x=>x.Value).SequenceEqual(new[]{0,3}));
-            Check((await c.ApplyFeatureAsync("game-sound",3)).Success&&f.Writes.Last().Payload.SequenceEqual(new byte[]{3,0}));
-            Check((await c.ApplyFeatureAsync("game-sound-enabled",1)).Success&&f.Writes.Last().Payload.SequenceEqual(new byte[]{3,1}));
+            Check((await c.ApplyFeatureAsync("game-sound",3)).Success&&f.Writes.Last().Command==0x0423
+                &&f.Writes.Last().Payload.SequenceEqual(new byte[]{3,1})&&f.Features[0x27]==0);
+            Check((await c.ApplyFeatureAsync("game-sound-enabled",1)).Success&&f.Writes.Last().Command==0x0403
+                &&f.Writes.Last().Payload.SequenceEqual(new byte[]{0x27,1})&&f.GameSoundType==3);
             Check(!(await c.ApplyFeatureAsync("game-sound",7)).Success&&f.Writes.Count==2);
         });
-        await test("verified game mutex uses fresh active states and allows enabling after off", async () => {
+        await test("OEM game commands do not require disabling other settings", async () => {
             var f=new Fake();f.Features[0x27]=0;f.Features[0x1D]=1;f.Features[0x38]=0;
             await using var c=new DailyClient(f,_=>Profile("{\"bassEngineSupport\":1,\"hearingOptimize\":1,\"gameSoundMutexes\":[3,4],\"gameSoundList\":[{\"type\":0},{\"type\":3}]}",resourceSource:"WirelessEarphones"));
-            var s=await c.RefreshAsync();Check(!Control(s,"game-sound-enabled").CanWrite);
-            Check(!(await c.ApplyFeatureAsync("game-sound-enabled",1)).Success&&f.Writes.Count==0);
-            f.Features[0x1D]=0;Check((await c.ApplyFeatureAsync("game-sound-enabled",1)).Success&&f.Writes.Count==1);
-            f.Features[0x1D]=1;Check((await c.ApplyFeatureAsync("game-sound-enabled",0)).Success&&f.Writes.Count==2);
+            var s=await c.RefreshAsync();Check(Control(s,"game-sound-enabled").CanWrite);
+            Check((await c.ApplyFeatureAsync("game-sound-enabled",1)).Success&&f.Writes.Single().Payload.SequenceEqual(new byte[]{0x27,1}));
+            Check((await c.ApplyFeatureAsync("game-sound",3)).Success&&f.Features[0x1D]==1&&f.Features[0x38]==0);
+            Check((await c.ApplyFeatureAsync("game-sound-enabled",0)).Success&&f.Writes.Count==3);
         });
-        await test("Hey source cannot reuse OEM mutex maps3 and4 even when OEM targets are off", async () => {
+        await test("Hey game commands do not reinterpret OEM mutex maps", async () => {
             var f=new Fake();f.Features[0x27]=0;f.Features[0x1D]=0;f.Features[0x38]=0;
             await using var c=new DailyClient(f,_=>Profile("{\"bassEngineSupport\":1,\"hearingOptimize\":1,\"gameSoundMutexes\":[3,4],\"gameSoundList\":[{\"type\":0},{\"type\":3}]}",resourceSource:"HeyMelody"));
-            var s=await c.RefreshAsync();Check(!Control(s,"game-sound-enabled").CanWrite&&Control(s,"game-sound-enabled").Text!.Contains("当前资源来源"));
-            Check(!(await c.ApplyFeatureAsync("game-sound-enabled",1)).Success&&f.Writes.Count==0);
-            f.Features[0x27]=1;Check((await c.ApplyFeatureAsync("game-sound-enabled",0)).Success&&f.Writes.Count==1);
+            var s=await c.RefreshAsync();Check(Control(s,"game-sound-enabled").CanWrite&&Control(s,"game-sound-enabled").Text is null);
+            Check((await c.ApplyFeatureAsync("game-sound-enabled",1)).Success&&f.Writes.Single().Payload.SequenceEqual(new byte[]{0x27,1}));
+            Check((await c.ApplyFeatureAsync("game-sound-enabled",0)).Success&&f.Writes.Count==2);
         });
-        await test("unknown game mutex is explicit unavailable while disabling stays possible", async () => {
+        await test("game mutex metadata does not block either direction", async () => {
             var f=new Fake();f.Features[0x27]=0;await using var c=new DailyClient(f,_=>Profile("{\"gameSoundMutexes\":[1],\"gameSoundList\":[{\"type\":0},{\"type\":3}]}"));
-            var s=await c.RefreshAsync();Check(!Control(s,"game-sound-enabled").CanWrite&&Control(s,"game-sound-enabled").Text!.Contains("尚未核实"));
-            Check(!(await c.ApplyFeatureAsync("game-sound-enabled",1)).Success&&f.Writes.Count==0);
-            f.Features[0x27]=1;Check((await c.ApplyFeatureAsync("game-sound-enabled",0)).Success&&f.Writes.Count==1);
+            var s=await c.RefreshAsync();Check(Control(s,"game-sound-enabled").CanWrite&&Control(s,"game-sound-enabled").Text is null);
+            Check((await c.ApplyFeatureAsync("game-sound-enabled",1)).Success&&f.Writes.Count==1);
+            Check((await c.ApplyFeatureAsync("game-sound-enabled",0)).Success&&f.Writes.Count==2);
         });
         await test("native binary pushes rebuild controls and unknown values disable writes", async () => {
             var f=new Fake();f.Features[4]=0;f.Features[0x1D]=0;await using var c=new DailyClient(f,_=>Profile("{\"wearDetection\":2,\"bassEngineSupport\":1}"));await c.RefreshAsync();

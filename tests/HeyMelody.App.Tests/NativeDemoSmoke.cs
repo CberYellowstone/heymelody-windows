@@ -110,10 +110,12 @@ internal static class NativeDemoSmoke
                 && page.GetVisualDescendants().OfType<FeatureSectionView>().All(section => section.Content is FASettingsExpander),
                 "The demo's dynamic section containers materialize before inspecting or expanding their editors.");
             RecordControlLayout(page, vm, "collapsed");
-            Check(page.FindControl<Border>("AncPanel") is { IsVisible: true }
-                && page.GetVisualDescendants().OfType<FASettingsExpander>().All(expander => !expander.IsExpanded)
+            var anc = page.FindControl<FASettingsExpander>("AncPanel")!;
+            Check(anc is { IsVisible: true, IsExpanded: true }
+                && page.GetVisualDescendants().OfType<FASettingsExpander>()
+                    .Where(expander => !ReferenceEquals(expander, anc)).All(expander => !expander.IsExpanded)
                 && !page.FindControl<FASettingsExpander>("OperationLogPanel")!.IsExpanded,
-                "ANC remains visible while the demo's other groups start collapsed.");
+                "ANC starts expanded while the demo's optional groups start collapsed.");
             // The following native checks inspect all editors; explicitly open them
             // after verifying the same collapsed defaults offered to real users.
             await UntilAsync(() => hero.GetVisualDescendants().OfType<EncoFree4DynaudioModelView>().Any(model => model.ModelReady

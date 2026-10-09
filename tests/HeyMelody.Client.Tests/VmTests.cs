@@ -55,20 +55,20 @@ internal static class VmTests
             await vm.ToggleGameCommand.ExecuteAsync(true); Check(service.Actions.Count == 0);
             await vm.ConnectCommand.ExecuteAsync(null); Check(vm.HasVerifiedSnapshot && service.LastIdentity == "device-b");
         });
-        await test("VM mutex cancellation sends no SET", async () =>
+        await test("VM spatial submits directly while HiRes is enabled", async () =>
         {
             var service = new FakeService(); var confirmations = new Confirmations(false);
             await using var vm = Create(service, confirmations); await Connect(vm);
             vm.SelectedSpatial = vm.SpatialOptions.Last(); await vm.ApplySpatialCommand.ExecuteAsync(null);
-            Check(service.Actions.Count == 0 && confirmations.Calls == 1 && vm.HiRes == true);
+            Check(service.Actions is [{ Kind: "Spatial", Value: 2, AllowMutexChange: false }] && confirmations.Calls == 0);
         });
-        await test("VM confirmed mutex transition carries explicit authorization once", async () =>
+        await test("VM HiRes submits directly while spatial is enabled", async () =>
         {
-            var service = new FakeService(); var confirmations = new Confirmations(true);
+            var initial = Snapshot(); initial.HiRes = false; initial.Spatial = 2;
+            var service = new FakeService { ConnectSnapshot = () => initial }; var confirmations = new Confirmations(false);
             await using var vm = Create(service, confirmations); await Connect(vm);
-            vm.SelectedSpatial = vm.SpatialOptions.Last(); await vm.ApplySpatialCommand.ExecuteAsync(null);
-            Check(service.Actions.Count == 1 && service.Actions[0] is { Kind: "Spatial", Value: 2, AllowMutexChange: true });
-            Check(confirmations.Calls == 1);
+            await vm.ToggleHiResCommand.ExecuteAsync(true);
+            Check(service.Actions is [{ Kind: "HiRes", Value: 1, AllowMutexChange: false }] && confirmations.Calls == 0);
         });
         await test("VM unknown ACK keeps EQ dirty and never retries", async () =>
         {
@@ -145,11 +145,11 @@ internal static class VmTests
             vm.Bands[0].Gain = 3; await vm.ConnectCommand.ExecuteAsync(null);
             Check(vm.HasVerifiedSnapshot && vm.EqDirty && service.Disconnects == 0);
         });
-        await test("VM close cancels the active mutex confirmation before confirming its draft", async () =>
+        await test("VM close cancels an active entry discard confirmation before confirming its draft", async () =>
         {
             var service = new FakeService(); var confirmations = new DeferredConfirmations();
             var vm = new MainViewModel(service, confirmations); await Connect(vm); vm.EqName = "未保存";
-            vm.SelectedSpatial = vm.SpatialOptions.Last(); var apply = vm.ApplySpatialCommand.ExecuteAsync(null);
+            var apply = vm.SelectEqEntryAsync(vm.EqEntries[1]);
             Check(confirmations.Calls == 1);
             var close = vm.RequestCloseAsync();
             await apply; Check(await close);

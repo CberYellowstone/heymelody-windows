@@ -10,6 +10,7 @@ public sealed class FeatureControlViewModel : ObservableObject
     private double _numberValue;
     private string _textValue;
     private UiOption? _selectedOption;
+    private long _editRevision;
     public FeatureControlViewModel(UiFeatureControl definition, Func<FeatureControlViewModel, Task> submit, Func<bool>? canWrite = null)
     {
         Definition = definition; _submit = submit;
@@ -29,11 +30,31 @@ public sealed class FeatureControlViewModel : ObservableObject
     public double Maximum => Definition.Maximum;
     public double Step => Definition.Step;
     public IReadOnlyList<UiOption> Options => Definition.Options ?? [];
-    public bool BooleanValue { get => _booleanValue; set => SetProperty(ref _booleanValue, value); }
-    public double NumberValue { get => _numberValue; set => SetProperty(ref _numberValue, value); }
-    public string TextValue { get => _textValue; set => SetProperty(ref _textValue, value); }
-    public UiOption? SelectedOption { get => _selectedOption; set => SetProperty(ref _selectedOption, value); }
-    public Task SubmitAsync() => CanEdit ? _submit(this) : Task.CompletedTask;
+    public bool BooleanValue { get => _booleanValue; set { if (SetProperty(ref _booleanValue, value)) _editRevision++; } }
+    public double NumberValue { get => _numberValue; set { if (SetProperty(ref _numberValue, value)) _editRevision++; } }
+    public string TextValue { get => _textValue; set { if (SetProperty(ref _textValue, value)) _editRevision++; } }
+    public UiOption? SelectedOption { get => _selectedOption; set { if (SetProperty(ref _selectedOption, value)) _editRevision++; } }
+    public async Task SubmitAsync()
+    {
+        long submittedRevision = _editRevision;
+        try { if (CanEdit) await _submit(this); }
+        finally
+        {
+            // A changed readback creates a new model. If this model was reused because the
+            // observation stayed unchanged, settle its submitted value from that observation.
+            // A newer edit belongs to a later intent and must survive this completion.
+            if (_editRevision == submittedRevision)
+            {
+                switch (Kind)
+                {
+                    case "Switch": BooleanValue = Definition.Value == 1; break;
+                    case "Combo" or "Radio": SelectedOption = Options.FirstOrDefault(x => x.Key == Definition.Value); break;
+                    case "Text": TextValue = Definition.Text ?? ""; break;
+                    case "Slider": NumberValue = Definition.Value ?? 0; break;
+                }
+            }
+        }
+    }
 }
 public sealed record FeatureSectionViewModel(string Id, string Header, string Description,
     bool DefaultExpanded, IReadOnlyList<FeatureControlViewModel> Controls);
