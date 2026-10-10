@@ -45,6 +45,7 @@ public sealed class BackendEvent
     public string? Message { get; set; }
     public bool FirstObservation { get; set; }
     public UiCalibrationState? Calibration { get; set; }
+    public UiCalibrationSpectrum? CalibrationSpectrum { get; set; }
     public UiResourceSettings? Resources { get; set; }
 }
 

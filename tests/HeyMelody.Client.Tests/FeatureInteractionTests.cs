@@ -7,10 +7,64 @@ internal static class FeatureInteractionTests
 
     public static async Task RunAsync(Func<string, Func<Task>, Task> test)
     {
+        await test("both sources group game controls and place BassWave beside EQ for every model", async () =>
+        {
+            foreach (string source in new[] { "HeyMelody", "WirelessEarphones" })
+            foreach (string product in new[] { "06EC10", "067410", "068C10", "06C010", "future-model" })
+            {
+                var service = new Service(); service.State.ResourceSource = source; service.State.ProductId = product;
+                var original = service.State.FeatureSections.Single().Controls;
+                service.State.FeatureSections = [new("audio", "声音", true,
+                [new("game", "游戏低延迟", "Switch", 0, CanWrite: true),
+                 new("hires", "Hi-Res", "Switch", 0, CanWrite: true),
+                 new("bass-enabled", "低音增强", "Switch", 1, CanWrite: true),
+                 original.Single(control => control.Id == "spatial"),
+                 new("vocal-enhance", "人声增强", "Switch", 0, CanWrite: true),
+                 new("bass", "低音强度", "Slider", -4, Minimum: -9, Maximum: 8, CanWrite: true),
+                 original.Single(control => control.Id == "prompt-volume"),
+                 original.Single(control => control.Id == "game-sound-enabled"),
+                 original.Single(control => control.Id == "game-sound"),
+                 original.Single(control => control.Id == "gesture:1:0:2")])];
+                await using var vm = await Connected(service);
+                Check(vm.FeatureSections.Single().Controls.Select(control => control.Id)
+                    .SequenceEqual(["game", "game-sound-enabled", "hires", "spatial", "vocal-enhance", "prompt-volume", "gesture:1:0:2"]),
+                    "Game effect follows low latency while other visible controls retain their relative order.");
+                Check(vm.EqualizerFeatures.Select(control => control.Id).SequenceEqual(["bass-enabled", "bass"])
+                    && vm.EqualizerFeatures[0].Label == "BassWave™动态低音"
+                    && vm.EqualizerFeatures[0].Description == "动态增益低音，清晰且高保真地呈现深邃低音效果。"
+                    && vm.EqualizerFeatures[1] is { Minimum: -9, Maximum: 8, NumberValue: -4 },
+                    "The equalizer presentation keeps native BassWave copy and the observed signed slider range.");
+                Check(service.Actions.Count == 0 && service.State.FeatureSections.Single().Controls.Any(control => control.Id == "game-sound"),
+                    "Presentation neither mutates source definitions nor writes a default game type.");
+                var bass = Feature(vm, "bass"); bass.NumberValue = -3; await bass.SubmitAsync();
+                Check(service.Actions is [{ FeatureId: "bass", Value: -3 }] && Feature(vm, "bass").NumberValue == -3,
+                    "A relocated slider submits its existing native feature identifier once.");
+                var enabled = Feature(vm, "bass-enabled"); enabled.BooleanValue = false; await enabled.SubmitAsync();
+                Check(service.Actions.Count == 2 && service.Actions[1] is { FeatureId: "bass-enabled", Value: 0 }
+                    && Feature(vm, "bass").NumberValue == -3,
+                    "Toggling BassWave preserves the separate observed gain.");
+                var disconnected = service.Next(); disconnected.ControlReady = false; disconnected.Connected = false;
+                disconnected.ConnectionState = ConnectionState.Disconnected; service.Push(disconnected);
+                Check(vm.EqualizerFeatures.All(control => !control.CanEdit), "Relocated editors follow the same connection permissions.");
+                var draft = Feature(vm, "bass"); draft.NumberValue = 4; await draft.SubmitAsync();
+                Check(service.Actions.Count == 2 && draft.NumberValue == -3, "Offline BassWave edits settle without submitting.");
+            }
+        });
+        await test("missing game or BassWave definitions leave no synthetic controls", async () =>
+        {
+            var service = new Service(); service.State.FeatureSections = [new("audio", "声音", true,
+                [new("game-sound-enabled", "游戏音效", "Switch", 0, CanWrite: true),
+                 new("hires", "Hi-Res", "Switch", 0, CanWrite: true),
+                 new("game-sound", "游戏音效类型", "Combo", 3, Options: [new(3, "射击")], CanWrite: true)])];
+            await using var vm = await Connected(service);
+            Check(!vm.HasEqualizerFeatures && vm.FeatureSections.Single().Controls.Select(control => control.Id)
+                .SequenceEqual(["game-sound-enabled", "hires"]) && service.Actions.Count == 0,
+                "Models without low latency or BassWave retain their available controls and never acquire defaults.");
+        });
         await test("discrete feature options preserve native identifiers beyond default numeric bounds", async () =>
         {
             var service = new Service(); await using var vm = await Connected(service);
-            foreach (var choice in new[] { ("game-sound", 3), ("spatial", 2), ("gesture:1:0:2", 29) })
+            foreach (var choice in new[] { ("spatial", 2), ("gesture:1:0:2", 29) })
             {
                 var control = Feature(vm, choice.Item1);
                 Check(control.Maximum == 1, "The fixture must retain the Host's default numeric bounds.");
@@ -18,18 +72,14 @@ internal static class FeatureInteractionTests
                 await control.SubmitAsync();
                 Check(Feature(vm, choice.Item1).SelectedOption?.Key == choice.Item2, "The current observed control must show the submitted native identifier.");
             }
-            Check(service.Actions.Select(action => action.Value).SequenceEqual([3, 2, 29]), "Each valid discrete selection must reach the backend once.");
-            var sound = Feature(vm, "game-sound");
-            sound.SelectedOption = sound.Options.Single(option => option.Key == 0); await sound.SubmitAsync();
-            Check(Feature(vm, "game-sound").SelectedOption is { Key: 0, Name: "关闭" }
-                && !Feature(vm, "game-sound-enabled").BooleanValue, "Type zero is an observed off mode, including any switch change reported by the backend.");
+            Check(service.Actions.Select(action => action.Value).SequenceEqual([2, 29]), "Each valid discrete selection must reach the backend once.");
         });
         await test("unlisted discrete choices and out-of-range sliders restore without submission", async () =>
         {
             var service = new Service(); await using var vm = await Connected(service);
-            var sound = Feature(vm, "game-sound"); sound.SelectedOption = new(4, "未报告的类型"); await sound.SubmitAsync();
+            var spatial = Feature(vm, "spatial"); spatial.SelectedOption = new(4, "未报告的类型"); await spatial.SubmitAsync();
             var volume = Feature(vm, "prompt-volume"); volume.NumberValue = 11; await volume.SubmitAsync();
-            Check(service.Actions.Count == 0 && sound.SelectedOption?.Key == 0 && volume.NumberValue == 6,
+            Check(service.Actions.Count == 0 && spatial.SelectedOption?.Key == 0 && volume.NumberValue == 6,
                 "Rejected local drafts must settle without dispatching a backend action.");
         });
         await test("binary feature actions reject nonbinary values even with malformed wide numeric bounds", async () =>
@@ -44,7 +94,7 @@ internal static class FeatureInteractionTests
             await (Task)apply.Invoke(vm, [new UiAction("Feature", 1, FeatureId: "binary")])!;
             Check(service.Actions is [{ Value: 1 }] && Feature(vm, "binary").BooleanValue, "A valid binary target still submits through the same action boundary.");
         });
-        foreach (string id in new[] { "game-sound-enabled", "game-sound" })
+        foreach (string id in new[] { "game-sound-enabled" })
             await test(id + " explicit rejection shows one alert, never retries, and restores the reused control", async () =>
             {
                 var service = new Service(); var dialogs = new Dialogs { AlertRelease = new(TaskCreationOptions.RunContinuationsAsynchronously) };
@@ -53,7 +103,7 @@ internal static class FeatureInteractionTests
                 var section = vm.FeatureSections.Single(); var control = Feature(vm, id);
                 var otherDraft = Feature(vm, "gesture:1:0:2"); otherDraft.SelectedOption = otherDraft.Options.Single(option => option.Key == 29);
                 vm.SelectedAnc = vm.AncOptions.Last(); vm.EqName = "保留未保存调整"; vm.Bands[0].Gain = 4;
-                Edit(control, id == "game-sound" ? 3 : 1);
+                Edit(control, 1);
                 var submit = control.SubmitAsync(); await dialogs.AlertEntered.Task.WaitAsync(Deadline);
                 Check(service.Actions.Count == 1 && dialogs.Alerts == 1 && dialogs.Retries == 0 && service.Reads == 0,
                     "A rejected game sound action must stop at its first receipt and alert.");
@@ -64,7 +114,7 @@ internal static class FeatureInteractionTests
                     "Settling one feature must preserve every unrelated draft.");
                 Check(service.Actions.Count == 1 && service.Reads == 1 && dialogs.Alerts == 1, "Dismissing the alert permits a GET, without another setter.");
             });
-        foreach (string id in new[] { "game-sound-enabled", "game-sound" })
+        foreach (string id in new[] { "game-sound-enabled" })
             await test(id + " unknown acknowledgement reconciles by GET and preserves its original evidence", async () =>
             {
                 var service = new Service(); var dialogs = new Dialogs(); UiApplyResult? receipt = null;
@@ -76,7 +126,7 @@ internal static class FeatureInteractionTests
                     return Task.FromResult(receipt);
                 };
                 await using var vm = await Connected(service, dialogs); var control = Feature(vm, id);
-                Edit(control, id == "game-sound" ? 3 : 1); await control.SubmitAsync();
+                Edit(control, 1); await control.SubmitAsync();
                 Check(service.Actions.Count == 1 && service.Reads == 1 && dialogs.Alerts == 0 && dialogs.Retries == 0,
                     "Only a fresh GET may reconcile the uncertain acknowledgement.");
                 Check(ReferenceEquals(vm.LastApplyAttempts.Single(), receipt) && receipt is { Accepted: false, AckStatus: null, AcknowledgementUnknown: true, ReadbackMatches: null },
@@ -175,7 +225,8 @@ internal static class FeatureInteractionTests
 
     private static void Edit(FeatureControlViewModel control, int value)
     { if (control.Kind == "Switch") control.BooleanValue = value == 1; else control.SelectedOption = control.Options.Single(option => option.Key == value); }
-    private static FeatureControlViewModel Feature(MainViewModel vm, string id) => vm.FeatureSections.SelectMany(section => section.Controls).Single(control => control.Id == id);
+    private static FeatureControlViewModel Feature(MainViewModel vm, string id) => vm.FeatureSections.SelectMany(section => section.Controls)
+        .Concat(vm.EqualizerFeatures).Single(control => control.Id == id);
     private static void Check(bool value, string reason) { if (!value) throw new InvalidOperationException(reason); }
     private static async Task<MainViewModel> Connected(Service service, Dialogs? dialogs = null)
     {

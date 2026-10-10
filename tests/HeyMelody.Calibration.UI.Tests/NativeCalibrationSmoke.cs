@@ -1,7 +1,10 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Interactivity;
 using Avalonia.Input;
+using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
@@ -78,10 +81,33 @@ internal static class NativeCalibrationSmoke
                     Capture(view, "hearing-slider");
                     Push(service.State with { Stage = "Results", StepIndex = 12, FiltersReady = false });
                     Check(!view.GetVisualDescendants().OfType<TextBox>().Any(), "Incomplete native results do not expose Save.");
-                    Push(service.State with { FiltersReady = true, CanPreview = true, HasInterEarDifference = true });
-                    Check(Button(view, "原音").IsEnabled && Button(view, "黄金听感").IsEnabled && Button(view, "保存并启用").IsEnabled,
+                    var resultRadar = new UiHearingRadar(new double[] { .85, .62, .66, .58, .7, .82 }, new double[] { .83, .6, .64, .58, .67, .55 });
+                    Push(service.State with { FiltersReady = true, CanPreview = true, HasInterEarDifference = true, HearingRadar = resultRadar });
+                    Check(Preview(view, "PreviewOriginal").IsEnabled && Preview(view, "PreviewEnhanced").IsEnabled && Button(view, "保存并启用").IsEnabled,
                         "Complete native results expose effect comparison and Save.");
+                    var chart = view.GetVisualDescendants().OfType<HearingRadarChart>().Single();
+                    Check(!model.State.PreviewAudioPlaying && chart.ShowEnhancement, "The native result page shows a static radar without autoplay.");
                     Capture(view, "hearing-results");
+                    Preview(view, "PreviewOriginal").RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+                    await Until(() => !model.Busy && service.Inputs.Last().Action == "preview-original");
+                    Check(!chart.ShowEnhancement && model.State.PreviewAudioPlaying, "Native original audition hides enhancement.");
+                    Preview(view, "PreviewEnhanced").RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+                    await Until(() => !model.Busy && service.Inputs.Last().Action == "preview-enhanced");
+                    var spectrum = new double[] { .3, .55, .4, .9, .7, .6 };
+                    long actionRevision = model.State.Revision;
+                    model.AdoptSpectrum(new("operation", "fixture", 42, model.State.PreviewEpoch, 1, spectrum));
+                    Check(chart.EnhancementLevels.SequenceEqual(spectrum) && model.State.Revision == actionRevision && ReferenceEquals(model.State.HearingRadar, resultRadar),
+                        "Native spectrum animates orange without replacing the hearing curves or changing the action revision.");
+                    Capture(view, "hearing-results-enhanced");
+                    var scroll = view.GetVisualDescendants().OfType<ScrollViewer>().Single(x => x.Name == "PageScroll");
+                    scroll.Offset = new Vector(0, 300); await Task.Delay(50); Capture(view, "hearing-audition-controls");
+                    scroll.Offset = new Vector(0, 0);
+                    Preview(view, "PreviewEnhanced").RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+                    await Until(() => !model.Busy && service.Inputs.Last().Action == "preview-stop");
+                    Check(chart.ShowEnhancement && chart.EnhancementLevels.Count == 0, "Native active-row pause restores the static orange outline.");
+                    window.RequestedThemeVariant = ThemeVariant.Dark; await Task.Delay(50); Capture(view, "hearing-results-dark");
+                    window.Width = 400; window.Height = 520; await Task.Delay(50); Capture(view, "hearing-results-narrow");
+                    window.Width = 520; window.Height = 720; window.RequestedThemeVariant = ThemeVariant.Light; await Task.Delay(50);
                     service.StopFailuresRemaining = 1;
                     Button(view, "取消").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
                     await Until(() => model.CancellationFailed && !model.CancellationPending);
@@ -124,7 +150,7 @@ internal static class NativeCalibrationSmoke
 
     private static FAAppWindow CreateWindow(CalibrationView view, string title)
     {
-        view.Background = new SolidColorBrush(Color.FromRgb(243, 243, 243));
+        view.Bind(TemplatedControl.BackgroundProperty, new DynamicResourceExtension("SolidBackgroundFillColorBaseBrush"));
         return new() { Content = view, Title = title, Width = 520, Height = 720, ShowActivated = false, Position = new PixelPoint(-32000, -32000) };
     }
     private static async Task CheckWindowClosingAsync()
@@ -178,6 +204,7 @@ internal static class NativeCalibrationSmoke
             { ShowActivated = false, WindowStartupLocation = WindowStartupLocation.Manual, Position = new PixelPoint(-32000, -32000) };
     }
     private static Button Button(Control view, string text) => view.GetVisualDescendants().OfType<Button>().Single(x => Equals(x.Content, text));
+    private static ToggleButton Preview(Control view, string name) => view.GetVisualDescendants().OfType<ToggleButton>().Single(x => x.Name == name);
     private static void PressKey(Slider slider, Key key)
     {
         slider.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = key });

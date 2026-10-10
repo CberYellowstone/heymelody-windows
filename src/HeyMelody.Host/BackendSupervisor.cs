@@ -218,7 +218,10 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
             peer.Initializing = true; generation = peer.Generation; token = peer.Lifetime.Token;
             worker = peer.Worker = _workerFactory(); peer.State = MonitoringState.Connecting;
             if (worker is ICalibrationPeerWorker calibration)
+            {
                 calibration.CalibrationChanged += state => ReceiveCalibration(peer, generation, state);
+                calibration.CalibrationSpectrumChanged += spectrum => ReceiveCalibrationSpectrum(peer, generation, spectrum);
+            }
             worker.SnapshotChanged += s => ReceiveSpp(peer, generation, s);
             worker.Unavailable += () => WorkerFailed(peer, generation);
             PublishLocked(peer);

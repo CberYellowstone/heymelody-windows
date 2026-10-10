@@ -11,6 +11,7 @@ public sealed partial class NativeHeadsetService : IHeadsetService, IDeviceManag
 {
     private readonly Func<IReadOnlyList<BluetoothCandidate>> _enumerate;
     private readonly DeviceWhitelistStore _whitelist;
+    private readonly Func<ICalibrationAuditionPlayer> _auditionFactory;
     private readonly Dictionary<ulong, string> _identities = [];
     private readonly Dictionary<string, BluetoothCandidate> _devices = [];
     private DailyClient? _client;
@@ -27,8 +28,9 @@ public sealed partial class NativeHeadsetService : IHeadsetService, IDeviceManag
 
     public NativeHeadsetService() : this(WindowsBluetooth.EnumeratePaired, DeviceWhitelistStore.CreateDefault()) { }
 
-    internal NativeHeadsetService(Func<IReadOnlyList<BluetoothCandidate>> enumerate, DeviceWhitelistStore whitelist)
-    { _enumerate = enumerate; _whitelist = whitelist; }
+    internal NativeHeadsetService(Func<IReadOnlyList<BluetoothCandidate>> enumerate, DeviceWhitelistStore whitelist,
+        Func<ICalibrationAuditionPlayer>? auditionFactory = null)
+    { _enumerate = enumerate; _whitelist = whitelist; _auditionFactory = auditionFactory ?? (() => new WasapiCalibrationAuditionPlayer()); }
 
     public Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken token)
     {
@@ -321,7 +323,7 @@ public sealed partial class NativeHeadsetService : IHeadsetService, IDeviceManag
             EqualizerEntries = snapshot.CustomEqualizers.Select(entry => new UiEqEntry(entry.Id, entry.Name,
                 entry.MinimumGain, entry.MaximumGain, entry.Selected,
                 entry.Bands.Select(band => new UiBand(band.Frequency, band.Gain)).ToArray())).ToArray(),
-            Firmware = snapshot.FirmwareVersion, SampleTime = snapshot.ObservedAtUtc,
+            Firmware = snapshot.FirmwareDisplayVersion ?? snapshot.FirmwareVersion, SampleTime = snapshot.ObservedAtUtc,
             Warnings = snapshot.Warnings.Select(UiWarning).ToArray()
         };
     }

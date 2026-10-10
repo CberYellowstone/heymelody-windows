@@ -5,6 +5,7 @@ namespace HeyMelodyWindows.Host;
 internal interface ICalibrationPeerWorker
 {
     event Action<UiCalibrationState>? CalibrationChanged;
+    event Action<UiCalibrationSpectrum>? CalibrationSpectrumChanged;
     Task<UiCalibrationState> CreateCalibrationAsync(string handle, string kind, CancellationToken token);
     Task<UiCalibrationState> GetCalibrationAsync(string handle, CancellationToken token);
     Task<UiCalibrationState> AdvanceCalibrationAsync(string handle, long revision, UiCalibrationInput input, CancellationToken token);
@@ -20,6 +21,7 @@ internal sealed partial class PeerWorker
     private string? _observedProductId;
     private byte? _observedColor;
     public event Action<UiCalibrationState>? CalibrationChanged;
+    public event Action<UiCalibrationSpectrum>? CalibrationSpectrumChanged;
     public void ConfigureResources(string catalogGzip, string source, long revision, long appMarker, string stableKey, long generation,
         string? observedProductId, byte? observedColor)
     { _catalogGzip = catalogGzip; _source = source; _resourceRevision = revision; _appMarker = appMarker; _stableKey = stableKey; _generation = generation;

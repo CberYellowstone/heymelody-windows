@@ -208,7 +208,7 @@ internal static class DemoDeviceTests
         var editors = view.GetVisualDescendants().OfType<FeatureControlView>()
             .Select(control => control.Footer as Control
                 ?? throw new InvalidOperationException("A demo control has no editor.")).ToArray();
-        Check(editors.Length == fixture.Vm.FeatureSections.Sum(section => section.Controls.Count),
+        Check(editors.Length == fixture.Vm.FeatureSections.Sum(section => section.Controls.Count) + fixture.Vm.EqualizerFeatures.Count,
             "Every dynamic control has an instantiated editor.");
         foreach (var editor in editors)
         {

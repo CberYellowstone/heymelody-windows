@@ -246,6 +246,7 @@ internal static class ResourceBackendTests
         public event Action<UiSnapshot>? SnapshotChanged;
         public event Action? Unavailable { add { } remove { } }
         public event Action<UiCalibrationState>? CalibrationChanged;
+        public event Action<UiCalibrationSpectrum>? CalibrationSpectrumChanged { add { } remove { } }
         internal Configuration Configuration = new("", 0, 0, "", 0, null, null);
         internal byte? InitialColor;
         internal int Applies, Refreshes, Disposals, CalibrationCreates;

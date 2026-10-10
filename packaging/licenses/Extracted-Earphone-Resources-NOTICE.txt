@@ -14,6 +14,13 @@ From 0.8.8 the main GUI assembly also embeds a few monochrome icon outlines
 copied from the same Wireless Earphones resources; they are subject to the
 same notice.
 
+From 0.8.13 the Host also embeds a PCM16 conversion of the official Golden
+Hearing module-2 audition music, res/raw/hearing_enhancement_audition.mp3,
+from android_all_all_all_2.zip delivered by the vendor service. It remains
+vendor material under the same rights notice. Hearing-Audition-SOURCE.json
+records the source URL, original archive/audio hashes and converted asset
+hash. FFmpeg was used only as an offline conversion tool and is not bundled.
+
 ResourceBundles/provenance.json identifies the APK versions and SHA256 values.
 ResourceBundles/artwork.json identifies source, exact product/color association,
 file paths and hashes. Installed offline assets are kept separate from the

@@ -78,6 +78,8 @@ public sealed class DailySnapshot
     public DateTimeOffset? ColorObservedAtUtc { get; set; }
     public string? DeviceName { get; set; }
     public string? FirmwareVersion { get; set; }
+    // Presentation only; FirmwareVersion retains the running earbud version used by capability gates.
+    public string? FirmwareDisplayVersion { get; set; }
     public byte? CodecRaw { get; set; }
     public bool? CaseOpen { get; set; }
     public bool? LeftInCase { get; set; }

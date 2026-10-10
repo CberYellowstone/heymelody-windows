@@ -8,6 +8,45 @@ internal static class ResourceContextTests
 {
     internal static async Task RunAsync(Func<string, Func<Task>, Task> test)
     {
+        await test("component firmware display preserves numeric gates, order, source type and refresh unknowns", async () =>
+        {
+            var source = JsonNode.Parse(X4Profile.Load().RawSource.GetRawText())!.AsObject();
+            source["id"] = "06C010"; source["type"] = "T1"; source["minFirmVersion"] = 130;
+            var profile = DeviceProfile.FromResource(JsonSerializer.SerializeToElement(source), "HeyMelody");
+            var fake = new Fake { ProductId = "06C010" };
+            // Synthetic Free4 Dynaudio report, not a hardware capture: include unrelated version types and shuffled components.
+            fake.ReadReplies[0x0105] = [0,6,..Encoding.UTF8.GetBytes("3,2,105,1,1,9,2,2,137,1,3,99,1,2,137,3,4,999")];
+            await using var client = new DailyClient(fake, _ => profile);
+            var snapshot = await client.RefreshAsync();
+            Check(snapshot.FirmwareVersion == "137" && snapshot.FirmwareDisplayVersion == "137.137.105"
+                && VersionConditions.FromSource(JsonSerializer.SerializeToElement(new { minFirmVersion = 130 }))
+                    .Evaluate(new(snapshot.FirmwareVersion)) == VersionConditionStatus.Pass);
+            snapshot = await client.RefreshAsync(DailyRefreshScope.Battery);
+            Check(snapshot.FirmwareDisplayVersion == "137.137.105");
+            fake.ReadReplies[0x0105] = [0,2,..Encoding.UTF8.GetBytes("1,2,137,3,2,105")];
+            Check((await client.RefreshAsync(DailyRefreshScope.Information)).FirmwareDisplayVersion == "137.0.105");
+            fake.ReadReplies[0x0105] = [1];
+            var rejected = await client.RefreshAsync(DailyRefreshScope.Information);
+            Check(rejected.FirmwareDisplayVersion is null && rejected.FirmwareVersion is null && fake.Writes.Count == 0);
+            await using var x4 = new DailyClient(new Fake());
+            // Existing confirmed X4 fixture has three running components 116/116/100.
+            var existing = await x4.RefreshAsync();
+            Check(existing.FirmwareVersion == "116" && existing.FirmwareDisplayVersion == "116.116.100");
+        });
+        await test("single-device firmware display uses its configured format and preserves an already formatted fallback", async () =>
+        {
+            foreach (string type in new[] { "S", "N" })
+            {
+                var source = JsonNode.Parse(X4Profile.Load().RawSource.GetRawText())!.AsObject(); source["type"] = type;
+                var profile = DeviceProfile.FromResource(JsonSerializer.SerializeToElement(source), "memory");
+                var fake = new Fake(); fake.ReadReplies[0x0105] = [0,1,..Encoding.UTF8.GetBytes("1,2,7")];
+                await using var client = new DailyClient(fake, _ => profile);
+                var current = await client.RefreshAsync(); Check(current.FirmwareVersion == "7" && current.FirmwareDisplayVersion == "0.0.7");
+                fake.ReadReplies[0x0105] = [0,1,..Encoding.UTF8.GetBytes("1,2,1.2.3")];
+                current = await client.RefreshAsync(DailyRefreshScope.Information);
+                Check(current.FirmwareVersion == "1.2.3" && current.FirmwareDisplayVersion is null);
+            }
+        });
         await test("calibration transport rechecks firmware conditions while keeping explicit stop available", async () =>
         {
             var source = JsonNode.Parse(X4Profile.Load().RawSource.GetRawText())!.AsObject();

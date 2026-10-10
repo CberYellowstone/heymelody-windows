@@ -65,6 +65,7 @@ public sealed partial class MainViewModel
     private UiAncMode? _selectedAncMode;
     private UiOption? _selectedAncSubmode;
     private IReadOnlyList<FeatureSectionViewModel> _featureSections = [];
+    private IReadOnlyList<FeatureControlViewModel> _equalizerFeatures = [];
     private string _featureContext = "";
     private UiOption _selectedResourceSource = new(0, "欢律");
     private bool _useOnlineResources = true;
@@ -116,6 +117,8 @@ public sealed partial class MainViewModel
     public IReadOnlyList<UiOption> AncSubmodes => _selectedAncMode?.Options ?? [];
     public bool CanCreateEq => CanEditEq && EqEntries.Count < (_snapshot?.CustomEqualizerCapacity ?? 3);
     public IReadOnlyList<FeatureSectionViewModel> FeatureSections => _featureSections;
+    public IReadOnlyList<FeatureControlViewModel> EqualizerFeatures => _equalizerFeatures;
+    public bool HasEqualizerFeatures => _equalizerFeatures.Count > 0;
     public IReadOnlyList<UiHearingProfile> HearingProfiles => _hearingProfiles;
     public UiHearingProfile? SelectedHearingProfile { get => _selectedHearingProfile; set => SetProperty(ref _selectedHearingProfile, value); }
     public bool CanSelectHearingProfile => CanWrite && !_hearingPending && _hearingProfiles.Any(x => x.Uid.HasValue && x.CanApply);
@@ -142,9 +145,27 @@ public sealed partial class MainViewModel
         var identity = snapshot.Identity; var generation = snapshot.DeviceGeneration; var sourceRevision = snapshot.ResourceRevision;
         string context = identity + "/" + generation + "/" + sourceRevision;
         var previous = _featureContext == context ? _featureSections.ToDictionary(s => s.Id) : new Dictionary<string, FeatureSectionViewModel>();
-        // Old offline presentations may still contain this retired control.
+        FeatureControlViewModel CreateControl(UiFeatureControl definition) => new(definition, vm =>
+        {
+            if (_snapshot?.Identity != identity || _snapshot.DeviceGeneration != generation || _snapshot.ResourceRevision != sourceRevision)
+                return Task.CompletedTask;
+            int value = vm.Kind == "Switch" ? (vm.BooleanValue ? 1 : 0) : vm.Kind is "Radio" or "Combo"
+                ? vm.SelectedOption?.Key ?? int.MinValue : checked((int)Math.Round(vm.NumberValue));
+            return ApplyAsync(new("Feature", value, FeatureId: vm.Id, Text: vm.Kind == "Text" ? vm.TextValue : null));
+        }, () => CanWrite && !_pending.ContainsKey("Feature"));
+        var equalizerDefinitions = snapshot.FeatureSections.SelectMany(section => section.Controls)
+            .Where(control => control.Id is "bass-enabled" or "bass").OrderBy(control => control.Id == "bass-enabled" ? 0 : 1)
+            .Select(control => control.Id == "bass-enabled" ? control with
+            {
+                Label = "BassWave™动态低音",
+                Description = "动态增益低音，清晰且高保真地呈现深邃低音效果。"
+            } : control).ToArray();
+        if (_featureContext != context || _equalizerFeatures.Count != equalizerDefinitions.Length
+            || !_equalizerFeatures.Zip(equalizerDefinitions).All(pair => SameFeature(pair.First.Definition, pair.Second)))
+            _equalizerFeatures = equalizerDefinitions.Select(CreateControl).ToArray();
+        // Apply the same presentation to live definitions, demos and older offline snapshots.
         var visibleSections = snapshot.FeatureSections.Select(section => section with
-        { Controls = section.Controls.Where(control => control.Id != "auto-volume").ToArray() })
+        { Controls = GroupGameControls(section.Controls.Where(control => control.Id is not ("auto-volume" or "game-sound" or "bass-enabled" or "bass")).ToArray()) })
             .Where(section => section.Controls.Count != 0);
         var nextSections = visibleSections.Select(s =>
         {
@@ -152,20 +173,21 @@ public sealed partial class MainViewModel
                 && old.DefaultExpanded == s.DefaultExpanded && old.Controls.Count == s.Controls.Count
                 && old.Controls.Zip(s.Controls).All(pair => SameFeature(pair.First.Definition, pair.Second))) return old;
             return new FeatureSectionViewModel(s.Id, s.Header, s.Description,
-            s.DefaultExpanded, s.Controls.Select(c => new FeatureControlViewModel(c, vm =>
-            {
-                if (_snapshot?.Identity != identity || _snapshot.DeviceGeneration != generation || _snapshot.ResourceRevision != sourceRevision)
-                    return Task.CompletedTask;
-                int value = vm.Kind == "Switch" ? (vm.BooleanValue ? 1 : 0) : vm.Kind is "Radio" or "Combo"
-                    ? vm.SelectedOption?.Key ?? int.MinValue : checked((int)Math.Round(vm.NumberValue));
-                return ApplyAsync(new("Feature", value, FeatureId: vm.Id, Text: vm.Kind == "Text" ? vm.TextValue : null));
-            }, () => CanWrite && !_pending.ContainsKey("Feature"))).ToArray());
+            s.DefaultExpanded, s.Controls.Select(CreateControl).ToArray());
         }).ToArray();
         if (!_featureSections.SequenceEqual(nextSections)) _featureSections = nextSections;
         _featureContext = context;
         var profiles = snapshot.HearingProfiles;
         _hearingProfiles = profiles.Count == 0 ? [] : new[] {new UiHearingProfile(null, "关闭", snapshot.HearingEnabled == false, true)}.Concat(profiles).ToArray();
         _selectedHearingProfile = _hearingProfiles.FirstOrDefault(x => x.Current);
+    }
+    private static IReadOnlyList<UiFeatureControl> GroupGameControls(IReadOnlyList<UiFeatureControl> controls)
+    {
+        var lowLatency = controls.FirstOrDefault(control => control.Id == "game");
+        var gameSound = controls.FirstOrDefault(control => control.Id == "game-sound-enabled");
+        if (lowLatency is null || gameSound is null) return controls;
+        return controls.Where(control => control.Id != "game-sound-enabled")
+            .SelectMany(control => control.Id == "game" ? new[] { control, gameSound } : new[] { control }).ToArray();
     }
     private static bool SameFeature(UiFeatureControl a, UiFeatureControl b) => a.Id == b.Id && a.Label == b.Label
         && a.Kind == b.Kind && a.Value == b.Value && a.Text == b.Text && a.Minimum == b.Minimum && a.Maximum == b.Maximum

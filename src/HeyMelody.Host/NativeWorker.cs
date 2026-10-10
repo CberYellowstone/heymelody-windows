@@ -39,6 +39,7 @@ internal sealed class WorkerMessage
     public JsonElement? Data { get; set; }
     public UiSnapshot? Snapshot { get; set; }
     public UiCalibrationState? Calibration { get; set; }
+    public UiCalibrationSpectrum? CalibrationSpectrum { get; set; }
     public string? Error { get; set; }
 }
 
@@ -61,6 +62,9 @@ internal static class NativeWorker
         var calibrations = Channel.CreateBounded<UiCalibrationState>(new BoundedChannelOptions(64)
         { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
         service.CalibrationChanged += state => calibrations.Writer.TryWrite(state);
+        var spectra = Channel.CreateBounded<UiCalibrationSpectrum>(new BoundedChannelOptions(1)
+        { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
+        service.CalibrationSpectrumChanged += spectrum => spectra.Writer.TryWrite(spectrum);
         async Task WriteAsync(WorkerMessage message)
         {
             var line = JsonSerializer.Serialize(message, RpcWire.Json);
@@ -82,6 +86,12 @@ internal static class NativeWorker
         {
             try { await foreach (var state in calibrations.Reader.ReadAllAsync(lifetime.Token))
                 await WriteAsync(new() { Kind = "calibration", Calibration = state }); }
+            catch (Exception) when (lifetime.IsCancellationRequested) { }
+        });
+        var publishingSpectrum = Task.Run(async () =>
+        {
+            try { await foreach (var spectrum in spectra.Reader.ReadAllAsync(lifetime.Token))
+                await WriteAsync(new() { Kind = "calibrationSpectrum", CalibrationSpectrum = spectrum }); }
             catch (Exception) when (lifetime.IsCancellationRequested) { }
         });
         try
@@ -132,7 +142,7 @@ internal static class NativeWorker
             async Task<bool> ShutdownAsync() { await service.DisconnectAsync(CancellationToken.None); return true; }
         }
         catch (Exception) { return 1; }
-        finally { await service.DisposeCalibrationAsync(); lifetime.Cancel(); snapshots.Writer.TryComplete(); calibrations.Writer.TryComplete(); try { await Task.WhenAll(publishing, publishingCalibration); } catch { } }
+        finally { await service.DisposeCalibrationAsync(); lifetime.Cancel(); snapshots.Writer.TryComplete(); calibrations.Writer.TryComplete(); spectra.Writer.TryComplete(); try { await Task.WhenAll(publishing, publishingCalibration, publishingSpectrum); } catch { } }
     }
 
     internal static async Task<int> EnumerateAsync()
@@ -256,6 +266,7 @@ internal sealed partial class PeerWorker(Func<ProcessStartInfo>? startFactory = 
                 var message = JsonSerializer.Deserialize<WorkerMessage>(line, RpcWire.Json) ?? throw new InvalidDataException();
                 if (message.Kind == "snapshot" && message.Snapshot is { } snapshot) SnapshotChanged?.Invoke(snapshot);
                 else if (message.Kind == "calibration" && message.Calibration is { } calibration) CalibrationChanged?.Invoke(calibration);
+                else if (message.Kind == "calibrationSpectrum" && message.CalibrationSpectrum is { } spectrum) CalibrationSpectrumChanged?.Invoke(spectrum);
                 else if (message.Kind == "response" && _pending.TryRemove(message.Id, out var pending)) pending.TrySetResult(message);
                 else throw new InvalidDataException();
             }

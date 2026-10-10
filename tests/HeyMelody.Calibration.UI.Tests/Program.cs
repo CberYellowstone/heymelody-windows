@@ -162,6 +162,7 @@ try
         }
     }
     Console.WriteLine("PASS wizard phases follow scan, test, retry and result transitions"); passed++;
+    passed += await HearingPreviewTests.RunAsync();
     passed += CalibrationVisualTests.Run();
     Console.WriteLine($"{{\"success\":true,\"passed\":{passed},\"nativeBluetoothCalls\":0}}");
     return 0;
@@ -213,7 +214,9 @@ class TestService : ICalibrationService
             LevelIndex = index, Decibels = new[] { -55, -49, -41, -35, -25, -19, -11, -5, 3, 7, 13, 17 }[index],
             ToneAcknowledged = true, CanResume = false,
             FiltersReady = input.Action == "retry-curves" || State.FiltersReady,
-            PreviewMode = input.Action switch { "preview-original" => "Original", "preview-enhanced" => "Enhanced", "preview-stop" => "Stopped", _ => State.PreviewMode } };
+            PreviewMode = input.Action switch { "preview-original" => "Original", "preview-enhanced" => "Enhanced", "preview-stop" => "Stopped", _ => State.PreviewMode },
+            PreviewAudioPlaying = input.Action is "preview-original" or "preview-enhanced",
+            PreviewEpoch = State.PreviewEpoch + (input.Action.StartsWith("preview-", StringComparison.Ordinal) ? 1 : 0) };
         return State;
     }
     public Task<UiCalibrationState> CancelCalibrationAsync(string handle, CancellationToken token)

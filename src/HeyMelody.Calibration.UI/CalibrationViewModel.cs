@@ -26,7 +26,10 @@ public sealed class CalibrationViewModel(ICalibrationService service, string han
     private string _resourceSource = "HeyMelody";
     private CalibrationPhase _phase;
     private bool _earScanCompleted;
+    private long _spectrumSequence;
     public event PropertyChangedEventHandler? PropertyChanged;
+    public event Action<IReadOnlyList<double>>? SpectrumChanged;
+    public IReadOnlyList<double> SpectrumLevels { get; private set; } = [];
     public UiCalibrationState State => _state;
     public string Kind => kind;
     public string ResourceSource => _resourceSource;
@@ -74,10 +77,29 @@ public sealed class CalibrationViewModel(ICalibrationService service, string han
         if (state.Stage != _state.Stage && state.Stage != "Failed")
         { _error = ""; Changed(nameof(Error)); }
         var previous = _state.Stage;
+        bool resetSpectrum = state.Stage != "Previewing" || state.PreviewEpoch != _state.PreviewEpoch || !state.PreviewAudioPlaying
+            || state.PreviewMode != _state.PreviewMode;
         _state = state;
+        if (resetSpectrum) ClearSpectrum();
         UpdatePhase(previous);
         if (!_selectionActive) _selectedLevel = state.LevelIndex;
         Changed(nameof(State)); SelectionChanged();
+    }
+    public void AdoptSpectrum(UiCalibrationSpectrum frame)
+    {
+        if (_cancelled || _disposed || _state.Stage != "Previewing" || !_state.PreviewAudioPlaying || _state.PreviewMode != "Enhanced"
+            || frame.Handle != handle || frame.BackendInstanceId != _state.BackendInstanceId
+            || frame.Generation != _state.Generation || frame.PreviewEpoch != _state.PreviewEpoch
+            || frame.Sequence <= _spectrumSequence || frame.Levels.Count != 6
+            || frame.Levels.Any(value => !double.IsFinite(value) || value is < 0 or > 1)) return;
+        _spectrumSequence = frame.Sequence;
+        SpectrumLevels = Array.AsReadOnly(frame.Levels.ToArray());
+        SpectrumChanged?.Invoke(SpectrumLevels);
+    }
+    private void ClearSpectrum()
+    {
+        _spectrumSequence = 0; SpectrumLevels = [];
+        SpectrumChanged?.Invoke(SpectrumLevels);
     }
     private void UpdatePhase(string previous)
     {
@@ -111,6 +133,7 @@ public sealed class CalibrationViewModel(ICalibrationService service, string han
     {
         if (_disposed) return;
         _backendUnavailable = true; _cancelled = true;
+        ClearSpectrum();
         _pendingLevel = null; _levelDelay?.Cancel(); _lifetime.Cancel();
         SetError((message.Length > 0 ? message : "蓝牙后台已断开。")
             + (_stopConfirmed ? "" : "\n无法确认耳机上的测试是否已停止，可关闭此窗口后重新连接核实。"));
@@ -232,6 +255,7 @@ public sealed class CalibrationViewModel(ICalibrationService service, string han
         await Task.Yield();
         if (_backendUnavailable || _disposed) { _cancelOperation = null; return false; }
         _cancelled = true; _cancelBusy = true; _cancelFailed = false;
+        ClearSpectrum();
         _pendingLevel = null; _levelDelay?.Cancel(); _lifetime.Cancel(); CancellationChanged();
         try
         {

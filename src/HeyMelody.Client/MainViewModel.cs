@@ -186,7 +186,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void NotifyCommands() { foreach (var command in _commands) command.NotifyCanExecuteChanged(); }
     private void NotifyState()
     {
-        foreach (var control in _featureSections.SelectMany(s => s.Controls)) control.RefreshPermissions();
+        foreach (var control in _featureSections.SelectMany(s => s.Controls).Concat(_equalizerFeatures)) control.RefreshPermissions();
         foreach (var property in PresentationProperties)
         {
             var value = typeof(MainViewModel).GetProperty(property)!.GetValue(this);
@@ -453,7 +453,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _pendingAncPrimary = null;
         _ancOptions = []; _presetOptions = []; _spatialOptions = []; _actionWarnings.Clear();
         _ancModes = []; _selectedAncMode = null; _selectedAncSubmode = null;
-        _featureSections = []; _featureContext = "";
+        _featureSections = []; _equalizerFeatures = []; _featureContext = "";
         _hearingProfiles = []; _selectedHearingProfile = null;
         _eqEntries = []; _snapshot = _liveSnapshot = null; LoadEntry(null); InvalidateSnapshot(clearPresentation: true);
     }

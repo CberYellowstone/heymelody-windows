@@ -19,6 +19,8 @@ public sealed partial class ClientBridge : IHeadsetEventService, IDeviceManageme
     private sealed record QueuedEvent(BackendEvent Value, Connection? Source);
     private readonly Channel<QueuedEvent> _events = Channel.CreateBounded<QueuedEvent>(new BoundedChannelOptions(128)
     { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait });
+    private readonly Channel<QueuedEvent> _spectra = Channel.CreateBounded<QueuedEvent>(new BoundedChannelOptions(1)
+    { SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.DropOldest });
     private readonly object _stateGate = new();
     private readonly Dictionary<string, UiSnapshot> _snapshots = [];
     private Connection? _connection;
@@ -35,7 +37,8 @@ public sealed partial class ClientBridge : IHeadsetEventService, IDeviceManageme
     internal ClientBridge(string pipeName, Action? startBackend = null, TimeSpan? testBudget = null)
     {
         _pipeName = pipeName; _startBackend = startBackend; _testBudget = testBudget;
-        _ = Task.Run(DeliverEventsAsync);
+        _ = Task.Run(() => DeliverEventsAsync(_events));
+        _ = Task.Run(() => DeliverEventsAsync(_spectra));
     }
 
     public async Task<BackendSubscription> SubscribeAsync(string role, CancellationToken cancellationToken)
@@ -284,7 +287,8 @@ public sealed partial class ClientBridge : IHeadsetEventService, IDeviceManageme
                         if (notification.Kind == "stopping") _stopping = true;
                         SetBackendInstance(notification.BackendInstanceId);
                         if (notification.Snapshot is { } snapshot) Remember(snapshot);
-                        if (!_events.Writer.TryWrite(new(notification, connection))) throw new IOException("界面无法及时接收后台事件。");
+                        if (notification.CalibrationSpectrum is not null) _spectra.Writer.TryWrite(new(notification, connection));
+                        else if (!_events.Writer.TryWrite(new(notification, connection))) throw new IOException("界面无法及时接收后台事件。");
                     }
                 }
                 else throw new InvalidDataException("无效的后台消息。");
@@ -348,11 +352,11 @@ public sealed partial class ClientBridge : IHeadsetEventService, IDeviceManageme
         }
     }
 
-    private async Task DeliverEventsAsync()
+    private async Task DeliverEventsAsync(Channel<QueuedEvent> channel)
     {
         try
         {
-            await foreach (var queued in _events.Reader.ReadAllAsync(_lifetime.Token))
+            await foreach (var queued in channel.Reader.ReadAllAsync(_lifetime.Token))
             {
                 var notification = queued.Value;
                 lock (_stateGate)
@@ -409,7 +413,7 @@ public sealed partial class ClientBridge : IHeadsetEventService, IDeviceManageme
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
-        _disposed = true; _lifetime.Cancel(); _events.Writer.TryComplete();
+        _disposed = true; _lifetime.Cancel(); _events.Writer.TryComplete(); _spectra.Writer.TryComplete();
         await _connectGate.WaitAsync();
         try { _connection?.Close(new ObjectDisposedException(nameof(ClientBridge))); _connection = null; }
         finally { _connectGate.Release(); }

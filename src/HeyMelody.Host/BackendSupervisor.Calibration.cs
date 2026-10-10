@@ -12,9 +12,11 @@ internal sealed partial class BackendSupervisor
         internal string Owner = owner;
         internal bool Claimed;
         internal bool StopUnconfirmed;
+        internal long SpectrumEpoch = -1, SpectrumSequence;
         internal UiCalibrationState State = new() { Handle = handle, Workflow = kind, Identity = peer.Identity, Generation = peer.Generation };
     }
     private readonly Dictionary<string, CalibrationLease> _calibrations = [];
+    internal event Action<string, BackendEvent>? CalibrationOwnerEventPublished;
     private static bool IsActiveCalibration(CalibrationLease lease) => lease.StopUnconfirmed || lease.State.Stage is not ("Completed" or "Failed" or "Cancelled");
     private bool HasCalibrationLocked(Peer peer) => _calibrations.Values.Any(l => l.Peer == peer && l.Generation == peer.Generation && IsActiveCalibration(l));
     private CalibrationLease FindCalibrationLocked(string owner, string handle, bool claim = false, string? role = null)
@@ -131,6 +133,23 @@ internal sealed partial class BackendSupervisor
             AdoptCalibrationLocked(lease, state);
         }
     }
+    private void ReceiveCalibrationSpectrum(Peer peer, long generation, UiCalibrationSpectrum spectrum)
+    {
+        lock (_sync)
+        {
+            if (generation != peer.Generation || !_calibrations.TryGetValue(spectrum.Handle, out var lease)
+                || lease.Peer != peer || lease.Worker != peer.Worker || lease.Generation != generation || !IsActiveCalibration(lease)
+                || lease.State.Workflow != "hearing" || lease.State.Stage != "Previewing" || !lease.State.PreviewAudioPlaying
+                || lease.State.PreviewMode != "Enhanced" || spectrum.PreviewEpoch != lease.State.PreviewEpoch
+                || spectrum.Generation != generation || spectrum.Sequence <= 0 || spectrum.Levels.Count != 6
+                || spectrum.Levels.Any(x => !double.IsFinite(x) || x < 0 || x > 1)) return;
+            if (lease.SpectrumEpoch == spectrum.PreviewEpoch && spectrum.Sequence <= lease.SpectrumSequence) return;
+            lease.SpectrumEpoch = spectrum.PreviewEpoch; lease.SpectrumSequence = spectrum.Sequence;
+            var qualified = spectrum with { BackendInstanceId = InstanceId, Generation = generation, Levels = spectrum.Levels.ToArray() };
+            CalibrationOwnerEventPublished?.Invoke(lease.Owner, new() { Kind = "calibrationSpectrum", BackendInstanceId = InstanceId,
+                CalibrationSpectrum = qualified });
+        }
+    }
     private void AdoptCalibrationLocked(CalibrationLease lease, UiCalibrationState state)
     {
         if (state.Revision < lease.State.Revision) return;
@@ -144,7 +163,9 @@ internal sealed partial class BackendSupervisor
         foreach (var lease in _calibrations.Values.Where(x => x.Peer == peer && IsActiveCalibration(x)))
         {
             lease.StopUnconfirmed = false;
-            lease.State = lease.State with { Stage = "Cancelled", Revision = lease.State.Revision + 1, Message = "设备连接已变化，测试已中断。" };
+            lease.State = lease.State with { Stage = "Cancelled", Revision = lease.State.Revision + 1,
+                PreviewAudioPlaying = false, PreviewMode = "Stopped", PreviewEpoch = lease.State.PreviewEpoch + 1,
+                PreviewAudioError = "", Message = "设备连接已变化，测试已中断。" };
             EmitLocked(new() { Kind = "calibration", Calibration = lease.State });
         }
     }

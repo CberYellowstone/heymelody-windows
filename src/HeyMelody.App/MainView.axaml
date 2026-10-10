@@ -232,6 +232,13 @@
                   </WrapPanel>
                 </StackPanel>
               </Border>
+              <ItemsControl x:Name="EqualizerFeaturesView" ItemsSource="{Binding EqualizerFeatures}" IsVisible="{Binding HasEqualizerFeatures}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:FeatureControlViewModel">
+                    <local:FeatureControlView />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
             </fa:FASettingsExpander>
             <ItemsControl x:Name="FeatureSectionsView" ItemsSource="{Binding FeatureSections}">
               <ItemsControl.ItemTemplate>

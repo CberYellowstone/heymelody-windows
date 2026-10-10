@@ -204,12 +204,16 @@ public sealed partial class DailyClient
         switch (scope)
         {
             case DailyRefreshScope.Information:
-                s.FirmwareVersion = null; s.CodecRaw = null;
+                s.FirmwareVersion = null; s.FirmwareDisplayVersion = null; s.CodecRaw = null;
                 await Parse(0x0105, [], data => {
                     var reply = QueryParsers.Parse(0x0105, data);
                     if (!reply.Success) throw new FormatException();
-                    s.FirmwareVersion = ((List<FirmwareEntry>)reply.Data["firmwareEntries"]!)
+                    var entries = (List<FirmwareEntry>)reply.Data["firmwareEntries"]!;
+                    s.FirmwareVersion = entries
                         .FirstOrDefault(x => x.DeviceType == 1 && x.VersionType == 2)?.Version;
+                    string? productType = _profile?.RawSource.TryGetProperty("type", out var type) == true
+                        && type.ValueKind == System.Text.Json.JsonValueKind.String ? type.GetString() : null;
+                    s.FirmwareDisplayVersion = FormatFirmwareDisplay(entries, productType);
                 });
                 await Parse(0x0114, [], data => {
                     var reply = QueryParsers.Parse(0x0114, data);
@@ -309,7 +313,7 @@ public sealed partial class DailyClient
         LeftBatteryObservedAtUtc = s.LeftBatteryObservedAtUtc, RightBatteryObservedAtUtc = s.RightBatteryObservedAtUtc,
         CaseBatteryObservedAtUtc = s.CaseBatteryObservedAtUtc,
         ProductId = s.ProductId, Color = s.Color, ColorObservedAtUtc = s.ColorObservedAtUtc,
-        DeviceName = s.DeviceName, FirmwareVersion = s.FirmwareVersion, CodecRaw = s.CodecRaw,
+        DeviceName = s.DeviceName, FirmwareVersion = s.FirmwareVersion, FirmwareDisplayVersion = s.FirmwareDisplayVersion, CodecRaw = s.CodecRaw,
         CustomEqualizerCapacity = s.CustomEqualizerCapacity,
         Battery = s.Battery is null ? null : new() { Left = s.Battery.Left, Right = s.Battery.Right,
             Case = s.Battery.Case, RawComponents = new(s.Battery.RawComponents) },

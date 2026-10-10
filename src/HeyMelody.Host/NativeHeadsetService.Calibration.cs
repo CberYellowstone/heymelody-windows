@@ -24,6 +24,7 @@ public sealed partial class NativeHeadsetService
     private async Task InitializeCalibrationAsync(CancellationToken token)
     {
         if (_client is null || !_client.IsConnected) return;
+        _auditionClosing = false;
         if (_stableKey.Length == 0 && _selectedAddress is { } address) _stableKey = DeviceWhitelistStore.KeyFor(address);
         _calibrationContext = _client.CalibrationContext(_stableKey, _generation);
         _calibration = new(_client, _calibrationContext, _hearingHistory);
@@ -120,10 +121,11 @@ public sealed partial class NativeHeadsetService
             case "pause": await _calibration.PauseHearingAsync(token); break;
             case "resume": await _calibration.ResumeAsync(token); break;
             case "retry-curves": await _calibration.ReadCurvesAsync(token); break;
-            case "preview-original": await _calibration.PreviewAsync(CalibrationPreviewMode.Original, token); break;
-            case "preview-enhanced": await _calibration.PreviewAsync(CalibrationPreviewMode.Enhanced, token); break;
-            case "preview-stop": await _calibration.PreviewAsync(CalibrationPreviewMode.Stopped, token); break;
+            case "preview-original": await PreviewAuditionAsync(CalibrationPreviewMode.Original, token); break;
+            case "preview-enhanced": await PreviewAuditionAsync(CalibrationPreviewMode.Enhanced, token); break;
+            case "preview-stop": await PreviewAuditionAsync(CalibrationPreviewMode.Stopped, token); break;
             case "save":
+                await StopLocalAuditionAsync();
                 int? replace = null;
                 var history = await _hearingHistory.ReadAsync(_stableKey, token);
                 if (history.Count >= 10 && input.AllowReplacement)
@@ -169,7 +171,21 @@ public sealed partial class NativeHeadsetService
     }
     private void EngineChanged(CalibrationSnapshot snapshot)
     {
+        lock (_auditionStopSync) EngineChangedCore(snapshot);
+    }
+    private void EngineChangedCore(CalibrationSnapshot snapshot)
+    {
         if (_suppressCalibrationEvents || _calibrationState is not { } old) return;
+        if (snapshot.Stage is CalibrationStage.Failed or CalibrationStage.Cancelled or CalibrationStage.Cancelling or CalibrationStage.Completed)
+        {
+            long epoch = InvalidateAudition();
+            if (_auditionPlayer is not null)
+            {
+                SilenceAuditionTransition();
+                _ = StopTerminalAuditionAsync(epoch);
+            }
+            old = old with { PreviewAudioPlaying = false, PreviewEpoch = _previewEpoch };
+        }
         string stage = snapshot.Stage.ToString();
         if (_savingHearing && snapshot.Stage == CalibrationStage.Completed) stage = "Saving";
         if (snapshot.Workflow == CalibrationWorkflow.EarScan)
@@ -179,11 +195,13 @@ public sealed partial class NativeHeadsetService
         _client?.SetCalibrationActive(stage is not ("Completed" or "Failed" or "Cancelled"));
         int? frequencyHz = _calibrationContext?.ProductId == "06EC10" && snapshot.FrequencyType is >= 1 and <= 6
             ? new[] { 500, 1000, 2000, 4000, 6000, 8000 }[snapshot.FrequencyType - 1] : null;
+        var radar = HearingRadarMath.Create(snapshot);
         _calibrationState = old with { Revision = ++_calibrationRevision, Stage = stage, Uid = snapshot.Uid,
             Side = snapshot.Side, FrequencyType = snapshot.FrequencyType, FrequencyHz = frequencyHz, StepIndex = snapshot.StepIndex, StepCount = snapshot.StepCount,
             LevelIndex = snapshot.LevelIndex, DesiredLevelIndex = snapshot.DesiredLevelIndex, Decibels = snapshot.Decibels,
             ToneAcknowledged = snapshot.ToneAcknowledged, FiltersReady = snapshot.FiltersReady,
             CanPreview = snapshot.CanPreview, PreviewMode = snapshot.PreviewMode.ToString(),
+            HearingRadar = radar is null ? null : new UiHearingRadar(radar.Left, radar.Right),
             CanResume = snapshot.CanResume, NoiseWarning = snapshot.NoiseWarning, HasInterEarDifference = snapshot.HasInterEarDifference,
             RawStatus = snapshot.RawStatus,
             Message = CalibrationMessage(snapshot), FitResults = snapshot.FitResults.Select(x => new UiFitResult(x.Key, x.Value)).ToArray(),
@@ -209,6 +227,7 @@ public sealed partial class NativeHeadsetService
     internal async Task<UiCalibrationState> CancelCalibrationAsync(string handle, CancellationToken token)
     {
         var state = GetCalibration(handle);
+        await StopLocalAuditionAsync();
         if (_calibration is not null && state.Stage != "Ready")
         {
             try { await _calibration.CancelAsync(token); }
@@ -298,6 +317,7 @@ public sealed partial class NativeHeadsetService
     }
     internal async Task DisposeCalibrationAsync()
     {
+        await StopLocalAuditionAsync(dispose: true);
         Task refresh;
         lock (_hearingRefreshGate)
         {

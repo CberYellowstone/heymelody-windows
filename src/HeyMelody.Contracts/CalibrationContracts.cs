@@ -3,6 +3,11 @@ namespace HeyMelodyWindows.App;
 public sealed record UiHearingProfile(int? Uid, string Name, bool Current, bool CanApply);
 public sealed record UiFitResult(int Component, int Status);
 public sealed record UiHearingPoint(int Side, int FrequencyType, int Decibels);
+/// <summary>Unit-radius illustration values in ascending 80/250/1200/2400/4800/10000 Hz order.</summary>
+public sealed record UiHearingRadar(IReadOnlyList<double> Left, IReadOnlyList<double> Right);
+/// <summary>Latest-only music-source telemetry. It never advances the calibration action revision.</summary>
+public sealed record UiCalibrationSpectrum(string Handle, string BackendInstanceId, long Generation,
+    long PreviewEpoch, long Sequence, IReadOnlyList<double> Levels);
 public sealed record UiCalibrationState
 {
     public string Handle { get; set; } = "";
@@ -27,6 +32,10 @@ public sealed record UiCalibrationState
     public bool FiltersReady { get; set; }
     public bool CanPreview { get; set; }
     public string PreviewMode { get; set; } = "Stopped";
+    public long PreviewEpoch { get; set; }
+    public bool PreviewAudioPlaying { get; set; }
+    public string PreviewAudioError { get; set; } = "";
+    public UiHearingRadar? HearingRadar { get; set; }
     public bool CanResume { get; set; }
     public bool NoiseWarning { get; set; }
     public bool HasInterEarDifference { get; set; }

@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Ellipse = Avalonia.Controls.Shapes.Ellipse;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -107,21 +108,39 @@ internal static class CalibrationVisualTests
                 Push(service.State with { Stage = "Results", StepIndex = 12, FiltersReady = false });
                 Check(!view.GetVisualDescendants().OfType<TextBox>().Any() && !HasButton("保存并启用"),
                     "Twelve answers alone do not expose the result or save controls while filters are incomplete.");
-                Push(service.State with { FiltersReady = true, CanPreview = true, HasInterEarDifference = true });
+                var resultRadar = new UiHearingRadar(new double[] { .85, .62, .66, .58, .7, .82 }, new double[] { .83, .6, .64, .58, .67, .55 });
+                Push(service.State with { FiltersReady = true, CanPreview = true, HasInterEarDifference = true, HearingRadar = resultRadar });
                 Check(view.GetVisualDescendants().OfType<TextBox>().Count() == 1 && HasButton("保存并启用"),
                     "The result page names and saves a profile, separately from the main-window selector.");
                 Check(view.GetVisualDescendants().OfType<TextBlock>().Count(x => x.Text?.Contains("左右耳在部分频段的选择差异较大") == true) == 1,
                     "The result reports an inter-ear selection difference once, without assigning a hearing diagnosis.");
                 CheckActionBar(view, "保存并启用");
                 var editor = view.GetVisualDescendants().OfType<TextBox>().Single(); editor.Text = "我的听感";
-                foreach (var (text, action, mode) in new[] { ("原音", "preview-original", "Original"), ("黄金听感", "preview-enhanced", "Enhanced"), ("结束试听", "preview-stop", "Stopped") })
+                var chart = view.GetVisualDescendants().OfType<HearingRadarChart>().Single();
+                Check(service.Inputs.All(input => !input.Action.StartsWith("preview-")) && chart.ShowEnhancement && chart.EnhancementLevels.Count == 0,
+                    "The result radar opens with a static enhancement outline and never autoplays.");
+                foreach (var (name, action, mode) in new[] { ("PreviewOriginal", "preview-original", "Original"), ("PreviewEnhanced", "preview-enhanced", "Enhanced"), ("PreviewEnhanced", "preview-stop", "Stopped") })
                 {
-                    FindButton(text).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    view.GetVisualDescendants().OfType<ToggleButton>().Single(button => button.Name == name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     await Until(() => service.Inputs.Last().Action == action && !model.Busy);
                     Check(model.State.PreviewMode == mode && ReferenceEquals(editor, view.GetVisualDescendants().OfType<TextBox>().Single())
                         && editor.Text == "我的听感", "Preview sends the chosen effect and preserves the unsaved name.");
+                    if (mode == "Original") Check(!chart.ShowEnhancement, "Original audition hides the orange enhancement region.");
+                    if (mode == "Enhanced")
+                    {
+                        double[] spectrum = [.25, .4, .65, .9, .5, .35];
+                        long revision = model.State.Revision;
+                        model.AdoptSpectrum(new("operation", "fixture", 42, model.State.PreviewEpoch, 1, spectrum));
+                        Check(chart.EnhancementLevels.SequenceEqual(spectrum) && model.State.Revision == revision && ReferenceEquals(model.State.HearingRadar, resultRadar),
+                            "Music-source telemetry animates only orange and preserves the action revision and left/right result.");
+                        Capture(window, "hearing-results-enhanced");
+                    }
+                    if (mode == "Stopped") Check(chart.ShowEnhancement && chart.EnhancementLevels.Count == 0,
+                        "Clicking the active row pauses and restores the static orange outline.");
                 }
                 Capture(window, "hearing-results");
+                window.RequestedThemeVariant = ThemeVariant.Dark; Dispatcher.UIThread.RunJobs(); Capture(window, "hearing-results-dark");
+                window.Width = 400; window.Height = 520; Dispatcher.UIThread.RunJobs(); Capture(window, "hearing-results-narrow");
             }
             finally { window.Close(); }
             return true;

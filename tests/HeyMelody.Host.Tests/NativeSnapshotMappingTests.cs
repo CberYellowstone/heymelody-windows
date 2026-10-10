@@ -10,6 +10,18 @@ internal static class NativeSnapshotMappingTests
     internal static async Task RunAsync(Func<string, Func<Task>, Task> test, string scratch)
     {
         await NativeHearingNotificationTests.RunAsync(test, scratch);
+        await test("native firmware projection uses full component display and preserves fallback without device I/O", async () =>
+        {
+            await using var service = new NativeHeadsetService(() => throw new InvalidOperationException("Firmware projection enumerated Bluetooth"),
+                new DeviceWhitelistStore(Path.Combine(scratch, "firmware-projection.json")));
+            var map = typeof(NativeHeadsetService).GetMethod("Map", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var daily = new DailySnapshot { Revision = 1, ProductId = "06C010", FirmwareVersion = "137", FirmwareDisplayVersion = "137.137.105" };
+            Check(((UiSnapshot)map.Invoke(service, [daily])!).Firmware == "137.137.105" && daily.FirmwareVersion == "137", "Full display replaced the gate version");
+            daily.Revision++; daily.FirmwareDisplayVersion = null;
+            Check(((UiSnapshot)map.Invoke(service, [daily])!).Firmware == "137", "Raw firmware fallback was lost");
+            daily.Revision++; daily.ProductId = "06EC10"; daily.FirmwareVersion = "116"; daily.FirmwareDisplayVersion = "116.116.100";
+            Check(((UiSnapshot)map.Invoke(service, [daily])!).Firmware == "116.116.100", "Existing X4 component fixture was truncated");
+        });
         await test("native warnings preserve notification guidance and identify failed state reads without disabling other controls", async () =>
         {
             await using var service = new NativeHeadsetService(

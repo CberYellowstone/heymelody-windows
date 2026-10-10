@@ -25,6 +25,7 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
     public void Start()
     {
         supervisor.EventPublished += Broadcast;
+        supervisor.CalibrationOwnerEventPublished += SendOwnerEvent;
         _accept = AcceptAsync();
     }
     private async Task AcceptAsync()
@@ -67,6 +68,8 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
 
     private void Broadcast(BackendEvent value)
     { foreach (var client in _clients.Values) if (client.Role is not null) client.SendEvent(value); }
+    private void SendOwnerEvent(string owner, BackendEvent value)
+    { if (_clients.TryGetValue(owner, out var client) && client.Role == "calibration") client.SendEvent(value); }
 
     private async Task HandleAsync(Client client, BackendRequest request)
     {
@@ -224,6 +227,7 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
     public async ValueTask DisposeAsync()
     {
         _lifetime.Cancel(); supervisor.EventPublished -= Broadcast;
+        supervisor.CalibrationOwnerEventPublished -= SendOwnerEvent;
         foreach (var client in _clients.Values) client.Dispose();
         if (_accept is not null) { try { await _accept; } catch { } }
         _mainLaunch?.Dispose();
@@ -249,12 +253,12 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
         public void SendEvent(BackendEvent value)
         {
             var message = new BackendMessage { Kind = "event", Event = value };
-            if (value.Kind is "snapshot" or "catalog" or "health" or "calibration" or "resources")
+            if (value.Kind is "snapshot" or "catalog" or "health" or "calibration" or "resources" or "calibrationSpectrum")
             {
                 lock (_outboxSync)
                 {
                     if (_updates.Count >= 256) { Dispose(); return; }
-                    _updates[value.Kind + ":" + (value.Calibration?.Handle ?? value.Snapshot?.Identity)] = message;
+                    _updates[value.Kind + ":" + (value.CalibrationSpectrum?.Handle ?? value.Calibration?.Handle ?? value.Snapshot?.Identity)] = message;
                 }
                 _signal.Writer.TryWrite(0);
             }

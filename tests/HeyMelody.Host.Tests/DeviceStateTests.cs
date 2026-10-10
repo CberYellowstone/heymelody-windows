@@ -387,6 +387,7 @@ internal static class DeviceStateTests
         public event Action<UiSnapshot>? SnapshotChanged;
         public event Action? Unavailable { add { } remove { } }
         public event Action<UiCalibrationState>? CalibrationChanged { add { } remove { } }
+        public event Action<UiCalibrationSpectrum>? CalibrationSpectrumChanged { add { } remove { } }
         public Task<UiSnapshot> InitializeAsync(ulong address, string identity, string name, CancellationToken token)
         { Address = address; _snapshot = Copy(_seed()); _snapshot.Identity = identity; _snapshot.DeviceName = name; _snapshot.ResourceSource = _source; _snapshot.Revision = 1;
             if (StampSource) _snapshot.Firmware = _source;

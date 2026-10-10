@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using HeyMelodyWindows.App;
@@ -9,6 +10,60 @@ internal static class CalibrationBackendTests
 {
     internal static async Task RunAsync(Func<string, Func<Task>, Task> test, string scratch)
     {
+        await test("spectrum telemetry is owner-targeted, epoch-qualified and never invalidates action revisions", async () =>
+        {
+            await using var fixture = await Fixture.Create(scratch);
+            var snapshot = fixture.Snapshots()[0]; var worker = fixture.Workers[0];
+            var ready = await fixture.Backend.CreateCalibrationAsync("launcher", snapshot.Identity, snapshot.DeviceGeneration, "hearing", default);
+            fixture.Backend.GetCalibration("component", ready.Handle, "calibration");
+            var playing = ready with { Revision = ready.Revision + 1, Stage = "Previewing", PreviewMode = "Enhanced",
+                PreviewAudioPlaying = true, PreviewEpoch = 3 };
+            worker.EmitCalibration(playing);
+            long controlRevision = fixture.Backend.GetCalibration("component", ready.Handle, null).Revision;
+            long peerRevision = fixture.Backend.Select(snapshot.Identity).Revision;
+            var received = new List<(string Owner, BackendEvent Event)>();
+            fixture.Backend.CalibrationOwnerEventPublished += (owner, notification) => received.Add((owner, notification));
+            var frame = new UiCalibrationSpectrum(ready.Handle, "", snapshot.DeviceGeneration, 3, 1, [.2,.3,.4,.5,.6,.7]);
+            for (int i = 1; i <= 250; i++) worker.EmitSpectrum(frame with { Sequence = i });
+            Check(received.Count == 250 && received.All(x => x.Owner == "component" && x.Event.CalibrationSpectrum?.BackendInstanceId == fixture.Backend.InstanceId),
+                "Frames were broadcast to observers/launcher or lacked backend qualification");
+            Check(fixture.Backend.GetCalibration("component", ready.Handle, null).Revision == controlRevision
+                && fixture.Backend.Select(snapshot.Identity).Revision == peerRevision, "Spectrum invalidated a control or device revision");
+            worker.EmitSpectrum(frame with { Sequence = 200 });
+            worker.EmitSpectrum(frame with { Sequence = 300, PreviewEpoch = 2 });
+            worker.EmitSpectrum(frame with { Sequence = 300, Generation = snapshot.DeviceGeneration + 1 });
+            worker.EmitSpectrum(frame with { Sequence = 300, Handle = new string('a',32) });
+            worker.EmitSpectrum(frame with { Sequence = 300, Levels = [double.NaN,.2,.2,.2,.2,.2] });
+            Check(received.Count == 250, "Stale or invalid spectra escaped lease qualification");
+            await fixture.Backend.AdvanceCalibrationAsync("component", ready.Handle, controlRevision, new("preview-stop"), default);
+            worker.EmitSpectrum(frame with { Sequence = 400 });
+            Check(received.Count == 250 && worker.Advances == 1, "Telemetry raced a valid action or revived after preview ended");
+            worker.EmitCalibration(playing with { Revision = worker.State.Revision + 1, PreviewEpoch = 4 });
+            fixture.Backend.Pause(snapshot.Identity);
+            var invalidated = fixture.Backend.GetCalibration("component", ready.Handle, null);
+            Check(invalidated.Stage == "Cancelled" && !invalidated.PreviewAudioPlaying && invalidated.PreviewMode == "Stopped"
+                && invalidated.PreviewEpoch > 4, "Connection invalidation retained live playback authority or its epoch");
+            worker.EmitSpectrum(frame with { Sequence = 500 });
+            Check(received.Count == 250, "Previous worker delivered after a generation change");
+        });
+        await test("a blocked pipe coalesces music spectra without consuming reliable reply capacity", async () =>
+        {
+            await using var fixture = await Fixture.Create(scratch);
+            await using var server = new BackendPipeServer(fixture.Backend, "HeyMelody-outbox-" + Guid.NewGuid().ToString("N"));
+            using var pipe = new NamedPipeServerStream("HeyMelody-blocked-" + Guid.NewGuid().ToString("N"));
+            var type = typeof(BackendPipeServer).GetNestedType("Client", BindingFlags.NonPublic)!;
+            using var client = (IDisposable)Activator.CreateInstance(type, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null, [pipe, server], null)!;
+            var send = type.GetMethod("SendEvent")!;
+            var frame = new UiCalibrationSpectrum(new string('a',32), fixture.Backend.InstanceId, 1, 1, 1, [.1,.2,.3,.4,.5,.6]);
+            for (int i = 1; i <= 10000; i++) send.Invoke(client, [new BackendEvent { Kind = "calibrationSpectrum", CalibrationSpectrum = frame with { Sequence = i } }]);
+            type.GetMethod("Reply")!.Invoke(client, [7L, true, null, null]);
+            var updates = (Dictionary<string, BackendMessage>)type.GetField("_updates", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(client)!;
+            int replies = (int)type.GetField("_criticalCount", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(client)!;
+            var lifetime = (CancellationTokenSource)type.GetProperty("Lifetime")!.GetValue(client)!;
+            Check(updates.Count == 1 && updates.Values.Single().Event?.CalibrationSpectrum?.Sequence == 10000
+                && replies == 1 && !lifetime.IsCancellationRequested, "Slow-reader spectra grew an unbounded queue or displaced reliable replies");
+        });
         await test("unconfirmed calibration STOP stays failed and leased until an acknowledged retry", async () =>
         {
             foreach (bool throwFailure in new[] { false, true })
@@ -175,6 +230,7 @@ internal static class CalibrationBackendTests
         public event Action<UiSnapshot>? SnapshotChanged;
         public event Action? Unavailable;
         public event Action<UiCalibrationState>? CalibrationChanged;
+        public event Action<UiCalibrationSpectrum>? CalibrationSpectrumChanged;
         private UiSnapshot _snapshot = new();
         private UiCalibrationState _state = new();
         internal UiCalibrationState State => _state;
@@ -203,6 +259,7 @@ internal static class CalibrationBackendTests
             return Task.FromResult(_state); // Measurement results arrive later through CalibrationChanged.
         }
         internal void EmitCalibration(UiCalibrationState state) { _state = state; CalibrationChanged?.Invoke(state); }
+        internal void EmitSpectrum(UiCalibrationSpectrum spectrum) => CalibrationSpectrumChanged?.Invoke(spectrum);
         public Task<UiCalibrationState> CancelCalibrationAsync(string handle, CancellationToken token)
         {
             Cancels++;

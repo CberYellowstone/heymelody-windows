@@ -171,6 +171,7 @@ try
     });
     await BackendTests.RunAsync(Test, scratch);
     await CalibrationBackendTests.RunAsync(Test, scratch);
+    await CalibrationAuditionTests.RunAsync(Test, scratch);
     await ResourceBackendTests.RunAsync(Test, scratch);
     await ResourceBackendTests.RunAppearanceAsync(Test, scratch);
     await NativeSnapshotMappingTests.RunAsync(Test, scratch);

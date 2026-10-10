@@ -13,9 +13,13 @@ internal static class SelectionPresentationTests
             foreach (var identity in new[] { "a", "b" })
             {
                 var cached = Cached(Snapshot(identity));
+                cached.ResourceSource = identity == "a" ? "HeyMelody" : "WirelessEarphones";
                 cached.FeatureSections = [cached.FeatureSections[0] with { Controls = cached.FeatureSections[0].Controls
                     .Append(new UiFeatureControl("auto-volume", "自动音量", "Switch", 0, CanWrite: true)).ToArray() },
-                    new("legacy-only", "旧功能", false, [new("auto-volume", "自动音量", "Switch", 1, CanWrite: true)])];
+                    new("legacy-only", "旧功能", false, [new("auto-volume", "自动音量", "Switch", 1, CanWrite: true),
+                        new("game-sound", "游戏音效类型", "Combo", 3, Options: [new(3, "射击类游戏音效")], CanWrite: true),
+                        new("bass", "低音强度", "Slider", -4, Minimum: -9, Maximum: 8, CanWrite: true),
+                        new("bass-enabled", "低音增强", "Switch", 1, CanWrite: true)])];
                 cached.Warnings = ["部分耳机状态暂时不可用，相关设置已禁用。"];
                 service.Snapshots[identity] = Next(cached); // Exercise the serialized presentation received from an older Host.
             }
@@ -28,6 +32,9 @@ internal static class SelectionPresentationTests
                     "The shared rendering path must retain other cached controls and remove the retired control and its empty section.");
                 Check(vm.WarningsText == "上次连接时有状态提示，连接后请刷新确认。",
                     "An old generic cached warning must not claim that current settings have been disabled.");
+                Check(vm.EqualizerFeatures.Select(control => control.Id).SequenceEqual(["bass-enabled", "bass"])
+                    && vm.EqualizerFeatures.All(control => !control.CanEdit) && vm.EqualizerFeatures[1].NumberValue == -4,
+                    "Both sources relocate cached BassWave controls without granting write access or changing signed state.");
             }
             var connected = Snapshot(vm.SelectedDevice!.Identity); connected.Revision = 3;
             connected.Warnings = ["耳机拒绝了提示音音量读取，请手动刷新后重试。"];

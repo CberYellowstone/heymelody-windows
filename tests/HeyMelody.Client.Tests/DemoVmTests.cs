@@ -24,10 +24,13 @@ internal static class DemoVmTests
             Check(vm.AncModes.Count >= 3 && vm.AncModes.Any(mode => mode.Options.Count > 1));
             Check(vm.PresetOptions.Count > 1 && vm.Bands.Count == 10 && vm.EqEntries.Count > 0);
             Check(vm.CanSelectHearingProfile && vm.CanSetupHearing && vm.CanFitTest);
-            var controls = vm.FeatureSections.SelectMany(section => section.Controls).ToArray();
-            Check(!controls.Any(control => control.Id == "auto-volume")
+            var controls = vm.FeatureSections.SelectMany(section => section.Controls).Concat(vm.EqualizerFeatures).ToArray();
+            Check(!controls.Any(control => control.Id is "auto-volume" or "game-sound")
                 && controls.Any(control => control.Id == "adaptive-volume"),
-                "The retired auto-volume control is absent while adaptive volume remains independent.");
+                "Retired volume and game type controls stay absent while adaptive volume remains independent.");
+            Check(vm.EqualizerFeatures.Select(control => control.Id).SequenceEqual(["bass-enabled", "bass"])
+                && !vm.FeatureSections.SelectMany(section => section.Controls).Any(control => control.Id.StartsWith("bass", StringComparison.Ordinal)),
+                "BassWave controls appear together in the equalizer panel.");
             Check(controls.Select(control => control.Kind).ToHashSet().SetEquals(["Switch", "Slider", "Radio", "Text", "Combo"]));
             Check(controls.All(control => control.CanEdit) && vm.FeatureSections.All(section => section.DefaultExpanded));
             Check(controls.Count(control => control.Id.StartsWith("gesture:", StringComparison.Ordinal)) == 12,
@@ -53,7 +56,7 @@ internal static class DemoVmTests
             var spatial = vm.SpatialOptions.Last();
             vm.SelectedSpatial = spatial; await vm.ApplySpatialCommand.ExecuteAsync(null);
             Check(vm.SelectedSpatial?.Key == spatial.Key);
-            foreach (var id in vm.FeatureSections.SelectMany(section => section.Controls).Select(control => control.Id).ToArray())
+            foreach (var id in vm.FeatureSections.SelectMany(section => section.Controls).Concat(vm.EqualizerFeatures).Select(control => control.Id).ToArray())
             {
                 var control = Feature(vm, id);
                 switch (control.Kind)
@@ -194,7 +197,8 @@ internal static class DemoVmTests
         });
     }
 
-    private static FeatureControlViewModel Feature(MainViewModel vm, string id) => vm.FeatureSections.SelectMany(section => section.Controls).Single(control => control.Id == id);
+    private static FeatureControlViewModel Feature(MainViewModel vm, string id) => vm.FeatureSections.SelectMany(section => section.Controls)
+        .Concat(vm.EqualizerFeatures).Single(control => control.Id == id);
     private static MainViewModel Create(CountingService service, Confirmations? confirmations = null)
     {
         var vm = new MainViewModel(service, confirmations ?? new(true));

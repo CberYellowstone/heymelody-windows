@@ -159,14 +159,26 @@ public sealed partial class CalibrationEngine
         if (!State.CanPreview || !State.FiltersReady || State.Stage is not (CalibrationStage.ResultReady or CalibrationStage.Completed or CalibrationStage.Previewing))
             throw new InvalidOperationException("完整测听结果尚未准备好，无法试听。");
         Require(true, 0x040E); if (_context.EarScan) Require(true, 0x0415);
-        if (_previewOwned) await StopPreviewCoreAsync(ct); else _previewReturnStage = State.Stage;
-        Update(s => s with { Stage = CalibrationStage.Previewing, PreviewMode = CalibrationPreviewMode.Stopped });
+        // Both OEM apps overwrite temporary operation=1 parameters while their music stream keeps running.
+        // Operation=2 is reserved for ending audition; inserting it during A/B would interrupt the DSP path.
+        if (!_previewOwned) _previewReturnStage = State.Stage;
+        Update(s => s with { Stage = CalibrationStage.Previewing });
         _previewOwned = true;
-        await RequestAsync(0x040E, mode == CalibrationPreviewMode.Enhanced
-            ? CalibrationCodecs.Parameters(1, State.HearingLevels, State.Uid) : CalibrationCodecs.Parameters(1, [], 0), ct);
-        if (_context.EarScan)
-            await RequestAsync(0x0415, CalibrationCodecs.EarScanParameters(1, mode == CalibrationPreviewMode.Enhanced ? State.ScanResult!.Data : [], mode == CalibrationPreviewMode.Enhanced ? State.Uid : 0), ct);
-        Update(s => s with { Stage = CalibrationStage.Previewing, PreviewMode = mode });
+        try
+        {
+            await RequestAsync(0x040E, mode == CalibrationPreviewMode.Enhanced
+                ? CalibrationCodecs.Parameters(1, State.HearingLevels, State.Uid) : CalibrationCodecs.Parameters(1, [], 0), ct);
+            if (_context.EarScan)
+                await RequestAsync(0x0415, CalibrationCodecs.EarScanParameters(1, mode == CalibrationPreviewMode.Enhanced ? State.ScanResult!.Data : [], mode == CalibrationPreviewMode.Enhanced ? State.Uid : 0), ct);
+            Update(s => s with { Stage = CalibrationStage.Previewing, PreviewMode = mode });
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            // The Host must silence local music immediately, even if owned device STOP subsequently waits for its ACK.
+            Update(s => s with { Stage = CalibrationStage.Cancelling, PreviewMode = CalibrationPreviewMode.Stopped,
+                RawStatus = (error as CalibrationDeviceException)?.Status ?? s.RawStatus, Message = "试听效果未确认，正在停止试听。" });
+            throw;
+        }
     }, token);
     private async Task StopPreviewCoreAsync(CancellationToken token)
     {

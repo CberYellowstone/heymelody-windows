@@ -358,16 +358,46 @@ await Test("Description reuses exact ordered thresholds and asymmetry uses unequ
     var fake = new Fake(); await using var engine = Engine(fake, store: store); await Complete(engine, levels: levels);
     Check(engine.State.RestoreDescriptionId == 9 && engine.State.HasInterEarDifference);
 }));
-await Test("Original/enhanced previews write temporary parameters, stop both effects, never save NV", async () =>
+await Test("Original/enhanced previews overwrite temporary parameters, stop both effects only on exit, never save NV", async () =>
 {
     var fake = new Fake(); await using var engine = Engine(fake, true); await Complete(engine, true);
     int before = fake.Sent.Count; await engine.PreviewAsync(CalibrationPreviewMode.Original); var original = fake.Sent.Skip(before).ToArray();
     Check(original.Select(x => x.Command).SequenceEqual(new ushort[] { 0x040E, 0x0415 }));
     Check(original[0].Payload.SequenceEqual(new byte[] { 1, 0, 0, 0, 0, 0 }) && original[1].Payload.SequenceEqual(new byte[] { 1, 0, 0, 0, 0, 0, 0 }));
+    before = fake.Sent.Count;
     await engine.PreviewAsync(CalibrationPreviewMode.Enhanced); Check(engine.State.PreviewMode == CalibrationPreviewMode.Enhanced);
+    Check(fake.Sent.Skip(before).Select(x => x.Command).SequenceEqual(new ushort[] { 0x040E, 0x0415 })
+        && fake.Sent.Skip(before).All(x => x.Payload[0] == 1));
     await engine.PreviewAsync(CalibrationPreviewMode.Stopped); Check(engine.State.Stage == CalibrationStage.ResultReady && engine.State.PreviewMode == CalibrationPreviewMode.Stopped);
     Check(fake.Sent.Skip(before).All(x => (x.Command is 0x040E or 0x0415) && (x.Payload[0] is 1 or 2)));
     Check(fake.Sent[^2].Payload.SequenceEqual(new byte[] { 2 }) && fake.Sent[^1].Payload.SequenceEqual(new byte[] { 2 }) && !fake.HasSaved);
+});
+await Test("Continuous A/B sends operation1 only, waits for hearing ACK before scan and returns to Results on explicit stop", async () =>
+{
+    foreach (bool scan in new[] { false, true })
+    {
+        var fake = new Fake(); await using var engine = Engine(fake, scan); await Complete(engine, scan);
+        await engine.PreviewAsync(CalibrationPreviewMode.Original);
+        var ack = new TaskCompletionSource<Packet?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fake.Hook = (c, p, t) => c == 0x040E && p[0] == 1 ? ack.Task : Task.FromResult<Packet?>(null);
+        int before = fake.Sent.Count;
+        var enhanced = engine.PreviewAsync(CalibrationPreviewMode.Enhanced);
+        await Until(() => fake.Sent.Count > before);
+        Check(engine.State.PreviewMode == CalibrationPreviewMode.Original && !enhanced.IsCompleted
+            && fake.Sent.Skip(before).Select(x => x.Command).SequenceEqual(new ushort[] { 0x040E }));
+        ack.SetResult(new(0x840E, 1, [0])); await enhanced;
+        fake.Hook = null;
+        foreach (var mode in new[] { CalibrationPreviewMode.Original, CalibrationPreviewMode.Enhanced })
+        {
+            before = fake.Sent.Count; await engine.PreviewAsync(mode);
+            var switchCommands = fake.Sent.Skip(before).ToArray();
+            Check(switchCommands.Select(x => x.Command).SequenceEqual(scan ? new ushort[] { 0x040E, 0x0415 } : new ushort[] { 0x040E })
+                && switchCommands.All(x => x.Payload[0] == 1) && engine.State.PreviewMode == mode && !fake.HasSaved);
+        }
+        before = fake.Sent.Count; await engine.PreviewAsync(CalibrationPreviewMode.Stopped);
+        Check(engine.State.Stage == CalibrationStage.ResultReady && engine.State.PreviewMode == CalibrationPreviewMode.Stopped
+            && fake.Sent.Skip(before).All(x => x.Payload.SequenceEqual(new byte[] { 2 })));
+    }
 });
 await Test("Preview cancellation cleans temporary effects and idle stop cannot invent Results", async () =>
 {
@@ -475,4 +505,5 @@ await Test("Fragments before first reply and afterward aggregate only its sequen
     await using var engine = Engine(fake, true); await Complete(engine, true);
     Check(engine.State.Stage == CalibrationStage.ResultReady && engine.State.Curves[0].Right.Count == 30 && engine.State.EarScanCurves[0].Right.Count == 36);
 });
+await HearingRadarTests.RunAsync(Test);
 Console.WriteLine($"{passed} calibration tests passed.");

@@ -39,6 +39,9 @@ public sealed class CalibrationWindow : FAAppWindow
     private readonly IHeadsetEventService? _events;
     private readonly MicaAltBackdrop _backdrop;
     private bool _closing, _closed, _completed, _allowLocalClose;
+    private readonly object _spectrumGate = new();
+    private UiCalibrationSpectrum? _pendingSpectrum;
+    private bool _spectrumPosted;
     public CalibrationWindow(ICalibrationService service, string handle, string kind)
     {
         // Register the backdrop's window-style callback before any window property is assigned, as DeviceManager does.
@@ -66,7 +69,25 @@ public sealed class CalibrationWindow : FAAppWindow
                 desktop.Shutdown(_completed && _model.StopConfirmed ? 0 : 1);
         };
     }
-    private void OnEvent(BackendEvent notification) => Dispatcher.UIThread.Post(async () =>
+    private void OnEvent(BackendEvent notification)
+    {
+        if (notification.CalibrationSpectrum is { } spectrum)
+        {
+            lock (_spectrumGate)
+            {
+                _pendingSpectrum = spectrum;
+                if (_spectrumPosted) return;
+                _spectrumPosted = true;
+            }
+            Dispatcher.UIThread.Post(() =>
+            {
+                UiCalibrationSpectrum? latest;
+                lock (_spectrumGate) { latest = _pendingSpectrum; _pendingSpectrum = null; _spectrumPosted = false; }
+                if (!_closed && latest is not null) _model.AdoptSpectrum(latest);
+            });
+            return;
+        }
+        Dispatcher.UIThread.Post(async () =>
     {
         if (_closed) return;
         if (notification.Calibration is { } state) _model.Adopt(state);
@@ -84,7 +105,8 @@ public sealed class CalibrationWindow : FAAppWindow
             catch { /* Connection events permit a local close if the backend has disappeared. */ }
             if (confirmed) Close();
         }
-    });
+        });
+    }
     private async void ClosingAsync(object? sender, WindowClosingEventArgs e)
     {
         if (_closed) return;

@@ -105,7 +105,7 @@ internal static class NativeDemoSmoke
             Check(vm.ProductId == "06C010" && DemoDeviceData.Color == 3 && hero.Visual is EncoFree4DynaudioModelVisual
                 && page.FindControl<Grid>("HeroPanel")!.Children.Count == 1,
                 "Demo startup selects the Dynaudio model without duplicate artwork captions.");
-            await UntilAsync(() => vm.FeatureSections.Sum(section => section.Controls.Count) == 34
+            await UntilAsync(() => vm.FeatureSections.Sum(section => section.Controls.Count) + vm.EqualizerFeatures.Count == 32
                 && page.GetVisualDescendants().OfType<FeatureSectionView>().Count() == vm.FeatureSections.Count
                 && page.GetVisualDescendants().OfType<FeatureSectionView>().All(section => section.Content is FASettingsExpander),
                 "The demo's dynamic section containers materialize before inspecting or expanding their editors.");
@@ -139,7 +139,7 @@ internal static class NativeDemoSmoke
             page.ExpandAllSettings();
             try
             {
-                await UntilAsync(() => page.GetVisualDescendants().OfType<FeatureControlView>().Count() == 34,
+                await UntilAsync(() => page.GetVisualDescendants().OfType<FeatureControlView>().Count() == 32,
                     "Every dynamic demo control materializes after its section is explicitly expanded.");
                 // Let the native expander animation finish before resizing and
                 // inspecting geometry. This is intentionally separate from VM readiness.
@@ -158,8 +158,8 @@ internal static class NativeDemoSmoke
                 DeviceBarTests.CheckBottomBar(page, page);
                 var actualControlCount = page.GetVisualDescendants().OfType<FeatureControlView>().Count();
                 RecordControlLayout(page, vm, $"{(dark ? "dark" : "light")}-{(int)size.Width}x{(int)size.Height}");
-                Check(actualControlCount == 34,
-                    $"Every dynamic demo control is loaded in the native window; actual={actualControlCount}, expected=34.");
+                Check(actualControlCount == 32,
+                    $"Every dynamic demo control is loaded in the native window; actual={actualControlCount}, expected=32.");
                 if (_state.Output is not null)
                 {
                     window.Activate();
@@ -231,7 +231,7 @@ internal static class NativeDemoSmoke
         _state.ControlLayouts.Add(new
         {
             phase, expectedSections = vm.FeatureSections.Count, actualSections = sections.Length,
-            expectedControls = vm.FeatureSections.Sum(section => section.Controls.Count), actualControls = controls,
+            expectedControls = vm.FeatureSections.Sum(section => section.Controls.Count) + vm.EqualizerFeatures.Count, actualControls = controls,
             sections = sections.Select(section => new
             {
                 id = (section.DataContext as FeatureSectionViewModel)?.Id,
@@ -241,7 +241,7 @@ internal static class NativeDemoSmoke
                 width = section.Bounds.Width, height = section.Bounds.Height
             }).ToArray()
         });
-        Console.WriteLine($"LAYOUT {phase}: sections={sections.Length}/{vm.FeatureSections.Count}, controls={controls}/{vm.FeatureSections.Sum(section => section.Controls.Count)}");
+        Console.WriteLine($"LAYOUT {phase}: sections={sections.Length}/{vm.FeatureSections.Count}, controls={controls}/{vm.FeatureSections.Sum(section => section.Controls.Count) + vm.EqualizerFeatures.Count}");
     }
 
     private static async Task UntilAsync(Func<bool> ready, string message)

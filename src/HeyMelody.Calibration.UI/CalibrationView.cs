@@ -45,8 +45,9 @@ public sealed class CalibrationView : UserControl
     private Slider? _level;
     private bool _updatingLevel, _rippleFollowsTone;
     private bool? _connectorDone;
-    private Button? _next, _retryLevel, _save, _resume, _stopPreview;
-    private readonly List<(ToggleButton Button, string Mode)> _previewButtons = [];
+    private Button? _next, _retryLevel, _save, _resume;
+    private readonly List<(ToggleButton Button, FASymbolIcon Icon, string Mode)> _previewButtons = [];
+    private HearingRadarChart? _radar;
     private TextBlock? _levelLabel, _previewLabel, _caption;
     private TextBlock? _leftLabel, _rightLabel;
     private Control? _heroGlyph;
@@ -91,6 +92,10 @@ public sealed class CalibrationView : UserControl
         };
         model.PropertyChanged += (_, _) =>
         { if (Dispatcher.UIThread.CheckAccess()) Update(); else Dispatcher.UIThread.Post(Update); };
+        model.SpectrumChanged += _ =>
+        {
+            if (Dispatcher.UIThread.CheckAccess()) UpdateSpectrum(); else Dispatcher.UIThread.Post(UpdateSpectrum);
+        };
         Update();
     }
     private void Update()
@@ -100,7 +105,8 @@ public sealed class CalibrationView : UserControl
         var busy = _model.Busy || _model.LevelPending || state.Stage is "CheckingWear" or "Starting" or "Measuring" or "Scanning" or "LoadingCurves" or "LoadingFilters" or "Saving" or "Cancelling";
         // The fixed slot fades rather than collapsing, so the page never shifts; idle bars stop animating.
         _activity.Opacity = busy ? 1 : 0; _activity.IsIndeterminate = busy;
-        _errorBar.Message = _model.Error; _errorBar.IsOpen = _errorBar.IsVisible = _model.Error.Length > 0;
+        var error = _model.Error.Length > 0 ? _model.Error : state.PreviewAudioError;
+        _errorBar.Message = error; _errorBar.IsOpen = _errorBar.IsVisible = error.Length > 0;
         UpdateNotice(state, resultPage);
         UpdateStepper(state);
         _body.IsEnabled = _actions.IsEnabled = !_model.Busy && state.Stage is not ("Cancelled" or "Cancelling");
@@ -116,10 +122,11 @@ public sealed class CalibrationView : UserControl
         _status.Text = _model.CancellationPending ? "正在停止测试…" : _model.Busy ? "正在处理…"
             : hearingStep && state.StepCount > 0 ? $"第 {Math.Clamp(state.StepIndex + 1, 1, state.StepCount)} / {state.StepCount} 步" : "";
         var key = string.Join('/', resultPage ? "Results" : state.Stage, _model.Phase, state.HearingVersion, state.SupportsEarScan, state.StepIndex > 0,
-            state.FiltersReady, state.CanPreview, state.HearingLevels.Count == state.StepCount, state.FitResults.Count, _model.ResourceSource);
+            state.FiltersReady, state.CanPreview, state.HearingRadar is not null,
+            state.HearingLevels.Count == state.StepCount, state.FitResults.Count, _model.ResourceSource);
         if (_bodyKey != key)
         {
-            _bodyKey = key; _body.Children.Clear(); _actions.Children.Clear(); _level = null; _next = _retryLevel = _save = _resume = _stopPreview = null;
+            _bodyKey = key; _body.Children.Clear(); _actions.Children.Clear(); _level = null; _next = _retryLevel = _save = _resume = null; _radar = null;
             _levelLabel = _previewLabel = _caption = _leftLabel = _rightLabel = null; _heroGlyph = null; _ripple = null; _rippleFollowsTone = false;
             _previewButtons.Clear(); _answerButtons.Clear(); _segments.Clear();
             BuildBody();
@@ -149,12 +156,21 @@ public sealed class CalibrationView : UserControl
         if (_retryLevel is not null) _retryLevel.IsEnabled = _model.CanAdjustLevel && !_model.LevelPending;
         if (_save is not null) _save.IsEnabled = _model.CanSave;
         if (_resume is not null) _resume.IsEnabled = state.CanResume && !_model.Busy;
-        if (_previewLabel is not null) _previewLabel.Text = state.PreviewMode switch
-        { "Original" => "正在试听原音", "Enhanced" => "正在试听黄金听感", _ => "播放你熟悉的音乐，选择一种效果开始比较。" };
-        foreach (var (button, mode) in _previewButtons) { button.IsEnabled = _model.CanPreview; button.IsChecked = mode == state.PreviewMode; }
-        if (_stopPreview is not null) _stopPreview.IsEnabled = _model.CanPreview && state.PreviewMode != "Stopped";
+        if (_previewLabel is not null) _previewLabel.Text = state.Stage == "Previewing" && state.PreviewAudioPlaying
+            ? state.PreviewMode == "Enhanced" ? "正在试听增强后 · 再次点击可暂停" : "正在试听增强前 · 再次点击可暂停"
+            : "内置试听音乐 · 选择增强前或增强后开始播放";
+        foreach (var (button, icon, mode) in _previewButtons)
+        {
+            bool playing = state.Stage == "Previewing" && state.PreviewAudioPlaying && mode == state.PreviewMode;
+            button.IsEnabled = _model.CanPreview; button.IsChecked = playing;
+            icon.Symbol = playing ? FASymbol.Pause : FASymbol.Play;
+            AutomationProperties.SetHelpText(button, playing ? "暂停试听" : "播放内置试听音乐");
+        }
+        _radar?.SetResult(state.HearingRadar); UpdateSpectrum();
         foreach (var button in _answerButtons) button.IsEnabled = !_model.Busy && state.Stage == "AwaitingAnswer" && state.ToneAcknowledged;
     }
+    private void UpdateSpectrum() => _radar?.SetPreview(_model.State.PreviewMode,
+        _model.State.Stage == "Previewing" && _model.State.PreviewAudioPlaying, _model.SpectrumLevels);
     private void UpdateNotice(UiCalibrationState state, bool resultPage)
     {
         // Host messages explain pauses and refusals; the result page gives its own inter-ear explanation once.
@@ -302,24 +318,42 @@ public sealed class CalibrationView : UserControl
     {
         // The stepper already marks both steps done; the cards keep the name field above the action bar.
         AddHeading("你的黄金听感已生成", "在原音与黄金听感之间切换比较，满意后命名并保存。");
+        if (state.HearingRadar is not null)
+        {
+            _radar = new HearingRadarChart { HorizontalAlignment = HorizontalAlignment.Stretch };
+            var legend = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, HorizontalAlignment = HorizontalAlignment.Center };
+            foreach (var (label, color) in new[] { ("左耳", "#13964A"), ("右耳", "#1471CE"), ("增强区间", "#C57416") })
+                legend.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children =
+                    { new Ellipse { Width = 8, Height = 8, Fill = new SolidColorBrush(Color.Parse(color)), VerticalAlignment = VerticalAlignment.Center }, SecondaryText(label) } });
+            var info = new Button { Content = Symbol(FASymbol.Help, 16, Secondary), Padding = new Thickness(4), VerticalAlignment = VerticalAlignment.Center,
+                Flyout = new Flyout { Content = SecondaryText("根据耳机返回的结果展示左右耳听感与增强区间。增强试听时，橙色区域随音乐频谱变化；左右耳结果保持不变。") } };
+            AutomationProperties.SetName(info, "关于听感雷达图"); legend.Children.Add(info);
+            _body.Children.Add(Card(new StackPanel { Spacing = 4, Children = { _radar, legend } }));
+        }
+        else _body.Children.Add(new FAInfoBar { IsOpen = true, IsClosable = false, Severity = FAInfoBarSeverity.Informational,
+            Message = "当前耳机未提供可绘制的听感曲线，仍可试听并保存配置。" });
         if (state.CanPreview)
         {
             _previewLabel = SecondaryText("");
-            var choices = new Grid { ColumnDefinitions = new("*,*"), ColumnSpacing = 8 };
-            foreach (var (text, action, mode) in new[] { ("原音", "preview-original", "Original"), ("黄金听感", "preview-enhanced", "Enhanced") })
+            var choices = new StackPanel { Spacing = 8 };
+            foreach (var (text, action, mode, controlName) in new[] { ("增强前", "preview-original", "Original", "PreviewOriginal"), ("增强后", "preview-enhanced", "Enhanced", "PreviewEnhanced") })
             {
-                var button = new ToggleButton { Content = text, Height = 40, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Center };
+                var icon = Symbol(FASymbol.Play, 20, Primary);
+                var title = Text(text, 16, FontWeight.SemiBold);
+                var row = new Grid { ColumnDefinitions = new("*,Auto"), ColumnSpacing = 16, Children = { title, icon } };
+                Grid.SetColumn(icon, 1);
+                var button = new ToggleButton { Name = controlName, Content = row, MinHeight = 52, Padding = new Thickness(12),
+                    HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+                AutomationProperties.SetName(button, text);
                 button.Click += async (_, _) =>
                 {
-                    // The Host owns the effect; a click on the active choice must not toggle it off locally.
-                    button.IsChecked = _model.State.PreviewMode == mode;
-                    if (_model.State.PreviewMode != mode) await _model.SendAsync(action);
+                    bool playing = _model.State.PreviewAudioPlaying && _model.State.PreviewMode == mode;
+                    button.IsChecked = playing;
+                    await _model.SendAsync(playing ? "preview-stop" : action);
                 };
-                Grid.SetColumn(button, choices.Children.Count); choices.Children.Add(button); _previewButtons.Add((button, mode));
+                choices.Children.Add(button); _previewButtons.Add((button, icon, mode));
             }
-            _stopPreview = new Button { Content = "结束试听", VerticalAlignment = VerticalAlignment.Center };
-            _stopPreview.Click += async (_, _) => await _model.SendAsync("preview-stop");
-            _body.Children.Add(Card(Symbol(FASymbol.Audio, 20, Primary), "试听对比", _previewLabel, choices, _stopPreview));
+            _body.Children.Add(Card(Symbol(FASymbol.Audio, 20, Primary), "试听对比", _previewLabel, choices));
         }
         var name = new TextBox { Text = _model.Name, PlaceholderText = "例如：我的听感", MaxLength = 40 };
         AutomationProperties.SetName(name, "黄金听感配置名称");
