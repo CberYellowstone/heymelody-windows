@@ -65,6 +65,7 @@ public partial class MainView : UserControl
             UpdateArtwork();
             UpdateDemoPresentation();
             UpdateConnectionIndicator();
+            UpdateHeaderWarnings();
             ResetDeviceInfoCopyFeedback();
             RequestDeviceSelectionSync();
             RequestDeviceCenter();
@@ -86,6 +87,13 @@ public partial class MainView : UserControl
             or nameof(MainViewModel.Title) or nameof(MainViewModel.ProductId) or nameof(MainViewModel.Firmware)
             or nameof(MainViewModel.Closing)) ResetDeviceInfoCopyFeedback();
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName == nameof(MainViewModel.Indicator)) UpdateConnectionIndicator();
+        if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName == nameof(MainViewModel.WarningsText)) UpdateHeaderWarnings();
+    }
+
+    private void UpdateHeaderWarnings()
+    {
+        HeaderWarnings.Text = (ViewModel?.WarningsText ?? "").Replace(Environment.NewLine, "；").Replace("\n", "；");
+        Avalonia.Automation.AutomationProperties.SetName(HeaderWarnings, "耳机状态提示：" + (ViewModel?.WarningsText ?? ""));
     }
 
     private void UpdateConnectionIndicator()

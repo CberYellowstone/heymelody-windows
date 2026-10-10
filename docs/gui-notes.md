@@ -1,10 +1,14 @@
-# HeyMelody Avalonia 界面（0.8.11）
+# HeyMelody Avalonia 界面（0.8.12）
+
+0.8.12 将耳机状态提示移到顶部连接状态文本右侧，以“·”分隔，无提示时隐藏分隔符。长提示单行省略、悬停显示完整内容，多项在行内以“；”连接。操作失败、平台和 Demo 提示保留原有区域。通知分类与本轮验证见[通知提示修复](research/notification-header.md)；以下 0.8.11 发布证据保留历史版本。
+
+0.8.12 本地 x64 构建通过全部 13 个默认检查程序及 59 项原生模拟窗口检查。ZIP 2841 个文件与发布目录的路径、大小和 SHA256 一致，本轮未操作真实耳机。
 
 2026-10-10 补充：本轮游戏音效及 Hi-Res／空间修复见[研究说明](research/game-audio-spatial.md)，修复阶段的源码与 X4 验证版本为 0.8.10，随后随降噪界面调整升级至 0.8.11。本文修改前[原稿已归档](../research/game-audio-spatial-20261010/original-documents/docs/gui-notes.md)，发布更新前的稿件另存于[本地档案](../research/game-audio-spatial-20261010/pre-release-0.8.11-documents/docs/gui-notes.md)，下方历史发布验证记录保持原值。
 
 0.6.0 完成 Windows Enco X4 功能的 Avalonia 初版迁移，0.6.1 改进后台刷新、交互及失败处理。当前界面使用 Avalonia 12.1.3、FluentAvaloniaUI 3.1.0 和 CommunityToolkit.Mvvm 8.4.2，功能随资源目录及实际设备能力提供。界面和客户端状态模型分别位于 `HeyMelody.App` 与 `HeyMelody.Client`；DTO、schema-3 双向命名管道契约及私有 worker 的 stdio 契约位于 `HeyMelody.Contracts`。`HeyMelody.Host` 独立托盘后台监管每台耳机的原生 worker，Windows 蓝牙调用不进入界面线程。
 
-当前源码及发布脚本默认版本均为 0.8.11。主界面右侧降噪恢复为默认展开的 FluentAvalonia Expander，沿用降噪图标、说明和模式选择器；用户主动折叠后，普通状态刷新不会重新展开。真实设备和 Demo 沿用各自的会话展开状态。
+当前源码及发布脚本默认版本均为 0.8.12。主界面右侧降噪保持默认展开的 FluentAvalonia Expander，沿用降噪图标、说明和模式选择器；用户主动折叠后，普通状态刷新不会重新展开。真实设备和 Demo 沿用各自的会话展开状态。
 
 0.8.11 本地 x64 自包含构建已通过全部 13 个默认检查程序，其中 App 93 项覆盖默认展开、标题点击折叠、刷新保留及真实设备／Demo 展开状态恢复；另行通过 59 项原生窗口模拟检查，蓝牙调用和设置提交均为 0。发布目录为 `release/HeyMelody_Windows_0.8.11`，ZIP 为 `release/HeyMelody_Windows_0.8.11_x64.zip`。本地[静态包报告](../artifacts/release-0.8.11-x64/static-validation.json)核对 x64 版本、依赖、资源与许可；[ZIP 校验](../artifacts/release-0.8.11-x64/zip-integrity.json)确认 2841 个文件的路径、大小和 SHA256 与发布目录一致。构建及原生检查日志同目录保留。本次包没有新增实机执行收据，前述 X4 验证仍属于修复阶段的源码控制链。
 

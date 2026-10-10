@@ -59,7 +59,8 @@ internal static class CalibrationTransportTests
             Check(context.Events.Contains(4) && context.Events.Contains(8) && !context.Events.Contains(14));
             Check(context.HearingV2 && context.EarScan);
             Check(fake.Requests.Single(x => x.Command == 0x0205).Payload.SequenceEqual(new byte[] {5,1,2,3,4,8}));
-            Check((await client.RefreshAsync(DailyRefreshScope.Battery)).Warnings.Any(x => x.Contains("部分状态通知")));
+            Check((await client.RefreshAsync(DailyRefreshScope.Battery)).Warnings.Count == 0);
+            Check((await client.RefreshAsync()).Warnings.Count == 0);
             var fit = new TaskCompletionSource<Packet>(TaskCreationOptions.RunContinuationsAsynchronously);
             var scan = new TaskCompletionSource<Packet>(TaskCreationOptions.RunContinuationsAsynchronously);
             client.Notification += p => { if (p.Payload.FirstOrDefault() == 4) fit.TrySetResult(p); if (p.Payload.FirstOrDefault() == 14) scan.TrySetResult(p); };

@@ -69,7 +69,8 @@ public sealed partial class DailyClient
                     if (results.Count == ids.Length)
                     {
                         lock (_stateGate) _registeredEvents.UnionWith(results.Where(x => x.Value == 0).Select(x => x.Key));
-                        if (results.Values.Any(x => x != 0)) _monitoringWarning = "部分状态通知不可用，仍可手动刷新状态。";
+                        if (results.Any(x => IsDailyEvent(x.Key) && x.Value != 0))
+                            _monitoringWarning = "部分状态通知不可用，仍可手动刷新状态。";
                     }
                     else _monitoringWarning = "状态通知未得到完整确认，仍可手动刷新状态。";
                 }
@@ -79,12 +80,20 @@ public sealed partial class DailyClient
             {
                 var reply = await session.RequestAsync(0x0201, [id], token);
                 if (!reply.Matched || !session.Usable) throw new IOException("Notification registration failed.");
-                if (reply.Status != 0) _monitoringWarning = "设备拒绝了部分状态通知订阅。";
+                if (reply.Status != 0)
+                {
+                    // Only an explicit calibration rejection is optional. An absent status
+                    // remains an unconfirmed subscription, regardless of event category.
+                    if (reply.Status is null || IsDailyEvent(id))
+                        _monitoringWarning = "设备拒绝了部分状态通知订阅。";
+                }
                 else lock (_stateGate) _registeredEvents.Add(id);
             }
         }
         _registeredSession = session;
     }
+
+    private static bool IsDailyEvent(byte id) => id is 1 or 2 or 3 or 5 or 6 or 15;
 
     private void PublishMonitoringWarning()
     {

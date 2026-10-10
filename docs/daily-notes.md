@@ -1,5 +1,7 @@
 # 日常控制层（0.7.0 当前实现）
 
+0.8.12 补充：日常事件与校准事件的注册告警分开处理；仅校准事件明确拒绝不再产生日常订阅提示，缺失或异常确认与真实日常故障仍提示。声明能力、真实注册集合及被动接收保持独立。完整说明见[通知提示修复](research/notification-header.md)，下文历史验证范围保持原值。
+
 2026-10-10 补充：游戏音效与 Hi-Res／空间音效的当前行为已按[原 APK／固件复核](research/game-audio-spatial.md)纠正。本文修改前原稿已[逐字节归档](../research/game-audio-spatial-20261010/original-documents/docs/daily-notes.md)，历史阶段验证范围保持原值。
 
 实现位于 `src/HeyMelody.Daily/`，公开命名空间为 `HeyMelodyWindows.Daily`。库使用 .NET 10 BCL 和已有 Protocol、Devices、Control 接口，不增加第三方依赖、蓝牙扫描、驱动安装或系统设置；显式监听入口会按设备能力注册已核实通知。项目为 AnyCPU，Windows 原生传输和三个架构的应用发布由宿主集成。

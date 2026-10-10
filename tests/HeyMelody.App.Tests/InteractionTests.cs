@@ -20,7 +20,7 @@ internal static class InteractionTests
         Run("ANC and resource expansion choices survive refreshes and presentation switches", ExpansionPersistenceAsync);
         Run("ANC radio sends a parent and explicit dropdown sends only a child", AncModeInteractionAsync);
         Run("ANC parent-only pushes select the radio without selecting or writing a child", AncParentPushAsync);
-        Run("status notice shows notification guidance and clears after a healthy push", WarningNoticeAsync);
+        Run("header shows notification guidance and clears after a healthy push", WarningNoticeAsync);
         return 9;
 
         void Run(string name, Func<Task> test)
@@ -44,13 +44,24 @@ internal static class InteractionTests
             window.Show(); await MainUiTestLayout.ExpandSettingsAsync(view);
             var warning = service.Next(); warning.Warnings = ["部分状态通知不可用，仍可手动刷新状态。"];
             service.Push(warning); Dispatcher.UIThread.RunJobs();
-            var notice = view.FindControl<FAInfoBar>("WarningsNotice")!;
-            Check(notice.IsVisible && notice.IsOpen && notice.Title == "耳机状态提示"
-                && notice.Message == warning.Warnings.Single() && FeatureTestData.Switch(view, "game").IsEnabled,
+            var notice = view.FindControl<TextBlock>("HeaderWarnings")!;
+            var separator = view.FindControl<TextBlock>("WarningSeparator")!;
+            var subtitle = view.FindControl<TextBlock>("DeviceSubtitle")!;
+            Check(notice.IsVisible && separator.IsVisible && separator.Text == "·"
+                && notice.Text == warning.Warnings.Single() && FeatureTestData.Switch(view, "game").IsEnabled
+                && view.FindControl<FAInfoBar>("WarningsNotice") is null,
                 "The bound notice must preserve notification guidance without claiming a read failure or disabling the game switch.");
+            warning = service.Next(); warning.Warnings = [new string('长', 200), "第二项状态提示"];
+            service.Push(warning); Dispatcher.UIThread.RunJobs();
+            window.Width = 760; window.UpdateLayout();
+            Check(notice.Text == string.Join("；", warning.Warnings)
+                && Equals(ToolTip.GetTip(notice), string.Join(Environment.NewLine, warning.Warnings))
+                && notice.TextTrimming == Avalonia.Media.TextTrimming.CharacterEllipsis
+                && subtitle.Bounds.Width > 0 && view.FindControl<Button>("RefreshStateButton")!.Bounds.Width == 32,
+                "Long guidance must remain single-line with complete tooltip and room for connection commands.");
             var cleared = service.Next(); cleared.Warnings = [];
             service.Push(cleared); Dispatcher.UIThread.RunJobs();
-            Check(!notice.IsVisible && !notice.IsOpen && notice.Message == "" && service.Actions.Count == 0,
+            Check(!notice.IsVisible && !separator.IsVisible && notice.Text == "" && service.Actions.Count == 0,
                 "A healthy snapshot must hide and clear the notice without submitting a setting.");
         }
         finally { window.Close(); }

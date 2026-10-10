@@ -436,6 +436,57 @@ await Test("monitoring subscribes only offered supported events and chooses capa
         Check(f.Writes.Count == 0 && !f.Requests.Any(x => x.Command == 0x0202));
     }
 });
+await Test("notification rejection classification preserves daily failures across refreshes and resets with sessions", async () =>
+{
+    foreach (bool legacy in new[] { false, true })
+    foreach (byte[] ids in new byte[][] { [4,8,14], [1,4,2,8,3,14,5,6,15], [14,15,8,6,4,5,3,2,1] })
+    foreach (bool dailyFailure in new[] { false, true })
+    {
+        var f = new Fake { LegacyRegistration = legacy };
+        f.ReadReplies[0x0200] = [0,(byte)ids.Length,..ids];
+        foreach (byte id in ids) f.RegistrationReplies[id] = [(byte)(id is 4 or 8 or 14 || dailyFailure && id == 1 ? 2 : 0)];
+        f.ReadReplies[0x0205] = [0,(byte)ids.Length,..ids.SelectMany(id => new byte[] {id,f.RegistrationReplies[id][0]})];
+        await using var c = new DailyClient(f); await c.RefreshAsync(); await c.StartMonitoringAsync();
+        bool expected = dailyFailure && ids.Contains((byte)1);
+        foreach (var scope in new[] { DailyRefreshScope.Full, DailyRefreshScope.Battery, DailyRefreshScope.Anc })
+            Check((await c.RefreshAsync(scope)).Warnings.Count != 0 == expected);
+        Check(c.CalibrationContext("device", 1).Events.Contains(4) && f.Writes.Count == 0);
+        // Renew the transport using the existing safe sequence exhaustion path.
+        f.ReadReplies[0x0205] = [0,(byte)ids.Length,..ids.SelectMany(id => new byte[] {id,0})];
+        f.RegistrationReplies.Clear();
+        for (int n = 0; n < 245; n++) await c.RefreshAsync(DailyRefreshScope.Battery);
+        Check(f.Opens >= 2 && (await c.RefreshAsync()).Warnings.Count == 0);
+    }
+});
+await Test("unconfirmed calibration registration and capability failures remain visible", async () =>
+{
+    foreach (byte[] reply in new byte[][] { [2], [], [0], [0,3,4,0,8,2], [0,3,4,0,4,2,14,2], [0,3,4,0,8,2,99,2] })
+    {
+        var f = new Fake(); f.ReadReplies[0x0200] = [0,3,4,8,14]; f.ReadReplies[0x0205] = reply;
+        await using var c = new DailyClient(f); await c.RefreshAsync();
+        try { await c.StartMonitoringAsync(); } catch (IOException) { }
+        var s = await c.RefreshAsync(); Check(s.Warnings.Count != 0 || s.Error is not null);
+    }
+    var legacy = new Fake { LegacyRegistration = true }; legacy.ReadReplies[0x0200] = [0,1,4]; legacy.RegistrationReplies[4] = [];
+    await using (var c = new DailyClient(legacy))
+    {
+        await c.RefreshAsync(); try { await c.StartMonitoringAsync(); } catch (IOException) { }
+        var s = await c.RefreshAsync(); Check(s.Warnings.Count != 0 || s.Error is not null);
+    }
+    foreach (byte[] reply in new byte[][] { [2], [], [0,2,4], [0,2,4,4] })
+    {
+        var f = new Fake(); f.ReadReplies[0x0200] = reply;
+        await using var c = new DailyClient(f); await c.RefreshAsync();
+        try { await c.StartMonitoringAsync(); } catch (FormatException) { } catch (IOException) { }
+        var s = await c.RefreshAsync(); Check(s.Warnings.Count != 0 || s.Error is not null);
+    }
+    var reads = new Fake(); reads.ReadReplies[0x0200] = [0,1,4]; reads.ReadReplies[0x0205] = [0,1,4,2];
+    await using (var c = new DailyClient(reads))
+    {
+        await c.RefreshAsync(); await c.StartMonitoringAsync(); reads.ReadReplies[0x010C] = [1];
+        Check((await c.RefreshAsync(DailyRefreshScope.Anc)).Warnings.Count != 0);
+    }
+});
 await Test("persistent idle receive waits, publishes pushed partial battery and placement, never sends ACK", async () =>
 {
     var f = new Fake(); await using var c = new DailyClient(f); DailySnapshot initial = await c.RefreshAsync();
@@ -545,6 +596,7 @@ sealed class Fake : IControlConnector
 {
     public List<Packet> Requests = [];
     public Dictionary<ushort, byte[]> ReadReplies = [];
+    public Dictionary<byte, byte[]> RegistrationReplies = [];
     public bool ThrowReadsAfterWrite;
     public bool SetReadEof, TruncatedSetFrame;
     public Exception? SetReadFailure;
@@ -642,6 +694,7 @@ sealed class Fake : IControlConnector
         if (ThrowReadsAfterWrite && Writes.Count != 0) throw new IOException();
         if (p.Command == 0x010C && Writes.Count != 0 && AncResponseAfterSet is { } ancReply) return ancReply;
         if (ReadReplies.TryGetValue(p.Command, out var overridden)) return overridden;
+        if (p.Command == 0x0201 && RegistrationReplies.TryGetValue(p.Payload[0], out var registration)) return registration;
         return p.Command switch
         {
             0x0103 => UnsupportedProduct?[0,1,2,3]:[0,..Convert.FromHexString(ProductId).Reverse()],

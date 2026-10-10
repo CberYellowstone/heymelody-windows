@@ -1,6 +1,8 @@
 # HeyMelody for Windows
 
-**0.8.11** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型和动画展示。
+**0.8.12** 使用 Avalonia、FluentAvalonia 和共享托盘后台，在 Windows 上提供资源驱动的耳机控制、状态监听及图片、三维模型和动画展示。
+
+0.8.12 区分日常状态与校准通知订阅：校准事件的明确拒绝不再引发日常状态告警，真实订阅和读取故障仍会提示。耳机状态提示移到顶部连接状态右侧，以圆点分隔，长提示可悬停查看完整内容。降噪保持默认展开的 Expander。说明见 [通知提示修复](docs/research/notification-header.md)。
 
 0.8.11 修复游戏音效开关与类型的独立写入、失败后的状态回读及控件恢复，选项同时受所选来源配置、固件条件和耳机能力约束；Hi-Res 与空间音效按各自开关提交，不再显示互斥限制或自动关闭另一项。主界面右侧降噪恢复为默认展开的 Expander，手动折叠状态在刷新时保留。原厂依据、跨型号范围及 X4 验证见 [游戏音效与空间音效研究](docs/research/game-audio-spatial.md)。
 
@@ -57,7 +59,7 @@ Demo 使用预装的 Enco Free4 丹拿版（`06C010`、色号 `3`）三维模型
 dotnet build src/HeyMelody.App/HeyMelody.App.csproj -c Release
 dotnet run --project tests/HeyMelody.Resources.Tests
 dotnet run --project tests/HeyMelody.Calibration.Tests
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.11
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.8.12
 ```
 
 常规构建和离线测试使用仓库中的资源包，不需要本地 APK。重新提取资源需要 `research/apps/` 和 `research/screenshots/` 中的固定输入及各专题保留的原件，入口是 `tools/bundle_resources.py`；目录组织、提交边界与历史路径映射见 [研究资料归档](docs/research/README.md)。运行中的软件不读取研究目录。原始资源版权与溯源保留在发布包的 notices 和资源清单中。
