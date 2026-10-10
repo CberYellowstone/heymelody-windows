@@ -8,12 +8,14 @@ using HeyMelodyWindows.App;
 
 namespace HeyMelodyWindows.Calibration.UI;
 
-/// <summary>Six-band filter illustration, with a separate music-source enhancement overlay.</summary>
+/// <summary>Six-band filter illustration, composed with the music spectrum during either audition mode.</summary>
 public sealed class HearingRadarChart : Control
 {
     private static readonly int[] DisplayOrder = [0, 5, 4, 3, 2, 1];
     private static readonly string[] Labels = ["低频", "极高频", "高频", "中高频", "中频", "中低频"];
     private UiHearingRadar? _radar;
+    private IReadOnlyList<double> _spectrum = [];
+    private IReadOnlyList<double> _left = [], _right = [];
     private IReadOnlyList<double> _enhancement = [];
     private bool _showEnhancement = true;
 
@@ -21,18 +23,39 @@ public sealed class HearingRadarChart : Control
     {
         Name = "HearingRadar"; Height = 280; MaxWidth = 400;
         AutomationProperties.SetName(this, "黄金听感雷达图");
-        AutomationProperties.SetHelpText(this, "左耳绿色，右耳蓝色，橙色为增强区间示意；增强试听时随音乐频谱变化。");
+        AutomationProperties.SetHelpText(this, "左耳绿色，右耳蓝色；增强前与增强后试听时，左右耳曲线随音乐频谱变化。增强后显示橙色音乐频谱。");
         ActualThemeVariantChanged += (_, _) => InvalidateVisual();
     }
 
     public bool ShowEnhancement => _showEnhancement;
     public IReadOnlyList<double> EnhancementLevels => _enhancement;
-    public void SetResult(UiHearingRadar? radar) { _radar = radar; InvalidateVisual(); }
+    public IReadOnlyList<double> LeftLevels => _left;
+    public IReadOnlyList<double> RightLevels => _right;
+    public void SetResult(UiHearingRadar? radar) { _radar = radar; UpdateEarSeries(); InvalidateVisual(); }
     public void SetPreview(string mode, bool playing, IReadOnlyList<double> spectrum)
     {
         _showEnhancement = !(playing && mode == "Original");
-        _enhancement = playing && mode == "Enhanced" && spectrum.Count == 6 ? spectrum : [];
+        _spectrum = playing && mode is ("Original" or "Enhanced") && spectrum.Count == 6
+            && spectrum.All(value => double.IsFinite(value) && value is >= 0 and <= 1)
+            ? Array.AsReadOnly(spectrum.ToArray()) : [];
+        _enhancement = playing && mode == "Enhanced" ? _spectrum : [];
+        UpdateEarSeries();
         InvalidateVisual();
+    }
+
+    private void UpdateEarSeries()
+    {
+        _left = Compose(_radar?.Left);
+        _right = Compose(_radar?.Right);
+        IReadOnlyList<double> Compose(IReadOnlyList<double>? ear)
+        {
+            if (ear is not { Count: 6 } || ear.Any(value => !double.IsFinite(value) || value is < .2 or > 1)) return [];
+            if (_spectrum.Count != 6) return ear;
+            // OEM: max(.2, music + offset), offset = -abs(filterDb) / scale <= 0.
+            // static = clamp(1 + offset, .2, 1). Since music <= 1, a saturated
+            // static radius also saturates the dynamic radius, so this is equivalent.
+            return Array.AsReadOnly(ear.Select((value, i) => Math.Clamp(_spectrum[i] + value - 1, .2, 1)).ToArray());
+        }
     }
 
     public override void Render(DrawingContext context)
@@ -57,10 +80,10 @@ public sealed class HearingRadarChart : Control
             context.DrawText(text, new Point(labelPoint.X - text.Width / 2, labelPoint.Y - text.Height / 2));
         }
         if (_showEnhancement) DrawSeries(_enhancement, enhanced, .07);
-        if (_radar is { Left.Count: 6, Right.Count: 6 })
+        if (_left.Count == 6 && _right.Count == 6)
         {
-            DrawSeries(_radar.Left, left, .12);
-            DrawSeries(_radar.Right, right, .10);
+            DrawSeries(_left, left, .12);
+            DrawSeries(_right, right, .10);
         }
 
         Point At(double distance, double angle) => center + new Vector(Math.Cos(angle) * distance, Math.Sin(angle) * distance);

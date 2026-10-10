@@ -94,14 +94,14 @@ if (Test-Path -LiteralPath $staticReceiptPath) { throw '已有收据，请使用
 pwsh -NoProfile -File .\tools\Verify-Release.ps1 -Version 0.8.13
 ```
 
-可选 Python 3 校验器通过 `--package` 选择 ZIP，通过 `--output` 选择新收据文件；已有输出文件会被拒绝。例如：
+可选 Python 3 校验器通过 `--package` 选择发布目录，通过 `--output` 选择新收据文件；已有输出文件会被拒绝。它检查目录中的程序集、运行时、资源与许可，不读取 ZIP；压缩包与目录的一致性须另外核对。例如：
 
 ```powershell
 New-Item -ItemType Directory -Path artifacts -Force | Out-Null
-python tools/verify_release.py --package release/HeyMelody_Windows_0.8.13_AllArchitectures.zip --output artifacts/release-0.8.13-static-new.json | Out-Null
+python tools/verify_release.py --package release/HeyMelody_Windows_0.8.13 --output artifacts/release-0.8.13-static-new.json | Out-Null
 ```
 
-Python 默认检查三架构；校验单架构包时将上述包名换成 `HeyMelody_Windows_0.8.13_x64.zip`，并加 `--architectures x64`。输出文件名按本次验证另选；上例将正文输出留在收据中。两套校验均不执行应用，需保留准确的版本、架构与摘要。真实执行收据、原生窗口收据和历史只读蓝牙证据是额外证据，不能由静态检查替代。
+Python 默认检查三架构；上述目录由单架构构建生成时，添加对应的 `--architectures x64` 参数。输出文件名按本次验证另选；上例将正文输出留在收据中。两套校验均不执行应用，需保留准确的版本、架构与摘要。真实执行收据、原生窗口收据和历史只读蓝牙证据是额外证据，不能由静态检查替代。
 
 ## 来源与研究边界
 

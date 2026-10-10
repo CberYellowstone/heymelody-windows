@@ -77,7 +77,7 @@ public sealed class CalibrationView : UserControl
         var bar = new Grid { ColumnDefinitions = new("*,Auto,Auto"), ColumnSpacing = 12, Children = { _status, _actions, _cancel } };
         Grid.SetColumn(_actions, 1); Grid.SetColumn(_cancel, 2);
         var actionBar = new Border { Name = "ActionBar", Height = 72, VerticalAlignment = VerticalAlignment.Bottom, Padding = new Thickness(24, 12), Child = bar };
-        actionBar.Bind(Border.BackgroundProperty, new DynamicResourceExtension("LayerOnMicaBaseAltFillColorDefaultBrush"));
+        actionBar.Bind(Border.BackgroundProperty, new DynamicResourceExtension("SolidBackgroundFillColorSecondaryBrush"));
         var content = new Grid { Children =
         {
             new ScrollViewer { Name = "PageScroll", Content = page, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
@@ -322,11 +322,11 @@ public sealed class CalibrationView : UserControl
         {
             _radar = new HearingRadarChart { HorizontalAlignment = HorizontalAlignment.Stretch };
             var legend = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, HorizontalAlignment = HorizontalAlignment.Center };
-            foreach (var (label, color) in new[] { ("左耳", "#13964A"), ("右耳", "#1471CE"), ("增强区间", "#C57416") })
+            foreach (var (label, color) in new[] { ("左耳", "#13964A"), ("右耳", "#1471CE"), ("增强后", "#C57416") })
                 legend.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children =
                     { new Ellipse { Width = 8, Height = 8, Fill = new SolidColorBrush(Color.Parse(color)), VerticalAlignment = VerticalAlignment.Center }, SecondaryText(label) } });
             var info = new Button { Content = Symbol(FASymbol.Help, 16, Secondary), Padding = new Thickness(4), VerticalAlignment = VerticalAlignment.Center,
-                Flyout = new Flyout { Content = SecondaryText("根据耳机返回的结果展示左右耳听感与增强区间。增强试听时，橙色区域随音乐频谱变化；左右耳结果保持不变。") } };
+                Flyout = new Flyout { Content = SecondaryText("根据耳机返回的结果展示左右耳听感与增强区间。试听增强前或增强后时，左右耳曲线随音乐频谱变化；增强后还会显示橙色音乐频谱。") } };
             AutomationProperties.SetName(info, "关于听感雷达图"); legend.Children.Add(info);
             _body.Children.Add(Card(new StackPanel { Spacing = 4, Children = { _radar, legend } }));
         }

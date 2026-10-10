@@ -35,16 +35,28 @@ internal static class CalibrationBackendTests
             worker.EmitSpectrum(frame with { Sequence = 300, Handle = new string('a',32) });
             worker.EmitSpectrum(frame with { Sequence = 300, Levels = [double.NaN,.2,.2,.2,.2,.2] });
             Check(received.Count == 250, "Stale or invalid spectra escaped lease qualification");
+            playing = playing with { Revision = controlRevision + 1, PreviewMode = "Original", PreviewEpoch = 4 };
+            worker.EmitCalibration(playing);
+            controlRevision = fixture.Backend.GetCalibration("component", ready.Handle, null).Revision;
+            worker.EmitSpectrum(frame with { Sequence = 300 });
+            Check(received.Count == 250, "Enhanced telemetry reached a newer original audition epoch");
+            frame = frame with { PreviewEpoch = 4, Sequence = 1 };
+            worker.EmitSpectrum(frame);
+            Check(received.Count == 251 && received[^1].Event.CalibrationSpectrum?.PreviewEpoch == 4
+                && fixture.Backend.GetCalibration("component", ready.Handle, null).Revision == controlRevision,
+                "Original telemetry was rejected or advanced its action revision");
+            worker.EmitSpectrum(frame);
+            Check(received.Count == 251, "Original audition accepted a duplicate sequence");
             await fixture.Backend.AdvanceCalibrationAsync("component", ready.Handle, controlRevision, new("preview-stop"), default);
             worker.EmitSpectrum(frame with { Sequence = 400 });
-            Check(received.Count == 250 && worker.Advances == 1, "Telemetry raced a valid action or revived after preview ended");
+            Check(received.Count == 251 && worker.Advances == 1, "Telemetry raced a valid action or revived after preview ended");
             worker.EmitCalibration(playing with { Revision = worker.State.Revision + 1, PreviewEpoch = 4 });
             fixture.Backend.Pause(snapshot.Identity);
             var invalidated = fixture.Backend.GetCalibration("component", ready.Handle, null);
             Check(invalidated.Stage == "Cancelled" && !invalidated.PreviewAudioPlaying && invalidated.PreviewMode == "Stopped"
                 && invalidated.PreviewEpoch > 4, "Connection invalidation retained live playback authority or its epoch");
             worker.EmitSpectrum(frame with { Sequence = 500 });
-            Check(received.Count == 250, "Previous worker delivered after a generation change");
+            Check(received.Count == 251, "Previous worker delivered after a generation change");
         });
         await test("a blocked pipe coalesces music spectra without consuming reliable reply capacity", async () =>
         {

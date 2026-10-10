@@ -35,7 +35,18 @@ public sealed class FeatureControlView : FASettingsExpanderItem
                     TickFrequency = model.Step, IsSnapToTickEnabled = model.Step > 0 };
                 slider.Bind(Slider.ValueProperty, new Binding(nameof(model.NumberValue)) { Mode = BindingMode.TwoWay });
                 UserInputCommit.Slider(slider, model.SubmitAsync);
-                editor = slider;
+                if (model.Id is "bass" or "prompt-volume")
+                {
+                    slider.TickPlacement = TickPlacement.BottomRight;
+                    Avalonia.Automation.AutomationProperties.SetName(slider, model.Label);
+                    var value = new TextBlock { MinWidth = 32, TextAlignment = TextAlignment.Right,
+                        VerticalAlignment = VerticalAlignment.Center };
+                    if (model.Definition.Value is null) value.Text = "—";
+                    else value.Bind(TextBlock.TextProperty, new Binding(nameof(model.NumberValue)) { StringFormat = "{0:0}" });
+                    editor = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12,
+                        Children = { slider, value } };
+                }
+                else editor = slider;
                 break;
             case "Radio":
                 var radios = new StackPanel { Spacing = 6, MaxWidth = 250 };

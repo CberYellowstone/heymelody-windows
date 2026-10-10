@@ -88,7 +88,7 @@
         </StackPanel>
       </ScrollViewer>
       <Border x:Name="ActionOverlay" Height="72" VerticalAlignment="Bottom" Padding="24,12"
-              Background="{DynamicResource LayerOnMicaBaseAltFillColorDefaultBrush}">
+              Background="{DynamicResource SolidBackgroundFillColorSecondaryBrush}">
         <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
           <TextBlock Text="{Binding SelectionText}" VerticalAlignment="Center" FontSize="12"
                      Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />

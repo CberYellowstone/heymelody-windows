@@ -202,22 +202,8 @@ internal static class DemoDeviceTests
         Check(Equals(picker.SelectedItem, fixture.Vm.SelectedDevice)
             && picker.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == "演示设备"),
             "The selected card identifies the device as a demo.");
+        CheckFeatureEditorLayout(view);
         var scroll = view.FindControl<ScrollViewer>("ControlScroll")!;
-        // Inspect each row's actual editor, excluding hidden template parts such
-        // as a non-editable ComboBox's internal TextBox.
-        var editors = view.GetVisualDescendants().OfType<FeatureControlView>()
-            .Select(control => control.Footer as Control
-                ?? throw new InvalidOperationException("A demo control has no editor.")).ToArray();
-        Check(editors.Length == fixture.Vm.FeatureSections.Sum(section => section.Controls.Count) + fixture.Vm.EqualizerFeatures.Count,
-            "Every dynamic control has an instantiated editor.");
-        foreach (var editor in editors)
-        {
-            var origin = editor.TranslatePoint(default, scroll)!.Value;
-            Check(editor.IsEffectivelyEnabled && editor.Bounds.Width > 0 && editor.Bounds.Height > 0
-                && origin.X >= -1 && origin.X + editor.Bounds.Width <= scroll.Bounds.Width + 1,
-                $"Demo editor {((FeatureControlViewModel)editor.DataContext!).Id} fits within the control column: " +
-                $"enabled={editor.IsEffectivelyEnabled}, bounds={editor.Bounds}, origin={origin}, scroll={scroll.Bounds}");
-        }
         var log = view.GetVisualDescendants().OfType<FASettingsExpander>().Single(expander => Equals(expander.Header, "操作记录"));
         log.IsExpanded = true; Dispatcher.UIThread.RunJobs();
         var maximum = Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height);
@@ -253,6 +239,51 @@ internal static class DemoDeviceTests
         }
         Dispatcher.UIThread.RunJobs();
     }
+    internal static IReadOnlyList<object> CheckFeatureEditorLayout(MainView view)
+    {
+        var vm = (MainViewModel)view.DataContext!;
+        var scroll = view.FindControl<ScrollViewer>("ControlScroll")!;
+        var controls = view.GetVisualDescendants().OfType<FeatureControlView>().ToArray();
+        Check(controls.Length == vm.FeatureSections.Sum(section => section.Controls.Count) + vm.EqualizerFeatures.Count,
+            "Every dynamic control has an instantiated editor.");
+        var sliderLayouts = new List<object>();
+        foreach (var control in controls)
+        {
+            var model = (FeatureControlViewModel)control.DataContext!;
+            var editor = control.Footer as Control ?? throw new InvalidOperationException("A demo control has no editor.");
+            var origin = editor.TranslatePoint(default, scroll)!.Value;
+            Check(editor.IsEffectivelyEnabled && editor.Bounds.Width > 0 && editor.Bounds.Height > 0
+                && origin.X >= -1 && origin.X + editor.Bounds.Width <= scroll.Bounds.Width + 1,
+                $"Demo editor {model.Id} fits within the control column: " +
+                $"enabled={editor.IsEffectivelyEnabled}, bounds={editor.Bounds}, origin={origin}, scroll={scroll.Bounds}");
+            if (model.Id is not ("bass" or "prompt-volume")) continue;
+            var row = editor as StackPanel ?? throw new InvalidOperationException($"The {model.Id} slider and value must share a layout row.");
+            var slider = row.Children.OfType<Slider>().Single();
+            var value = row.Children.OfType<TextBlock>().Single();
+            var tickBars = slider.GetVisualDescendants().OfType<TickBar>()
+                .Where(ticks => ticks.IsEffectivelyVisible && ticks.Bounds.Width > 0 && ticks.Bounds.Height > 0).ToArray();
+            var sliderOrigin = slider.TranslatePoint(default, row)!.Value;
+            var valueOrigin = value.TranslatePoint(default, row)!.Value;
+            Check(tickBars.Length > 0 && slider.IsSnapToTickEnabled && slider.TickFrequency == model.Step,
+                $"The native {model.Id} editor lays out visible ticks and preserves the device's discrete step.");
+            var expectedValue = model.Definition.Value is null ? "—"
+                : model.NumberValue.ToString("0", System.Globalization.CultureInfo.CurrentCulture);
+            Check(value.Text == expectedValue
+                && value.Bounds.Width > 0 && value.DesiredSize.Width <= value.Bounds.Width + 1
+                && valueOrigin.X >= sliderOrigin.X + slider.Bounds.Width
+                && valueOrigin.X + value.Bounds.Width <= row.Bounds.Width + 1,
+                $"The {model.Id} integer readout stays to the right of the slider without clipping or overlap.");
+            sliderLayouts.Add(new
+            {
+                id = model.Id, model.Minimum, model.Maximum, model.Step, value = value.Text,
+                editorWidth = row.Bounds.Width, sliderWidth = slider.Bounds.Width,
+                valueX = valueOrigin.X, valueWidth = value.Bounds.Width, visibleTickBars = tickBars.Length
+            });
+        }
+        Check(sliderLayouts.Count == 2, "Both bass and prompt-volume editors have verified native slider/readout geometry.");
+        return sliderLayouts;
+    }
+
     private static void Check(bool condition, string reason)
     { if (!condition) throw new InvalidOperationException(reason); }
     private sealed class ManualTimeProvider : TimeProvider

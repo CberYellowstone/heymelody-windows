@@ -5,7 +5,7 @@
              xmlns:contracts="clr-namespace:HeyMelodyWindows.App;assembly=HeyMelody.Contracts"
              xmlns:local="clr-namespace:HeyMelodyWindows.App"
              x:Class="HeyMelodyWindows.App.MainView" x:DataType="vm:MainViewModel"
-             Background="{DynamicResource ApplicationPageBackgroundThemeBrush}">
+             Background="Transparent">
   <UserControl.Resources>
     <local:DemoDeviceCaptionConverter x:Key="DemoDeviceCaptionConverter" />
     <ControlTheme x:Key="DeviceCardTheme" TargetType="ListBoxItem">
@@ -21,14 +21,17 @@
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Template">
         <ControlTemplate>
-          <Border x:Name="CardBorder" Padding="{TemplateBinding Padding}"
-                  TemplatedControl.IsTemplateFocusTarget="True"
-                  Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}">
-            <ContentPresenter x:Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
-                              ContentTemplate="{TemplateBinding ContentTemplate}"
-                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+          <Border Background="{DynamicResource ControlSolidFillColorDefaultBrush}"
+                  CornerRadius="{TemplateBinding CornerRadius}">
+            <Border x:Name="CardBorder" Padding="{TemplateBinding Padding}"
+                    TemplatedControl.IsTemplateFocusTarget="True"
+                    Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}">
+              <ContentPresenter x:Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+            </Border>
           </Border>
         </ControlTemplate>
       </Setter>
@@ -44,7 +47,7 @@
       <Style Selector="^:selected">
         <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
       </Style>
-      <Style Selector="^:disabled">
+      <Style Selector="^:disabled /template/ Border#CardBorder">
         <Setter Property="Opacity" Value="0.5" />
       </Style>
     </ControlTheme>
@@ -110,6 +113,7 @@
     </Style>
   </UserControl.Styles>
   <Grid x:Name="MainLayout" RowDefinitions="*,Auto">
+    <Border x:Name="PageSurface" Background="{DynamicResource ApplicationPageBackgroundThemeBrush}" IsHitTestVisible="False" />
     <Grid x:Name="DeviceArea" ColumnDefinitions="*,500" Margin="24,12,24,0">
       <Grid x:Name="HeroPanel" Margin="8,0,32,0">
         <local:ProductArtwork x:Name="HeroArt" Margin="0,16" MaxWidth="600" MaxHeight="520"
@@ -235,7 +239,7 @@
               <ItemsControl x:Name="EqualizerFeaturesView" ItemsSource="{Binding EqualizerFeatures}" IsVisible="{Binding HasEqualizerFeatures}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:FeatureControlViewModel">
-                    <local:FeatureControlView />
+                    <local:FeatureControlView Background="Transparent" />
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
@@ -304,7 +308,7 @@
       </Grid>
     </Grid>
     <Border x:Name="DeviceBar" Grid.Row="1" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-            Background="{DynamicResource LayerFillColorDefaultBrush}" Padding="20,8">
+            Background="Transparent" Padding="20,8">
       <ScrollViewer x:Name="DeviceBarScroll" HorizontalScrollBarVisibility="Auto"
                     VerticalScrollBarVisibility="Disabled">
         <Border x:Name="DeviceStripPadding" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -341,7 +345,8 @@
               <TextBlock x:Name="EmptyDevicesText" Text="暂无已配对设备"
                          IsVisible="{Binding !HasDevices}" Classes="muted" VerticalAlignment="Center" Margin="8,0" />
             </Grid>
-            <Border x:Name="AddDeviceHost" VerticalAlignment="Center">
+            <Border x:Name="AddDeviceHost" VerticalAlignment="Center" CornerRadius="4"
+                    Background="{DynamicResource ControlSolidFillColorDefaultBrush}">
               <Button x:Name="AddDeviceButton" Width="64" Height="64" Click="AddDevice_Click"
                       IsEnabled="{Binding !Closing}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                       ToolTip.Tip="添加设备；长按 2 秒添加演示设备" AutomationProperties.Name="添加设备">

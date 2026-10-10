@@ -91,20 +91,29 @@ internal static class NativeCalibrationSmoke
                     Preview(view, "PreviewOriginal").RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
                     await Until(() => !model.Busy && service.Inputs.Last().Action == "preview-original");
                     Check(!chart.ShowEnhancement && model.State.PreviewAudioPlaying, "Native original audition hides enhancement.");
+                    var spectrum = new double[] { .3, .55, .4, .9, .7, .6 };
+                    long originalRevision = model.State.Revision;
+                    model.AdoptSpectrum(new("operation", "fixture", 42, model.State.PreviewEpoch, 1, spectrum));
+                    Check(chart.LeftLevels.Zip(resultRadar.Left).Any(pair => Math.Abs(pair.First - pair.Second) > .01)
+                        && chart.RightLevels.Zip(resultRadar.Right).Any(pair => Math.Abs(pair.First - pair.Second) > .01)
+                        && chart.EnhancementLevels.Count == 0 && model.State.Revision == originalRevision,
+                        "Native original spectrum animates both ears while keeping orange hidden and the revision stable.");
+                    Capture(view, "hearing-results-original");
                     Preview(view, "PreviewEnhanced").RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
                     await Until(() => !model.Busy && service.Inputs.Last().Action == "preview-enhanced");
-                    var spectrum = new double[] { .3, .55, .4, .9, .7, .6 };
                     long actionRevision = model.State.Revision;
                     model.AdoptSpectrum(new("operation", "fixture", 42, model.State.PreviewEpoch, 1, spectrum));
                     Check(chart.EnhancementLevels.SequenceEqual(spectrum) && model.State.Revision == actionRevision && ReferenceEquals(model.State.HearingRadar, resultRadar),
-                        "Native spectrum animates orange without replacing the hearing curves or changing the action revision.");
+                        "Native enhanced spectrum displays orange without replacing the source curves or changing the action revision.");
                     Capture(view, "hearing-results-enhanced");
                     var scroll = view.GetVisualDescendants().OfType<ScrollViewer>().Single(x => x.Name == "PageScroll");
                     scroll.Offset = new Vector(0, 300); await Task.Delay(50); Capture(view, "hearing-audition-controls");
                     scroll.Offset = new Vector(0, 0);
                     Preview(view, "PreviewEnhanced").RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
                     await Until(() => !model.Busy && service.Inputs.Last().Action == "preview-stop");
-                    Check(chart.ShowEnhancement && chart.EnhancementLevels.Count == 0, "Native active-row pause restores the static orange outline.");
+                    Check(chart.ShowEnhancement && chart.EnhancementLevels.Count == 0
+                        && chart.LeftLevels.SequenceEqual(resultRadar.Left) && chart.RightLevels.SequenceEqual(resultRadar.Right),
+                        "Native active-row pause restores static ears and the orange outline.");
                     window.RequestedThemeVariant = ThemeVariant.Dark; await Task.Delay(50); Capture(view, "hearing-results-dark");
                     window.Width = 400; window.Height = 520; await Task.Delay(50); Capture(view, "hearing-results-narrow");
                     window.Width = 520; window.Height = 720; window.RequestedThemeVariant = ThemeVariant.Light; await Task.Delay(50);
@@ -217,6 +226,9 @@ internal static class NativeCalibrationSmoke
     }
     private static void Capture(Control view, string name)
     {
+        var actionBar = view.GetVisualDescendants().OfType<Border>().Single(x => x.Name == "ActionBar");
+        Check(actionBar.Background is ISolidColorBrush brush && brush.Color.A == 255 && brush.Opacity == 1,
+            "The native hearing and fit action bars remain opaque across scroll positions and themes.");
         using var bitmap = new RenderTargetBitmap(new PixelSize((int)Math.Ceiling(view.Bounds.Width), (int)Math.Ceiling(view.Bounds.Height)), new Vector(96, 96));
         bitmap.Render(view);
         using var file = File.Create(Path.Combine(_output, name + ".png"));

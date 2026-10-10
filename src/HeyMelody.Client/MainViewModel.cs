@@ -359,11 +359,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void AdvanceSession()
     {
-        if (_pendingAnc && _pendingAncKey is null && _pendingAncPrimary is not null)
-        {
-            _pendingAnc = false; _pendingAncPrimary = null;
-            _selectedAncMode = null; _selectedAncSubmode = null; _selectedAnc = null;
-        }
+        ClearAncChoices(preserveUnsubmittedDraft: true);
         _sessionEpoch++;
         _sessionWork.Cancel(); _sessionWork.Dispose(); _sessionWork = new();
         _operations.CancelQueuedWrites(); _pending.Clear();
@@ -375,6 +371,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (snapshot.Identity != _sessionIdentity
             || EventService is null && (snapshot.Failure is not null || !snapshot.Connected))
         { InvalidateSnapshot(); return false; }
+        if (_snapshot is { } previous && previous.ResourceSource != snapshot.ResourceSource) ClearAncChoices();
         _snapshot = snapshot;
         // A current backend snapshot can combine cached settings with fresh BLE
         // telemetry. Keep that observation, but IsVerifiedControl rejects its cache flag.
@@ -426,16 +423,24 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void InvalidateSnapshot(bool clearPresentation = false)
     {
+        ClearAncChoices(preserveUnsubmittedDraft: true);
         _liveSnapshot = null;
         _snapshot = !clearPresentation && EventService is not null && _snapshot is { } previous
             ? ReadOnlyPresentation(previous) : null;
         _displaying = true;
         if (_snapshot is not null)
         {
+            if (!_pendingAnc)
+            {
+                var primary = _snapshot.AncPrimary ?? (_snapshot.Anc >> 8);
+                _selectedAncMode = _ancModes.FirstOrDefault(mode => mode.Key == primary);
+                _selectedAncSubmode = _selectedAncMode?.Options.FirstOrDefault(option => option.Key == _snapshot.Anc);
+                SelectedAnc = _ancOptions.FirstOrDefault(option => option.Key == _snapshot.Anc);
+            }
             _subtitle = LastConnectedText(_snapshot);
             NotifyState(); _displaying = false; return;
         }
-        if (!_pendingAnc) SelectedAnc = null;
+        if (!_pendingAnc) { SelectedAnc = null; _selectedAncMode = null; _selectedAncSubmode = null; }
         if (!_pendingPreset) SelectedPreset = null;
         if (!_pendingSpatial) SelectedSpatial = null;
         _subtitle = SelectedDevice is null ? "未连接" : "状态未确认";
@@ -448,6 +453,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void ResetSelection()
     {
+        ClearAncChoices();
         _pendingAnc = _pendingPreset = _pendingSpatial = false;
         _pendingAncKey = _pendingPresetKey = _pendingSpatialKey = null;
         _pendingAncPrimary = null;
@@ -458,7 +464,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _eqEntries = []; _snapshot = _liveSnapshot = null; LoadEntry(null); InvalidateSnapshot(clearPresentation: true);
     }
 
-    private Task ApplyOptionAsync(string kind, UiOption? option) => option is null ? Task.CompletedTask : ApplyAsync(new(kind, option.Key));
+    private Task ApplyOptionAsync(string kind, UiOption? option) => option is null ? Task.CompletedTask
+        : kind == "Anc" ? QueueAncActionAsync(new(kind, option.Key)) : ApplyAsync(new(kind, option.Key));
     private bool Supports(UiAction action) => _liveSnapshot is { } s && !s.PresentationCached && action.Kind switch
     {
         "Anc" => s.CanSetAnc && s.AncOptions.Any(x => x.Key == action.Value),

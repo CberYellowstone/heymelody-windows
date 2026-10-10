@@ -140,7 +140,7 @@ internal sealed partial class BackendSupervisor
             if (generation != peer.Generation || !_calibrations.TryGetValue(spectrum.Handle, out var lease)
                 || lease.Peer != peer || lease.Worker != peer.Worker || lease.Generation != generation || !IsActiveCalibration(lease)
                 || lease.State.Workflow != "hearing" || lease.State.Stage != "Previewing" || !lease.State.PreviewAudioPlaying
-                || lease.State.PreviewMode != "Enhanced" || spectrum.PreviewEpoch != lease.State.PreviewEpoch
+                || lease.State.PreviewMode is not ("Original" or "Enhanced") || spectrum.PreviewEpoch != lease.State.PreviewEpoch
                 || spectrum.Generation != generation || spectrum.Sequence <= 0 || spectrum.Levels.Count != 6
                 || spectrum.Levels.Any(x => !double.IsFinite(x) || x < 0 || x > 1)) return;
             if (lease.SpectrumEpoch == spectrum.PreviewEpoch && spectrum.Sequence <= lease.SpectrumSequence) return;

@@ -13,7 +13,7 @@
 | 文档入口 | 内容 |
 | --- | --- |
 | [上下文读取风险排查](context-read-risk-2026-10-11.md) | 文档、源码、研究产物的字符与长行风险，subagent 预览规则和后续处理顺序；503 成因尚未确认 |
-| [黄金听感预览与声音设置](hearing-preview-settings.md) | 0.8.13 结果雷达、原厂音乐试听与频谱、游戏分组、BassWave 和完整固件显示 |
+| [黄金听感预览与声音设置](hearing-preview-settings.md) | 0.8.13 结果雷达、两种试听的动态左右耳曲线、原厂音乐频谱、游戏分组、BassWave 和完整固件显示 |
 | [游戏音效与 Hi-Res／空间音效重新研究](game-audio-spatial.md) | 两 APK 原 DEX、X4 原始固件、游戏开关／类型命令纠正、包名与互斥方向、Hi-Res旧版／V2手机分支 |
 | [智能音量调节（原“自动音量”）](auto-volume.md) | 原厂用途与能力门控、17款配置机型、X4 v116静态/实机验证；0.8.10全机型隐藏的决定与右上提示修复 |
 | [黄金听感与贴合度重新研究](calibration-reassessment.md) | 两 APK 独立复核、X4 v116 交叉验证、UI路由/filter等纠正与完整研究入口 |

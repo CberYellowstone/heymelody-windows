@@ -76,15 +76,18 @@ internal static class CalibrationAuditionTests
                 && fixture.Player.Pauses == pauses && fixture.Player.Plays == plays && fixture.Player.Stops == stops && fixture.Player.Cursor == 1234,
                 "A/B interrupted or restarted the existing stream");
             var frames = new List<UiCalibrationSpectrum>(); fixture.Service.CalibrationSpectrumChanged += frames.Add;
-            fixture.Player.EmitSpectrum(); Check(frames.Count == 0, "Original mode emitted enhanced spectrum");
+            long originalRevision = original.Revision;
+            fixture.Player.EmitSpectrum();
+            Check(frames.Count == 1 && frames[0].PreviewEpoch == original.PreviewEpoch && fixture.State.Revision == originalRevision,
+                "Original audition lost its music spectrum or advanced the control revision");
             enhanced = await fixture.Advance("preview-enhanced");
             long revision = enhanced.Revision;
             fixture.Player.EmitSpectrum(); fixture.Player.EmitSpectrum();
-            Check(frames.Count == 2 && frames[1].Sequence > frames[0].Sequence && frames.All(x => x.PreviewEpoch == enhanced.PreviewEpoch)
+            Check(frames.Count == 3 && frames[2].Sequence > frames[1].Sequence && frames.Skip(1).All(x => x.PreviewEpoch == enhanced.PreviewEpoch)
                 && fixture.State.Revision == revision, "Spectrum advanced control revision or lost its epoch/sequence");
             await fixture.Advance("preview-stop");
             Check(!fixture.Player.Playing && fixture.Player.Pauses == pauses + 1 && fixture.Player.Cursor == 1234, "Pause lost the music cursor");
-            fixture.Player.EmitSpectrum(); Check(frames.Count == 2, "Paused playback emitted a spectrum");
+            fixture.Player.EmitSpectrum(); Check(frames.Count == 3, "Paused playback emitted a spectrum");
             await fixture.Advance("preview-original");
             Check(fixture.Player.Playing && fixture.Player.Cursor == 1234, "Resuming a paused audition restarted the clip");
         });

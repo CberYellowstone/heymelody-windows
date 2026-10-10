@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Ava3D;
@@ -5,6 +6,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Interactivity;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using FluentAvalonia.UI.Controls;
@@ -50,7 +53,7 @@ internal static class NativeDemoSmoke
             _state.PreferredBackend, _state.ActiveBackend, controlLayouts = _state.ControlLayouts,
             preferencesWritten = _state.PreferencesPath is { } preferencePath && File.Exists(preferencePath),
             screenshots = _state.Screenshots,
-            scope = "real Win32 demo startup, model scene and animation, themes, responsive layout, local action guards and dirty close; optional native Ava3D model-frame captures; no Bluetooth backend",
+            scope = "real Win32 demo startup, model scene and animation, themes, responsive layout, local action guards and dirty close; optional native Ava3D model-frame and complete window compositor captures; no Bluetooth backend",
             failure = _state.Failure
         };
         Console.WriteLine(JsonSerializer.Serialize(report));
@@ -160,6 +163,13 @@ internal static class NativeDemoSmoke
                 RecordControlLayout(page, vm, $"{(dark ? "dark" : "light")}-{(int)size.Width}x{(int)size.Height}");
                 Check(actualControlCount == 32,
                     $"Every dynamic demo control is loaded in the native window; actual={actualControlCount}, expected=32.");
+                var featureSliderLayouts = DemoDeviceTests.CheckFeatureEditorLayout(page);
+                Check(featureSliderLayouts.Count == 2, "The native demo's tick sliders and right-hand integers fit both window sizes.");
+                _state.ControlLayouts.Add(new
+                {
+                    phase = $"{(dark ? "dark" : "light")}-{(int)size.Width}x{(int)size.Height}-slider-readouts",
+                    sliders = featureSliderLayouts
+                });
                 if (_state.Output is not null)
                 {
                     window.Activate();
@@ -183,11 +193,22 @@ internal static class NativeDemoSmoke
                     await capture.SaveAsync(path, captureTimeout.Token);
                     _state.Screenshots.Add(new { theme = dark ? "dark" : "light", requestedWidth = size.Width, requestedHeight = size.Height,
                         width = captureSize.Width, height = captureSize.Height, foregroundPixels = foreground, file = name,
-                        source = "native Ava3D model frame; complete UI layout is covered separately by headless screenshots",
+                        source = "native Ava3D model frame",
                         sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant(),
                         model.Viewport.Info.Triangles, model.Viewport.Info.SceneItems, model.Viewport.Info.FramesRendered,
                         preferredBackend = model.Viewport.PreferredBackend.ToString(),
                         backend = model.Viewport.Info.ActiveBackend.ToString() });
+                    string windowName = $"demo-{(dark ? "dark" : "light")}-{(int)size.Width}x{(int)size.Height}-window.png";
+                    string windowPath = Path.Combine(_state.Output, windowName);
+                    var windowSize = CaptureCompositor(handle!.Handle, windowPath);
+                    _state.Screenshots.Add(new
+                    {
+                        theme = dark ? "dark" : "light", requestedWidth = size.Width, requestedHeight = size.Height,
+                        width = windowSize.Width, height = windowSize.Height, file = windowName,
+                        source = "complete native window compositor output, including system Mica and device bar",
+                        actualTransparency = window.ActualTransparencyLevel.ToString(),
+                        sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(windowPath))).ToLowerInvariant()
+                    });
                 }
             }
 
@@ -264,6 +285,59 @@ internal static class NativeDemoSmoke
         _state.Failure ??= "Native demo watchdog expired.";
         desktop.Shutdown(1);
     }
+
+    // A render target cannot include the system material behind transparent UI.
+    // Capture the displayed compositor surface, as the DeviceManager smoke does.
+    private static PixelSize CaptureCompositor(IntPtr hwnd, string output)
+    {
+        if (!GetWindowRect(hwnd, out var rect)) throw new InvalidOperationException("Cannot read native window bounds.");
+        var width = rect.Right - rect.Left; var height = rect.Bottom - rect.Top;
+        var screen = GetDC(IntPtr.Zero);
+        var memory = IntPtr.Zero; var dib = IntPtr.Zero; var previous = IntPtr.Zero;
+        try
+        {
+            if (screen == IntPtr.Zero) throw new InvalidOperationException("Cannot acquire the compositor surface.");
+            memory = CreateCompatibleDC(screen);
+            var info = new BitmapInfo
+            {
+                Header = new BitmapInfoHeader { Size = 40, Width = width, Height = -height, Planes = 1, BitCount = 32 }
+            };
+            dib = CreateDIBSection(screen, ref info, 0, out var pixels, IntPtr.Zero, 0);
+            if (memory == IntPtr.Zero || dib == IntPtr.Zero || pixels == IntPtr.Zero)
+                throw new InvalidOperationException("Cannot allocate native screenshot surface.");
+            previous = SelectObject(memory, dib);
+            if (!BitBlt(memory, 0, 0, width, height, screen, rect.Left, rect.Top, 0x00CC0020))
+                throw new InvalidOperationException("Cannot capture compositor output.");
+            using var bitmap = new Bitmap(PixelFormat.Bgra8888, AlphaFormat.Opaque, pixels,
+                new PixelSize(width, height), new Vector(96, 96), width * 4);
+            bitmap.Save(output, PngBitmapEncoderOptions.Default);
+            return new PixelSize(width, height);
+        }
+        finally
+        {
+            if (previous != IntPtr.Zero) SelectObject(memory, previous);
+            if (dib != IntPtr.Zero) DeleteObject(dib);
+            if (memory != IntPtr.Zero) DeleteDC(memory);
+            if (screen != IntPtr.Zero) ReleaseDC(IntPtr.Zero, screen);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct BitmapInfoHeader
+    {
+        public uint Size; public int Width, Height; public ushort Planes, BitCount;
+        public uint Compression, SizeImage; public int XPelsPerMeter, YPelsPerMeter; public uint ColorsUsed, ColorsImportant;
+    }
+    [StructLayout(LayoutKind.Sequential)] private struct BitmapInfo { public BitmapInfoHeader Header; public uint Colors; }
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetWindowRect(IntPtr hwnd, out NativeRect rect);
+    [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hwnd, IntPtr dc);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr dc);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateDIBSection(IntPtr dc, ref BitmapInfo info, uint usage, out IntPtr bits, IntPtr section, uint offset);
+    [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr dc, IntPtr obj);
+    [DllImport("gdi32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool BitBlt(IntPtr dc, int x, int y, int width, int height, IntPtr source, int sourceX, int sourceY, uint operation);
+    [DllImport("gdi32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool DeleteObject(IntPtr obj);
+    [DllImport("gdi32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool DeleteDC(IntPtr dc);
 
     private sealed class RejectConfirmation : IConfirmationService
     {

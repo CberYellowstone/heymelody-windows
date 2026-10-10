@@ -287,6 +287,64 @@ internal static class EventVmTests
             service.ApplyBlocked.SetResult(Confirmed(oldReceipt)); await write.WaitAsync(TimeSpan.FromSeconds(3));
             Check(vm.SelectedAncMode?.Key == 1 && vm.CanSetAncMode && service.Actions.Count == 1);
         });
+        await test("event VM discards the last queued ANC target across target and capability changes", async () =>
+        {
+            foreach (var change in new[] { "generation", "backend", "disconnect", "source", "capability", "selection" })
+            {
+                var service = new EventService { ApplyBlocked = Completion<UiApplyResult>() };
+                var initial = service.Snapshots["device-a"];
+                initial.AncPrimary = 1; initial.CanSetAncMode = true;
+                initial.AncOptions = initial.AncOptions.Append(new UiOption(0x0B0D, "标准")).ToArray();
+                await using var vm = Create(service); await vm.InitializeAsync();
+                var first = vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 11));
+                var laterMode = vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 1));
+                var laterChild = vm.ApplyAncSubmodeAsync(vm.SelectedAncMode!.Options.Last());
+                Check(service.Actions.Count == 1 && vm.SelectedAncSubmode?.Key == 0x0107);
+                var changed = Next(Next(initial));
+                Task selection = Task.CompletedTask;
+                switch (change)
+                {
+                    case "generation": changed.DeviceGeneration++; changed.Revision = 1; break;
+                    case "backend": changed.BackendInstanceId = "backend-b"; changed.Revision = 1; break;
+                    case "disconnect": changed.ControlReady = false; changed.Connected = false;
+                        changed.ConnectionState = ConnectionState.Disconnected; break;
+                    case "source": changed.ResourceSource = "WirelessEarphones"; break;
+                    case "capability": changed.CanSetAnc = false; changed.CanSetAncMode = false; break;
+                    case "selection": selection = vm.SelectDeviceAsync(vm.Devices.Single(x => x.Identity == "device-b")); break;
+                }
+                if (change != "selection") service.Push(changed);
+                var oldReceipt = Next(initial); oldReceipt.AncPrimary = 11; oldReceipt.Anc = null;
+                service.ApplyBlocked.SetResult(Confirmed(oldReceipt));
+                await Task.WhenAll(first, laterMode, laterChild, selection).WaitAsync(TimeSpan.FromSeconds(3));
+                Check(service.Actions.Count == 1, "A changed control target must discard every queued ANC write: " + change);
+                Check(vm.SelectedAncSubmode?.Key == 0x0104, "A stale receipt must not restore the queued selection: " + change);
+            }
+        });
+        await test("event VM accepts a new ANC click in a changed context after the old blocked SET fails", async () =>
+        {
+            foreach (var change in new[] { "generation", "source" })
+            {
+                var service = new EventService { ApplyBlocked = Completion<UiApplyResult>() };
+                var initial = service.Snapshots["device-a"];
+                initial.AncPrimary = 1; initial.CanSetAncMode = true;
+                initial.AncOptions = initial.AncOptions.Append(new UiOption(0x0B0D, "标准")).ToArray();
+                await using var vm = Create(service); await vm.InitializeAsync();
+                var old = vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 11));
+                var changed = Next(initial);
+                if (change == "generation") { changed.DeviceGeneration++; changed.Revision = 1; }
+                else changed.ResourceSource = "WirelessEarphones";
+                service.Push(changed);
+                var fresh = vm.ApplyAncSubmodeAsync(vm.SelectedAncMode!.Options.Last());
+                Check(service.Actions.Count == 1 && vm.SelectedAncSubmode?.Key == 0x0107);
+                var oldReceipt = service.ApplyBlocked!;
+                service.ApplyBlocked = null;
+                oldReceipt.SetException(new IOException("Old control request ended"));
+                await Task.WhenAll(old, fresh).WaitAsync(TimeSpan.FromSeconds(3));
+                Check(service.Actions.Count == 2 && service.Actions.Last() is { Action.Kind: "Anc", Action.Value: 0x0107 });
+                Check(service.Actions.Last().Generation == changed.DeviceGeneration && vm.SelectedAncSubmode?.Key == 0x0107);
+                Check(vm.ResourceSource == changed.ResourceSource && vm.CanSetAnc);
+            }
+        });
         await test("event VM header indicator follows control, connection and pending writes", async () =>
         {
             var service = new EventService { ApplyBlocked = Completion<UiApplyResult>() };

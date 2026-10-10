@@ -21,6 +21,7 @@ public sealed partial class MainViewModel
         public long DeviceGeneration { get; } = deviceGeneration;
         public string Stage { get; set; } = "等待应用";
         public List<UiApplyResult> Attempts { get; } = [];
+        public bool Confirmed { get; set; }
     }
 
     private static string GroupFor(string kind) => kind switch
@@ -41,12 +42,14 @@ public sealed partial class MainViewModel
         && intent.Epoch == _sessionEpoch && intent.Identity == _sessionIdentity && intent.Identity == SelectedDevice?.Identity
         && CurrentBackendTarget(intent);
 
-    private async Task ApplyAsync(UiAction supplied)
+    private async Task ApplyAsync(UiAction supplied) { await ApplyWithResultAsync(supplied); }
+
+    private async Task<bool> ApplyWithResultAsync(UiAction supplied)
     {
-        if (!CanWrite || !Supports(supplied) || _pending.ContainsKey(GroupFor(supplied.Kind))) return;
-        if (supplied.Kind == "CustomSelect" && EqDirty || supplied.Kind == "CustomEqualizer" && !EqDirty) return;
-        if (IsDemoSelected) { ApplyDemoAction(supplied); return; }
-        if (_preview) { SetStatus("界面演示不会发送耳机设置。"); return; }
+        if (!CanWrite || !Supports(supplied) || _pending.ContainsKey(GroupFor(supplied.Kind))) return false;
+        if (supplied.Kind == "CustomSelect" && EqDirty || supplied.Kind == "CustomEqualizer" && !EqDirty) return false;
+        if (IsDemoSelected) { ApplyDemoAction(supplied); return true; }
+        if (_preview) { SetStatus("界面演示不会发送耳机设置。"); return false; }
         var action = supplied.EqualizerEntry is not { } entry ? supplied
             : supplied with { EqualizerEntry = entry with { Bands = entry.Bands.ToArray() } };
         var intent = new PendingAction(action, GroupFor(action.Kind), _sessionIdentity!, _sessionEpoch,
@@ -84,6 +87,7 @@ public sealed partial class MainViewModel
             }
             NotifyState();
         }
+        return intent.Confirmed && Current(intent);
     }
 
     private async Task ExecuteIntentAsync(PendingAction intent)
@@ -95,6 +99,16 @@ public sealed partial class MainViewModel
         if (!Current(intent)) return;
         if (FinishIfConfirmed(intent, first)) return;
         if (_lifecyclePending) return;
+        if (action.Kind is "Anc" or "AncMode")
+        {
+            // A newer click is a separate intent, never consent to replay this target.
+            // In particular, a matching readback without a confirmed receipt/ACK cannot
+            // authorize draining a later setting after an uncertain submission.
+            if (first.ReadbackMatches == true && HasVerifiedSnapshot && GoalMatches(intent, action, _snapshot!))
+                FinishObserved(intent, first);
+            else await FailAndRefreshAsync(intent, first, second: false);
+            return;
+        }
         if (first.ConnectionState != ConnectionState.Connected || !first.BackendReceiptReceived || first.FailureKind == ApplyFailure.Disconnected)
         { await FailAndRefreshAsync(intent, first, second: false); return; }
         if (first.ReadbackMatches == true && HasVerifiedSnapshot && GoalMatches(intent, intent.Action, _snapshot!))
@@ -218,6 +232,7 @@ public sealed partial class MainViewModel
             && result.ReadbackMatches == true && (result.Accepted || !result.SubmissionAttempted)
             && !result.AcknowledgementUnknown && !result.PartialEffects;
         if (!confirmed || !HasVerifiedSnapshot || result.After is not { } after || !GoalMatches(intent, intent.Action, after)) return false;
+        intent.Confirmed = true;
         SettleDraft(intent);
         _actionWarnings.Remove(intent.Group);
         DisplaySnapshot(_snapshot ?? after);

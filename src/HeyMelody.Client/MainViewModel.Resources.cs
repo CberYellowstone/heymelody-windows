@@ -192,19 +192,16 @@ public sealed partial class MainViewModel
     private static bool SameFeature(UiFeatureControl a, UiFeatureControl b) => a.Id == b.Id && a.Label == b.Label
         && a.Kind == b.Kind && a.Value == b.Value && a.Text == b.Text && a.Minimum == b.Minimum && a.Maximum == b.Maximum
         && a.Step == b.Step && a.CanWrite == b.CanWrite && a.Description == b.Description && (a.Options ?? []).SequenceEqual(b.Options ?? []);
-    public async Task SelectAncModeAsync(UiAncMode mode)
+    public Task SelectAncModeAsync(UiAncMode mode)
     {
-        if (_displaying || !CanSetAncMode || !AncModes.Any(x => x.Key == mode.Key)
-            || mode.Key == _selectedAncMode?.Key) return;
-        _pendingAnc = true; _pendingAncPrimary = mode.Key; _pendingAncKey = null; _ancVersion++;
-        _selectedAncMode = _ancModes.Single(x => x.Key == mode.Key);
-        _selectedAncSubmode = null; _selectedAnc = null;
-        NotifyState(); await ApplyAsync(new("AncMode", mode.Key));
+        if (_displaying || !CanChooseAncMode || !AncModes.Any(x => x.Key == mode.Key)
+            || mode.Key == _selectedAncMode?.Key) return Task.CompletedTask;
+        return QueueAncActionAsync(new("AncMode", mode.Key));
     }
     public Task ApplyAncSubmodeAsync(UiOption option)
     {
-        if (_displaying || !CanSetAnc || _selectedAncMode?.Options.Any(x => x.Key == option.Key) != true) return Task.CompletedTask;
-        SelectedAnc = option; SelectedAncSubmode = option; return ApplyOptionAsync("Anc", option);
+        if (_displaying || !CanChooseAnc || _selectedAncMode?.Options.Any(x => x.Key == option.Key) != true) return Task.CompletedTask;
+        return QueueAncActionAsync(new("Anc", option.Key));
     }
     public Task SelectPresetAsync(UiOption option)
     { if (_displaying) return Task.CompletedTask; SelectedPreset = option; return ApplyOptionAsync("Equalizer", option); }
@@ -242,6 +239,7 @@ public sealed partial class MainViewModel
         bool discardDraft = EqDirty && source != _configuredResourceSource;
         if (discardDraft && !IsDemoSelected && !await ConfirmAsync("切换资源", "切换资源将丢弃未保存的均衡器调整。继续吗？", _lifetime.Token)) return;
         _savingResources = true;
+        if (source != _configuredResourceSource) ClearAncChoices();
         try
         {
             _sourceKeys[SelectedResourceSource.Key] = CloudKey;

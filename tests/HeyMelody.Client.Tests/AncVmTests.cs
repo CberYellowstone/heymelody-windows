@@ -42,7 +42,7 @@ internal static class AncVmTests
             await vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 11));
             Check(service.Actions.Count == 3 && vm.SelectedAncSubmode?.Key == 0x0B0C);
         });
-        await test("ANC main and child submissions share a pending lock in both directions", async () =>
+        await test("ANC keeps both editors available and submits only the last complete target after success", async () =>
         {
             foreach (bool main in new[] { true, false })
             {
@@ -52,12 +52,54 @@ internal static class AncVmTests
                 var action = main ? vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 1))
                     : vm.ApplyAncSubmodeAsync(vm.SelectedAncMode!.Options.Last());
                 await service.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
-                Check(!vm.CanSetAncMode && !vm.CanSetAnc);
-                await vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 0));
-                await vm.ApplyAncSubmodeAsync(vm.SelectedAncMode!.Options.First());
+                Check(!vm.CanSetAncMode && !vm.CanSetAnc && vm.CanChooseAncMode && vm.CanChooseAnc);
+                var off = vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 0));
+                var adaptive = vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 11));
+                var intermediate = vm.ApplyAncSubmodeAsync(vm.SelectedAncMode!.Options.Last());
+                var final = vm.ApplyAncSubmodeAsync(vm.SelectedAncMode!.Options.First());
                 Check(service.Actions.Count == 1);
-                service.Release.SetResult(); await action.WaitAsync(TimeSpan.FromSeconds(3));
-                Check(vm.CanSetAncMode && vm.CanSetAnc);
+                Check(vm.SelectedAncMode?.Key == 11 && vm.SelectedAncSubmode?.Key == 0x0B0C);
+                var staleSelection = false;
+                vm.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName == nameof(vm.SelectedAncMode) && vm.SelectedAncMode?.Key != 11)
+                        staleSelection = true;
+                };
+                service.Release.SetResult();
+                await Task.WhenAll(action, off, adaptive, intermediate, final).WaitAsync(TimeSpan.FromSeconds(3));
+                Check(vm.CanSetAncMode && vm.CanSetAnc && service.Actions.Count == 2 && !staleSelection);
+                Check(service.Actions.Last() is { Kind: "Anc", Value: 0x0B0C } && service.MaxConcurrent == 1);
+            }
+        });
+        await test("ANC skips a queued target already confirmed by the first readback", async () =>
+        {
+            var service = new Service { Primary = 11, Level = 13, Release = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+            await using var vm = await Connected(service);
+            var first = vm.ApplyAncSubmodeAsync(vm.SelectedAncMode!.Options.Last());
+            await service.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            var off = vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 0));
+            var adaptive = vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 11));
+            var same = vm.ApplyAncSubmodeAsync(vm.SelectedAncMode!.Options.Last());
+            service.Release.SetResult();
+            await Task.WhenAll(first, off, adaptive, same).WaitAsync(TimeSpan.FromSeconds(3));
+            Check(service.Actions is [{ Kind: "Anc", Value: 0x0B0E }] && vm.SelectedAncSubmode?.Key == 0x0B0E);
+        });
+        await test("ANC uncertain or failed submissions discard later choices without retries", async () =>
+        {
+            foreach (var failure in new[] { "no-ack", "no-receipt", "timeout", "cancelled", "disconnected", "matching-no-ack" })
+            {
+                var service = new Service { Failure = failure, Release = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+                var dialogs = new Dialogs(); await using var vm = await Connected(service, dialogs);
+                var first = vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 11));
+                await service.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+                var later = vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 1));
+                service.Release.SetResult();
+                await Task.WhenAll(first, later).WaitAsync(TimeSpan.FromSeconds(3));
+                Check(service.Actions.Count == 1 && dialogs.Retries == 0 && vm.CanSetAncMode);
+                Check(vm.SelectedAncMode?.Key == (failure == "matching-no-ack" ? 11 : 0));
+                service.Failure = null;
+                await vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 1));
+                Check(service.Actions.Count == 2 && vm.SelectedAncMode?.Key == 1);
             }
         });
         await test("ANC legacy snapshots keep explicit child control but cannot silently emulate a main action", async () =>
@@ -70,12 +112,12 @@ internal static class AncVmTests
             await vm.ApplyAncSubmodeAsync(vm.SelectedAncMode!.Options.Last());
             Check(service.Actions is [{ Kind: "Anc", Value: 0x0B0E }]);
         });
-        await test("ANC main unconfirmed mismatch requires explicit consent before another submission", async () =>
+        await test("ANC main unconfirmed mismatch restores observation and waits for another explicit click", async () =>
         {
             var service = new Service { FailMain = true }; var dialogs = new Dialogs();
             await using var vm = await Connected(service, dialogs);
             await vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 11));
-            Check(service.Actions is [{ Kind: "AncMode", Value: 11 }] && dialogs.Retries == 1);
+            Check(service.Actions is [{ Kind: "AncMode", Value: 11 }] && dialogs.Retries == 0);
             Check(vm.SelectedAncMode?.Key == 0 && vm.CanSetAncMode);
         });
         await test("ANC refresh presents a parent-only phone state without submitting a default child", async () =>
@@ -118,6 +160,9 @@ internal static class AncVmTests
         public int Primary;
         public int? Level = 3, MainReadbackLevel;
         public bool MainSupported = true, FailMain, DisconnectMain;
+        public string? Failure;
+        public int MaxConcurrent;
+        private int _concurrent;
         public List<UiAction> Actions = [];
         public TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource? Release;
@@ -141,19 +186,25 @@ internal static class AncVmTests
         public Task<UiSnapshot> RefreshAsync(CancellationToken token) => Task.FromResult(Snapshot());
         public async Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token)
         {
+            _concurrent++; MaxConcurrent = Math.Max(MaxConcurrent, _concurrent);
+            try
+            {
             Actions.Add(action); Entered.TrySetResult();
             if (Release is { } release) await release.Task.WaitAsync(token);
-            if (DisconnectMain) return new()
+            if (Failure == "timeout") throw new TimeoutException("No receipt");
+            if (Failure == "cancelled") throw new OperationCanceledException();
+            if (DisconnectMain || Failure == "disconnected") return new()
             {
                 BackendReceiptReceived = true, ConnectionState = ConnectionState.Disconnected,
                 SubmissionAttempted = true, TargetSubmitted = true,
                 FailureKind = ApplyFailure.Disconnected, After = null
             };
-            if (FailMain) return new()
+            if (Failure == "matching-no-ack") { Primary = action.Value; Level = null; }
+            if (FailMain || Failure is "no-ack" or "no-receipt" or "matching-no-ack") return new()
             {
-                BackendReceiptReceived = true, ConnectionState = ConnectionState.Connected,
+                BackendReceiptReceived = Failure != "no-receipt", ConnectionState = ConnectionState.Connected,
                 SubmissionAttempted = true, TargetSubmitted = true, AcknowledgementUnknown = true,
-                FailureKind = ApplyFailure.TransportUnknown, ReadbackMatches = false, After = Snapshot()
+                FailureKind = ApplyFailure.TransportUnknown, ReadbackMatches = Failure == "matching-no-ack", After = Snapshot()
             };
             if (action.Kind == "AncMode") { Primary = action.Value; Level = Primary == 11 ? MainReadbackLevel : null; }
             else { Primary = action.Value >> 8; Level = action.Value & 255; }
@@ -163,6 +214,8 @@ internal static class AncVmTests
                 SubmissionAttempted = true, TargetSubmitted = true, Accepted = true,
                 ReadbackMatches = true, After = Snapshot()
             };
+            }
+            finally { _concurrent--; }
         }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }

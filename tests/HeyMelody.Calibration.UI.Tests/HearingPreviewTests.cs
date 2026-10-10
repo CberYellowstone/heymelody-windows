@@ -26,8 +26,13 @@ internal static class HearingPreviewTests
             await model.SendAsync("preview-original");
             Check(service.Inputs is [{ Action: "preview-original" }] && model.State.PreviewAudioPlaying && model.SpectrumLevels.Count == 0,
                 "Continuous telemetry invalidated an A/B action or leaked the old enhancement spectrum.");
+            model.AdoptSpectrum(frame with { Sequence = 501 });
+            Check(model.SpectrumLevels.Count == 0, "The previous enhanced epoch reached original audition.");
             model.AdoptSpectrum(frame with { PreviewEpoch = model.State.PreviewEpoch, Sequence = 501 });
-            Check(model.SpectrumLevels.Count == 0, "Original audition accepted enhancement telemetry.");
+            Check(model.SpectrumLevels.SequenceEqual(frame.Levels), "Original audition did not accept its music spectrum.");
+            await model.SendAsync("preview-stop");
+            model.AdoptSpectrum(frame with { PreviewEpoch = model.State.PreviewEpoch, Sequence = 502 });
+            Check(model.SpectrumLevels.Count == 0, "A late original spectrum revived paused audition.");
         }
         Console.WriteLine("PASS spectrum ownership, validation and revision-independent A/B input");
 

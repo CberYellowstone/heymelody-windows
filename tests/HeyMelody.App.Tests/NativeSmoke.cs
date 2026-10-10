@@ -1,8 +1,10 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
@@ -55,8 +57,8 @@ internal static class NativeSmoke
             systemSettingsLaunchAccepted = _state.SystemSettingsLaunchAccepted,
             systemSettingsLaunchUri = _state.SystemSettingsLaunchUri,
             scope = _state.OpenSettings
-                ? "real Win32 FAAppWindow geometry, themes and lifecycle with an in-memory headset service; one real Windows settings launch; true means the OS accepted the URI request, not that page content was verified; no DWM pixel or hardware assertions"
-                : "real Win32 FAAppWindow geometry, themes and lifecycle with an in-memory service; no system settings launch, DWM pixel or hardware assertions",
+                ? "real Win32 FAAppWindow geometry, themes, Avalonia Composition Mica, DWM properties, opaque fallback and lifecycle with an in-memory headset service; one real Windows settings launch; true means the OS accepted the URI request, not that page content was verified; no DWM pixel or hardware assertions"
+                : "real Win32 FAAppWindow geometry, themes, Avalonia Composition Mica, DWM properties, opaque fallback and lifecycle with an in-memory service; no system settings launch, DWM pixel or hardware assertions",
             states = _state.Receipts, failure = _state.Failure
         }));
         return success ? 0 : 1;
@@ -123,6 +125,7 @@ internal static class NativeSmoke
                 await Task.Delay(150);
                 Dispatcher.UIThread.RunJobs();
                 Check(window.ActualThemeVariant == (dark ? ThemeVariant.Dark : ThemeVariant.Light), "Theme reaches native window.");
+                var backdrop = await VerifyBackdropAsync(window, dark, probeFallback: size.Width == 1280);
                 var titleBar = window.GetVisualDescendants().OfType<Panel>().FirstOrDefault(control => control.Name == "DefaultTitleBar");
                 Check(titleBar is { IsVisible: true } && titleBar.Bounds.Height > 0, "Managed Windows titlebar is visible.");
                 Check(window.TemplateSettings.IsTitleBarContentVisible && window.TitleBar.Height > 0, "Titlebar settings preserve content separation.");
@@ -178,7 +181,8 @@ internal static class NativeSmoke
                     titleBarHeight = titleBar!.Bounds.Height, compact = page.IsCompact,
                     deviceCount = picker.ItemCount, deviceViewportWidth = scroll.Viewport.Width,
                     deviceExtentWidth = scroll.Extent.Width, deviceOffset = scroll.Offset.X,
-                    selectedDeviceCenter = selectedCenter, devicePadding = padding.Padding.Left
+                    selectedDeviceCenter = selectedCenter, devicePadding = padding.Padding.Left,
+                    backdrop
                 });
             }
             var bundle = new BundledResourceStore();
@@ -276,6 +280,84 @@ internal static class NativeSmoke
         window.Close();
         desktop.Shutdown(1);
     }
+
+    private static async Task<object> VerifyBackdropAsync(MainWindow window, bool dark, bool probeFallback)
+    {
+        var hwnd = window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+        Check(hwnd != IntPtr.Zero, "Backdrop checks use the actual native window.");
+        var level = window.ActualTransparencyLevel;
+        Check(level == WindowTransparencyLevel.Mica || level == WindowTransparencyLevel.None,
+            $"The native main window uses ordinary Mica or an opaque platform fallback; actual={level}.");
+        var compositionResult = DwmIsCompositionEnabled(out var compositionEnabled);
+        var backdropResult = DwmGetWindowAttribute(hwnd, 38, out var systemBackdrop, sizeof(int));
+        var darkResult = DwmGetWindowAttribute(hwnd, 20, out var immersiveDark, sizeof(int));
+        // Avalonia 12.1.3 supplies Mica through its WinUI Composition brush. Its
+        // MicaLight/MicaDark enum is not the separate DWMSBT_* DWM enum.
+        Check(backdropResult < 0 || systemBackdrop != 4,
+            "The main window never requests the DWM Mica Alt backdrop.");
+        if (compositionResult >= 0 && compositionEnabled && OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22621))
+        {
+            Check(backdropResult >= 0, "Modern Windows exposes the native system backdrop property.");
+            Check(darkResult >= 0 && immersiveDark == (dark ? 1 : 0), "DWM dark mode follows both application themes.");
+        }
+        if (level == WindowTransparencyLevel.Mica)
+            Check(window.Background is ISolidColorBrush { Color.A: 0 }, "The active Mica material is not covered by an opaque window background.");
+        else VerifyOpaqueFallback(window);
+
+        bool fallbackProbed = level == WindowTransparencyLevel.None;
+        if (probeFallback && !fallbackProbed)
+        {
+            var hints = window.TransparencyLevelHint;
+            try
+            {
+                window.TransparencyLevelHint = [WindowTransparencyLevel.None];
+                await Task.Delay(75);
+                Dispatcher.UIThread.RunJobs();
+                Check(window.ActualTransparencyLevel == WindowTransparencyLevel.None, "The native platform enters the opaque fallback path.");
+                VerifyOpaqueFallback(window);
+                fallbackProbed = true;
+            }
+            finally
+            {
+                window.TransparencyLevelHint = hints;
+                await Task.Delay(75);
+                Dispatcher.UIThread.RunJobs();
+            }
+            Check(window.ActualTransparencyLevel == WindowTransparencyLevel.Mica
+                || window.ActualTransparencyLevel == WindowTransparencyLevel.None,
+                "Restoring backdrop preferences retains Mica or the platform's opaque fallback.");
+            if (window.ActualTransparencyLevel == WindowTransparencyLevel.None) VerifyOpaqueFallback(window);
+        }
+        var fallback = (ISolidColorBrush)window.TransparencyBackgroundFallback;
+        return new
+        {
+            actualTransparency = level.ToString(), restoredTransparency = window.ActualTransparencyLevel.ToString(),
+            compositionResult, compositionEnabled, backdropResult,
+            systemBackdrop = backdropResult >= 0 ? (int?)systemBackdrop : null,
+            darkResult, immersiveDark = darkResult >= 0 ? (int?)immersiveDark : null,
+            fallbackColor = fallback.Color.ToString(), fallbackProbed,
+            materialApi = "Avalonia WinUI Composition Mica; DWMSBT_* is observed separately"
+        };
+    }
+
+    private static void VerifyOpaqueFallback(MainWindow window)
+    {
+        Check(window.TransparencyBackgroundFallback is ISolidColorBrush { Color.A: 255, Opacity: 1 },
+            "The platform fallback paints an opaque theme surface.");
+        var fallback = (ISolidColorBrush)window.TransparencyBackgroundFallback;
+        // The overload without ThemeVariant passes null rather than the host's
+        // ActualThemeVariant, so it cannot verify a dark DynamicResource value.
+        bool found = window.TryFindResource("ApplicationPageBackgroundThemeBrush", window.ActualThemeVariant, out var resource);
+        var theme = resource as ISolidColorBrush;
+        Check(found && theme is not null && fallback.Color == theme.Color,
+            $"The effective fallback follows the current application theme; theme={window.ActualThemeVariant}, "
+            + $"actual={fallback.Color}, expected={theme?.Color.ToString() ?? "unresolved"}.");
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, int attribute, out int value, int size);
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmIsCompositionEnabled([MarshalAs(UnmanagedType.Bool)] out bool enabled);
 
     private static void Check(bool condition, string message)
     {

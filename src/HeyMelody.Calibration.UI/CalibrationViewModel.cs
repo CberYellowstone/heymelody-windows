@@ -87,7 +87,7 @@ public sealed class CalibrationViewModel(ICalibrationService service, string han
     }
     public void AdoptSpectrum(UiCalibrationSpectrum frame)
     {
-        if (_cancelled || _disposed || _state.Stage != "Previewing" || !_state.PreviewAudioPlaying || _state.PreviewMode != "Enhanced"
+        if (_cancelled || _disposed || _state.Stage != "Previewing" || !_state.PreviewAudioPlaying || _state.PreviewMode is not ("Original" or "Enhanced")
             || frame.Handle != handle || frame.BackendInstanceId != _state.BackendInstanceId
             || frame.Generation != _state.Generation || frame.PreviewEpoch != _state.PreviewEpoch
             || frame.Sequence <= _spectrumSequence || frame.Levels.Count != 6

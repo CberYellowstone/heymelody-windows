@@ -147,7 +147,7 @@ public sealed partial class NativeHeadsetService
         {
             var state = _calibrationState;
             if (Volatile.Read(ref _auditionTransitioning) || !ReferenceEquals(_auditionPlayer, player) || state is not { PreviewAudioPlaying: true, Stage: "Previewing" }
-                || state.PreviewMode != "Enhanced" || state.PreviewEpoch != Interlocked.Read(ref _previewEpoch)
+                || state.PreviewMode is not ("Original" or "Enhanced") || state.PreviewEpoch != Interlocked.Read(ref _previewEpoch)
                 || levels.Count != 6 || levels.Any(x => !double.IsFinite(x) || x < 0 || x > 1)) return;
             CalibrationSpectrumChanged?.Invoke(new(state.Handle, "", state.Generation, state.PreviewEpoch,
                 Interlocked.Increment(ref _spectrumSequence), levels.ToArray()));

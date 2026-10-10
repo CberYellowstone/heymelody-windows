@@ -119,6 +119,8 @@ internal static class CalibrationVisualTests
                 var chart = view.GetVisualDescendants().OfType<HearingRadarChart>().Single();
                 Check(service.Inputs.All(input => !input.Action.StartsWith("preview-")) && chart.ShowEnhancement && chart.EnhancementLevels.Count == 0,
                     "The result radar opens with a static enhancement outline and never autoplays.");
+                CheckRadarComposition(chart);
+                chart.SetResult(resultRadar); chart.SetPreview("Stopped", false, []);
                 foreach (var (name, action, mode) in new[] { ("PreviewOriginal", "preview-original", "Original"), ("PreviewEnhanced", "preview-enhanced", "Enhanced"), ("PreviewEnhanced", "preview-stop", "Stopped") })
                 {
                     view.GetVisualDescendants().OfType<ToggleButton>().Single(button => button.Name == name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -126,17 +128,23 @@ internal static class CalibrationVisualTests
                     Check(model.State.PreviewMode == mode && ReferenceEquals(editor, view.GetVisualDescendants().OfType<TextBox>().Single())
                         && editor.Text == "我的听感", "Preview sends the chosen effect and preserves the unsaved name.");
                     if (mode == "Original") Check(!chart.ShowEnhancement, "Original audition hides the orange enhancement region.");
-                    if (mode == "Enhanced")
+                    if (mode is "Original" or "Enhanced")
                     {
                         double[] spectrum = [.25, .4, .65, .9, .5, .35];
                         long revision = model.State.Revision;
                         model.AdoptSpectrum(new("operation", "fixture", 42, model.State.PreviewEpoch, 1, spectrum));
-                        Check(chart.EnhancementLevels.SequenceEqual(spectrum) && model.State.Revision == revision && ReferenceEquals(model.State.HearingRadar, resultRadar),
-                            "Music-source telemetry animates only orange and preserves the action revision and left/right result.");
-                        Capture(window, "hearing-results-enhanced");
+                        Check(chart.LeftLevels.Zip(resultRadar.Left).Any(pair => Math.Abs(pair.First - pair.Second) > .01)
+                            && chart.RightLevels.Zip(resultRadar.Right).Any(pair => Math.Abs(pair.First - pair.Second) > .01)
+                            && model.State.Revision == revision && ReferenceEquals(model.State.HearingRadar, resultRadar),
+                            "Both audition modes animate the ears without changing the source curves or action revision.");
+                        Check(mode == "Enhanced" ? chart.ShowEnhancement && chart.EnhancementLevels.SequenceEqual(spectrum)
+                            : !chart.ShowEnhancement && chart.EnhancementLevels.Count == 0,
+                            "Only enhanced audition displays the orange music spectrum.");
+                        Capture(window, mode == "Enhanced" ? "hearing-results-enhanced" : "hearing-results-original");
                     }
-                    if (mode == "Stopped") Check(chart.ShowEnhancement && chart.EnhancementLevels.Count == 0,
-                        "Clicking the active row pauses and restores the static orange outline.");
+                    if (mode == "Stopped") Check(chart.ShowEnhancement && chart.EnhancementLevels.Count == 0
+                        && chart.LeftLevels.SequenceEqual(resultRadar.Left) && chart.RightLevels.SequenceEqual(resultRadar.Right),
+                        "Clicking the active row pauses and restores static ears and the orange outline.");
                 }
                 Capture(window, "hearing-results");
                 window.RequestedThemeVariant = ThemeVariant.Dark; Dispatcher.UIThread.RunJobs(); Capture(window, "hearing-results-dark");
@@ -232,12 +240,42 @@ internal static class CalibrationVisualTests
     private static void Check(bool passed, string message) { if (!passed) throw new InvalidOperationException(message); }
     private static bool Visible(Control view, string text) =>
         view.GetVisualDescendants().OfType<TextBlock>().Any(x => x.Text == text && x.IsEffectivelyVisible);
+    private static void CheckRadarComposition(HearingRadarChart chart)
+    {
+        // Independent OEM formula uses raw filter offsets, including offsets lost by the static lower clamp.
+        foreach (double offset in new[] { 0d, -.2, -.8, -1.2, -3 })
+        foreach (double music in new[] { .2, .7, 1 })
+        {
+            var result = new UiHearingRadar(Enumerable.Repeat(Math.Clamp(1 + offset, .2, 1), 6).ToArray(),
+                Enumerable.Repeat(Math.Clamp(1 + offset / 2, .2, 1), 6).ToArray());
+            double[] spectrum = Enumerable.Repeat(music, 6).ToArray();
+            chart.SetResult(result);
+            foreach (string mode in new[] { "Original", "Enhanced" })
+            {
+                chart.SetPreview(mode, true, spectrum);
+                Check(chart.LeftLevels.All(value => Math.Abs(value - Math.Clamp(music + offset, .2, 1)) < 1e-10)
+                    && chart.RightLevels.All(value => Math.Abs(value - Math.Clamp(music + offset / 2, .2, 1)) < 1e-10),
+                    "Music composition must match the raw OEM offsets, including severely saturated static curves.");
+            }
+            chart.SetPreview("Stopped", false, spectrum);
+            Check(chart.LeftLevels.SequenceEqual(result.Left) && chart.RightLevels.SequenceEqual(result.Right)
+                && chart.ShowEnhancement && chart.EnhancementLevels.Count == 0, "Stopping must restore static radar data.");
+            chart.SetPreview("Enhanced", true, []);
+            Check(chart.LeftLevels.SequenceEqual(result.Left) && chart.RightLevels.SequenceEqual(result.Right)
+                && chart.EnhancementLevels.Count == 0, "Missing spectrum must preserve static ears without inventing music.");
+            chart.SetResult(null); chart.SetPreview("Original", true, spectrum);
+            Check(chart.LeftLevels.Count == 0 && chart.RightLevels.Count == 0 && !chart.ShowEnhancement,
+                "Music cannot invent ears when no valid filter result exists.");
+        }
+    }
     /// <summary>The 72 px action bar is bottom-aligned over the page and holds the page commands in order before cancel/close.</summary>
     private static void CheckActionBar(Control view, params string[] commands)
     {
         var bar = view.GetVisualDescendants().OfType<Border>().Single(x => x.Name == "ActionBar");
         var bottom = bar.TranslatePoint(new Point(0, bar.Bounds.Height), view)?.Y ?? -1;
         var buttons = bar.GetVisualDescendants().OfType<Button>().Where(x => x.IsEffectivelyVisible).Select(x => x.Content as string).ToArray();
+        Check(bar.Background is ISolidColorBrush brush && brush.Color.A == 255 && brush.Opacity == 1,
+            "The shared calibration action bar uses an opaque gray surface.");
         Check(bar.Bounds.Height == 72 && Math.Abs(bottom - view.Bounds.Height) <= 1 && buttons.Length == commands.Length + 1
             && buttons.Take(commands.Length).SequenceEqual(commands) && buttons[^1] is "取消" or "关闭",
             "The action bar keeps the device manager's height and the Windows wizard command order: " + string.Join(", ", buttons));

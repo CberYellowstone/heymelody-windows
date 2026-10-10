@@ -5,6 +5,8 @@
                x:Class="HeyMelodyWindows.App.MainWindow"
                Title="HeyMelody" Icon="avares://HeyMelody/Assets/HeyMelody.ico"
                Width="1280" Height="900" MinWidth="900" MinHeight="640"
+               Background="Transparent" TransparencyLevelHint="Mica,None"
+               TransparencyBackgroundFallback="{DynamicResource ApplicationPageBackgroundThemeBrush}"
                WindowStartupLocation="CenterScreen">
   <Grid>
     <local:MainView x:Name="Page" />
