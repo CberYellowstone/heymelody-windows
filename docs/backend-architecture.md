@@ -1,4 +1,6 @@
-# 0.7.0 共享后台架构
+# 共享后台架构
+
+本文说明当前客户端沿用的共享后台设计，保留 0.7.0 起的架构演进信息。用户操作见[使用说明](usage.md)，开发与验证入口见[开发指南](development.md)，协作规则见[AGENTS.md](../AGENTS.md)。
 
 `HeyMelody.Host.exe` 默认运行 Avalonia 托盘应用，不创建主窗口。当前用户、当前 Windows 登录会话只保留一份后台和主界面。右键菜单使用 Avalonia 的 NativeMenu，只有“打开主界面”和“退出”。正常启动 `HeyMelody.exe` 会确保后台可用并显示界面；重复启动请求激活已有界面。直接启动 Host 只显示托盘。本版本不注册登录自启。
 
@@ -24,7 +26,7 @@ SPP 与 BLE 各自保留观测时间，按耳机部件融合电量、充电盒�
 
 系统挂起停止 watcher 和控制会话；恢复重建 watcher，并丢弃旧 watcher 代次或早于本次扫描的回调。Modern Standby 使用注册式 suspend/resume 通知。广播或监听 API 不可用时会发布诊断，现有可用 RFCOMM 仍可工作；确证蓝牙关闭时才停控制会话。
 
-详细 APK 依据和广播编码见 [bluetooth-events.md](research/bluetooth-events.md)。当前只开放 Enco X4 的设置，没有改变 Windows 音频驱动或 LE Audio 管线。本轮发布 caseOpen 后台事件，没有实现弹窗组件。
+详细 APK 依据和广播编码见 [bluetooth-events.md](research/bluetooth-events.md)。当前按所选来源配置、已实现的协议、固件条件和设备能力开放设置，适配范围见[设备支持说明](research/oppo-device-support.md)。客户端没有改变 Windows 音频驱动或 LE Audio 管线；后台提供 caseOpen 事件，尚未实现独立开盖弹窗。
 
 ## 暂停、写入与退出
 

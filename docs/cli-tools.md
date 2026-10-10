@@ -1,6 +1,6 @@
 # 只读与受控实验 CLI
 
-本文描述保留的源码研究工具，不描述 0.7.0 托盘后台的通知注册与推送协议。所有命令、输入和输出路径均相对于仓库根目录；当前应用入口和验证见 [仓库说明](../REPOSITORY.md)。
+本文描述保留的早期源码研究工具，不描述当前托盘后台的通知注册与推送协议。所有命令、输入和输出路径均相对于仓库根目录；当前应用开发与验证见[开发指南](development.md)，工具使用规则见[AGENTS.md](../AGENTS.md)。各阶段的发送范围和实测结果保留当时含义。
 
 只读 CLI 为 0.2.0/schema2，受控实验 CLI 为 0.3.0；运行这些源码工具需要 .NET SDK10，以及已配对、连接的 OPPO Enco X4。
 
@@ -78,4 +78,4 @@ dotnet run --project .\tests\HeyMelody.Probe.Tests\HeyMelody.Probe.Tests.csproj
 
 协议测试覆盖可变长长度、分片、增量读取、序号、畸形数据和查询解析；会话测试覆盖只读允许列表、身份不符停止、错误序号、空回应、超时/断连后停止与不自动重发。ARM64 交叉构建仅证明编译通过，真实 ARM64 蓝牙执行另需验证。
 
-本地研究输入留在 `reference/`。历史实测见 [阶段 1](history/phase1-notes.md)、[阶段 2](history/phase2-notes.md) 和 [阶段 3/4](history/phase34-notes.md)，历史 schemaVersion 1 证据保持原样，不作为当前版本的硬件验证。
+当前完整研究输入与证据归档到 `research/`，入口见[研究索引](research/README.md)；历史记录中的 `reference/` 保留原始路径含义，不表示当前仍存在同一路径。历史实测见 [阶段 1](history/phase1-notes.md)、[阶段 2](history/phase2-notes.md) 和 [阶段 3/4](history/phase34-notes.md)，历史 schemaVersion 1 证据保持原样，不作为当前版本的硬件验证。
