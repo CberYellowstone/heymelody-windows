@@ -291,7 +291,7 @@ internal static class NativeSmoke
         var compositionResult = DwmIsCompositionEnabled(out var compositionEnabled);
         var backdropResult = DwmGetWindowAttribute(hwnd, 38, out var systemBackdrop, sizeof(int));
         var darkResult = DwmGetWindowAttribute(hwnd, 20, out var immersiveDark, sizeof(int));
-        // Avalonia 12.1.3 supplies Mica through its WinUI Composition brush. Its
+        // Avalonia 12.1.4 supplies Mica through its WinUI Composition brush. Its
         // MicaLight/MicaDark enum is not the separate DWMSBT_* DWM enum.
         Check(backdropResult < 0 || systemBackdrop != 4,
             "The main window never requests the DWM Mica Alt backdrop.");

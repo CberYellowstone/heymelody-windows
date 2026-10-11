@@ -12,6 +12,7 @@
 
 | 文档入口 | 内容 |
 | --- | --- |
+| [界面审计与渲染性能（0.9.0）](ui-performance-0.9.0.md) | 四个界面的重排、120 Hz 预算与逐项优化、简体中文字体与嵌入字体内存问题、Linux 验证范围与 Windows 验收方法 |
 | [上下文读取风险排查](context-read-risk-2026-10-11.md) | 文档、源码、研究产物的字符与长行风险，subagent 预览规则和后续处理顺序；503 成因尚未确认 |
 | [黄金听感预览与声音设置](hearing-preview-settings.md) | 0.8.13 结果雷达、两种试听的动态左右耳曲线、原厂音乐频谱、游戏分组、BassWave 和完整固件显示 |
 | [游戏音效与 Hi-Res／空间音效重新研究](game-audio-spatial.md) | 两 APK 原 DEX、X4 原始固件、游戏开关／类型命令纠正、包名与互斥方向、Hi-Res旧版／V2手机分支 |
@@ -36,6 +37,7 @@
 
 | 本地目录 | 内容 |
 | --- | --- |
+| [research/ui-perf-0.9.0-20261011/](../../research/ui-perf-0.9.0-20261011/README.md) | 0.9.0 审计与设计记录、上游 API 核对、字体内存实验程序与日志、基线和最终测试日志、改动前文档原稿与 SHA256 |
 | [research/context-read-audit-2026-10-11/](../../research/context-read-audit-2026-10-11/README.md) | 读取风险的完整测量脚本、元数据／字符／摘要清单、subagent 预览和校验结果；大清单按路径查询 |
 | [research/documentation-entrypoints-2026-10-11/](../../research/documentation-entrypoints-2026-10-11/README.md) | 本轮文档入口整理前的原文、SHA256 清单、修改范围与核查记录 |
 | [research/hearing-preview-20261010/](../../research/hearing-preview-20261010/README.md) | 结果截图、完整源码与 APK 保全、计算推导、音频原件及转换、实现与验证证据 |

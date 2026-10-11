@@ -190,7 +190,7 @@ internal static class ArtworkPersistenceTests
             var operation = view.OpenSettingsDialogAsync(); await Task.Delay(20); Dispatcher.UIThread.RunJobs();
             var dialog = window.GetVisualDescendants().OfType<FAContentDialog>().Single(d => Equals(d.Title, "应用设置"));
             var cards = dialog.GetVisualDescendants().OfType<FASettingsExpanderItem>().ToArray();
-            Check(cards.Length == 8 && cards.All(card => card.IconSource is FASymbolIconSource), "Every setting is an icon card.");
+            Check(cards.Length == 9 && cards.All(card => card.IconSource is FASymbolIconSource), "Every setting, including the 3D frame rate, is an icon card.");
             var button = dialog.GetVisualDescendants().OfType<Button>().Single(b => Avalonia.Automation.AutomationProperties.GetName(b) == "重新下载在线资源");
             var ring = dialog.GetVisualDescendants().OfType<FAProgressRing>().Single();
             var result = dialog.GetVisualDescendants().OfType<FAInfoBar>().Single(bar => bar.Name == "RedownloadResult");

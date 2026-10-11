@@ -30,7 +30,7 @@ internal static class MotionChecks
         {
             var whole = Release();
             whole.Step(duration);
-            foreach (var rate in new[] { 30, 60, 144 })
+            foreach (var rate in new[] { 30, 60, 120, 144, 165, 240 })
             {
                 var partitioned = Release();
                 var remaining = duration;
@@ -45,6 +45,18 @@ internal static class MotionChecks
                 Near(partitioned.YawVelocity, whole.YawVelocity, 1e-9, $"Velocity is independent of {rate} Hz partition at {duration}s", check);
                 check(partitioned.Phase == whole.Phase, $"Phase is independent of {rate} Hz partition at {duration}s");
             }
+            // Display frames arrive unevenly; a jittered 120-165 Hz cadence must still integrate to the same pose.
+            var jittered = Release();
+            double[] pattern = [1d / 120, 1d / 165, .0071, 1d / 144, .0093];
+            var left = duration;
+            for (var index = 0; left > 1e-12; index++)
+            {
+                var step = Math.Min(pattern[index % pattern.Length], left);
+                jittered.Step(step);
+                left -= step;
+            }
+            Near(jittered.Yaw, whole.Yaw, 1e-9, $"Yaw is independent of uneven display frames at {duration}s", check);
+            Near(jittered.Pitch, whole.Pitch, 1e-9, $"Pitch is independent of uneven display frames at {duration}s", check);
         }
 
         var stopped = Release();
@@ -84,7 +96,7 @@ internal static class MotionChecks
         bounded.Step(1.5);
         Near(bounded.Pitch, 85 * Math.PI / 180, 1e-10,
             "Pitch inertia stops exactly at the vertical limit", check);
-        foreach (var rate in new[] { 30, 60, 144 })
+        foreach (var rate in new[] { 30, 60, 120, 144, 165, 240 })
         {
             var partitioned = new ModelOrbitMotion();
             partitioned.BeginDrag(0, 0, 0);

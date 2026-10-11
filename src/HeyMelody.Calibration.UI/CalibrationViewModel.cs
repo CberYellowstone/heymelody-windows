@@ -27,6 +27,8 @@ public sealed class CalibrationViewModel(ICalibrationService service, string han
     private CalibrationPhase _phase;
     private bool _earScanCompleted;
     private long _spectrumSequence;
+    /// <summary>Volume steps of the V2 level test; the slider, its label and the backend share this count.</summary>
+    public const int LevelCount = 12;
     public event PropertyChangedEventHandler? PropertyChanged;
     public event Action<IReadOnlyList<double>>? SpectrumChanged;
     public IReadOnlyList<double> SpectrumLevels { get; private set; } = [];
@@ -166,7 +168,7 @@ public sealed class CalibrationViewModel(ICalibrationService service, string han
     }
     public Task AdjustLevelAsync(int level, bool released)
     {
-        if (!CanAdjustLevel || level is < 0 or > 11) return Task.CompletedTask;
+        if (!CanAdjustLevel || level < 0 || level >= LevelCount) return Task.CompletedTask;
         _selectedLevel = level; _selectionActive = true;
         _pendingLevel = new(level, released, Step(_state));
         _levelDelay?.Cancel();

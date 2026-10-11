@@ -10,11 +10,21 @@
                WindowStartupLocation="CenterScreen">
   <Grid>
     <local:MainView x:Name="Page" />
+    <!-- Shown while the separate device manager owns device selection; the page underneath is disabled. -->
+    <Border x:Name="ManagerOverlay" IsVisible="False" Background="{DynamicResource SmokeFillColorDefaultBrush}">
+      <Border Classes="card" Padding="24,20" MaxWidth="420" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <StackPanel Spacing="8">
+          <TextBlock Text="设备管理器已打开" Classes="subtitle" />
+          <TextBlock Classes="muted" Text="在设备管理器中选择要控制的耳机，保存或取消后回到这里。" />
+        </StackPanel>
+      </Border>
+    </Border>
     <Border x:Name="StartupOverlay" IsVisible="False"
             Background="{DynamicResource ApplicationPageBackgroundThemeBrush}">
       <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
-        <TextBlock Text="正在加载设备…" HorizontalAlignment="Center" FontSize="16" />
-        <ProgressBar IsIndeterminate="True" Width="240" Height="3" />
+        <TextBlock Text="正在加载设备…" HorizontalAlignment="Center" Classes="subtitle" />
+        <!-- Animating only while visible: a hidden indeterminate bar keeps waking the UI thread. -->
+        <ProgressBar IsIndeterminate="{Binding #StartupOverlay.IsVisible}" Width="240" Height="3" />
       </StackPanel>
     </Border>
   </Grid>

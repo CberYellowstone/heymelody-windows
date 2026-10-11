@@ -8,14 +8,21 @@ namespace HeyMelodyWindows.DeviceManager;
 
 public sealed class DeviceCandidateRow : ObservableObject
 {
-    private bool _isChecked;
+    private bool _isChecked, _connected;
+    private string _name;
     public DeviceCandidateRow(UiDeviceCandidate candidate, bool selected)
-    { Identity = candidate.Identity; Name = candidate.Name; Connected = candidate.Connected; _isChecked = selected; }
+    { Identity = candidate.Identity; _name = candidate.Name; _connected = candidate.Connected; _isChecked = selected; }
     public string Identity { get; }
-    public string Name { get; }
-    public bool Connected { get; }
+    public string Name { get => _name; private set => SetProperty(ref _name, value); }
+    public bool Connected
+    {
+        get => _connected;
+        private set { if (SetProperty(ref _connected, value)) OnPropertyChanged(nameof(Status)); }
+    }
     public string Status => Connected ? "已连接" : "已配对，未连接";
     public bool IsChecked { get => _isChecked; set => SetProperty(ref _isChecked, value); }
+    /// <summary>Shows a refreshed catalog entry for the same device without replacing its row.</summary>
+    internal void Update(UiDeviceCandidate candidate) { Name = candidate.Name; Connected = candidate.Connected; }
 }
 
 public sealed class DeviceManagerViewModel : ObservableObject, IAsyncDisposable
@@ -115,17 +122,34 @@ public sealed class DeviceManagerViewModel : ObservableObject, IAsyncDisposable
     public void CancelBackendExit()
     { if (!_closing) { _exitPending = false; NotifyState(); } }
 
+    /// <summary>Updates the list in place by identity, so a refresh keeps row controls, keyboard focus and scrolling.</summary>
+    /// <remarks>Rows of devices that remain keep the user's unsaved choice; new devices start from the saved selection.</remarks>
     private void DisplayCatalog(UiDeviceCatalog catalog, bool resetExitCode = false, bool preserveError = false)
     {
-        var previous = Devices.ToDictionary(row => row.Identity, row => row.IsChecked, StringComparer.Ordinal);
-        foreach (var row in Devices) row.PropertyChanged -= SelectionChanged;
-        Devices.Clear();
-        foreach (var candidate in catalog.Candidates)
+        var candidates = catalog.Candidates;
+        var next = candidates.Select(candidate => candidate.Identity).ToHashSet(StringComparer.Ordinal);
+        for (var index = Devices.Count - 1; index >= 0; index--)
         {
-            var row = new DeviceCandidateRow(candidate,
-                _hasLoaded && previous.TryGetValue(candidate.Identity, out var selected) ? selected : candidate.Enabled);
-            row.PropertyChanged += SelectionChanged;
-            Devices.Add(row);
+            if (next.Contains(Devices[index].Identity)) continue;
+            Devices[index].PropertyChanged -= SelectionChanged;
+            Devices.RemoveAt(index);
+        }
+        for (var index = 0; index < candidates.Count; index++)
+        {
+            var candidate = candidates[index];
+            var current = -1;
+            for (var search = index; search < Devices.Count; search++)
+                if (StringComparer.Ordinal.Equals(Devices[search].Identity, candidate.Identity)) { current = search; break; }
+            if (current < 0)
+            {
+                var row = new DeviceCandidateRow(candidate, candidate.Enabled);
+                row.PropertyChanged += SelectionChanged;
+                Devices.Insert(index, row);
+                continue;
+            }
+            if (current != index) Devices.Move(current, index);
+            Devices[index].Update(candidate);
+            if (!_hasLoaded) Devices[index].IsChecked = candidate.Enabled;
         }
         _hasLoaded = true;
         if (resetExitCode) ExitCode = 1;

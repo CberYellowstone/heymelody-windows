@@ -20,6 +20,8 @@ public partial class DeviceManagerWindow : FAAppWindow
     {
         _backdrop = new MicaAltBackdrop(this);
         InitializeComponent();
+        Ui.Typography.ApplyTextOptions(this);
+        Ui.RenderDiagnostics.Attach(this);
         if (preview) Title = "设备管理 · 界面预览";
         _viewModel = new DeviceManagerViewModel(service);
         _events = service as IHeadsetEventService;

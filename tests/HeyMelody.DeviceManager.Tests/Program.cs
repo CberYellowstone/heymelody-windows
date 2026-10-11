@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using HeyMelodyWindows.App;
 using HeyMelodyWindows.DeviceManager;
+using HeyMelodyWindows.Ui;
 
 if (args is ["--native-smoke"]) return NativeSmoke.Run();
 if (args is ["--native-alt-f4-smoke"]) return NativeSmoke.Run(closeWithAltF4: true);
@@ -45,10 +46,13 @@ static async Task SelectionAsync()
     Check(vm.SelectedCount == 1 && vm.Devices[0].IsChecked && vm.Devices[0].Status == "已配对，未连接",
         "Persisted selection includes an offline paired device.");
     vm.Devices[0].IsChecked = false; vm.Devices[1].IsChecked = true;
+    var kept = vm.Devices[1];
     service.Catalog = new([new("b", "已重命名耳机", false, false), new("c", "新设备", true, false)]);
     await vm.RefreshAsync();
     Check(vm.Devices[0].IsChecked && !vm.Devices[1].IsChecked && vm.Devices[0].Name == "已重命名耳机",
         "Refresh preserves unsaved selection by identity and updates names.");
+    Check(ReferenceEquals(vm.Devices[0], kept) && vm.Devices[0].Status == "已配对，未连接" && vm.Devices.Count == 2,
+        "A refresh updates the remaining device's row in place, so its control and keyboard focus survive.");
     var exits = 0; vm.ExitRequested += () => exits++;
     await vm.SaveAsync();
     Check(service.Saves == 1 && service.LastSaved!.SequenceEqual(["b"]) && vm.ExitCode == 0 && exits == 1,
@@ -211,7 +215,8 @@ static void Check(bool condition, string message) { if (!condition) throw new In
 public static class TestBootstrap
 {
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<DeviceManagerApp>().UseSkia()
-        .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
+        .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+        .UseHeyMelodyRendering().UseHeyMelodyTypography();
 }
 
 internal sealed class FakeService : IDeviceManagementService, IAsyncDisposable

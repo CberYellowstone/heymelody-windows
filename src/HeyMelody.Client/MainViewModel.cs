@@ -30,8 +30,9 @@ public enum ConnectionIndicator { Offline, Pending, Online }
 public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
     private static readonly int[] Frequencies = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-    private static readonly string[] PresentationProperties = typeof(MainViewModel).GetProperties()
-        .Where(p => !p.Name.EndsWith("Command", StringComparison.Ordinal)).Select(p => p.Name).ToArray();
+    // Resolved once: state notifications compare every presentation property after each backend update.
+    private static readonly System.Reflection.PropertyInfo[] PresentationProperties = typeof(MainViewModel).GetProperties()
+        .Where(p => !p.Name.EndsWith("Command", StringComparison.Ordinal)).ToArray();
     private readonly IHeadsetService _service;
     private readonly IConfirmationService _confirmations;
     private readonly bool _preview;
@@ -189,9 +190,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         foreach (var control in _featureSections.SelectMany(s => s.Controls).Concat(_equalizerFeatures)) control.RefreshPermissions();
         foreach (var property in PresentationProperties)
         {
-            var value = typeof(MainViewModel).GetProperty(property)!.GetValue(this);
-            if (!_published.TryGetValue(property, out var old) || !Equals(old, value))
-            { _published[property] = value; OnPropertyChanged(property); }
+            var value = property.GetValue(this);
+            if (!_published.TryGetValue(property.Name, out var old) || !Equals(old, value))
+            { _published[property.Name] = value; OnPropertyChanged(property.Name); }
         }
         NotifyCommands();
     }

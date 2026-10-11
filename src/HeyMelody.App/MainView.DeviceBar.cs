@@ -8,6 +8,7 @@ namespace HeyMelodyWindows.App;
 public partial class MainView
 {
     private bool _centerDevicePending = true;
+    private bool _layoutObserved;
     private double _deviceViewportWidth, _deviceStripWidth;
     private IReadOnlyList<UiDevice>? _centeringDevices;
     private string? _centeringDeviceIdentity;
@@ -15,7 +16,10 @@ public partial class MainView
     private void InitializeDeviceBar()
     {
         AttachedToVisualTree += (_, _) => RequestDeviceCenter();
-        LayoutUpdated += (_, _) => UpdateDeviceBarLayout();
+        // LayoutUpdated fires after every layout pass in the window, including each frame of an expander
+        // animation, so it is observed only while a re-centre is pending; size changes start a new one.
+        DeviceBarScroll.SizeChanged += (_, _) => RequestDeviceLayout();
+        DeviceStrip.SizeChanged += (_, _) => RequestDeviceLayout();
         DeviceBarScroll.AddHandler(PointerWheelChangedEvent, DeviceBar_PointerWheelChanged, RoutingStrategies.Tunnel);
     }
 
@@ -24,7 +28,29 @@ public partial class MainView
         _centeringDevices = ViewModel?.Devices;
         _centeringDeviceIdentity = ViewModel?.SelectedDevice?.Identity;
         _centerDevicePending = true;
+        ObserveLayout(true);
         DeviceBarScroll.InvalidateArrange();
+    }
+
+    private void RequestDeviceLayout()
+    {
+        ObserveLayout(true);
+        DeviceBarScroll.InvalidateArrange();
+    }
+
+    private void ObserveLayout(bool observe)
+    {
+        if (observe == _layoutObserved) return;
+        _layoutObserved = observe;
+        if (observe) LayoutUpdated += OnDeviceBarLayoutUpdated;
+        else LayoutUpdated -= OnDeviceBarLayoutUpdated;
+    }
+
+    private void OnDeviceBarLayoutUpdated(object? sender, EventArgs e)
+    {
+        UpdateDeviceBarLayout();
+        // Keep listening while the selected card is not yet realised; stop once the strip is settled.
+        if (!_centerDevicePending) ObserveLayout(false);
     }
 
     private void RequestDeviceCenterIfChanged()

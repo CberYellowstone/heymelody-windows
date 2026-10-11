@@ -1,4 +1,5 @@
 using Avalonia;
+using HeyMelodyWindows.Ui;
 
 namespace HeyMelodyWindows.Host;
 
@@ -16,7 +17,8 @@ public static class Program
         try { owner = singleton.WaitOne(0); }
         catch (AbandonedMutexException) { owner = true; }
         if (!owner) return 0;
-        try { return AppBuilder.Configure<TrayApplication>().UsePlatformDetect().LogToTrace().StartWithClassicDesktopLifetime(args); }
+        try { return AppBuilder.Configure<TrayApplication>().UsePlatformDetect().UseHeyMelodyRendering()
+            .UseHeyMelodyTypography(bundledFallback: false).LogToTrace().StartWithClassicDesktopLifetime(args); }
         catch (Exception) { return 1; }
         finally { singleton.ReleaseMutex(); }
     }

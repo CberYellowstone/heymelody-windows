@@ -18,7 +18,11 @@ using PathShape = Avalonia.Controls.Shapes.Path;
 namespace HeyMelodyWindows.Calibration.UI;
 
 /// <summary>One reusable workflow view shared by the two independently launched components.</summary>
-/// <remarks>Follows the device manager: a fixed header on Mica Alt, a scrolling page and an opaque 72 px action bar.</remarks>
+/// <remarks>
+/// Follows the device manager: a fixed header on Mica Alt, notices pinned above a scrolling page and an opaque 72 px
+/// action bar. Model changes are coalesced into one update per dispatcher pass, and the page stays enabled while a
+/// request runs because every control already disables itself; greying the whole page flickered on each click.
+/// </remarks>
 public sealed class CalibrationView : UserControl
 {
     private const string Accent = "AccentFillColorDefaultBrush", OnAccent = "TextOnAccentFillColorPrimaryBrush",
@@ -37,6 +41,13 @@ public sealed class CalibrationView : UserControl
     private readonly FAInfoBar _noticeBar = new() { IsClosable = false };
     private readonly StackPanel _body = new() { Spacing = 16 };
     private readonly TextBlock _stopped = Text("", 20, FontWeight.SemiBold, TextAlignment.Center);
+    // The page heading persists across rebuilt pages so screen readers announce each new step.
+    private readonly TextBlock _heading = Text("", 20, FontWeight.SemiBold, TextAlignment.Center);
+    private readonly TextBlock _instruction = SecondaryText("", TextAlignment.Center);
+    private readonly TextBlock _progress = new() { FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly TextBlock _nameError = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
+    private readonly List<Viewbox> _heroes = [];
+    private bool _updateQueued, _compactHero;
     private readonly TextBlock _status = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly StackPanel _actions = new() { Orientation = Orientation.Horizontal, Spacing = 12, VerticalAlignment = VerticalAlignment.Center };
     private readonly Button _cancel = new() { Content = "取消", MinWidth = 80, VerticalAlignment = VerticalAlignment.Center };
@@ -63,16 +74,23 @@ public sealed class CalibrationView : UserControl
         Styles.Add(RippleStyle());
         _scanStep = new StepNode("耳道扫描", brush => Glyph(OppoGlyphs.Ear, 22, brush));
         _testStep = new StepNode("听音测试", brush => Wave(20, brush));
-        _stepper = new Grid { ColumnDefinitions = new("Auto,*,Auto"), Width = 320, HorizontalAlignment = HorizontalAlignment.Center,
+        _stepper = new Grid { ColumnDefinitions = new("Auto,*,Auto"), MaxWidth = 320, HorizontalAlignment = HorizontalAlignment.Stretch,
             Children = { _scanStep.Root, _stepConnector, _testStep.Root } };
         Grid.SetColumn(_stepConnector, 1); Grid.SetColumn(_testStep.Root, 2);
-        var header = new StackPanel { Margin = new Thickness(24, 12, 24, 16), Spacing = 16, Children =
+        _progress.Bind(TextBlock.ForegroundProperty, new DynamicResourceExtension(Secondary));
+        AutomationProperties.SetLiveSetting(_progress, AutomationLiveSetting.Polite);
+        AutomationProperties.SetLiveSetting(_heading, AutomationLiveSetting.Polite);
+        AutomationProperties.SetLiveSetting(_instruction, AutomationLiveSetting.Polite);
+        _nameError.Bind(TextBlock.ForegroundProperty, new DynamicResourceExtension("SystemFillColorCriticalBrush"));
+        var header = new StackPanel { Margin = new Thickness(24, 12, 24, 12), Spacing = 12, Children =
         {
-            Text(_hearing ? "黄金听感" : "耳塞贴合度测试", 24, FontWeight.SemiBold),
+            new StackPanel { Spacing = 2, Children = { Text(_hearing ? "黄金听感" : "耳塞贴合度测试", 24, FontWeight.SemiBold), _progress } },
             _stepper, _activity
         } };
         _stopped.Margin = new Thickness(0, 48, 0, 0);
-        var page = new StackPanel { Margin = new Thickness(24, 0, 24, 84), Spacing = 16, Children = { _errorBar, _noticeBar, _stopped, _body } };
+        // Errors and notices stay visible whatever the page is scrolled to.
+        var notices = new StackPanel { Margin = new Thickness(24, 0, 24, 0), Spacing = 8, Children = { _errorBar, _noticeBar } };
+        var page = new StackPanel { Margin = new Thickness(24, 8, 24, 84), Spacing = 16, Children = { _stopped, _body } };
         _status.Bind(TextBlock.ForegroundProperty, new DynamicResourceExtension(Secondary));
         var bar = new Grid { ColumnDefinitions = new("*,Auto,Auto"), ColumnSpacing = 12, Children = { _status, _actions, _cancel } };
         Grid.SetColumn(_actions, 1); Grid.SetColumn(_cancel, 2);
@@ -83,20 +101,37 @@ public sealed class CalibrationView : UserControl
             new ScrollViewer { Name = "PageScroll", Content = page, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
             actionBar
         } };
-        Grid.SetRow(content, 1);
-        Content = new Grid { RowDefinitions = new("Auto,*"), Children = { header, content } };
+        Grid.SetRow(notices, 1); Grid.SetRow(content, 2);
+        Content = new Grid { RowDefinitions = new("Auto,Auto,*"), Children = { header, notices, content } };
+        _cancel.IsCancel = true;
         _cancel.Click += async (_, _) =>
         {
             if (CloseRequested is { } close) await close();
             else await _model.CancelAsync();
         };
-        model.PropertyChanged += (_, _) =>
-        { if (Dispatcher.UIThread.CheckAccess()) Update(); else Dispatcher.UIThread.Post(Update); };
+        // One backend state fires several property changes; they are drawn together in a single update.
+        model.PropertyChanged += (_, _) => QueueUpdate();
+        ActualThemeVariantChanged += (_, _) => QueueUpdate();
+        SizeChanged += (_, e) => UpdateHeroSize(e.NewSize.Height);
         model.SpectrumChanged += _ =>
         {
             if (Dispatcher.UIThread.CheckAccess()) UpdateSpectrum(); else Dispatcher.UIThread.Post(UpdateSpectrum);
         };
         Update();
+    }
+    private void QueueUpdate()
+    {
+        if (_updateQueued) return;
+        _updateQueued = true;
+        Dispatcher.UIThread.Post(() => { _updateQueued = false; Update(); });
+    }
+    /// <summary>Short windows show a 112 px hero instead of 160 px, leaving room for the instructions.</summary>
+    private void UpdateHeroSize(double height)
+    {
+        var compact = height is > 0 and < 640;
+        if (compact == _compactHero) return;
+        _compactHero = compact;
+        foreach (var hero in _heroes) hero.Height = compact ? 112 : 160;
     }
     private void Update()
     {
@@ -109,7 +144,9 @@ public sealed class CalibrationView : UserControl
         _errorBar.Message = error; _errorBar.IsOpen = _errorBar.IsVisible = error.Length > 0;
         UpdateNotice(state, resultPage);
         UpdateStepper(state);
-        _body.IsEnabled = _actions.IsEnabled = !_model.Busy && state.Stage is not ("Cancelled" or "Cancelling");
+        var stopping = state.Stage is "Cancelled" or "Cancelling";
+        _body.IsEnabled = !stopping;
+        _actions.IsEnabled = !_model.Busy && !stopping;
         _body.IsVisible = _actions.IsVisible = !_model.CancellationRequested;
         _stopped.IsVisible = _model.CancellationRequested;
         _stopped.Text = _model.CanCloseLocally ? "蓝牙后台已断开" : _model.CancellationPending ? "正在停止测试…"
@@ -119,16 +156,22 @@ public sealed class CalibrationView : UserControl
         _cancel.Content = _model.CanCloseLocally ? "关闭" : _model.CancellationFailed ? "重试停止" : closing ? "关闭" : "取消";
         _cancel.Classes.Set("accent", closing && !_model.CancellationFailed);
         var hearingStep = _hearing && _model.Phase == CalibrationPhase.Hearing && !_model.CancellationRequested;
-        _status.Text = _model.CancellationPending ? "正在停止测试…" : _model.Busy ? "正在处理…"
-            : hearingStep && state.StepCount > 0 ? $"第 {Math.Clamp(state.StepIndex + 1, 1, state.StepCount)} / {state.StepCount} 步" : "";
+        _status.Text = _model.CancellationPending ? "正在停止测试…" : _model.Busy ? "正在处理…" : "";
+        // Progress sits under the title for both workflows, with or without the ear-scan stepper.
+        _progress.Text = _model.CancellationRequested ? ""
+            : hearingStep && state.StepCount > 0 ? $"听音测试 · 第 {Math.Clamp(state.StepIndex + 1, 1, state.StepCount)} / {state.StepCount} 步"
+            : resultPage || state.Stage == "Completed" ? "测试完成"
+            : !_hearing && state.Stage is "CheckingWear" or "Starting" or "Measuring" ? "正在检测…" : "";
+        _progress.IsVisible = _progress.Text.Length > 0;
         var key = string.Join('/', resultPage ? "Results" : state.Stage, _model.Phase, state.HearingVersion, state.SupportsEarScan, state.StepIndex > 0,
             state.FiltersReady, state.CanPreview, state.HearingRadar is not null,
-            state.HearingLevels.Count == state.StepCount, state.FitResults.Count, _model.ResourceSource);
+            state.HearingLevels.Count == state.StepCount, state.FitResults.Count, _model.ResourceSource, ActualThemeVariant);
         if (_bodyKey != key)
         {
             _bodyKey = key; _body.Children.Clear(); _actions.Children.Clear(); _level = null; _next = _retryLevel = _save = _resume = null; _radar = null;
             _levelLabel = _previewLabel = _caption = _leftLabel = _rightLabel = null; _heroGlyph = null; _ripple = null; _rippleFollowsTone = false;
-            _previewButtons.Clear(); _answerButtons.Clear(); _segments.Clear();
+            _previewButtons.Clear(); _answerButtons.Clear(); _segments.Clear(); _heroes.Clear();
+            _nameError.IsVisible = false;
             BuildBody();
         }
         if (_level is not null)
@@ -150,7 +193,7 @@ public sealed class CalibrationView : UserControl
             Emphasize(_leftLabel, !right && state.StepIndex < state.StepCount); Emphasize(_rightLabel, right);
         }
         if (_levelLabel is not null) _levelLabel.Text = _model.LevelPending ? "正在调整音量…"
-            : state.ToneAcknowledged && _model.SelectedLevelIndex == state.LevelIndex ? $"音量：第 {_model.SelectedLevelIndex + 1} / 12 档" : "测试音尚未确认，请重试播放。";
+            : state.ToneAcknowledged && _model.SelectedLevelIndex == state.LevelIndex ? $"音量：第 {_model.SelectedLevelIndex + 1} / {CalibrationViewModel.LevelCount} 档" : "测试音尚未确认，请重试播放。";
         if (_next is not null)
         { _next.IsEnabled = _model.CanContinue; _next.Content = state.StepIndex == state.StepCount - 1 ? "完成测听" : "下一步"; }
         if (_retryLevel is not null) _retryLevel.IsEnabled = _model.CanAdjustLevel && !_model.LevelPending;
@@ -272,7 +315,7 @@ public sealed class CalibrationView : UserControl
         AddHeading("左右拖动音量条，找到“滴滴”声刚好消失的临界点", "");
         AddSideCaption();
         AddSegments();
-        var slider = new Slider { Minimum = 0, Maximum = 11, TickFrequency = 1, IsSnapToTickEnabled = true, TickPlacement = TickPlacement.BottomRight,
+        var slider = new Slider { Minimum = 0, Maximum = CalibrationViewModel.LevelCount - 1, TickFrequency = 1, IsSnapToTickEnabled = true, TickPlacement = TickPlacement.BottomRight,
             Value = _model.SelectedLevelIndex, VerticalAlignment = VerticalAlignment.Center };
         _level = slider;
         AutomationProperties.SetName(slider, "听感测试音量");
@@ -322,9 +365,13 @@ public sealed class CalibrationView : UserControl
         {
             _radar = new HearingRadarChart { HorizontalAlignment = HorizontalAlignment.Stretch };
             var legend = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, HorizontalAlignment = HorizontalAlignment.Center };
-            foreach (var (label, color) in new[] { ("左耳", "#13964A"), ("右耳", "#1471CE"), ("增强后", "#C57416") })
-                legend.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children =
-                    { new Ellipse { Width = 8, Height = 8, Fill = new SolidColorBrush(Color.Parse(color)), VerticalAlignment = VerticalAlignment.Center }, SecondaryText(label) } });
+            // The legend uses the chart's theme colours, so dark mode shows the same light-on-dark tones.
+            foreach (var (label, brush) in new[] { ("左耳", "HmChartLeftBrush"), ("右耳", "HmChartRightBrush"), ("增强后", "HmChartEnhancedBrush") })
+            {
+                var dot = new Ellipse { Width = 8, Height = 8, VerticalAlignment = VerticalAlignment.Center };
+                dot.Bind(Shape.FillProperty, new DynamicResourceExtension(brush));
+                legend.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { dot, SecondaryText(label) } });
+            }
             var info = new Button { Content = Symbol(FASymbol.Help, 16, Secondary), Padding = new Thickness(4), VerticalAlignment = VerticalAlignment.Center,
                 Flyout = new Flyout { Content = SecondaryText("根据耳机返回的结果展示左右耳听感与增强区间。试听增强前或增强后时，左右耳曲线随音乐频谱变化；增强后还会显示橙色音乐频谱。") } };
             AutomationProperties.SetName(info, "关于听感雷达图"); legend.Children.Add(info);
@@ -357,14 +404,16 @@ public sealed class CalibrationView : UserControl
         }
         var name = new TextBox { Text = _model.Name, PlaceholderText = "例如：我的听感", MaxLength = 40 };
         AutomationProperties.SetName(name, "黄金听感配置名称");
-        name.TextChanged += (_, _) => _model.Name = name.Text ?? "";
-        _body.Children.Add(Card(Symbol(FASymbol.Rename, 20, Primary), "配置名称", SecondaryText("保存后可在主界面的“听感配置”中选择。"), name));
-        var save = new Button { Content = "保存并启用", MinWidth = 80 };
+        name.TextChanged += (_, _) => { _model.Name = name.Text ?? ""; _nameError.IsVisible = false; };
+        _body.Children.Add(Card(Symbol(FASymbol.Rename, 20, Primary), "配置名称", SecondaryText("保存后可在主界面的“听感配置”中选择。"),
+            new StackPanel { Spacing = 6, Children = { name, Detach(_nameError) } }));
+        var save = new Button { Content = "保存并启用", MinWidth = 80, IsDefault = true };
         save.Classes.Add("accent");
         _save = save;
         save.Click += async (_, _) =>
         {
-            if (_model.ValidateName() is { } error) { _errorBar.Message = error; _errorBar.IsOpen = _errorBar.IsVisible = true; return; }
+            // The problem is shown beside the field and stays until the name is edited.
+            if (_model.ValidateName() is { } error) { _nameError.Text = error; _nameError.IsVisible = true; name.Focus(); return; }
             var replacement = false;
             if ((_model.NeedsReplacement || _model.ReplacesCurrent) && TopLevel.GetTopLevel(this) is { } owner)
             {
@@ -443,8 +492,16 @@ public sealed class CalibrationView : UserControl
 
     private void AddHeading(string instruction, string caption)
     {
-        _body.Children.Add(Text(instruction, 20, FontWeight.SemiBold, TextAlignment.Center));
-        if (caption.Length > 0) _body.Children.Add(SecondaryText(caption, TextAlignment.Center));
+        _heading.Text = instruction;
+        _body.Children.Add(Detach(_heading));
+        _instruction.Text = caption;
+        if (caption.Length > 0) _body.Children.Add(Detach(_instruction));
+    }
+    /// <summary>Releases a persistent control from the page it was last shown in.</summary>
+    private static T Detach<T>(T control) where T : Control
+    {
+        if (control.Parent is Panel panel) panel.Children.Remove(control);
+        return control;
     }
     private void AddEarHero(bool followTone, bool ripple = false)
     {
@@ -477,7 +534,10 @@ public sealed class CalibrationView : UserControl
         if (filled) core.Bind(Border.BackgroundProperty, new DynamicResourceExtension(Accent));
         center.HorizontalAlignment = HorizontalAlignment.Center; center.VerticalAlignment = VerticalAlignment.Center;
         hero.Children.Add(core);
-        _body.Children.Add(hero);
+        var box = new Viewbox { Height = _compactHero ? 112 : 160, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, Child = hero };
+        AutomationProperties.SetAccessibilityView(box, AccessibilityView.Raw);
+        _heroes.Add(box);
+        _body.Children.Add(box);
     }
     /// <summary>Two groups of six ProgressBars; the current frequency is half filled, as in the official wizard.</summary>
     private void AddSegments()
@@ -507,7 +567,7 @@ public sealed class CalibrationView : UserControl
     }
     private Button AddAction(string text, string action, bool primary)
     {
-        var button = new Button { Content = text, MinWidth = 80 };
+        var button = new Button { Content = text, MinWidth = 80, IsDefault = primary };
         if (primary) button.Classes.Add("accent");
         button.Click += async (_, _) => await _model.SendAsync(action);
         _actions.Children.Add(button);
@@ -539,7 +599,8 @@ public sealed class CalibrationView : UserControl
     }
     private static Border Card(Control child)
     {
-        var card = new Border { Padding = new Thickness(16), CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1), Child = child };
+        var card = new Border { Padding = new Thickness(16), BorderThickness = new Thickness(1), Child = child };
+        card.Bind(Border.CornerRadiusProperty, new DynamicResourceExtension("ControlCornerRadius"));
         card.Bind(Border.BackgroundProperty, new DynamicResourceExtension("CardBackgroundFillColorDefaultBrush"));
         card.Bind(Border.BorderBrushProperty, new DynamicResourceExtension("CardStrokeColorDefaultBrush"));
         return card;

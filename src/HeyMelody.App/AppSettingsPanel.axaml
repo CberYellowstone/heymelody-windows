@@ -17,20 +17,29 @@
   </UserControl.Styles>
   <StackPanel x:Name="SettingsRoot" MinWidth="460" Spacing="0">
     <TextBlock Classes="settings-group" Text="外观" Margin="1,0,0,6" />
-    <fa:FASettingsExpanderItem Content="应用主题" Description="选择界面的颜色模式">
+    <fa:FASettingsExpanderItem Content="应用主题" Description="选择界面的颜色模式，选择后立即预览">
       <fa:FASettingsExpanderItem.IconSource><fa:FASymbolIconSource Symbol="DarkTheme" /></fa:FASettingsExpanderItem.IconSource>
       <fa:FASettingsExpanderItem.Footer>
         <ComboBox x:Name="ThemeChoice" MinWidth="150" AutomationProperties.Name="应用主题" />
       </fa:FASettingsExpanderItem.Footer>
     </fa:FASettingsExpanderItem>
 
-    <TextBlock Classes="settings-group" Text="耳机资源" />
     <fa:FASettingsExpanderItem Content="三维模型 GPU 加速" Description="默认开启 GPU 加速，关闭后使用软件渲染；保存后立即生效">
       <fa:FASettingsExpanderItem.IconSource><fa:FASymbolIconSource Symbol="Sync" /></fa:FASettingsExpanderItem.IconSource>
       <fa:FASettingsExpanderItem.Footer>
         <ToggleSwitch x:Name="ModelGpuSwitch" OnContent="开" OffContent="关" AutomationProperties.Name="三维模型 GPU 加速" />
       </fa:FASettingsExpanderItem.Footer>
     </fa:FASettingsExpanderItem>
+    <fa:FASettingsExpanderItem Content="三维模型帧率" Description="跟随显示器最流畅；60 或 30 帧可降低 GPU 占用与耗电">
+      <fa:FASettingsExpanderItem.IconSource><fa:FASymbolIconSource Symbol="Rotate" /></fa:FASettingsExpanderItem.IconSource>
+      <fa:FASettingsExpanderItem.Footer>
+        <ComboBox x:Name="ModelFrameRateChoice" MinWidth="150" AutomationProperties.Name="三维模型帧率" />
+      </fa:FASettingsExpanderItem.Footer>
+    </fa:FASettingsExpanderItem>
+
+    <TextBlock Classes="settings-group" Text="耳机资源" />
+    <TextBlock x:Name="ResourceLockNotice" Classes="caption" TextWrapping="Wrap" Margin="2,0,0,6" IsVisible="False"
+               Text="正在连接或切换耳机，完成后可修改资源与设备设置。" />
     <fa:FASettingsExpanderItem Content="资源来源" Description="耳机配置与外观所依据的 App 资源">
       <fa:FASettingsExpanderItem.IconSource><fa:FASymbolIconSource Symbol="Library" /></fa:FASettingsExpanderItem.IconSource>
       <fa:FASettingsExpanderItem.Footer>
@@ -54,7 +63,7 @@
       <fa:FASettingsExpanderItem.IconSource><fa:FASymbolIconSource Symbol="CloudDownload" /></fa:FASettingsExpanderItem.IconSource>
       <fa:FASettingsExpanderItem.Footer>
         <StackPanel Orientation="Horizontal" Spacing="12">
-          <fa:FAProgressRing x:Name="RedownloadProgress" IsIndeterminate="True" Width="20" Height="20" IsVisible="False"
+          <fa:FAProgressRing x:Name="RedownloadProgress" IsIndeterminate="False" Width="20" Height="20" IsVisible="False"
                              VerticalAlignment="Center" AutomationProperties.Name="正在重新下载在线资源" />
           <Button x:Name="RedownloadButton" Content="重新下载" AutomationProperties.Name="重新下载在线资源" />
         </StackPanel>

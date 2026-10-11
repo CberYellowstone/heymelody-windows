@@ -19,7 +19,26 @@ internal static class ThemePreferences
     // Only an explicit saved false opts into software; older or invalid settings use the GPU default.
     internal static bool LoadModelGpuAcceleration() => Read()["modelGpuAcceleration"]?.GetValueKind() != JsonValueKind.False;
 
-    public static bool Save(string theme, bool? modelGpuAcceleration = null)
+    // Missing or unknown values follow the display refresh rate.
+    internal static ModelFrameRate LoadModelFrameRate()
+    {
+        var value = Read()["modelFrameRate"];
+        return value?.GetValueKind() == JsonValueKind.String ? value.GetValue<string>() switch
+        {
+            "60" => ModelFrameRate.Fps60,
+            "30" => ModelFrameRate.Fps30,
+            _ => ModelFrameRate.Display
+        } : ModelFrameRate.Display;
+    }
+
+    internal static string Serialize(ModelFrameRate rate) => rate switch
+    {
+        ModelFrameRate.Fps60 => "60",
+        ModelFrameRate.Fps30 => "30",
+        _ => "display"
+    };
+
+    public static bool Save(string theme, bool? modelGpuAcceleration = null, ModelFrameRate? modelFrameRate = null)
     {
         string? temporary = null;
         try
@@ -27,6 +46,7 @@ internal static class ThemePreferences
             var preferences = Read();
             preferences["theme"] = theme;
             if (modelGpuAcceleration is { } enabled) preferences["modelGpuAcceleration"] = enabled;
+            if (modelFrameRate is { } rate) preferences["modelFrameRate"] = Serialize(rate);
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
             temporary = SettingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
             File.WriteAllText(temporary, preferences.ToJsonString());

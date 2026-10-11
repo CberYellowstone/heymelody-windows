@@ -39,8 +39,8 @@
       <Style Selector="^:disabled"><Setter Property="Opacity" Value="0.5" /></Style>
     </ControlTheme>
   </UserControl.Resources>
-  <Grid RowDefinitions="Auto,*">
-    <StackPanel Margin="24,12,24,16" Spacing="12">
+  <Grid RowDefinitions="Auto,Auto,*">
+    <StackPanel Margin="24,12,24,12" Spacing="12">
       <TextBlock Text="选择要显示的耳机" FontSize="24" FontWeight="SemiBold" />
       <TextBlock Text="勾选后，这些设备将显示在主界面的设备栏中。" TextWrapping="Wrap"
                  Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
@@ -51,19 +51,25 @@
                   IsEnabled="{Binding CanRefresh}" Content="蓝牙设置" />
         </Border>
       </Grid>
-      <ProgressBar IsIndeterminate="True" Height="2" IsVisible="{Binding Busy}" />
+      <!-- A fixed 3 px slot that fades, so the header never jumps; the bar animates only while busy. -->
+      <ProgressBar x:Name="ActivityBar" Classes="activity" Classes.active="{Binding Busy}" IsIndeterminate="{Binding Busy}"
+                   AutomationProperties.Name="正在处理" />
     </StackPanel>
-    <Grid Grid.Row="1">
+    <!-- Errors stay above the list instead of scrolling away with it. -->
+    <fa:FAInfoBar x:Name="ErrorNotice" Grid.Row="1" Margin="24,0,24,8" IsClosable="False" Severity="Error" IsOpen="{Binding HasError}"
+                  IsVisible="{Binding HasError}" Title="操作未完成" Message="{Binding Error}" />
+    <Grid Grid.Row="2">
       <ScrollViewer x:Name="DeviceScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel x:Name="ScrollContent" Margin="16,0,16,84" Spacing="8">
-          <fa:FAInfoBar x:Name="ErrorNotice" IsClosable="False" Severity="Error" IsOpen="{Binding HasError}"
-                        IsVisible="{Binding HasError}" Title="操作未完成" Message="{Binding Error}" />
+        <!-- 12 px plus the rows' 12 px padding aligns their text with the 24 px header. -->
+        <StackPanel x:Name="ScrollContent" Margin="12,0,12,84" Spacing="8">
           <StackPanel x:Name="EmptyNotice" IsVisible="{Binding ShowEmpty}" Margin="12,24" Spacing="8">
             <TextBlock Text="暂无已配对的音频设备" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
             <TextBlock Text="在蓝牙设置中添加设备后刷新列表。" TextWrapping="Wrap"
                        Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
           </StackPanel>
-          <ItemsControl x:Name="DeviceList" ItemsSource="{Binding Devices}" IsEnabled="{Binding CanRefresh}">
+          <!-- One Tab stop for the whole list; arrow keys move between rows and Space toggles. -->
+          <ItemsControl x:Name="DeviceList" ItemsSource="{Binding Devices}" IsEnabled="{Binding CanRefresh}"
+                        KeyboardNavigation.TabNavigation="Once" XYFocus.NavigationModes="Keyboard">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="local:DeviceCandidateRow">
                 <CheckBox Theme="{StaticResource DeviceRowTheme}" IsChecked="{Binding IsChecked, Mode=TwoWay}"
@@ -90,8 +96,7 @@
       <Border x:Name="ActionOverlay" Height="72" VerticalAlignment="Bottom" Padding="24,12"
               Background="{DynamicResource SolidBackgroundFillColorSecondaryBrush}">
         <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
-          <TextBlock Text="{Binding SelectionText}" VerticalAlignment="Center" FontSize="12"
-                     Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+          <TextBlock Text="{Binding SelectionText}" VerticalAlignment="Center" Classes="caption" TextTrimming="CharacterEllipsis" />
           <Button x:Name="SaveButton" Grid.Column="1" Content="保存" Classes="accent" Command="{Binding SaveCommand}"
                   IsEnabled="{Binding CanCommit}" MinWidth="80" VerticalAlignment="Center" />
           <Button x:Name="CancelButton" Grid.Column="2" Content="取消" Command="{Binding CancelCommand}"

@@ -60,16 +60,22 @@ internal static class MainLayoutTests
                             "All optional main-interface groups start collapsed, including demo groups and the operation log.");
                         CheckHeader(view, vm, window);
                         CheckIcons(view);
-                        var fit = view.FindControl<FASettingsExpanderItem>("FitTestPanel")!;
+                        var fit = view.FindControl<FASettingsExpander>("FitTestPanel")!;
                         var hearing = view.FindControl<FASettingsExpander>("HearingPanel")!;
                         var information = view.FindControl<FASettingsExpander>("DeviceInfoPanel")!;
                         var scroll = view.FindControl<ScrollViewer>("ControlScroll")!;
                         var fitTop = fit.TranslatePoint(default, scroll)!.Value.Y;
                         var informationTop = information.TranslatePoint(default, scroll)!.Value.Y;
                         var hearingTop = hearing.TranslatePoint(default, scroll)!.Value.Y;
-                        Check(Math.Abs(informationTop - fitTop - fit.Bounds.Height - 8) < .6
-                            && Math.Abs(fitTop - hearingTop - hearing.Bounds.Height - 8) < .6,
-                            "Fit-test and device-information cards use the same actual eight-pixel gap as adjacent groups.");
+                        var groups = new[] { "SoundGroupHeader", "HearingGroupHeader", "DeviceGroupHeader" }
+                            .Select(name => view.FindControl<TextBlock>(name)!).ToArray();
+                        var groupTops = groups.Select(header => header.TranslatePoint(default, scroll)!.Value.Y).ToArray();
+                        Check(Math.Abs(fitTop - hearingTop - hearing.Bounds.Height - 8) < .6
+                            && fit.Items.Count == 0 && fit.Footer is Button && fit.IconSource is not null
+                            && groups.Select(header => header.Text).SequenceEqual(["声音", "听感与佩戴", "设备"])
+                            && groupTops[0] < view.FindControl<FASettingsExpander>("AncPanel")!.TranslatePoint(default, scroll)!.Value.Y
+                            && groupTops[1] < hearingTop && groupTops[2] > fitTop + fit.Bounds.Height && informationTop > groupTops[2],
+                            "Settings are grouped as sound, hearing and fit, then device; the fit card sits eight pixels below Golden Sound.");
                         var copy = view.FindControl<Button>("CopyDeviceInfoButton")!;
                         var copyContent = (StackPanel)copy.Content!;
                         Check(copy.IsEnabled && information.Footer is null && !information.IsExpanded
@@ -273,7 +279,7 @@ internal static class MainLayoutTests
         var sections = view.GetVisualDescendants().OfType<FeatureSectionView>().Select(section => (FASettingsExpander)section.Content!).ToArray();
         Check(expanders.All(expander => expander.IconSource is not null && !string.IsNullOrEmpty(expander.Description))
             && view.FindControl<FASettingsExpander>("EqualizerPanel")!.IconSource is FAFontIconSource { Glyph: "\uE9E9" }
-            && view.FindControl<FASettingsExpanderItem>("FitTestPanel")!.IconSource is not null
+            && view.FindControl<FASettingsExpander>("FitTestPanel")!.IconSource is not null
             && sections.Length == ((MainViewModel)view.DataContext!).FeatureSections.Count
             && view.FindControl<Border>("BatteryPanel")!.GetVisualDescendants().OfType<FAIconSourceElement>()
                 .Count(icon => icon.IconSource is FAPathIconSource) == 3,

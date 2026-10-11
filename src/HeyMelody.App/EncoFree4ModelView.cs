@@ -12,16 +12,25 @@ using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using HeyMelodyWindows.Ui;
 
 namespace HeyMelodyWindows.App;
 
 /// <summary>Experimental artwork viewport. Rendering and glTF loading belong to Ava3DControl.</summary>
 public class DeviceModelView : UserControl
 {
+    // Display frames can arrive slightly early; a capped rate still draws on every second (60) or fourth (30) one.
+    private const double FrameTolerance = .002;
+    private const int VerifiedModelCacheCapacity = 2;
+    private static readonly LinkedList<(string Sha256, byte[] Bytes)> VerifiedModels = new();
     private readonly DeviceModelVisual _visual;
     private IDisposable? _resourceLease;
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1d / 30) };
     private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private readonly TextBlock _diagnostics = new()
+    {
+        IsHitTestVisible = false, IsVisible = false, FontSize = 12, Margin = new Thickness(8),
+        HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top
+    };
     private readonly TextBlock _status = new()
     {
         Text = "正在加载耳机模型…", IsHitTestVisible = false,
@@ -34,9 +43,15 @@ public class DeviceModelView : UserControl
     private GltfModel? _model;
     private SoftwareModelMaterials? _materials;
     private bool? _softwareProfile;
+    private bool _materialsPending;
     private bool _attached;
     private int _loadGeneration;
-    private double _lastTick;
+    private TopLevel? _frameSource;
+    private bool _loopActive;
+    private int _loopGeneration;
+    private TimeSpan? _lastFrame;
+    private double _sinceCamera;
+    private float _appliedYaw = float.NaN, _appliedPitch = float.NaN;
 
     public Ava3DView Viewport { get; } = new()
     {
@@ -45,23 +60,25 @@ public class DeviceModelView : UserControl
         AutoFit = false,
         IsOrbitEnabled = false, IsZoomEnabled = false, IsPanEnabled = false,
         IsPickingEnabled = false, IsAnimationEnabled = false,
+        // Frames are requested by the vsync-aligned loop below; MaxFrameRate 0 leaves pacing to the display.
         RenderTrigger = RenderTrigger.OnDemand,
-        MaxFrameRate = 30, SampleCount = 4
+        MaxFrameRate = 0, SampleCount = 4
     };
     public ModelOrbitMotion Motion { get; } = new();
     public bool ModelReady { get; private set; }
     public string? LoadError { get; private set; }
     public long CameraUpdateCount { get; private set; }
-    public bool AnimationActive => _timer.IsEnabled;
+    /// <summary>Whether the per-frame rotation loop is running (visible, attached and not minimised).</summary>
+    public bool AnimationActive => _loopActive;
 
     public DeviceModelView(DeviceModelVisual visual)
     {
         _visual = visual;
         ApplyRenderingPreference();
         ClipToBounds = true;
-        Content = new Grid { Children = { Viewport, _status } };
+        Content = new Grid { Children = { Viewport, _status, _diagnostics } };
         AutomationProperties.SetName(this, "耳机三维模型，可用鼠标拖动旋转");
-        _timer.Tick += OnTick;
+        AutomationProperties.SetAccessibilityView(_diagnostics, AccessibilityView.Raw);
         Viewport.SceneReady += (_, _) =>
         {
             if (Viewport.Scene is null) return;
@@ -72,7 +89,9 @@ public class DeviceModelView : UserControl
         Viewport.PropertyChanged += (_, change) =>
         {
             if (change.Property == BoundsProperty) FitCamera();
-            if (change.Property == Ava3DView.InfoProperty) ApplySceneRenderingProfile();
+            if (change.Property != Ava3DView.InfoProperty) return;
+            ApplySceneRenderingProfile();
+            UpdateDiagnostics();
         };
         Viewport.PointerPressed += OnPointerPressed;
         Viewport.PointerMoved += OnPointerMoved;
@@ -93,13 +112,7 @@ public class DeviceModelView : UserControl
     {
         return await Task.Run(() =>
         {
-            using var stream = visual.File.Open();
-            if (stream.Length is <= 0 or > 64 * 1024 * 1024) throw new InvalidDataException("Model size exceeds its limit.");
-            var bytes = new byte[checked((int)stream.Length)];
-            stream.ReadExactly(bytes);
-            var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-            if (!string.IsNullOrEmpty(visual.File.Sha256) && !StringComparer.OrdinalIgnoreCase.Equals(hash, visual.File.Sha256))
-                throw new InvalidDataException("Model integrity check failed.");
+            var (bytes, hash) = ReadVerifiedModel(visual.File);
             var model = GltfLoader.LoadModel(bytes, "Earbuds");
             // This verified OEM asset marks its solid material as BLEND, although
             // its RGB base-color map and factor are fully opaque. Alpha rendering
@@ -116,10 +129,43 @@ public class DeviceModelView : UserControl
         }).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Reads and verifies a model file. Re-attaching after a device or layout switch reuses the last two verified files
+    /// instead of reading and hashing up to 64 MB again; every view still parses its own independent scene.
+    /// </summary>
+    private static (byte[] Bytes, string Sha256) ReadVerifiedModel(ArtworkFile file)
+    {
+        var expected = file.Sha256?.ToLowerInvariant();
+        if (!string.IsNullOrEmpty(expected))
+            lock (VerifiedModels)
+                for (var node = VerifiedModels.First; node is not null; node = node.Next)
+                    if (node.Value.Sha256 == expected)
+                    {
+                        VerifiedModels.Remove(node);
+                        VerifiedModels.AddFirst(node);
+                        return (node.Value.Bytes, expected);
+                    }
+        using var stream = file.Open();
+        if (stream.Length is <= 0 or > 64 * 1024 * 1024) throw new InvalidDataException("Model size exceeds its limit.");
+        var bytes = new byte[checked((int)stream.Length)];
+        stream.ReadExactly(bytes);
+        var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        if (!string.IsNullOrEmpty(expected) && hash != expected) throw new InvalidDataException("Model integrity check failed.");
+        if (!string.IsNullOrEmpty(expected))
+            lock (VerifiedModels)
+            {
+                VerifiedModels.AddFirst((hash, bytes));
+                while (VerifiedModels.Count > VerifiedModelCacheCapacity) VerifiedModels.RemoveLast();
+            }
+        return (bytes, hash);
+    }
+
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         ApplyRenderingPreference();
         ModelRenderingPreferences.Changed += OnRenderingPreferenceChanged;
+        RenderDiagnostics.Changed += OnDiagnosticsChanged;
+        UpdateDiagnostics();
         base.OnAttachedToVisualTree(e);
         _attached = true;
         try { _resourceLease = _visual.File.Acquire(); }
@@ -138,6 +184,7 @@ public class DeviceModelView : UserControl
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         ModelRenderingPreferences.Changed -= OnRenderingPreferenceChanged;
+        RenderDiagnostics.Changed -= OnDiagnosticsChanged;
         _attached = false;
         ++_loadGeneration;
         if (_window is not null) _window.PropertyChanged -= OnWindowPropertyChanged;
@@ -146,6 +193,7 @@ public class DeviceModelView : UserControl
         RefreshActivity();
         _model = null;
         _materials = null;
+        _materialsPending = false;
         _softwareProfile = null;
         Viewport.Scene = null;
         ModelReady = false;
@@ -161,7 +209,8 @@ public class DeviceModelView : UserControl
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var requested = new Size(Math.Min(600, availableSize.Width), Math.Min(520, availableSize.Height));
+        // The hero's tier limits (up to the wide tier) bound the actual size; this only stops unbounded growth.
+        var requested = new Size(Math.Min(UiMetrics.WideHeroMaxWidth, availableSize.Width), Math.Min(UiMetrics.WideHeroMaxHeight, availableSize.Height));
         base.MeasureOverride(requested);
         return requested;
     }
@@ -172,11 +221,11 @@ public class DeviceModelView : UserControl
         {
             using var loadingLease = _visual.File.Acquire();
             var model = await LoadModelAsync(_visual);
-            // Decode and sample the maps once, away from the UI/render threads.
-            var materials = await Task.Run(() => new SoftwareModelMaterials(model));
             if (!_attached || generation != _loadGeneration) return;
             _model = model;
-            _materials = materials;
+            // Software materials decode and sample every map; they are built only if the CPU renderer is used.
+            _materials = null;
+            _materialsPending = false;
             _softwareProfile = null;
             ApplySceneRenderingProfile();
             model.Scene.ShadowMapSize = 1024;
@@ -217,7 +266,7 @@ public class DeviceModelView : UserControl
 
     private void ApplySceneRenderingProfile()
     {
-        if (_model is null || _materials is null) return;
+        if (_model is null) return;
         // Automatic can also fall back to software. Ignore stale diagnostics while
         // changing the requested backend, then follow the actual renderer once known.
         var info = Viewport.Info;
@@ -225,8 +274,9 @@ public class DeviceModelView : UserControl
             || (info.FramesRendered > 0 && info.PreferredBackend == Viewport.PreferredBackend
                 && info.ActiveBackend == RenderBackendKind.Software);
         if (_softwareProfile == software) return;
+        if (software && _materials is null) { BuildSoftwareMaterials(_model); return; }
         _softwareProfile = software;
-        _materials.Apply(software);
+        _materials?.Apply(software);
         var scene = _model.Scene;
         // CPU lighting is tone-mapped before its base-colour map is multiplied in.
         // A bright uniform environment clips that lighting and erases curvature.
@@ -237,6 +287,23 @@ public class DeviceModelView : UserControl
         Viewport.InvalidateScene();
     }
 
+    private void BuildSoftwareMaterials(GltfModel model)
+    {
+        if (_materialsPending) return;
+        _materialsPending = true;
+        var generation = _loadGeneration;
+        _ = Task.Run(() => new SoftwareModelMaterials(model)).ContinueWith(task => Dispatcher.UIThread.Post(() =>
+        {
+            if (generation != _loadGeneration || !ReferenceEquals(model, _model)) return;
+            _materialsPending = false;
+            if (task.IsCompletedSuccessfully) _materials = task.Result;
+            else Trace.WriteLine(task.Exception);
+            // Without software materials the scene keeps its original maps, which the CPU renderer can still draw.
+            if (_materials is null) _softwareProfile = null;
+            ApplySceneRenderingProfile();
+        }), TaskScheduler.Default);
+    }
+
     private void FitCamera()
     {
         var size = Viewport.Bounds.Size;
@@ -245,6 +312,7 @@ public class DeviceModelView : UserControl
         // layouts at the same scale; only narrow views need extra horizontal clearance.
         var margin = 1.08f * Math.Max(1, (float)(size.Height / size.Width));
         Viewport.Camera.Fit(_model.Root.WorldBounds, margin: margin);
+        _appliedYaw = _appliedPitch = float.NaN;
         ApplyCamera();
     }
 
@@ -258,34 +326,84 @@ public class DeviceModelView : UserControl
         var active = _attached && IsVisible && _window?.IsVisible == true
             && _window.WindowState != WindowState.Minimized && _model is not null;
         Motion.SetActive(active);
-        _lastTick = _clock.Elapsed.TotalSeconds;
-        if (active) _timer.Start();
-        else
+        if (!active)
         {
-            _timer.Stop();
+            StopFrameLoop();
             ReleasePointer();
+            return;
         }
+        if (_loopActive || TopLevel.GetTopLevel(this) is not { } source) return;
+        _frameSource = source;
+        _loopActive = true;
+        _lastFrame = null;
+        _sinceCamera = double.MaxValue;
+        RequestFrame(++_loopGeneration);
     }
 
-    private void OnTick(object? sender, EventArgs e)
+    private void StopFrameLoop()
     {
-        var now = _clock.Elapsed.TotalSeconds;
-        Motion.Step(Math.Clamp(now - _lastTick, 0, .1));
-        _lastTick = now;
+        _loopActive = false;
+        _frameSource = null;
+        ++_loopGeneration;
+    }
+
+    // The callback runs once per composited frame, at the display's refresh rate, unlike a coarse Win32 timer.
+    private void RequestFrame(int generation) => _frameSource?.RequestAnimationFrame(time => OnFrame(time, generation));
+
+    private void OnFrame(TimeSpan time, int generation)
+    {
+        if (generation != _loopGeneration || !_loopActive) return;
+        var dt = _lastFrame is { } last ? Math.Clamp((time - last).TotalSeconds, 0, .1) : 0;
+        _lastFrame = time;
+        Motion.Step(dt);
+        _sinceCamera += dt;
         var interactive = Motion.Phase is ModelOrbitPhase.Dragging or ModelOrbitPhase.Inertia;
-        var rate = interactive ? 60 : 30;
-        _timer.Interval = TimeSpan.FromSeconds(1d / rate);
-        Viewport.MaxFrameRate = rate;
-        ApplyCamera();
+        var interval = FrameInterval(ModelRenderingPreferences.FrameRate, _softwareProfile == true, interactive,
+            Viewport.Info.RenderMilliseconds);
+        if (_sinceCamera + FrameTolerance >= interval)
+        {
+            _sinceCamera = Math.Clamp(_sinceCamera - interval, 0, interval);
+            ApplyCamera();
+        }
+        RequestFrame(generation);
+    }
+
+    /// <summary>Minimum seconds between camera updates; 0 draws on every display frame.</summary>
+    /// <remarks>
+    /// The CPU renderer draws inside the window's frame and manages about 55 fps on a 16-core desktop for a far larger
+    /// scene, so it keeps the earlier 30 fps idle rotation and at most 60 fps while dragging, slower if a frame takes longer.
+    /// </remarks>
+    internal static double FrameInterval(ModelFrameRate preference, bool software, bool interactive, double renderMilliseconds)
+    {
+        var interval = preference switch { ModelFrameRate.Fps60 => 1d / 60, ModelFrameRate.Fps30 => 1d / 30, _ => 0 };
+        if (!software) return interval;
+        var softwareInterval = interactive ? Math.Max(1d / 60, 1.3 * Math.Max(0, renderMilliseconds) / 1000) : 1d / 30;
+        return Math.Max(interval, softwareInterval);
     }
 
     private void ApplyCamera()
     {
         if (_model is null) return;
-        Viewport.Camera.Yaw = (float)Motion.Yaw;
-        Viewport.Camera.Pitch = (float)Motion.Pitch;
+        var yaw = (float)Motion.Yaw;
+        var pitch = (float)Motion.Pitch;
+        if (yaw == _appliedYaw && pitch == _appliedPitch) return;
+        _appliedYaw = yaw;
+        _appliedPitch = pitch;
+        Viewport.Camera.Yaw = yaw;
+        Viewport.Camera.Pitch = pitch;
         Viewport.InvalidateCamera();
         ++CameraUpdateCount;
+    }
+
+    private void OnDiagnosticsChanged(object? sender, EventArgs e) => UpdateDiagnostics();
+
+    private void UpdateDiagnostics()
+    {
+        _diagnostics.IsVisible = RenderDiagnostics.Enabled;
+        if (!RenderDiagnostics.Enabled) return;
+        var info = Viewport.Info;
+        _diagnostics.Text = $"3D {info.FramesPerSecond:0} fps · P95 {info.P95FrameMilliseconds:0.0} ms · 渲染 {info.RenderMilliseconds:0.0} ms"
+            + $" · {info.ActiveBackend} · MSAA {info.SampleCount}× · 延迟帧 {info.LateFrames}";
     }
 
     private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -302,8 +420,8 @@ public class DeviceModelView : UserControl
     {
         if (_pointer != e.Pointer) return;
         var point = e.GetPosition(Viewport);
+        // The frame loop applies the camera once per display frame, merging high-rate mouse input.
         Motion.MoveDrag(point.X, point.Y, _clock.Elapsed.TotalSeconds);
-        ApplyCamera();
         e.Handled = true;
     }
 

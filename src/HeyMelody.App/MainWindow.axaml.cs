@@ -26,6 +26,8 @@ public partial class MainWindow : FAAppWindow
     internal MainWindow(IHeadsetService service, bool preview, IDeviceManagerProcess? manager)
     {
         InitializeComponent();
+        Ui.Typography.ApplyTextOptions(this);
+        Ui.RenderDiagnostics.Attach(this);
         _service = service;
         _events = service as IHeadsetEventService;
         _manager = manager is null ? null : new TrackedDeviceManager(manager);
@@ -166,6 +168,7 @@ public partial class MainWindow : FAAppWindow
             prepared = await _viewModel.PrepareDeviceManagementAsync();
             if (!prepared || _closing) return;
             Page.IsEnabled = false;
+            ManagerOverlay.IsVisible = true;
             DeviceManagerOutcome result;
             while (true)
             {
@@ -198,6 +201,7 @@ public partial class MainWindow : FAAppWindow
         {
             if (prepared && !_closing) await _viewModel.CompleteDeviceManagementAsync(saved: false);
             _managing = false;
+            ManagerOverlay.IsVisible = false;
             if (!_closing) Page.IsEnabled = true;
         }
     }

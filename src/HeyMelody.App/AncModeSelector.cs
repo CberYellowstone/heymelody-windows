@@ -45,7 +45,10 @@ public sealed class AncModeSelector : UserControl
         { RefreshSelection(model); return; }
         _builtModel = model; _builtSource = model.ResourceSource; _builtModes = model.AncModes.ToArray(); _radios.Clear();
         var panel = new StackPanel { Spacing = 16, Margin = new Thickness(20, 16) };
-        var modes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, HorizontalAlignment = HorizontalAlignment.Center };
+        // Modes wrap instead of clipping when a resource defines more or longer names; arrow keys move between them.
+        var modes = new WrapPanel { Orientation = Orientation.Horizontal, ItemSpacing = 16, LineSpacing = 12,
+            HorizontalAlignment = HorizontalAlignment.Center };
+        Avalonia.Input.XYFocus.SetNavigationModes(modes, Avalonia.Input.XYFocusNavigationModes.Keyboard);
         foreach (var mode in model.AncModes)
         {
             var icon = DeviceVisuals.CreateAncGlyph(model.ResourceSource, mode.IconKey, mode.Key == model.SelectedAncMode?.Key
@@ -58,7 +61,8 @@ public sealed class AncModeSelector : UserControl
                 ? "AccentFillColorDefaultBrush" : "ControlFillColorSecondaryBrush"));
             var radio = new RadioButton { GroupName = "anc-" + GetHashCode(), IsChecked = mode.Key == model.SelectedAncMode?.Key,
                 IsEnabled = model.CanChooseAncMode, Content = new StackPanel { Spacing = 7, HorizontalAlignment = HorizontalAlignment.Center,
-                    Children = { circle, new TextBlock { Text = mode.Name, HorizontalAlignment = HorizontalAlignment.Center } } } };
+                    Children = { circle, new TextBlock { Text = mode.Name, HorizontalAlignment = HorizontalAlignment.Center,
+                        TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 88 } } } };
             radio.Theme = CircleTheme;
             AutomationProperties.SetName(radio, mode.Name);
             radio.Click += async (_, _) => { if (mode.Key != model.SelectedAncMode?.Key) await model.SelectAncModeAsync(mode); };
@@ -106,21 +110,26 @@ public sealed class AncModeSelector : UserControl
         _combo.IsEnabled = model.CanChooseAnc;
     }
 
-    private static ControlTheme CircleTheme => new(typeof(RadioButton))
+    // One shared theme for every mode button (it used to be created per button and per rebuild).
+    private static readonly ControlTheme CircleTheme = new(typeof(RadioButton))
     {
         Setters =
         {
             new Setter(TemplatedControl.TemplateProperty, new FuncControlTemplate<RadioButton>((_, scope) =>
                 new Border { Name = "focus", Padding = new Thickness(5), CornerRadius = new CornerRadius(6),
-                    BorderThickness = new Thickness(2), BorderBrush = Brushes.Transparent,
+                    BorderThickness = new Thickness(2), BorderBrush = Brushes.Transparent, Background = Brushes.Transparent,
                     Child = new ContentPresenter { Name = "PART_ContentPresenter",
                         [!ContentPresenter.ContentProperty] = new Avalonia.Data.TemplateBinding(ContentControl.ContentProperty) } })),
             new Setter(TemplatedControl.IsTemplateFocusTargetProperty, true)
         },
         Children =
         {
+            new Style(x => x.Nesting().Class(":pointerover").Template().OfType<Border>().Name("focus"))
+            { Setters = { new Setter(Border.BackgroundProperty, new DynamicResourceExtension("SubtleFillColorSecondaryBrush")) } },
+            new Style(x => x.Nesting().Class(":pressed").Template().OfType<Border>().Name("focus"))
+            { Setters = { new Setter(Border.BackgroundProperty, new DynamicResourceExtension("SubtleFillColorTertiaryBrush")) } },
             new Style(x => x.Nesting().Class(":focus-visible").Template().OfType<Border>().Name("focus"))
-            { Setters = { new Setter(Border.BorderBrushProperty, new DynamicResourceExtension("TextFillColorPrimaryBrush")), new Setter(Border.BorderThicknessProperty, new Thickness(2)) } },
+            { Setters = { new Setter(Border.BorderBrushProperty, new DynamicResourceExtension("FocusStrokeColorOuterBrush")), new Setter(Border.BorderThicknessProperty, new Thickness(2)) } },
             new Style(x => x.Nesting().Class(":disabled")) { Setters = { new Setter(OpacityProperty, .5) } }
         }
     };

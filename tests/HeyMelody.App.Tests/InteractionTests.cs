@@ -272,9 +272,9 @@ internal static class InteractionTests
             var snapshot = service.Next(); snapshot.GameMode = true;
             service.Push(FeatureTestData.Decorate(snapshot)); Dispatcher.UIThread.RunJobs();
             section = view.GetVisualDescendants().OfType<FASettingsExpander>().Single(expander => Equals(expander.Header, "连接与体验"));
-            Check(!ReferenceEquals(section, original) && section.IsExpanded
+            Check(ReferenceEquals(section, original) && section.IsExpanded
                 && view.FindControl<FASettingsExpander>("EqualizerPanel")!.IsExpanded && !anc.IsExpanded,
-                "A replacement definition with the same section ID and fixed groups retain the user's expansion choice.");
+                "A replacement definition with the same section ID updates the existing expander and keeps the user's expansion choice.");
             section.IsExpanded = false;
             snapshot = service.Next(); snapshot.GameMode = false;
             service.Push(FeatureTestData.Decorate(snapshot)); Dispatcher.UIThread.RunJobs();

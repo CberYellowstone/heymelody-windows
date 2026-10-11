@@ -12,12 +12,17 @@ using SkiaSharp;
 namespace HeyMelodyWindows.Artwork;
 
 /// <summary>CPU-decoded animated WebP artwork; each frame is composed by Skia's image codec.</summary>
+/// <remarks>
+/// Frames are decoded on a worker thread and published as immutable images; the render thread only draws the newest
+/// one. Decoding inside OnRender used to cost 3-10 ms of the frame (a whole dependency chain when looping) plus a
+/// full-frame copy on every draw.
+/// </remarks>
 public class AnimatedWebpView(ILottieSource source, Func<Control?>? fallback = null,
     Func<Control?>? poster = null) : UserControl
 {
     private CompositionCustomVisual? _composition;
     private Window? _window;
-    private Visual[] _visibilityAncestors = [];
+    private VisibilityTracker? _visibility;
     private DispatcherTimer? _poster;
     private int _generation;
     private bool _attached;
@@ -33,8 +38,7 @@ public class AnimatedWebpView(ILottieSource source, Func<Control?>? fallback = n
         base.OnAttachedToVisualTree(e);
         _attached = true;
         _window = TopLevel.GetTopLevel(this) as Window;
-        _visibilityAncestors = this.GetVisualAncestors().ToArray();
-        foreach (var ancestor in _visibilityAncestors) ancestor.PropertyChanged += VisibilityChanged;
+        _visibility = new VisibilityTracker(this, RefreshActivity);
         LoadError = null;
         int generation = ++_generation;
         if (poster is not null)
@@ -87,8 +91,8 @@ public class AnimatedWebpView(ILottieSource source, Func<Control?>? fallback = n
     {
         _attached = false; ++_generation;
         StopPoster();
-        foreach (var ancestor in _visibilityAncestors) ancestor.PropertyChanged -= VisibilityChanged;
-        _visibilityAncestors = [];
+        _visibility?.Dispose();
+        _visibility = null;
         _window = null;
         _composition?.SendHandlerMessage(Command.Dispose);
         ElementComposition.SetElementChildVisual(this, null);
@@ -106,8 +110,6 @@ public class AnimatedWebpView(ILottieSource source, Func<Control?>? fallback = n
         ? base.MeasureOverride(availableSize) : Stretch.Uniform.CalculateSize(availableSize, _sourceSize);
     private void StopPoster() { _poster?.Stop(); _poster = null; }
     private void Resize() { if (_composition is not null) _composition.Size = new Vector2((float)Bounds.Width, (float)Bounds.Height); }
-    private void VisibilityChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
-    { if (e.Property == IsVisibleProperty || e.Property == Window.WindowStateProperty) RefreshActivity(); }
     private void RefreshActivity()
     {
         AnimationActive = _attached && IsEffectivelyVisible && _window is { IsVisible: true, WindowState: not WindowState.Minimized };
@@ -117,52 +119,109 @@ public class AnimatedWebpView(ILottieSource source, Func<Control?>? fallback = n
     private enum Command { Play, Pause, Dispose }
     private sealed class WebpHandler(AnimatedWebpPlayback playback, Action rendered, Action<Exception> failed) : CompositionCustomVisualHandler
     {
+        // The worker owns the playback while decoding; the gate also orders disposal after the last decode.
+        private readonly object _gate = new();
         private AnimatedWebpPlayback? _playback = playback;
+        private SKImage? _current = playback.Snapshot(), _pending;
+        private int _requested = -1, _decoded, _decoding;
+        private volatile bool _disposed, _faulted;
         private bool _playing, _settled;
         private TimeSpan? _lastFrame;
         private double _elapsed;
         private int _frame;
+
         public override void OnMessage(object message)
         {
             if (message is not Command command) return;
-            if (command == Command.Dispose) { _playing = false; _playback?.Dispose(); _playback = null; return; }
+            if (command == Command.Dispose) { Dispose(); return; }
             _playing = command == Command.Play;
             _lastFrame = null;
             Invalidate();
             if (_playing && !_settled) RegisterForNextAnimationFrameUpdate();
         }
+
         public override void OnAnimationFrameUpdate()
         {
-            if (!_playing || _playback is null || _settled) return;
+            if (_disposed) return;
+            // A frame decoded since the last composition replaces the drawn one here, on the render thread.
+            if (Interlocked.Exchange(ref _pending, null) is { } ready)
+            {
+                _current?.Dispose();
+                _current = ready;
+                Invalidate();
+            }
+            if (!_playing || _playback is not { } playback || _settled) return;
             if (_lastFrame is { } last) _elapsed += Math.Max(0, (CompositionNow - last).TotalSeconds);
             _lastFrame = CompositionNow;
-            int next = _playback.FrameAt(_elapsed, out _settled);
-            if (next != _frame) { _frame = next; Invalidate(); }
-            if (!_settled) RegisterForNextAnimationFrameUpdate();
+            int next = playback.FrameAt(_elapsed, out _settled);
+            if (next != _frame) { _frame = next; RequestDecode(next); }
+            // Keep ticking until the last requested frame has been shown.
+            if (!_settled || Volatile.Read(ref _decoding) != 0 || Volatile.Read(ref _pending) is not null) RegisterForNextAnimationFrameUpdate();
         }
+
         public override void OnRender(ImmediateDrawingContext context)
         {
-            if (_playback is not { } loaded || context.TryGetFeature<ISkiaSharpApiLeaseFeature>() is not { } feature) return;
+            if (_current is not { } image || context.TryGetFeature<ISkiaSharpApiLeaseFeature>() is not { } feature) return;
             var bounds = GetRenderBounds();
             if (bounds.Width <= 0 || bounds.Height <= 0) return;
+            double scale = Math.Min(bounds.Width / image.Width, bounds.Height / image.Height);
+            float width = (float)(image.Width * scale), height = (float)(image.Height * scale);
+            float left = (float)(bounds.Width - width) / 2, top = (float)(bounds.Height - height) / 2;
+            using var clip = context.PushClip(bounds);
+            using var lease = feature.Lease();
+            lease.SkCanvas.DrawImage(image, new SKRect(left, top, left + width, top + height), new SKSamplingOptions(SKFilterMode.Linear));
+            rendered();
+        }
+
+        private void RequestDecode(int index)
+        {
+            Volatile.Write(ref _requested, index);
+            if (Interlocked.CompareExchange(ref _decoding, 1, 0) == 0) _ = Task.Run(Decode);
+        }
+
+        private void Decode()
+        {
             try
             {
-                loaded.SeekFrame(_frame);
-                var frame = loaded.Frame;
-                double scale = Math.Min(bounds.Width / frame.Width, bounds.Height / frame.Height);
-                float width = (float)(frame.Width * scale), height = (float)(frame.Height * scale);
-                float left = (float)(bounds.Width - width) / 2, top = (float)(bounds.Height - height) / 2;
-                using var clip = context.PushClip(bounds);
-                using var lease = feature.Lease();
-                using var image = SKImage.FromBitmap(frame);
-                lease.SkCanvas.DrawImage(image, new SKRect(left, top, left + width, top + height), new SKSamplingOptions(SKFilterMode.Linear));
-                rendered();
+                while (!_disposed && !_faulted)
+                {
+                    var target = Volatile.Read(ref _requested);
+                    SKImage image;
+                    lock (_gate)
+                    {
+                        if (_playback is not { } playback) return;
+                        playback.SeekFrame(target);
+                        image = playback.Snapshot();
+                    }
+                    // An unshown older frame is simply discarded.
+                    Interlocked.Exchange(ref _pending, image)?.Dispose();
+                    if (_disposed) Interlocked.Exchange(ref _pending, null)?.Dispose();
+                    Volatile.Write(ref _decoded, target);
+                    if (Volatile.Read(ref _requested) == target) return;
+                }
             }
             catch (Exception error)
             {
-                _playing = false; _playback.Dispose(); _playback = null;
-                failed(error);
+                _faulted = true;
+                if (!_disposed) failed(error);
             }
+            finally
+            {
+                Volatile.Write(ref _decoding, 0);
+                // A request that arrived between the last check and releasing the worker starts it again.
+                if (!_disposed && !_faulted && Volatile.Read(ref _requested) != Volatile.Read(ref _decoded)
+                    && Interlocked.CompareExchange(ref _decoding, 1, 0) == 0) _ = Task.Run(Decode);
+            }
+        }
+
+        private void Dispose()
+        {
+            _disposed = true;
+            _playing = false;
+            lock (_gate) { _playback?.Dispose(); _playback = null; }
+            Interlocked.Exchange(ref _pending, null)?.Dispose();
+            _current?.Dispose();
+            _current = null;
         }
     }
 }
@@ -228,6 +287,14 @@ internal sealed class AnimatedWebpPlayback : IDisposable
         int index = Array.BinarySearch(_frameEnds, time);
         return index >= 0 ? Math.Min(index + 1, FrameCount - 1) : ~index;
     }
+    /// <summary>An immutable copy of the current frame, safe to draw on the render thread while the next one decodes.</summary>
+    public SKImage Snapshot()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return SKImage.FromPixelCopy(Frame.Info, Frame.GetPixels(), Frame.RowBytes)
+            ?? throw new InvalidDataException("Animated WebP frame could not be copied.");
+    }
+
     public void SeekFrame(int index)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
