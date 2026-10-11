@@ -40,8 +40,6 @@ public partial class MainView : UserControl
     private readonly Dictionary<string, bool> _sectionExpansion = new(StringComparer.Ordinal);
     private readonly ObservableCollection<FeatureSectionSlot> _soundSections = [];
     private readonly ObservableCollection<FeatureSectionSlot> _deviceSections = [];
-    private const int RecentLogLines = 20;
-    private bool _copyingLog;
     private bool _prewarmQueued;
     public DeviceVisualCatalog VisualCatalog { get; } = new();
     private MainViewModel? ViewModel => DataContext as MainViewModel;
@@ -64,6 +62,7 @@ public partial class MainView : UserControl
         DataContextChanged += (_, _) =>
         {
             CancelAddDeviceHold();
+            CancelDeviceGesture();
             if (_observedViewModel is not null) _observedViewModel.PropertyChanged -= ViewModelPropertyChanged;
             VisualCatalog.Clear();
             _sectionExpansion.Clear();
@@ -79,7 +78,6 @@ public partial class MainView : UserControl
             UpdateHeaderWarnings();
             ResetDeviceInfoCopyFeedback();
             SyncFeatureSections();
-            UpdateOperationLog();
             RequestDeviceSelectionSync();
             RequestDeviceCenter();
         };
@@ -104,7 +102,6 @@ public partial class MainView : UserControl
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName == nameof(MainViewModel.WarningsText)) UpdateHeaderWarnings();
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.FeatureSections)
             or nameof(MainViewModel.EqualizerFeatures)) SyncFeatureSections();
-        if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName == nameof(MainViewModel.LogText)) UpdateOperationLog();
     }
 
     /// <summary>
@@ -119,7 +116,8 @@ public partial class MainView : UserControl
         // An empty group list would still add the stack's spacing.
         SoundSectionsView.IsVisible = _soundSections.Count != 0;
         DeviceSectionsView.IsVisible = _deviceSections.Count != 0;
-        FeatureRows.Reconcile(EqualizerFeaturesView.Items, ViewModel?.EqualizerFeatures ?? []);
+        // BassWave rows follow the equalizer content (item 0) as rows of the same expander.
+        FeatureRows.Reconcile(EqualizerPanel.Items, ViewModel?.EqualizerFeatures ?? [], start: 1);
         QueueExpanderPrewarm();
 
         static void Sync(ObservableCollection<FeatureSectionSlot> slots, IReadOnlyList<FeatureSectionViewModel> sections)
@@ -158,34 +156,6 @@ public partial class MainView : UserControl
             if (control is TemplatedControl templated) templated.ApplyTemplate();
             foreach (var child in control.GetLogicalChildren().OfType<Control>()) Prewarm(child);
         }
-    }
-
-    private void UpdateOperationLog()
-    {
-        var lines = (ViewModel?.LogText ?? "").Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
-        var recent = lines.Length <= RecentLogLines ? lines : lines[^RecentLogLines..];
-        OperationLogText.Text = recent.Length == 0 ? "暂无操作记录" : string.Join(Environment.NewLine, recent);
-        OperationLogSummary.Text = lines.Length > RecentLogLines ? $"显示最近 {RecentLogLines} 条，共 {lines.Length} 条" : "";
-        OperationLogCopyStatus.Text = "";
-        CopyOperationLogButton.IsEnabled = lines.Length != 0 && !_copyingLog;
-    }
-
-    private async void CopyOperationLog_Click(object? sender, RoutedEventArgs e) => await CopyOperationLogAsync();
-
-    internal async Task CopyOperationLogAsync()
-    {
-        if (_copyingLog || ViewModel is not { } vm || vm.LogText.Length == 0) return;
-        _copyingLog = true;
-        CopyOperationLogButton.IsEnabled = false;
-        try
-        {
-            if (WriteClipboardOverride is { } write) await write(vm.LogText);
-            else if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard) await clipboard.SetTextAsync(vm.LogText);
-            else throw new InvalidOperationException("Clipboard unavailable.");
-            OperationLogCopyStatus.Text = "已复制";
-        }
-        catch (Exception) { OperationLogCopyStatus.Text = "复制失败，请重试"; }
-        finally { _copyingLog = false; CopyOperationLogButton.IsEnabled = vm.LogText.Length != 0; }
     }
 
     private void UpdateHeaderWarnings()
@@ -404,6 +374,7 @@ public partial class MainView : UserControl
         _closingWindow = true;
         ResetDeviceInfoCopyFeedback();
         CancelAddDeviceHold();
+        CancelDeviceGesture();
         AddDeviceHost.IsEnabled = false;
         _bluetoothSettingsCancellation?.Cancel();
         _settingsCancellation?.Cancel();

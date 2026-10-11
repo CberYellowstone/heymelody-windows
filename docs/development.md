@@ -1,6 +1,6 @@
 # 开发、构建与验证
 
-本文描述 0.9.0 的源码入口和现行脚本。用户操作见根目录 [README](../README.md)，协作规则与文档导航见 [AGENTS.md](../AGENTS.md)，过去版本的结果见[版本记录](history/release-notes.md)。所有命令均从仓库根目录运行。
+本文描述 0.9.1 的源码入口和现行脚本。用户操作见根目录 [README](../README.md)，协作规则与文档导航见 [AGENTS.md](../AGENTS.md)，过去版本的结果见[版本记录](history/release-notes.md)。所有命令均从仓库根目录运行。
 
 ## 环境与模块
 
@@ -82,10 +82,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Test
 
 ## 发布与包校验
 
-仅在任务涉及发布时执行。脚本默认版本为 0.9.0，`-Version` 同时选择程序集与包版本，默认生成自包含 Windows x64、x86、ARM64 目录和合并 ZIP：
+仅在任务涉及发布时执行。脚本默认版本为 0.9.1，`-Version` 同时选择程序集与包版本，默认生成自包含 Windows x64、x86、ARM64 目录和合并 ZIP：
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.9.0
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.9.1
 ```
 
 自 0.9.0 起所有 `dotnet publish` 统一启用 ReadyToRun（`-p:PublishReadyToRun=true`），预编译只含 IL 的界面库，避免首次展开设置、拖动模型或打开向导时的 JIT 停顿；发布包因此变大，x64 机器可交叉编译 ARM64。`-Architectures x64` 可选择单架构；`-SkipTests` 跳过默认 runner。普通构建拒绝已有目标目录或 ZIP；`-FinalizeOnly` 要求对应目录已存在且 ZIP 尚不存在，并跳过默认测试与 `dotnet publish`，封装已有输出。调整参数前先阅读脚本入口与条件，避免把跳过测试的产物称为完整验证。
@@ -95,16 +95,16 @@ App、DeviceManager、FitTest、HearingSetup 共用每个 GUI 目录的运行时
 PowerShell 7 的 `tools/Verify-Release.ps1` 固定检查三架构目录和 `_AllArchitectures.zip`，收据固定写入 `release/HeyMelody_Windows_<版本>_STATIC-VALIDATION.json`，会覆盖同名文件。仅在收据尚不存在时使用下面的入口；已有收据时改用 Python 并指定新的输出文件：
 
 ```powershell
-$staticReceiptPath = 'release/HeyMelody_Windows_0.9.0_STATIC-VALIDATION.json'
+$staticReceiptPath = 'release/HeyMelody_Windows_0.9.1_STATIC-VALIDATION.json'
 if (Test-Path -LiteralPath $staticReceiptPath) { throw '已有收据，请使用 Python 校验器另存新文件。' }
-pwsh -NoProfile -File .\tools\Verify-Release.ps1 -Version 0.9.0
+pwsh -NoProfile -File .\tools\Verify-Release.ps1 -Version 0.9.1
 ```
 
 可选 Python 3 校验器通过 `--package` 选择发布目录，通过 `--output` 选择新收据文件；已有输出文件会被拒绝。它检查目录中的程序集、运行时、资源与许可，不读取 ZIP；压缩包与目录的一致性须另外核对。例如：
 
 ```powershell
 New-Item -ItemType Directory -Path artifacts -Force | Out-Null
-python tools/verify_release.py --package release/HeyMelody_Windows_0.9.0 --output artifacts/release-0.9.0-static-new.json | Out-Null
+python tools/verify_release.py --package release/HeyMelody_Windows_0.9.1 --output artifacts/release-0.9.1-static-new.json | Out-Null
 ```
 
 Python 默认检查三架构；上述目录由单架构构建生成时，添加对应的 `--architectures x64` 参数。输出文件名按本次验证另选；上例将正文输出留在收据中。两套校验均不执行应用，需保留准确的版本、架构与摘要。真实执行收据、原生窗口收据和历史只读蓝牙证据是额外证据，不能由静态检查替代。

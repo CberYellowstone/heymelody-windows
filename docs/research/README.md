@@ -38,6 +38,7 @@
 | 本地目录 | 内容 |
 | --- | --- |
 | [research/ui-perf-0.9.0-20261011/](../../research/ui-perf-0.9.0-20261011/README.md) | 0.9.0 审计与设计记录、上游 API 核对、字体内存实验程序与日志、基线和最终测试日志、改动前文档原稿与 SHA256 |
+| [research/ui-fixes-0.9.1-20261011/](../../research/ui-fixes-0.9.1-20261011/README.md) | 0.9.1 四项主窗口修复的根因证据（截图像素统计、FluentAvalonia ComboBox 主题出处、Host 暂停语义）、修改前文档原稿与 SHA256、测试日志与截图 |
 | [research/context-read-audit-2026-10-11/](../../research/context-read-audit-2026-10-11/README.md) | 读取风险的完整测量脚本、元数据／字符／摘要清单、subagent 预览和校验结果；大清单按路径查询 |
 | [research/documentation-entrypoints-2026-10-11/](../../research/documentation-entrypoints-2026-10-11/README.md) | 本轮文档入口整理前的原文、SHA256 清单、修改范围与核查记录 |
 | [research/hearing-preview-20261010/](../../research/hearing-preview-20261010/README.md) | 结果截图、完整源码与 APK 保全、计算推导、音频原件及转换、实现与验证证据 |

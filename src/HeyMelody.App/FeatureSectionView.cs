@@ -106,11 +106,15 @@ public sealed class FeatureSectionView : UserControl
 }
 
 /// <summary>Reuses feature rows by control id so a refreshed definition never rebuilds an unchanged editor.</summary>
+/// <remarks>
+/// Rows are direct expander items, never nested in another item: a nested <see cref="FASettingsExpanderItem"/> draws its
+/// own card background and is too narrow to keep its editor beside the label. Items before <c>start</c> are fixed content.
+/// </remarks>
 internal static class FeatureRows
 {
-    public static void Reconcile(ItemCollection rows, IReadOnlyList<FeatureControlViewModel> controls)
+    public static void Reconcile(ItemCollection rows, IReadOnlyList<FeatureControlViewModel> controls, int start = 0)
     {
-        var existing = rows.OfType<FeatureControlView>().ToList();
+        var existing = rows.Cast<object?>().Skip(start).OfType<FeatureControlView>().ToList();
         var byId = new Dictionary<string, FeatureControlView>(StringComparer.Ordinal);
         foreach (var row in existing) if (row.Model?.Id is { } id) byId.TryAdd(id, row);
         var next = new List<FeatureControlView>(controls.Count);
@@ -121,8 +125,9 @@ internal static class FeatureRows
             next.Add(row);
         }
         // Touch the collection only when membership or order changed; re-adding rows would re-template them.
-        if (existing.Count == next.Count && existing.Zip(next).All(pair => ReferenceEquals(pair.First, pair.Second))) return;
-        rows.Clear();
+        if (rows.Count - start == next.Count && existing.Count == next.Count
+            && existing.Zip(next).All(pair => ReferenceEquals(pair.First, pair.Second))) return;
+        while (rows.Count > start) rows.RemoveAt(rows.Count - 1);
         foreach (var row in next) rows.Add(row);
     }
 }

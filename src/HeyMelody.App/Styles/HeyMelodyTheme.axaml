@@ -107,4 +107,10 @@
     <Setter Property="MinWidth" Value="36" />
     <Setter Property="MinHeight" Value="36" />
   </Style>
+  <!-- FluentAvalonia's ComboBox leaves VerticalContentAlignment at Stretch, so the selection draws from the top padding,
+       and its 5/7 padding is tuned for Segoe Latin glyphs. Centred content with even padding centres Chinese text. -->
+  <Style Selector="ComboBox">
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Padding" Value="12,6,0,6" />
+  </Style>
 </Styles>

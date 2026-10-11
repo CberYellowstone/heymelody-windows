@@ -43,8 +43,11 @@
       <Style Selector="^:pressed">
         <Setter Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
       </Style>
+      <!-- Only the current device takes the refresh / reconnect gestures (MainView.DeviceBar.cs). -->
       <Style Selector="^:selected">
         <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+        <Setter Property="ToolTip.Tip" Value="双击刷新状态，三击重新连接" />
+        <Setter Property="AutomationProperties.HelpText" Value="当前设备。双击刷新状态，三击重新连接；也可按 F5 刷新、Shift+F5 重新连接。" />
       </Style>
       <!-- Keyboard focus draws the system focus ring on the card edge, also over a selected card. -->
       <Style Selector="^:focus-visible">
@@ -75,10 +78,6 @@
     </Style>
     <Style Selector="Ellipse#ConnectionDot.online">
       <Setter Property="Fill" Value="{DynamicResource SystemFillColorSuccessBrush}" />
-    </Style>
-    <Style Selector="Button.header-command">
-      <Setter Property="Height" Value="32" />
-      <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="TextBlock.battery-value">
       <Setter Property="FontSize" Value="24" />
@@ -140,31 +139,22 @@
           <Ellipse x:Name="ConnectionDot" Width="10" Height="10" Margin="2,0,12,0" VerticalAlignment="Center" />
           <TextBlock x:Name="DeviceTitle" Grid.Column="1" Text="{Binding Title}" FontSize="28" FontWeight="SemiBold"
                      TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip.Tip="{Binding Title}" />
-          <Button x:Name="AppSettingsButton" Grid.Column="2" Classes="icon" Click="AppSettings_Click" VerticalAlignment="Center"
-                  IsEnabled="{Binding !Closing}" Margin="12,0,0,0" ToolTip.Tip="应用设置" AutomationProperties.Name="应用设置">
+          <!-- The only header command: centred on the title and subtitle, its right edge on the cards' edge. Refresh and
+               reconnect moved to the current device card (double / triple click) and F5 / Shift+F5. -->
+          <Button x:Name="AppSettingsButton" Grid.Column="2" Grid.RowSpan="2" Classes="icon" Click="AppSettings_Click"
+                  VerticalAlignment="Center" IsEnabled="{Binding !Closing}" Margin="12,0,0,0"
+                  ToolTip.Tip="应用设置" AutomationProperties.Name="应用设置">
             <fa:FAIconSourceElement IconSource="{local:AppIcon Settings, Size=16}" Width="16" Height="16" />
           </Button>
-          <Grid Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,4,0,0">
-            <Grid ColumnDefinitions="Auto,Auto,*" VerticalAlignment="Center">
-              <TextBlock x:Name="DeviceSubtitle" Text="{Binding Subtitle}" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                         VerticalAlignment="Center" ToolTip.Tip="{Binding Subtitle}" />
-              <TextBlock x:Name="WarningSeparator" Grid.Column="1" Text="·" Margin="8,0"
-                         IsVisible="{Binding HasWarnings}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-              <TextBlock x:Name="HeaderWarnings" Grid.Column="2" IsVisible="{Binding HasWarnings}"
-                         Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"
-                         ToolTip.Tip="{Binding WarningsText}" VerticalAlignment="Center"
-                         AutomationProperties.LiveSetting="Polite" />
-            </Grid>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-              <Button x:Name="ConnectButton" Classes="header-command" Classes.accent="{Binding !ShowsDisconnect}" MinWidth="96"
-                      Content="{Binding ConnectButtonText}" Command="{Binding ConnectCommand}" IsEnabled="{Binding CanConnect}" />
-              <Button x:Name="RefreshStateButton" Classes="header-command" Width="32" Padding="0"
-                      HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                      Command="{Binding RefreshStateCommand}" IsEnabled="{Binding CanRefreshState}"
-                      ToolTip.Tip="刷新状态" AutomationProperties.Name="刷新状态">
-                <fa:FAIconSourceElement IconSource="{local:AppIcon Refresh, Size=16}" Width="16" Height="16" />
-              </Button>
-            </StackPanel>
+          <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="Auto,Auto,*" VerticalAlignment="Center" Margin="0,4,0,0">
+            <TextBlock x:Name="DeviceSubtitle" Text="{Binding Subtitle}" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       VerticalAlignment="Center" ToolTip.Tip="{Binding Subtitle}" />
+            <TextBlock x:Name="WarningSeparator" Grid.Column="1" Text="·" Margin="8,0"
+                       IsVisible="{Binding HasWarnings}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Name="HeaderWarnings" Grid.Column="2" IsVisible="{Binding HasWarnings}"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"
+                       ToolTip.Tip="{Binding WarningsText}" VerticalAlignment="Center"
+                       AutomationProperties.LiveSetting="Polite" />
           </Grid>
         </Grid>
         <!-- The activity slot keeps its 3 px; only its opacity changes, so the settings never move. -->
@@ -278,8 +268,7 @@
                   </Grid>
                 </StackPanel>
               </Border>
-              <!-- Rows are reused by feature id in code-behind, so a refreshed value never rebuilds an editor. -->
-              <ItemsControl x:Name="EqualizerFeaturesView" IsVisible="{Binding HasEqualizerFeatures}" />
+              <!-- BassWave rows follow as native items of this expander; code-behind reuses them by feature id. -->
             </fa:FASettingsExpander>
             <ItemsControl x:Name="SoundSectionsView">
               <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Spacing="8" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
@@ -351,25 +340,8 @@
             <fa:FASettingsExpander x:Name="OperationLogPanel" Header="操作记录" Description="本次运行的最近操作"
                                    IconSource="{local:AppIcon History}" IsExpanded="False">
               <Border Padding="{StaticResource HmExpanderContentPadding}">
-                <!-- No inner scroller: the newest entries show in full and the wheel keeps scrolling the page. -->
-                <StackPanel Spacing="12">
-                  <SelectableTextBlock x:Name="OperationLogText" TextWrapping="Wrap" FontSize="12"
-                                       AutomationProperties.Name="最近操作记录" />
-                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                    <TextBlock x:Name="OperationLogSummary" Classes="caption" VerticalAlignment="Center" TextWrapping="Wrap" />
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                      <TextBlock x:Name="OperationLogCopyStatus" Classes="caption" VerticalAlignment="Center"
-                                 AutomationProperties.LiveSetting="Polite" />
-                      <Button x:Name="CopyOperationLogButton" Click="CopyOperationLog_Click"
-                              ToolTip.Tip="复制本次运行保留的全部操作记录" AutomationProperties.Name="复制全部操作记录">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                          <fa:FAIconSourceElement IconSource="{local:AppIcon Copy, Size=16}" Width="16" Height="16" />
-                          <TextBlock Text="复制全部" />
-                        </StackPanel>
-                      </Button>
-                    </StackPanel>
-                  </Grid>
-                </StackPanel>
+                <TextBox x:Name="OperationLogText" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
+                         MaxHeight="200" FontSize="12" AutomationProperties.Name="操作记录" />
               </Border>
             </fa:FASettingsExpander>
           </StackPanel>

@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -125,6 +126,9 @@ internal static class GameAudioInteractionTests
                     && Equals(rows[0].Content, "BassWave™动态低音")
                     && Equals(rows[0].Description, "动态增益低音，清晰且高保真地呈现深邃低音效果。"),
                     "BassWave and gain use adjacent native settings rows inside the existing equalizer expander.");
+                Check(rows.All(row => equalizer.Items.Contains(row) && row.FindAncestorOfType<FASettingsExpanderItem>() is null
+                        && row.Footer is Control footer && footer.TranslatePoint(default, row) is { } at && at.X > row.Bounds.Width / 2),
+                    "BassWave rows are direct expander items, not nested in a second card, and keep their editors beside the label.");
                 Check(!view.GetVisualDescendants().OfType<FeatureSectionView>().SelectMany(section => section.GetVisualDescendants())
                     .OfType<FeatureControlView>().Any(row => row.DataContext is FeatureControlViewModel { Id: "bass" or "bass-enabled" }),
                     "The sound settings do not duplicate equalizer BassWave rows.");

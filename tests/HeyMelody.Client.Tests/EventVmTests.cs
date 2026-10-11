@@ -88,7 +88,7 @@ internal static class EventVmTests
             initial.MonitoringState = MonitoringState.Unavailable;
             await using var vm = Create(service); await vm.InitializeAsync();
             Check(vm.ProductId is null && vm.Subtitle == "控制连接不可用");
-            Check(vm.Status == "耳机控制连接暂不可用，请刷新状态或重新连接耳机。" && vm.StatusWarning);
+            Check(vm.Status == "耳机控制连接暂不可用，请双击底栏中的当前设备刷新，或三击重新连接。" && vm.StatusWarning);
             foreach (var (state, subtitle) in expectedSubtitles)
             {
                 var update = Next(service.Snapshots["device-a"]); update.MonitoringState = state; service.Push(update);
@@ -379,6 +379,47 @@ internal static class EventVmTests
             Check(vm.LeftBatteryText == "47%" && !vm.CanSetGameMode);
             await vm.ConnectCommand.ExecuteAsync(null);
             Check(service.Resumes.SequenceEqual(["device-a"]) && vm.HasVerifiedSnapshot && vm.ConnectButtonText == "断开客户端");
+        });
+        await test("event VM reconnect pauses, waits and resumes only the selected peer without writes", async () =>
+        {
+            var service = new EventService(); await using var vm = Create(service); await vm.InitializeAsync();
+            vm.ReconnectDelay = TimeSpan.FromMilliseconds(400);
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var reconnect = vm.ReconnectCommand.ExecuteAsync(null);
+            await Task.Delay(120);
+            Check(service.Pauses.SequenceEqual(["device-a"]) && service.Resumes.Count == 0 && vm.Busy && !vm.CanReconnect
+                && !vm.CanRefreshDevices && vm.Status == "正在重新连接耳机…", "Reconnect pauses first and holds the lifecycle gate during the delay.");
+            await reconnect.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(watch.Elapsed >= vm.ReconnectDelay && service.Resumes.SequenceEqual(["device-a"]) && vm.HasVerifiedSnapshot,
+                "Reconnect resumes the same peer after the delay.");
+            Check(service.Snapshots["device-b"].ControlReady && service.Actions.Count == 0 && vm.LogText.Contains("已重新发起耳机连接"),
+                "Reconnect leaves other peers alone, replays no setting and logs the request.");
+        });
+        await test("event VM reconnect of a paused peer resumes at once and dirty EQ needs confirmation", async () =>
+        {
+            var service = new EventService(); await using var vm = Create(service, new Confirmations(false)); await vm.InitializeAsync();
+            await vm.ConnectCommand.ExecuteAsync(null);
+            vm.ReconnectDelay = TimeSpan.FromSeconds(10);
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            await vm.ReconnectCommand.ExecuteAsync(null).WaitAsync(TimeSpan.FromSeconds(5));
+            Check(service.Pauses.Count == 1 && service.Resumes.SequenceEqual(["device-a"]) && vm.HasVerifiedSnapshot
+                && watch.Elapsed < TimeSpan.FromSeconds(5), "A paused peer only resumes, without the disconnect delay.");
+            vm.EqName = "重连前草稿"; vm.Bands[0].Gain = 4;
+            await vm.ReconnectCommand.ExecuteAsync(null);
+            Check(service.Pauses.Count == 1 && service.Resumes.Count == 1 && vm.EqDirty && vm.Bands[0].Gain == 4 && vm.HasVerifiedSnapshot,
+                "Declining the unsaved-EQ confirmation leaves the session and the draft untouched.");
+        });
+        await test("event VM closing during a reconnect delay resumes the paused peer before disposal", async () =>
+        {
+            var service = new EventService(); var vm = Create(service); await vm.InitializeAsync();
+            vm.ReconnectDelay = TimeSpan.FromSeconds(30);
+            var reconnect = vm.ReconnectCommand.ExecuteAsync(null);
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            while (service.Pauses.Count == 0 && watch.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(10);
+            await vm.DisposeAsync();
+            await reconnect.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(service.Pauses.SequenceEqual(["device-a"]) && service.Resumes.SequenceEqual(["device-a"]) && service.Disposals == 1
+                && service.Actions.Count == 0, "The backend keeps no pause left behind by an interrupted reconnect.");
         });
         await test("event VM device management detaches display while backend monitoring continues", async () =>
         {
