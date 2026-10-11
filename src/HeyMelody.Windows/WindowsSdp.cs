@@ -4,19 +4,28 @@ namespace HeyMelodyWindows.Windows;
 
 public sealed record RfcommService(Guid ServiceId, uint Channel, string? Name);
 
+/// <summary>The configured service query did not identify exactly one RFCOMM endpoint.</summary>
+public sealed class RfcommServiceDiscoveryException(bool isAmbiguous) : IOException(isAmbiguous
+    ? "A unique Melody service is required."
+    : "No configured Melody service was found on the selected peer.")
+{
+    public bool IsAmbiguous { get; } = isAmbiguous;
+}
+
 public static class WindowsSdp
 {
     private const int MaxBuffer = 1024 * 1024;
     private const int MaxResults = 256;
-    private const uint ReturnName = 0x10, ReturnType = 0x20, ReturnAddress = 0x100;
+    private const uint ReturnName = 0x10, ReturnType = 0x20, ReturnAddress = 0x100, FlushCache = 0x1000;
 
     /// <summary>Queries one explicitly selected OPPO control service, 079A or legacy 1107,
-    /// for the specified peer. No inquiry, cache flush,
-    /// service registration, registry access, or channel probing occurs. An empty cached result
-    /// is not proof that the peer lacks the service. WSALookupServiceBegin/Next are synchronous
+    /// for the specified peer. With refreshCache, an over-the-air SDP query ignores cached records;
+    /// otherwise only cached records are read. No device inquiry, service registration, registry
+    /// access, or channel probing occurs. An empty cached result is not proof that the peer lacks
+    /// the service. WSALookupServiceBegin/Next are synchronous
     /// native calls and cannot be made absolutely thread-cancellable; the caller must supervise
     /// a worker process if it needs a wall-clock deadline.</summary>
-    public static unsafe IReadOnlyList<RfcommService> FindServices(ulong address, Guid serviceId)
+    public static unsafe IReadOnlyList<RfcommService> FindServices(ulong address, Guid serviceId, bool refreshCache = false)
     {
         Native.Validate(address, serviceId);
         Native.Startup();
@@ -34,7 +43,8 @@ public static class WindowsSdp
             Size = (uint)sizeof(Native.QuerySet), Namespace = 16,
             ServiceId = (nint)(&serviceId), Context = (nint)text
         };
-        var begin = Native.LookupBegin(ref query, ReturnName | ReturnType | ReturnAddress, out var lookup);
+        var flags = ReturnName | ReturnType | ReturnAddress | (refreshCache ? FlushCache : 0);
+        var begin = Native.LookupBegin(ref query, flags, out var lookup);
         var beginError = begin == 0 ? 0 : Native.WSAGetLastError();
         if (begin != 0)
         {
@@ -77,6 +87,36 @@ public static class WindowsSdp
             if (buffer != 0) Marshal.FreeHGlobal(buffer);
             Native.LookupEnd(lookup);
         }
+    }
+
+    /// <summary>Uses cached records when they identify a unique configured control service;
+    /// otherwise queries the same UUIDs over the air before enforcing uniqueness.</summary>
+    public static RfcommService FindUniqueControlService(ulong address, IReadOnlyList<Guid> serviceIds)
+    {
+        ArgumentNullException.ThrowIfNull(serviceIds);
+        if (serviceIds.Count == 0) throw new ArgumentException("No control service UUIDs were configured.", nameof(serviceIds));
+        foreach (var serviceId in serviceIds) Native.Validate(address, serviceId);
+        return FindUniqueControlService(serviceIds, (serviceId, refreshCache) => FindServices(address, serviceId, refreshCache));
+    }
+
+    internal static RfcommService FindUniqueControlService(IReadOnlyList<Guid> serviceIds,
+        Func<Guid, bool, IReadOnlyList<RfcommService>> lookup)
+        => FindUniqueControlService(serviceIds, lookup, false, out _);
+
+    internal static RfcommService FindUniqueControlService(IReadOnlyList<Guid> serviceIds,
+        Func<Guid, bool, IReadOnlyList<RfcommService>> lookup, bool refreshCache, out bool queriedPeer)
+    {
+        var ids = serviceIds.Distinct().ToArray();
+        RfcommService[] Find(bool refreshCache) => ids.SelectMany(id => lookup(id, refreshCache)
+            .Where(service => service.ServiceId == id && service.Channel is > 0 and <= 30))
+            .DistinctBy(service => (service.ServiceId, service.Channel)).ToArray();
+        queriedPeer = refreshCache;
+        var services = Find(refreshCache);
+        // Microsoft documents that cached-only searches may miss existing peer services.
+        // https://learn.microsoft.com/windows/win32/bluetooth/bluetooth-and-wsalookupservicebegin-for-service-discovery
+        if (!refreshCache && services.Length != 1) { queriedPeer = true; services = Find(true); }
+        if (services.Length != 1) throw new RfcommServiceDiscoveryException(services.Length != 0);
+        return services[0];
     }
 
     internal static unsafe void Parse(nint buffer, int size, ulong address, Guid serviceId, List<RfcommService> services)

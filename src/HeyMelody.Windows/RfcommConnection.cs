@@ -1,7 +1,9 @@
+using System.ComponentModel;
+
 namespace HeyMelodyWindows.Windows;
 
 /// <summary>Raw RFCOMM transport. One native event registration reports readiness without polling.
-/// The caller owns command policy, deadlines, discovery and reconnect decisions.</summary>
+/// The caller owns command policy; control connection discovery uses only its configured UUIDs.</summary>
 public sealed class RfcommConnection : IAsyncDisposable
 {
     private readonly SafeRfcommSocket _socket;
@@ -38,6 +40,49 @@ public sealed class RfcommConnection : IAsyncDisposable
         if (channel is < 1 or > 30) throw new ArgumentOutOfRangeException(nameof(channel));
         return ConnectCoreAsync(address, channel, token);
     }
+
+    /// <summary>Connects to a unique configured service. A failed cached endpoint is refreshed
+    /// once before a second connection attempt; no commands are submitted here.</summary>
+    public static Task<RfcommConnection> ConnectControlAsync(ulong address, IReadOnlyList<Guid> serviceIds, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(serviceIds);
+        if (serviceIds.Count == 0) throw new ArgumentException("No control service UUIDs were configured.", nameof(serviceIds));
+        foreach (var serviceId in serviceIds) Native.Validate(address, serviceId);
+        return ConnectControlCoreAsync(serviceIds, (serviceId, refreshCache) => WindowsSdp.FindServices(address, serviceId, refreshCache),
+            (service, connectionToken) => ConnectAsync(address, service.ServiceId, service.Channel, connectionToken), token);
+    }
+
+    internal static async Task<T> ConnectControlCoreAsync<T>(IReadOnlyList<Guid> serviceIds,
+        Func<Guid, bool, IReadOnlyList<RfcommService>> lookup,
+        Func<RfcommService, CancellationToken, Task<T>> connect, CancellationToken token, TimeSpan? connectionTimeout = null)
+    {
+        IReadOnlyList<RfcommService> Lookup(Guid serviceId, bool refreshCache)
+        {
+            token.ThrowIfCancellationRequested();
+            var services = lookup(serviceId, refreshCache);
+            token.ThrowIfCancellationRequested();
+            return services;
+        }
+        async Task<T> ConnectOnce(RfcommService service)
+        {
+            token.ThrowIfCancellationRequested();
+            using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);
+            budget.CancelAfter(connectionTimeout ?? TimeSpan.FromSeconds(5));
+            return await connect(service, budget.Token);
+        }
+        var service = WindowsSdp.FindUniqueControlService(serviceIds, Lookup, false, out bool queriedPeer);
+        try { return await ConnectOnce(service); }
+        catch (Exception failure) when (!queriedPeer && !token.IsCancellationRequested
+            && failure is IOException or Win32Exception or OperationCanceledException)
+        {
+            // A unique cached channel can still be stale. Use the complete fresh result,
+            // without merging cached endpoints or retrying a failed fresh connection.
+            token.ThrowIfCancellationRequested();
+            service = WindowsSdp.FindUniqueControlService(serviceIds, Lookup, true, out _);
+            return await ConnectOnce(service);
+        }
+    }
+
     private static async Task<RfcommConnection> ConnectCoreAsync(ulong address, uint channel, CancellationToken token)
     {
         token.ThrowIfCancellationRequested(); Native.Startup();

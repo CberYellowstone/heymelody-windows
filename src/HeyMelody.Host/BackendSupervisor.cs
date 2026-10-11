@@ -21,6 +21,7 @@ internal sealed record BroadcastObservation(string ProductId, CaseLidState Lid, 
 /// <summary>The single owner of device identities, policy and published state. Native work lives in disposable child processes.</summary>
 internal sealed partial class BackendSupervisor : IAsyncDisposable
 {
+    private sealed record PeerDiagnostic(string Source, long Generation, string Message);
     private sealed class Peer(BluetoothCandidate candidate)
     {
         internal BluetoothCandidate Candidate = candidate;
@@ -31,6 +32,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
         internal int Failures;
         internal MonitoringState State = MonitoringState.WaitingForConnection;
         internal UiSnapshot? Spp;
+        internal PeerDiagnostic? Diagnostic;
         internal string? VerifiedProductId;
         internal CaseLidState LastObservedLid;
         internal DateTimeOffset? LastLidObservationTime;
@@ -215,7 +217,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
         lock (_sync)
         {
             if (!EligibleLocked(peer) || peer.Worker is not null || peer.Initializing || peer.State == MonitoringState.Unsupported) return;
-            peer.Initializing = true; generation = peer.Generation; token = peer.Lifetime.Token;
+            peer.Initializing = true; peer.Diagnostic = null; generation = peer.Generation; token = peer.Lifetime.Token;
             worker = peer.Worker = _workerFactory(); peer.State = MonitoringState.Connecting;
             if (worker is ICalibrationPeerWorker calibration)
             {
@@ -247,7 +249,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
                         RecordAppearanceLocked(peer, snapshot.ProductId, snapshot.Color, fromSpp: true);
                         CancelBroadcastExpiryLocked(peer);
                         peer.State = MonitoringState.Unsupported; PublishLocked(peer); }
-                    else WorkerFailedLocked(peer, generation);
+                    else WorkerFailedLocked(peer, generation, snapshot);
                     return;
                 }
                 peer.Failures = 0; AdoptSppLocked(peer, snapshot);
@@ -270,7 +272,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
     private void AdoptSppLocked(Peer peer, UiSnapshot snapshot)
     {
         if (_disposed || snapshot.Revision != 0 && snapshot.Revision <= peer.SppRevision) return;
-        peer.SppRevision = snapshot.Revision; peer.Spp = Copy(snapshot);
+        peer.SppRevision = snapshot.Revision; peer.Spp = Copy(snapshot); peer.Diagnostic = null;
         if (snapshot.ProductId is { Length: > 0 } product)
         {
             peer.VerifiedProductId = product;
@@ -289,10 +291,18 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
         }
     }
     private void WorkerFailed(Peer peer, long generation) { lock (_sync) WorkerFailedLocked(peer, generation); }
-    private void WorkerFailedLocked(Peer peer, long generation)
+    private void WorkerFailedLocked(Peer peer, long generation, UiSnapshot? failureSnapshot = null)
     {
         if (peer.Generation != generation || peer.Paused || _stopping) return;
-        StopPeerLocked(peer); peer.State = MonitoringState.Unavailable; PublishLocked(peer);
+        // Keep only the safe diagnostic, never the retired transport's state or permissions.
+        // Initialization responses can arrive before their snapshot events.
+        var source = _activeCatalog?.Source.ToString() ?? "HeyMelody";
+        var failed = failureSnapshot ?? peer.Spp;
+        var message = failed is { } observed && observed.Identity == peer.Identity && observed.ResourceSource == source
+            ? observed.Failure : null;
+        StopPeerLocked(peer);
+        if (!string.IsNullOrWhiteSpace(message)) peer.Diagnostic = new(source, peer.Generation, message);
+        peer.State = MonitoringState.Unavailable; PublishLocked(peer);
         var failures = ++peer.Failures;
         if (failures > 3 || !EligibleLocked(peer)) return;
         var nextGeneration = peer.Generation;
@@ -312,7 +322,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
     private void StopPeerLocked(Peer peer)
     {
         InvalidateCalibrationLocked(peer);
-        peer.Generation++; peer.SppRevision = 0; peer.PublicSppRevisions.Clear(); peer.Spp = null; peer.Initializing = false;
+        peer.Generation++; peer.SppRevision = 0; peer.PublicSppRevisions.Clear(); peer.Spp = null; peer.Diagnostic = null; peer.Initializing = false;
         peer.Lifetime.Cancel(); peer.Lifetime.Dispose(); peer.Lifetime = new();
         var worker = peer.Worker; peer.Worker = null;
         if (worker is not null) _ = worker.DisposeAsync();
@@ -511,6 +521,9 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
                 ?? (sameSourceSpp ? Copy(peer.Spp!) : new UiSnapshot());
         if (!verifiedSpp && sameSourceSpp && peer.Spp is { } unverified)
         { snapshot.Failure = unverified.Failure; snapshot.SupportedModel = unverified.SupportedModel; }
+        if (peer.State == MonitoringState.Unavailable && peer.Diagnostic is { } diagnostic
+            && diagnostic.Source == source && diagnostic.Generation == peer.Generation)
+            snapshot.Failure = diagnostic.Message;
         snapshot.Identity = peer.Identity; snapshot.DeviceName = peer.Candidate.Name;
         snapshot.BackendInstanceId = InstanceId; snapshot.DeviceGeneration = peer.Generation;
         snapshot.ResourceSource = source;

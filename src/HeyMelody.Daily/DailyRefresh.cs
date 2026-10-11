@@ -1,5 +1,6 @@
 using HeyMelodyWindows.Devices;
 using HeyMelodyWindows.Protocol;
+using HeyMelodyWindows.Control;
 
 namespace HeyMelodyWindows.Daily;
 
@@ -53,12 +54,15 @@ public sealed partial class DailyClient
     }
     private async Task<DailySnapshot> ReadFreshAsync(CancellationToken token, DailyRefreshScope scope = DailyRefreshScope.Full)
     {
+        string failure = "设备状态读取失败";
         for (int attempt = 0; attempt < 2; attempt++)
         {
+            string phase = "建立 SPP 控制连接";
             try
             {
                 token.ThrowIfCancellationRequested();
                 await EnsureSessionAsync(token);
+                phase = "校验设备身份与能力";
                 long startingVersion = NotificationVersion;
                 var readVersions = new Dictionary<string, long>();
                 // New transports require identity/capability verification. Returned results do
@@ -77,10 +81,14 @@ public sealed partial class DailyClient
                     {
                         foreach (var section in new[] { DailyRefreshScope.Information, DailyRefreshScope.Features,
                             DailyRefreshScope.Battery, DailyRefreshScope.Anc, DailyRefreshScope.Equalizer })
+                        {
+                            phase = "读取设备状态";
                             await ReadSectionAsync(s, section, token, readVersions);
+                        }
                     }
-                    else await ReadSectionAsync(s, scope, token, readVersions);
+                    else { phase = "读取设备状态"; await ReadSectionAsync(s, scope, token, readVersions); }
                 }
+                phase = "注册状态通知";
                 await RegisterMonitoringAsync(token);
                 s.Warnings = _readWarnings.Values.SelectMany(x => x).Distinct().ToList();
                 if (_monitoringWarning is not null) s.Warnings.Add(_monitoringWarning);
@@ -103,19 +111,34 @@ public sealed partial class DailyClient
                 return s;
             }
             catch (Exception) when (_calibrationActive) { throw; }
-            catch (Exception) when (!token.IsCancellationRequested)
+            catch (Exception ex) when (!token.IsCancellationRequested)
             {
+                failure = DescribeReadFailure(ex, phase);
                 await DropSessionAsync();
                 if (attempt == 0) continue;
             }
-            catch (Exception) { await DropSessionAsync(); break; }
+            catch (Exception) { failure = "设备状态读取已取消"; await DropSessionAsync(); break; }
         }
+        return PublishReadFailure(failure);
+    }
+    private static string DescribeReadFailure(Exception failure, string phase) => failure switch
+    {
+        DailyReadException read => read.Message,
+        ControlTransportUnavailableException { Reason: ControlTransportFailure.ServiceNotFound }
+            => "未发现所选配置的 SPP 控制服务",
+        ControlTransportUnavailableException { Reason: ControlTransportFailure.AmbiguousServices }
+            => "发现多个 SPP 控制服务，无法唯一确定控制通道",
+        OperationCanceledException => $"{phase}超时",
+        _ => $"{phase}失败（{DailySession.DescribeFailure(failure)}）"
+    };
+    private DailySnapshot PublishReadFailure(string failure)
+    {
         _readWarnings.Clear();
         DailySnapshot failed;
         lock (_stateGate)
         {
             _latest = new() { ObservedAtUtc = DateTimeOffset.UtcNow, Revision = ++_revision,
-                Error = "设备状态读取失败，请确认耳机连接后刷新。", Connected = false };
+                Error = $"{failure}。请刷新或重新连接。", Connected = false };
             failed = Clone(_latest);
         }
         Publish(failed); return failed;
@@ -125,7 +148,8 @@ public sealed partial class DailyClient
         if (_calibrationActive && _session!.Remaining <= 8)
             throw new IOException("本次连接的控制次数已用完，请结束测试并重新连接后重试。");
         var reply = await _session!.RequestAsync(command, payload, token);
-        if (!reply.Matched || !_session.Usable) throw new IOException();
+        if (!reply.Matched || !_session.Usable)
+            throw new DailyReadException(command, reply.Failure ?? "未收到匹配回执");
         if (reply.Status != 0)
         {
             s.Warnings.Add($"查询 0x{command:X4} 被设备拒绝。");
@@ -135,9 +159,9 @@ public sealed partial class DailyClient
     }
     private async Task<DailySnapshot> ReadIdentityAsync(DailySnapshot s, CancellationToken token)
     {
-        byte[] identity = await GetAsync(0x0103, [], s, token) ?? throw new IOException();
+        byte[] identity = await GetAsync(0x0103, [], s, token) ?? throw new DailyReadException(0x0103, "设备拒绝查询");
         var product = QueryParsers.Parse(0x0103, identity);
-        if (!product.Success) throw new FormatException();
+        if (!product.Success) throw new DailyReadException(0x0103, "身份数据格式无效");
         string productId = (string)product.Data["productId"]!;
         if (s.ProductId is not null && s.ProductId != productId)
         {
@@ -147,8 +171,8 @@ public sealed partial class DailyClient
         }
         s.ProductId = productId;
         _profile = _profileResolver(productId);
-        byte[] cap = await GetAsync(0x0100, [], s, token) ?? throw new IOException();
-        if (cap.Length < 2 || cap.Length > 512) throw new FormatException();
+        byte[] cap = await GetAsync(0x0100, [], s, token) ?? throw new DailyReadException(0x0100, "设备拒绝查询");
+        if (cap.Length < 2 || cap.Length > 512) throw new DailyReadException(0x0100, "能力数据格式无效");
         _commands = CommandCapabilities.Parse(cap.AsSpan(1));
         await ReadColorAsync(s, productId, token);
         if (_profile is null || !_profile.SupportSpp || _profile.Uuid == Guid.Empty ||
@@ -170,6 +194,8 @@ public sealed partial class DailyClient
         _readWarnings[DailyRefreshScope.Identity] = s.Warnings.ToList();
         return s;
     }
+    private sealed class DailyReadException(ushort command, string reason)
+        : IOException($"查询 0x{command:X4} 失败（{reason}）");
     /// <summary>
     /// Both official apps read GET 0x010B (a foundation command) and use payload[1] as the artwork color.
     /// The color is fixed hardware metadata, so this client reads it once per product. Rejection or

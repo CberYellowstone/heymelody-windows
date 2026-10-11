@@ -35,6 +35,9 @@ unsafe class Program
         };
         if (Native.MelodyServiceId != serviceIds[0] || Native.LegacyMelodyServiceId != serviceIds[1])
             throw new Exception("OPPO service UUID constants do not match the complete vendor UUIDs.");
+        CheckSdpDiscovery(serviceIds);
+        SdpConnectionChecks.RunAsync(serviceIds).GetAwaiter().GetResult();
+        Reject<ArgumentException>(() => WindowsSdp.FindUniqueControlService(address, []));
         var bundled = new BundledResourceStore();
         foreach (var source in Enum.GetValues<ResourceSource>())
         {
@@ -82,7 +85,60 @@ unsafe class Program
             Reject<ArgumentException>(() => WindowsSdp.FindServices(address, invalidServiceId));
             Reject<ArgumentException>(() => RfcommConnection.ConnectAsync(address, invalidServiceId, 1, default));
         }
-        Console.WriteLine("PASS: offline ABI, bundled transport whitelist, input, pre-cancel and bounded SDP parser checks. No Bluetooth calls performed.");
+        Console.WriteLine("PASS: offline ABI, bundled transport whitelist, input, pre-cancel, SDP refresh selection and bounded SDP parser checks. No Bluetooth calls performed.");
+    }
+
+    static void CheckSdpDiscovery(Guid[] serviceIds)
+    {
+        var modern = new RfcommService(serviceIds[0], 7, "Melody");
+        var legacy = new RfcommService(serviceIds[1], 8, "Melody");
+        var calls = new List<(Guid Id, bool Refresh)>();
+        IReadOnlyList<RfcommService> Cached(Guid id, bool refresh)
+        {
+            calls.Add((id, refresh));
+            if (refresh) throw new Exception("A unique cached service must not trigger remote SDP.");
+            return id == modern.ServiceId ? [modern, modern] : [];
+        }
+        var selected = WindowsSdp.FindUniqueControlService([.. serviceIds, serviceIds[0]], Cached);
+        if (selected != modern || calls.Count != 2 || calls.Any(call => call.Refresh))
+            throw new Exception("Unique cached SDP selection or UUID deduplication failed.");
+
+        calls.Clear();
+        IReadOnlyList<RfcommService> MissingCache(Guid id, bool refresh)
+        {
+            calls.Add((id, refresh));
+            return refresh && id == modern.ServiceId ? [modern] : [];
+        }
+        selected = WindowsSdp.FindUniqueControlService(serviceIds, MissingCache);
+        if (selected != modern || !calls.Select(call => call.Refresh).SequenceEqual(new[] { false, false, true, true })
+            || !calls.Select(call => call.Id).SequenceEqual(serviceIds.Concat(serviceIds)))
+            throw new Exception("Missing cached SDP must refresh exactly the configured UUIDs.");
+
+        calls.Clear();
+        IReadOnlyList<RfcommService> AmbiguousCache(Guid id, bool refresh)
+        {
+            calls.Add((id, refresh));
+            return id == modern.ServiceId ? [modern] : refresh ? [] : [legacy];
+        }
+        selected = WindowsSdp.FindUniqueControlService(serviceIds, AmbiguousCache);
+        if (selected != modern || calls.Count(call => call.Refresh) != 2)
+            throw new Exception("Ambiguous cached SDP must use the refreshed result.");
+
+        foreach (bool ambiguous in new[] { false, true })
+        {
+            try
+            {
+                WindowsSdp.FindUniqueControlService(serviceIds, (id, _) => ambiguous
+                    ? id == modern.ServiceId ? [modern] : [legacy]
+                    : [new RfcommService(Guid.Empty, 7, null), new RfcommService(id, 0, null), new RfcommService(id, 31, null)]);
+                throw new Exception("SDP selection accepted missing or ambiguous endpoints.");
+            }
+            catch (RfcommServiceDiscoveryException failure)
+            {
+                if (failure.IsAmbiguous != ambiguous) throw new Exception("SDP failure reason mismatch.");
+            }
+        }
+        Console.WriteLine("PASS: SDP cache miss/ambiguity refreshes only configured UUIDs; unique, bounded endpoints remain required.");
     }
 
     static void CheckSdpParser(ulong address, Guid serviceId, Guid otherServiceId)

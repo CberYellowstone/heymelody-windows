@@ -12,6 +12,7 @@
 
 | 文档入口 | 内容 |
 | --- | --- |
+| [Enco Air4 Pro 控制连接核查](enco-air4-pro-control.md) | 两来源配置与原 APK SPP 路由、Windows SDP 缓存缺项修复、具体失败诊断和真机复测边界 |
 | [界面审计与渲染性能（0.9.0）](ui-performance-0.9.0.md) | 四个界面的重排、120 Hz 预算与逐项优化、简体中文字体与嵌入字体内存问题、Linux 验证范围与 Windows 验收方法 |
 | [上下文读取风险排查](context-read-risk-2026-10-11.md) | 文档、源码、研究产物的字符与长行风险，subagent 预览规则和后续处理顺序；503 成因尚未确认 |
 | [黄金听感预览与声音设置](hearing-preview-settings.md) | 0.8.13 结果雷达、两种试听的动态左右耳曲线、原厂音乐频谱、游戏分组、BassWave 和完整固件显示 |

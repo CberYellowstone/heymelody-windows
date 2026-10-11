@@ -170,6 +170,7 @@ try
         Check(store.Load().Count == 0);
     });
     await BackendTests.RunAsync(Test, scratch);
+    await SupervisorDiagnosticsTests.RunAsync(Test, scratch);
     await CalibrationBackendTests.RunAsync(Test, scratch);
     await CalibrationAuditionTests.RunAsync(Test, scratch);
     await ResourceBackendTests.RunAsync(Test, scratch);

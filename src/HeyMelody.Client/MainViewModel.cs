@@ -409,7 +409,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 MonitoringState.Connecting => "正在建立耳机控制连接…",
                 MonitoringState.WaitingForConnection => snapshot.ObservationFresh ? "已收到耳机广播 · 等待蓝牙连接" : "等待耳机连接 · 后台继续监听",
                 MonitoringState.Unsupported => "该型号的设置尚未适配",
-                MonitoringState.Unavailable => "耳机控制连接暂不可用，请双击底栏中的当前设备刷新，或三击重新连接。",
+                MonitoringState.Unavailable => string.IsNullOrWhiteSpace(snapshot.Failure)
+                    ? "耳机控制连接暂不可用，请双击底栏中的当前设备刷新，或三击重新连接。"
+                    : $"耳机控制连接暂不可用：{snapshot.Failure.Trim()} 请双击底栏中的当前设备刷新，或三击重新连接。",
                 _ => HasVerifiedSnapshot ? "已连接 · 接收耳机状态更新" : snapshot.ObservationFresh ? "已收到耳机广播 · 设置暂不可用" : "耳机当前状态未确认"
             };
             SetStatus(message, snapshot.MonitoringState == MonitoringState.Unavailable);

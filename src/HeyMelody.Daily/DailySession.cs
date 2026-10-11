@@ -5,7 +5,7 @@ using HeyMelodyWindows.Protocol;
 namespace HeyMelodyWindows.Daily;
 
 internal sealed record DailyResponse(bool Submitted, bool Matched, byte? Status, byte[]? Payload,
-    bool ConnectionInterrupted = false, byte? Sequence = null);
+    bool ConnectionInterrupted = false, byte? Sequence = null, string? Failure = null);
 internal sealed class DailySession : IAsyncDisposable
 {
     private readonly IControlTransport _transport;
@@ -58,7 +58,8 @@ internal sealed class DailySession : IAsyncDisposable
             Packet packet = await completion.Task.WaitAsync(timeout.Token);
             byte? status = packet.Payload.Length == 0 ? null : packet.Payload[0];
             if (status is null) Stop(new FormatException("Missing response status."));
-            return new(submitted, true, status, packet.Payload, Sequence: packet.Sequence);
+            return new(submitted, true, status, packet.Payload, Sequence: packet.Sequence,
+                Failure: status is null ? "回执缺少状态字节" : null);
         }
         catch (OperationCanceledException) when (optionalTimeout is not null && sent && Usable
             && !token.IsCancellationRequested && !_lifetime.IsCancellationRequested)
@@ -70,7 +71,7 @@ internal sealed class DailySession : IAsyncDisposable
         {
             Exception actual = _failure ?? failure;
             Stop(actual);
-            return new(submitted, false, null, null, IsConnectionInterrupted(actual));
+            return new(submitted, false, null, null, IsConnectionInterrupted(actual), Failure: DescribeFailure(actual));
         }
         finally
         {
@@ -130,6 +131,16 @@ internal sealed class DailySession : IAsyncDisposable
         Win32Exception socket => socket.NativeErrorCode is 10050 or 10051 or 10052 or 10053 or 10054
             or 10057 or 10058 or 10064 or 10065,
         _ => false
+    };
+    // Only fixed descriptions and numeric native error codes leave the transport.
+    // Exception messages can contain peer addresses or received data.
+    internal static string DescribeFailure(Exception failure) => failure switch
+    {
+        OperationCanceledException => "等待回执超时",
+        FormatException or InvalidDataException => "控制数据格式无效",
+        Win32Exception socket => $"Windows 蓝牙错误 {socket.NativeErrorCode}",
+        IOException => "控制通道已中断",
+        _ => "控制请求失败"
     };
     public async ValueTask DisposeAsync()
     {

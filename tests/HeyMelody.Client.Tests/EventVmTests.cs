@@ -100,6 +100,36 @@ internal static class EventVmTests
             await vm.ToggleGameCommand.ExecuteAsync(true); await vm.ApplyAncCommand.ExecuteAsync(null);
             Check(service.Actions.Count == 0);
         });
+        await test("event VM retains control connection diagnostics and refresh guidance until a fresh state clears them", async () =>
+        {
+            const string guidance = "请双击底栏中的当前设备刷新，或三击重新连接。";
+            var service = new EventService();
+            var initial = service.Snapshots["device-a"];
+            initial.ControlReady = false; initial.Connected = false; initial.ConnectionState = ConnectionState.Disconnected;
+            initial.MonitoringState = MonitoringState.Unavailable;
+            initial.Failure = "查询 0x0100 超时，控制连接未就绪。";
+            await using var vm = Create(service); await vm.InitializeAsync();
+            Check(vm.Status.Contains(initial.Failure) && vm.Status.EndsWith(guidance) && vm.StatusWarning,
+                "The initial unavailable state lost its diagnostic or reconnection guidance.");
+            Check(!vm.HasVerifiedSnapshot && !vm.CanSetGameMode && vm.CanRefreshState);
+            var failed = Next(initial); failed.Failure = "连接耳机控制服务失败（Windows 错误码 10060）。";
+            service.Push(failed);
+            Check(vm.Status.Contains(failed.Failure) && !vm.Status.Contains("0x0100") && vm.Status.EndsWith(guidance),
+                "A newer failure did not replace the earlier diagnostic.");
+            foreach (var empty in new string?[] { null, "", "   " })
+            {
+                failed = Next(failed); failed.Failure = empty; service.Push(failed);
+                Check(vm.Status == $"耳机控制连接暂不可用，{guidance}" && vm.StatusWarning,
+                    "An empty failure must retain the existing unavailable text.");
+            }
+            var healthy = Next(failed); healthy.ControlReady = true; healthy.Connected = true;
+            healthy.ConnectionState = ConnectionState.Connected; healthy.MonitoringState = MonitoringState.Monitoring;
+            healthy.Failure = null; service.Push(healthy);
+            Check(vm.HasVerifiedSnapshot && vm.CanSetGameMode && !vm.StatusWarning && !vm.Status.Contains("10060"),
+                "A healthy observation retained the previous connection failure.");
+            Check(service.Actions.Count == 0 && service.Pauses.Count == 0 && service.Resumes.Count == 0,
+                "Displaying a diagnostic must not submit settings or restart the connection.");
+        });
         await test("event VM reserves unsupported text for an explicit unsupported-model result", async () =>
         {
             var service = new EventService(); var snapshot = service.Snapshots["device-a"];
@@ -390,8 +420,10 @@ internal static class EventVmTests
             Check(service.Pauses.SequenceEqual(["device-a"]) && service.Resumes.Count == 0 && vm.Busy && !vm.CanReconnect
                 && !vm.CanRefreshDevices && vm.Status == "正在重新连接耳机…", "Reconnect pauses first and holds the lifecycle gate during the delay.");
             await reconnect.WaitAsync(TimeSpan.FromSeconds(5));
-            Check(watch.Elapsed >= vm.ReconnectDelay && service.Resumes.SequenceEqual(["device-a"]) && vm.HasVerifiedSnapshot,
-                "Reconnect resumes the same peer after the delay.");
+            // Allow timer resolution variance; the earlier check still requires the pause and lifecycle gate.
+            var timerTolerance = TimeSpan.FromMilliseconds(20);
+            Check(watch.Elapsed >= vm.ReconnectDelay - timerTolerance && service.Resumes.SequenceEqual(["device-a"]) && vm.HasVerifiedSnapshot,
+                $"Reconnect resumes the same peer after the delay: elapsed={watch.Elapsed.TotalMilliseconds:F3}ms, delay={vm.ReconnectDelay.TotalMilliseconds:F3}ms, resumes=[{string.Join(",", service.Resumes)}], verified={vm.HasVerifiedSnapshot}.");
             Check(service.Snapshots["device-b"].ControlReady && service.Actions.Count == 0 && vm.LogText.Contains("已重新发起耳机连接"),
                 "Reconnect leaves other peers alone, replays no setting and logs the request.");
         });

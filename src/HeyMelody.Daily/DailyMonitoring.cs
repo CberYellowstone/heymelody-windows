@@ -32,6 +32,11 @@ public sealed partial class DailyClient
             await RegisterMonitoringAsync(token);
             PublishMonitoringWarning();
         }
+        catch (Exception failure) when (!token.IsCancellationRequested && !_disposed)
+        {
+            await DropSessionAsync();
+            PublishReadFailure(DescribeReadFailure(failure, "注册状态通知"));
+        }
         finally { _gate.Release(); }
     }
 
@@ -40,14 +45,17 @@ public sealed partial class DailyClient
         if (!_monitoringRequested || _session is not { Usable: true } session || _commands is null
             || ReferenceEquals(_registeredSession, session)) return;
         var capability = await session.RequestAsync(0x0200, [], token);
-        if (!capability.Matched || !session.Usable) throw new IOException("Notification capability request failed.");
+        if (!capability.Matched || !session.Usable)
+            throw new DailyReadException(0x0200, capability.Failure ?? "未收到匹配回执");
         // A rejected/unknown registration leaves passive 050x reception usable, without guessed fallback.
         if (capability.Status != 0)
         {
             _monitoringWarning = "设备未接受状态通知能力查询，主动状态通知订阅不可用。";
             _registeredSession = session; return;
         }
-        byte[] offered = NotificationParsers.ParseSupportedEvents(capability.Payload!);
+        byte[] offered;
+        try { offered = NotificationParsers.ParseSupportedEvents(capability.Payload!); }
+        catch (FormatException) { throw new DailyReadException(0x0200, "通知能力数据格式无效"); }
         lock (_stateGate) _advertisedEvents.UnionWith(offered);
         byte[] ids = offered.Where(id => id is 1 or 2 or 3 or 4 or 5 or 6 or 8 or 14 or 15).ToArray();
         if (ids.Length != 0)
@@ -55,7 +63,8 @@ public sealed partial class DailyClient
             if (_commands.Supports(0x0205))
             {
                 var reply = await session.RequestAsync(0x0205, [(byte)ids.Length, .. ids], token);
-                if (!reply.Matched || !session.Usable) throw new IOException("Notification registration failed.");
+                if (!reply.Matched || !session.Usable)
+                    throw new DailyReadException(0x0205, reply.Failure ?? "未收到匹配回执");
                 // 8205 status 0 confirms the batch, not every subscription. X4
                 // rejects event 4/8 with per-event 02 but still emits passive results.
                 byte[]? data = reply.Payload;
@@ -79,7 +88,8 @@ public sealed partial class DailyClient
             else foreach (byte id in ids)
             {
                 var reply = await session.RequestAsync(0x0201, [id], token);
-                if (!reply.Matched || !session.Usable) throw new IOException("Notification registration failed.");
+                if (!reply.Matched || !session.Usable)
+                    throw new DailyReadException(0x0201, reply.Failure ?? "未收到匹配回执");
                 if (reply.Status != 0)
                 {
                     // Only an explicit calibration rejection is optional. An absent status

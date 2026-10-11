@@ -4,7 +4,15 @@
 
 历史 `research/`、`artifacts/`、`release/` 链接指本地研究证据或发布产物，通常不随普通 Git clone 提供。完整原稿和摘要清单见本地[本轮整理档案](../../research/documentation-entrypoints-2026-10-11/README.md)；缺少该档案不影响阅读下列公开原段。现行构建与验证入口见[开发说明](../development.md)。
 
-本页收录 0.8.11–0.9.1。更早记录分为[0.8.8–0.8.10](release-notes-0.8.8-0.8.10.md)、[0.8.4–0.8.7](release-notes-0.8.4-0.8.7.md)和[0.8.3 及更早版本与校准实测背景](release-notes-early.md)。项目早期阶段的独立记录仍见[历史索引](README.md)。
+本页收录 0.8.11–0.9.2。更早记录分为[0.8.8–0.8.10](release-notes-0.8.8-0.8.10.md)、[0.8.4–0.8.7](release-notes-0.8.4-0.8.7.md)和[0.8.3 及更早版本与校准实测背景](release-notes-early.md)。项目早期阶段的独立记录仍见[历史索引](README.md)。
+
+## 0.9.2（Windows 本地构建）
+
+2026-10-11，针对 Enco Air4 Pro 的控制连接不可用反馈核查并修复 Windows SDP 缓存缺失、歧义及过期通道可能阻止建连的问题。实际 SDP 查询仍只使用所选来源允许的 UUID，要求唯一有效通道，并保持身份、能力与回执校验。连接失败保留具体步骤、命令号或 Windows 错误码，Daily、Host 和主界面显示相同诊断，成功恢复后清除。没有增加 UUID 猜测、固定通道或设置重放；配置与原 App 路由依据见[Air4 Pro 控制连接核查](../research/enco-air4-pro-control.md)。
+
+本轮按用户授权在 Windows 本地构建 0.9.2，未发布到 GitHub。第三次完整构建退出 0，十三个默认 runner 全部通过，共 719 项数值用例及 Windows x64 SDP/ABI 离线检查五组 PASS，包括 App 106 项、Daily 139 项、Client 163 项、Host 84 项；完成 x64、x86、ARM64 共十五个 publish。完整流程零编译错误，保留一个既有 App 测试 CS0067 未使用事件警告。合并 ZIP `release/HeyMelody_Windows_0.9.2_AllArchitectures.zip` 为 748,491,996 字节；静态校验通过，核对 ZIP、程序集版本、运行时、许可及九项内嵌美术，收据为 `release/HeyMelody_Windows_0.9.2_STATIC-VALIDATION.json`。另独立核对十五个入口的 ReadyToRun 头与架构全部通过。构建日志保存在本机 `artifacts/release-0.9.2-20261011/`，摘要、检查收据和修改前文档保存在 `research/release-0.9.2-20261011/`。
+
+前两次完整构建停在既有 Client 重连测试的计时联合断言，失败日志均保全。第二次明确观测到 400 ms 延时的计时结果为 399.946 ms，而模拟服务的同设备恢复与验证快照均正常；为计时断言增加 20 ms 容差，原暂停检查、同设备恢复及不发送 SET 的检查保留。首次失败未单独确定具体子断言原因。未执行 Air4 Pro 真机恢复、实设备 SET 或 ARM64 硬件验证。
 
 ## 0.9.1
 

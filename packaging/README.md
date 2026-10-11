@@ -1,4 +1,6 @@
-# HeyMelody for Windows 0.9.1
+# HeyMelody for Windows 0.9.2
+
+0.9.2 修复 Windows 控制服务缓存缺失或过期可能阻止耳机连接的问题；连接失败时显示具体步骤、查询命令或 Windows 错误码，重新连接仍不会重发设置。本轮在 Windows 本地构建，尚未发布到 GitHub；Air4 Pro 真机恢复和 ARM64 硬件尚未验证。
 
 0.9.1 去掉页头的“断开客户端”和刷新按钮：双击底栏中的当前耳机刷新状态，三击断开 1 秒后重新连接，键盘可用 F5／Shift+F5；BassWave 改为均衡器卡片中的普通设置行，下拉框文字垂直居中，操作记录恢复为可滚动的文本框。
 
@@ -30,7 +32,7 @@
 
 保留 0.8.2 新增的布局演示设备，使用 Enco Free4 丹拿版官方三维模型，以及 0.8.1 的耳机控制连接初始化及错误提示修复。
 
-使用 0.9.1 前，请先关闭旧版主窗口，再从托盘菜单退出旧版后台。完整解压后运行 `Start-HeyMelody.cmd`，使用包内新版主窗口和 Host；仅替换主窗口仍会连接已经驻留的旧后台。
+使用 0.9.2 前，请先关闭旧版主窗口，再从托盘菜单退出旧版后台。完整解压后运行 `Start-HeyMelody.cmd`，使用包内新版主窗口和 Host；仅替换主窗口仍会连接已经驻留的旧后台。
 
 这是采用 Avalonia 和 FluentAvalonia 的社区 Windows 耳机客户端。资源目录覆盖欢律的 85 个、无线耳机的 141 个耳机产品 ID；配置、协议与实际设备能力共同决定可用功能，未知控制不会开放。OPPO、OnePlus、realme 耳机目录已纳入，音箱排除。
 
@@ -46,4 +48,4 @@
 
 `ResourceBundles`、各程序 DLL、原生渲染库、`backend` 和 `licenses` 都是运行所需文件，请保留完整目录。资源来自用户提供的 APK 和已验证的官方资源包，版权及源摘要见 `SOURCE-NOTES.md`、`PACKAGE-NOTICES.json`、`ResourceBundles/provenance.json` 和 `licenses/upstream/Extracted-Earphone-Resources-NOTICE.txt`。
 
-模拟协议、界面测试及三架构静态检查不证明所有型号实机、手机并发或 ARM64 硬件行为。具体构建信息见 `manifest.json`；只有与版本、文件摘要匹配的执行记录才能证明对应包的实机验证。
+模拟协议、界面测试及三架构静态检查不证明所有型号实机、手机并发或 ARM64 硬件行为。包内 `manifest.json` 仅记录构建信息；完整默认验收的实际结果以本轮保全的构建日志为准，包结构、版本与文件 SHA256 校验见 `release` 中与包目录同级、匹配版本的静态验证收据。只有与版本、文件摘要匹配的执行记录才能证明对应包的实机验证。
