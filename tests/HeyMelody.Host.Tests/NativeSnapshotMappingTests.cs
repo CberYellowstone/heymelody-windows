@@ -81,7 +81,7 @@ internal static class NativeSnapshotMappingTests
             UiSnapshot Project() => (UiSnapshot)map.Invoke(service, [daily])!;
             var projected = Project();
             Check(projected is { AncPrimary: 11, Anc: null, CanSetAncMode: true }
-                && projected.AncModes is [{ Key: 11, Name: "自适应降噪", IconKey: "adaptive" }],
+                && projected.AncModes is [{ Key: 11, Name: "自适应", IconKey: "adaptive" }],
                 "Known parent state or the parent label was replaced by a default adjustment");
             Check(projected.AncOptions.Select(x => x.Key).SequenceEqual(new[] { 0x0B0C, 0x0B0D, 0x0B0E }),
                 "Legacy adjustment values were changed by the new parent state");

@@ -187,13 +187,22 @@ public sealed partial class DailyClient
         s.EqualizerFrequencies = _profile.CustomEqFrequencies.Select(x => checked((ushort)x)).ToArray();
         ResolvePresetOptions(s);
         s.AncOptions = _profile.NoiseReductionModes.SelectMany(p => (p.Children.Count == 0 ? new[] {p} : p.Children).Select(c =>
-            new AncOption((byte)p.ProtocolIndex, (byte)c.ProtocolIndex, c.ModeType, c.ModeType switch {
-                1 => "关闭降噪", 2 => "通透", 7 => "智能切换", 4 => "深度降噪", 8 => "中度降噪", 3 => "轻度降噪",
-                10 => "自适应降噪", 11 => "更少噪音", 12 => "标准", 13 => "更多噪音", _ => $"降噪档位 {c.ProtocolIndex}"
-            }))).ToList();
+            new AncOption((byte)p.ProtocolIndex, (byte)c.ProtocolIndex, c.ModeType, AncOptionName(p, c)))).ToList();
         _readWarnings[DailyRefreshScope.Identity] = s.Warnings.ToList();
         return s;
     }
+    private static string AncOptionName(NoiseReductionMode parent, NoiseReductionMode option) => parent.Children.Count == 0
+        ? option.ModeType switch
+        {
+            1 => "关闭降噪", 2 => "通透", 3 => "弱降噪", 4 => "强降噪", 5 => "降噪", 6 => "聆听",
+            7 => "智能降噪", 10 => "自适应", _ => $"降噪档位 {option.ProtocolIndex}"
+        }
+        : option.ModeType switch
+        {
+            1 => "关闭降噪", 2 => "通透", 6 when parent.ModeType == 2 => "强化人声", 7 => "智能切换",
+            4 => "深度降噪", 8 => "中度降噪", 3 => "轻度降噪", 10 => "自适应",
+            11 => "更少噪音", 12 => "标准", 13 => "更多噪音", _ => $"降噪档位 {option.ProtocolIndex}"
+        };
     private sealed class DailyReadException(ushort command, string reason)
         : IOException($"查询 0x{command:X4} 失败（{reason}）");
     /// <summary>

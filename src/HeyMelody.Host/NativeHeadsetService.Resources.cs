@@ -47,12 +47,39 @@ public sealed partial class NativeHeadsetService
         {
             int? type = definitions.FirstOrDefault(x => x.TryGetProperty("protocolIndex", out var v) && v.GetInt32() == group.Key)
                 is var d && d.ValueKind == JsonValueKind.Object && d.TryGetProperty("modeType", out var mt) ? mt.GetInt32() : null;
-            var (name, icon) = type switch { 5 => ("降噪", "anc"), 2 => ("通透", "transparency"),
-                1 => ("关闭", "off"), 7 => ("智能降噪", "smart"), 10 => ("自适应降噪", "adaptive"),
+            var (name, icon) = type switch { 3 => ("弱降噪", "anc"), 4 => ("强降噪", "anc"),
+                5 => ("降噪", "anc"), 2 => ("通透", "transparency"), 6 => ("聆听", "transparency"),
+                1 => ("关闭", "off"), 7 => ("智能降噪", "smart"), 10 => ("自适应", "adaptive"),
                 _ => (group.First().Name, "anc") };
-            return new UiAncMode(group.Key, name, icon, group.Select(x => new UiOption((x.Primary << 8) | x.Level, x.Name)).ToArray());
+            var options = group.Select(x => new UiOption((x.Primary << 8) | x.Level, x.Name)).ToArray();
+            UiAncToggle? toggle = null;
+            if (type == 2 && d.TryGetProperty("childrenMode", out var children) && children.ValueKind == JsonValueKind.Array)
+            {
+                var adjustments = children.EnumerateArray().ToArray();
+                if (adjustments is [var off, var on] && AncAdjustment(off, 2) is int offId && AncAdjustment(on, 6) is int onId)
+                {
+                    int offKey = (group.Key << 8) | offId, onKey = (group.Key << 8) | onId;
+                    if (offKey != onKey && options.Length == 2 && options.Any(x => x.Key == offKey) && options.Any(x => x.Key == onKey))
+                        toggle = new(offKey, onKey, "强化人声", "弱化环境声的同时突出人声");
+                }
+            }
+            return new UiAncMode(group.Key, name, icon, options)
+            {
+                Description = type switch
+                {
+                    6 => "减弱周围噪音基础上保留人声/广播声",
+                    10 => "实时融合主动降噪与通透模式，根据所处环境噪声的变化，控制耳机中的噪声水平",
+                    _ => ""
+                },
+                Toggle = toggle
+            };
         }).ToArray();
     }
+    private static int? AncAdjustment(JsonElement source, int modeType) => source.ValueKind == JsonValueKind.Object
+        && source.TryGetProperty("modeType", out var type) && type.ValueKind == JsonValueKind.Number
+        && type.TryGetInt32(out int value) && value == modeType
+        && source.TryGetProperty("protocolIndex", out var index) && index.ValueKind == JsonValueKind.Number
+        && index.TryGetInt32(out int id) && id is >= 0 and <= byte.MaxValue ? id : null;
     private IReadOnlyList<UiOption> SpatialOptions(DailySnapshot snapshot)
     {
         var functions = _catalog?.Find(snapshot.ProductId)?.Functions;
