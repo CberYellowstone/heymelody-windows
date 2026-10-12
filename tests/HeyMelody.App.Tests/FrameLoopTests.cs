@@ -68,7 +68,7 @@ internal static class FrameLoopTests
             while (clock.Elapsed < TimeSpan.FromSeconds(ModelOrbitMotion.IdleDelaySeconds + .2)) await Tick();
             before = model.CameraUpdateCount;
             for (var frame = 0; frame < 6; frame++) await Tick();
-            Check(model.CameraUpdateCount >= before + 4, "Each display frame advances the idle rotation; got "
+            Check(model.CameraUpdateCount >= before + 4, "Spaced display frames advance the idle rotation; got "
                 + (model.CameraUpdateCount - before) + " updates for 6 frames.");
             window.Hide(); Dispatcher.UIThread.RunJobs();
             Check(!model.AnimationActive && !model.Motion.IsActive, "Hiding the window stops the loop.");
@@ -83,7 +83,10 @@ internal static class FrameLoopTests
 
     private static async Task Tick()
     {
-        await Task.Delay(12);
+        // Headless Automatic may use software's 30 fps idle cap. Supply display
+        // frames beyond that interval; this checks frame-driven motion and lifetime,
+        // while Intervals checks the GPU/CPU refresh-rate policy independently.
+        await Task.Delay(40);
         AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         Dispatcher.UIThread.RunJobs();
     }
