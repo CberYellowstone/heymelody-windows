@@ -18,6 +18,8 @@ Windows DeviceWatcher 提供已配对设备的连接和解除配对事件，Radi
 
 每条 RFCOMM 连接只有一个持续接收通道，同时分发 ACK、GET 响应和耳机通知；同一接收批次中的其他包仍会被处理。每台设备的命令串行执行，通知接收不等待命令锁。WSAEventSelect 的原生就绪事件代替 100 毫秒 select 轮询。初始化和连接轮换会重新核验型号、能力与通知订阅。未支持或未证实的能力保持未知。
 
+建立控制连接时，SDP 先查所选来源配置的服务 UUID 缓存；缓存缺失、不唯一或缓存通道建连失败时，实际查询远端 SDP，仍要求唯一服务与有效 RFCOMM 通道。每次打开会话至多两次建连，各限五秒，用户取消时停止；同步 SDP 由 worker 总期限兜底。普通设备列表扫描不进行远端 SDP。失败提示保留服务发现类别、查询/通知订阅命令号或 Windows 数字错误码，不包含蓝牙地址或原始异常消息；依据与验证边界见 [Air4 Pro 控制核查](research/enco-air4-pro-control.md)。
+
 普通界面状态不再每八秒读取。初始化、重新连接、手动刷新、设置前后确认仍执行 GET；只包含部分信息的通知可以合并为对应 scope 的补充读取。设置推送不会触发绑定控件提交 SET，未提交选项和 EQ 草稿继续按编辑版本保护。
 
 BLE 使用单个 Active AdvertisementWatcher，接收 OPPO/OnePlus 的 manufacturer record 和 scan response。广播须完整通过字段长度、公司 ID、产品 ID 和可证实的地址关联检查。仅随机地址且无已证实关联的广播不归到某副同名耳机。广播不会授予 ControlReady、能力或设置权限。

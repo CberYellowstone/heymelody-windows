@@ -13,6 +13,15 @@ internal static class VmTests
             Check(vm.HasVerifiedSnapshot && service.Refreshes >= 2 && service.Actions.Count == 0);
             Check(vm.ProductId == "06EC10" && vm.LeftBatteryText == "90%");
         });
+        await test("VM reconnect disconnects, waits and connects a direct session again", async () =>
+        {
+            var service = new FakeService(); await using var vm = Create(service); await Connect(vm);
+            vm.ReconnectDelay = TimeSpan.FromMilliseconds(200);
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            await vm.ReconnectCommand.ExecuteAsync(null);
+            Check(service.Disconnects == 1 && service.Connects == 2 && watch.Elapsed >= vm.ReconnectDelay
+                && vm.HasVerifiedSnapshot && service.Actions.Count == 0);
+        });
         await test("VM rejects a snapshot belonging to a different device", async () =>
         {
             var service = new FakeService { RefreshSnapshot = () => Snapshot("device-b") };
@@ -187,14 +196,14 @@ internal static class VmTests
     }
     private sealed class FakeService : IHeadsetService
     {
-        public int Refreshes, Disconnects, Disposals;
+        public int Refreshes, Connects, Disconnects, Disposals;
         public string LastIdentity = "device-a";
         public List<UiAction> Actions { get; } = [];
         public Func<UiSnapshot>? ConnectSnapshot, RefreshSnapshot;
         public Func<UiAction, UiApplyResult>? Result;
         public TaskCompletionSource<UiSnapshot>? RefreshBlocked;
         public Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<UiDevice>>([new("device-a", "OPPO Enco X4", true), new("device-b", "第二副耳机", false)]);
-        public Task<UiSnapshot> ConnectAsync(string identity, CancellationToken cancellationToken) { LastIdentity = identity; return Task.FromResult(ConnectSnapshot?.Invoke() ?? Snapshot(identity)); }
+        public Task<UiSnapshot> ConnectAsync(string identity, CancellationToken cancellationToken) { Connects++; LastIdentity = identity; return Task.FromResult(ConnectSnapshot?.Invoke() ?? Snapshot(identity)); }
         public Task DisconnectAsync(CancellationToken cancellationToken) { Disconnects++; return Task.CompletedTask; }
         public Task<UiSnapshot> RefreshAsync(CancellationToken cancellationToken) { Refreshes++; return RefreshBlocked?.Task.WaitAsync(cancellationToken) ?? Task.FromResult(RefreshSnapshot?.Invoke() ?? Snapshot(LastIdentity)); }
         public Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken cancellationToken)

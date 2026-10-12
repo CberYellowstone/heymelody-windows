@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Headless;
 using HeyMelodyWindows.Host;
+using HeyMelodyWindows.Ui;
 
 namespace HeyMelodyWindows.App;
 
@@ -56,8 +57,14 @@ internal static class Program
     }
 
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
-        .UsePlatformDetect().LogToTrace();
+        .UsePlatformDetect().UseHeyMelodyRendering().UseHeyMelodyTypography().LogToTrace();
 
-    public static AppBuilder BuildHeadlessApp() => AppBuilder.Configure<App>()
-        .UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
+    public static AppBuilder BuildHeadlessApp()
+    {
+        // Previews and tests capture single frames; cosmetic fades would be caught half way.
+        ProductArtwork.TransitionsEnabled = false;
+        return AppBuilder.Configure<App>()
+            .UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+            .UseHeyMelodyRendering().UseHeyMelodyTypography();
+    }
 }

@@ -8,6 +8,7 @@
              Background="Transparent">
   <UserControl.Resources>
     <local:DemoDeviceCaptionConverter x:Key="DemoDeviceCaptionConverter" />
+    <local:DeviceCardNameConverter x:Key="DeviceCardNameConverter" />
     <ControlTheme x:Key="DeviceCardTheme" TargetType="ListBoxItem">
       <Setter Property="Width" Value="300" />
       <Setter Property="Height" Value="64" />
@@ -19,6 +20,7 @@
       <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="AutomationProperties.Name" Value="{Binding ., Converter={StaticResource DeviceCardNameConverter}}" />
       <Setter Property="Template">
         <ControlTemplate>
           <Border Background="{DynamicResource ControlSolidFillColorDefaultBrush}"
@@ -41,11 +43,15 @@
       <Style Selector="^:pressed">
         <Setter Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
       </Style>
-      <Style Selector="^:focus-visible">
-        <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
-      </Style>
+      <!-- Only the current device takes the refresh / reconnect gestures (MainView.DeviceBar.cs). -->
       <Style Selector="^:selected">
         <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+        <Setter Property="ToolTip.Tip" Value="双击刷新状态，三击重新连接" />
+        <Setter Property="AutomationProperties.HelpText" Value="当前设备。双击刷新状态，三击重新连接；也可按 F5 刷新、Shift+F5 重新连接。" />
+      </Style>
+      <!-- Keyboard focus draws the system focus ring on the card edge, also over a selected card. -->
+      <Style Selector="^:focus-visible">
+        <Setter Property="BorderBrush" Value="{DynamicResource FocusStrokeColorOuterBrush}" />
       </Style>
       <Style Selector="^:disabled /template/ Border#CardBorder">
         <Setter Property="Opacity" Value="0.5" />
@@ -54,7 +60,6 @@
   </UserControl.Resources>
   <UserControl.Styles>
     <Style Selector="fa|FASettingsExpander">
-      <Setter Property="Margin" Value="0,0,0,8" />
       <Setter Property="HorizontalAlignment" Value="Stretch" />
     </Style>
     <Style Selector="ComboBox">
@@ -65,23 +70,6 @@
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Padding" Value="0" />
     </Style>
-    <!-- Cards drawn by this view share the settings-expander surface and spacing. -->
-    <Style Selector="Border.card">
-      <Setter Property="Margin" Value="0,0,0,8" />
-      <Setter Property="CornerRadius" Value="6" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
-    </Style>
-    <Style Selector="fa|FASettingsExpanderItem.card">
-      <Setter Property="Margin" Value="0,0,0,8" />
-      <Setter Property="CornerRadius" Value="6" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="MinHeight" Value="{DynamicResource SettingsExpanderMinHeight}" />
-      <Setter Property="Padding" Value="{DynamicResource SettingsExpanderPadding}" />
-      <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
-    </Style>
     <Style Selector="Ellipse#ConnectionDot">
       <Setter Property="Fill" Value="{DynamicResource ControlStrongFillColorDefaultBrush}" />
     </Style>
@@ -91,80 +79,107 @@
     <Style Selector="Ellipse#ConnectionDot.online">
       <Setter Property="Fill" Value="{DynamicResource SystemFillColorSuccessBrush}" />
     </Style>
-    <!-- The activity bar always keeps its slot; only its opacity changes. -->
-    <Style Selector="ProgressBar#ActivityBar">
-      <Setter Property="Opacity" Value="0" />
-      <Setter Property="Transitions">
-        <Transitions>
-          <DoubleTransition Property="Opacity" Duration="0:0:0.15" />
-        </Transitions>
-      </Setter>
-    </Style>
-    <Style Selector="ProgressBar#ActivityBar.active">
-      <Setter Property="Opacity" Value="1" />
-    </Style>
-    <Style Selector="Button.header-command">
-      <Setter Property="Height" Value="32" />
-      <Setter Property="VerticalAlignment" Value="Center" />
-    </Style>
     <Style Selector="TextBlock.battery-value">
       <Setter Property="FontSize" Value="24" />
       <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
+    <Style Selector="TextBlock.band-label">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+
+    <!-- Responsive tiers. Code sets only the compact/wide classes; every width below is a style value so that
+         each tier can replace it. All tiers keep the hero and the control pane side by side. -->
+    <Style Selector="Grid#DeviceArea">
+      <Setter Property="Margin" Value="24,12,24,0" />
+    </Style>
+    <Style Selector="Grid#HeroPanel">
+      <Setter Property="Margin" Value="8,0,32,0" />
+    </Style>
+    <Style Selector="local|ProductArtwork#HeroArt">
+      <Setter Property="MaxWidth" Value="600" />
+      <Setter Property="MaxHeight" Value="520" />
+    </Style>
+    <Style Selector="Grid#ControlPane">
+      <Setter Property="Width" Value="500" />
+    </Style>
+    <!-- Below 1080 px: narrower margins and a 480 px pane (FluentAvalonia rows wrap their footers under 460 px). -->
+    <Style Selector="local|MainView.compact Grid#DeviceArea">
+      <Setter Property="Margin" Value="16,8,16,0" />
+    </Style>
+    <Style Selector="local|MainView.compact Grid#HeroPanel">
+      <Setter Property="Margin" Value="0,0,16,0" />
+    </Style>
+    <Style Selector="local|MainView.compact local|ProductArtwork#HeroArt">
+      <Setter Property="MaxHeight" Value="360" />
+    </Style>
+    <Style Selector="local|MainView.compact Grid#ControlPane">
+      <Setter Property="Width" Value="480" />
+    </Style>
+    <!-- From 1600 x 1000: a larger hero and pane, centred instead of spreading across very wide screens. -->
+    <Style Selector="local|MainView.wide Grid#DeviceArea">
+      <Setter Property="MaxWidth" Value="1680" />
+    </Style>
+    <Style Selector="local|MainView.wide local|ProductArtwork#HeroArt">
+      <Setter Property="MaxWidth" Value="720" />
+      <Setter Property="MaxHeight" Value="640" />
+    </Style>
+    <Style Selector="local|MainView.wide Grid#ControlPane">
+      <Setter Property="Width" Value="540" />
+    </Style>
   </UserControl.Styles>
   <Grid x:Name="MainLayout" RowDefinitions="*,Auto">
     <Border x:Name="PageSurface" Background="{DynamicResource ApplicationPageBackgroundThemeBrush}" IsHitTestVisible="False" />
-    <Grid x:Name="DeviceArea" ColumnDefinitions="*,500" Margin="24,12,24,0">
-      <Grid x:Name="HeroPanel" Margin="8,0,32,0">
-        <local:ProductArtwork x:Name="HeroArt" Margin="0,16" MaxWidth="600" MaxHeight="520"
-                              VerticalAlignment="Center" HorizontalAlignment="Stretch" />
+    <Grid x:Name="DeviceArea" ColumnDefinitions="*,Auto">
+      <Grid x:Name="HeroPanel">
+        <local:ProductArtwork x:Name="HeroArt" Margin="0,16" VerticalAlignment="Center" HorizontalAlignment="Stretch" />
       </Grid>
       <Grid x:Name="ControlPane" Grid.Column="1" RowDefinitions="Auto,Auto,*">
         <Grid x:Name="DeviceHeader" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" Margin="0,18,8,0">
           <Ellipse x:Name="ConnectionDot" Width="10" Height="10" Margin="2,0,12,0" VerticalAlignment="Center" />
           <TextBlock x:Name="DeviceTitle" Grid.Column="1" Text="{Binding Title}" FontSize="28" FontWeight="SemiBold"
                      TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip.Tip="{Binding Title}" />
-          <Button x:Name="AppSettingsButton" Grid.Column="2" Classes="icon" Click="AppSettings_Click" VerticalAlignment="Center"
-                  IsEnabled="{Binding CanManageDevices}" Margin="12,0,0,0" ToolTip.Tip="应用设置" AutomationProperties.Name="应用设置">
+          <!-- The only header command: centred on the title and subtitle, its right edge on the cards' edge. Refresh and
+               reconnect moved to the current device card (double / triple click) and F5 / Shift+F5. -->
+          <Button x:Name="AppSettingsButton" Grid.Column="2" Grid.RowSpan="2" Classes="icon" Click="AppSettings_Click"
+                  VerticalAlignment="Center" IsEnabled="{Binding !Closing}" Margin="12,0,0,0"
+                  ToolTip.Tip="应用设置" AutomationProperties.Name="应用设置">
             <fa:FAIconSourceElement IconSource="{local:AppIcon Settings, Size=16}" Width="16" Height="16" />
           </Button>
-          <Grid Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,4,0,0">
-            <Grid ColumnDefinitions="Auto,Auto,*" VerticalAlignment="Center">
-              <TextBlock x:Name="DeviceSubtitle" Text="{Binding Subtitle}" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                         VerticalAlignment="Center" ToolTip.Tip="{Binding Subtitle}" />
-              <TextBlock x:Name="WarningSeparator" Grid.Column="1" Text="·" Margin="8,0"
-                         IsVisible="{Binding HasWarnings}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-              <TextBlock x:Name="HeaderWarnings" Grid.Column="2" IsVisible="{Binding HasWarnings}"
-                         Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"
-                         ToolTip.Tip="{Binding WarningsText}" VerticalAlignment="Center" />
-            </Grid>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-              <Button x:Name="ConnectButton" Classes="header-command" Classes.accent="{Binding !ShowsDisconnect}" MinWidth="96"
-                      Content="{Binding ConnectButtonText}" Command="{Binding ConnectCommand}" IsEnabled="{Binding CanConnect}" />
-              <Button x:Name="RefreshStateButton" Classes="header-command" Width="32" Padding="0"
-                      HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                      Command="{Binding RefreshStateCommand}" IsEnabled="{Binding CanRefreshState}"
-                      ToolTip.Tip="刷新状态" AutomationProperties.Name="刷新状态">
-                <fa:FAIconSourceElement IconSource="{local:AppIcon Refresh, Size=16}" Width="16" Height="16" />
-              </Button>
-            </StackPanel>
+          <Grid Grid.Row="1" Grid.Column="1" ColumnDefinitions="Auto,Auto,*" VerticalAlignment="Center" Margin="0,4,0,0">
+            <TextBlock x:Name="DeviceSubtitle" Text="{Binding Subtitle}" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       VerticalAlignment="Center" ToolTip.Tip="{Binding Subtitle}" />
+            <TextBlock x:Name="WarningSeparator" Grid.Column="1" Text="·" Margin="8,0"
+                       IsVisible="{Binding HasWarnings}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Name="HeaderWarnings" Grid.Column="2" IsVisible="{Binding HasWarnings}"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"
+                       ToolTip.Tip="{Binding WarningsText}" VerticalAlignment="Center"
+                       AutomationProperties.LiveSetting="Polite" />
           </Grid>
         </Grid>
-        <ProgressBar x:Name="ActivityBar" Grid.Row="1" IsIndeterminate="{Binding HasActivity}" Classes.active="{Binding HasActivity}"
-                     Height="3" MinHeight="3" Margin="0,14,8,0" AutomationProperties.Name="正在处理" />
+        <!-- The activity slot keeps its 3 px; only its opacity changes, so the settings never move. -->
+        <ProgressBar x:Name="ActivityBar" Grid.Row="1" Classes="activity" IsIndeterminate="{Binding HasActivity}"
+                     Classes.active="{Binding HasActivity}" Margin="0,14,8,0" AutomationProperties.Name="正在处理" />
         <ScrollViewer x:Name="ControlScroll" Grid.Row="2" Margin="0,11,0,0" VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
-          <StackPanel Margin="0,0,8,24">
+          <StackPanel x:Name="ControlStack" Margin="0,0,8,24" Spacing="8">
             <fa:FAInfoBar x:Name="PlatformNotice" Severity="Informational" IsClosable="False" IsOpen="False" IsVisible="False"
-                          Title="仅预览界面" Message="耳机控制目前仅支持 Windows。" Margin="0,0,0,8" />
+                          Title="仅预览界面" Message="耳机控制目前仅支持 Windows。" />
             <fa:FAInfoBar x:Name="DemoNotice" Severity="Informational" IsClosable="False"
                           IsOpen="{Binding IsDemoSelected}" IsVisible="{Binding IsDemoSelected}"
-                          Title="布局演示" Message="控件仅模拟交互，关闭窗口后自动移除。" Margin="0,0,0,8" />
+                          Title="布局演示" Message="控件仅模拟交互，关闭窗口后自动移除。" />
             <fa:FAInfoBar x:Name="StatusNotice" Severity="Warning" IsClosable="False" IsOpen="{Binding StatusWarning}"
-                          IsVisible="{Binding StatusWarning}" Message="{Binding Status}" Margin="0,0,0,8" />
-            <Border x:Name="BatteryPanel" Classes="card" Padding="16,14">
+                          IsVisible="{Binding StatusWarning}" Message="{Binding Status}" AutomationProperties.LiveSetting="Polite" />
+            <Border x:Name="BatteryPanel" Classes="card" Padding="{StaticResource HmCardPadding}">
               <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
-                <StackPanel Spacing="6" Background="Transparent" ToolTip.Tip="{Binding LeftChargeText}">
+                <!-- Each cell reads as one phrase, e.g. "左耳 80%，正在充电". -->
+                <StackPanel Spacing="6" Background="Transparent" ToolTip.Tip="{Binding LeftChargeText}" Focusable="True">
+                  <AutomationProperties.Name>
+                    <MultiBinding StringFormat="左耳 {0}，{1}">
+                      <Binding Path="LeftBatteryText" />
+                      <Binding Path="LeftChargeText" />
+                    </MultiBinding>
+                  </AutomationProperties.Name>
                   <StackPanel Orientation="Horizontal" Spacing="6">
                     <fa:FAIconSourceElement IconSource="{local:AppIcon BatteryLeft, Size=14}" Width="14" Height="14" VerticalAlignment="Center" />
                     <TextBlock Text="左耳" Classes="caption" VerticalAlignment="Center" />
@@ -176,7 +191,13 @@
                                             AutomationProperties.Name="左耳正在充电" />
                   </StackPanel>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Spacing="6" Background="Transparent" ToolTip.Tip="{Binding RightChargeText}">
+                <StackPanel Grid.Column="1" Spacing="6" Background="Transparent" ToolTip.Tip="{Binding RightChargeText}" Focusable="True">
+                  <AutomationProperties.Name>
+                    <MultiBinding StringFormat="右耳 {0}，{1}">
+                      <Binding Path="RightBatteryText" />
+                      <Binding Path="RightChargeText" />
+                    </MultiBinding>
+                  </AutomationProperties.Name>
                   <StackPanel Orientation="Horizontal" Spacing="6">
                     <fa:FAIconSourceElement IconSource="{local:AppIcon BatteryRight, Size=14}" Width="14" Height="14" VerticalAlignment="Center" />
                     <TextBlock Text="右耳" Classes="caption" VerticalAlignment="Center" />
@@ -188,7 +209,13 @@
                                             AutomationProperties.Name="右耳正在充电" />
                   </StackPanel>
                 </StackPanel>
-                <StackPanel Grid.Column="2" Spacing="6" Background="Transparent" ToolTip.Tip="{Binding CaseChargeText}">
+                <StackPanel Grid.Column="2" Spacing="6" Background="Transparent" ToolTip.Tip="{Binding CaseChargeText}" Focusable="True">
+                  <AutomationProperties.Name>
+                    <MultiBinding StringFormat="充电盒 {0}，{1}">
+                      <Binding Path="CaseBatteryText" />
+                      <Binding Path="CaseChargeText" />
+                    </MultiBinding>
+                  </AutomationProperties.Name>
                   <StackPanel Orientation="Horizontal" Spacing="6">
                     <fa:FAIconSourceElement IconSource="{local:AppIcon BatteryCase, Size=14}" Width="14" Height="14" VerticalAlignment="Center" />
                     <TextBlock Text="充电盒" Classes="caption" VerticalAlignment="Center" />
@@ -202,16 +229,18 @@
                 </StackPanel>
               </Grid>
             </Border>
+
+            <TextBlock x:Name="SoundGroupHeader" Classes="group-header" Text="声音" />
             <fa:FASettingsExpander x:Name="AncPanel" Header="降噪" Description="调整你听见的环境声音"
                                    IconSource="{local:AppIcon NoiseControl}" IsExpanded="True">
               <local:AncModeSelector />
             </fa:FASettingsExpander>
             <fa:FASettingsExpander x:Name="EqualizerPanel" Header="均衡器" Description="预设与自定义均衡器"
                                    IconSource="{local:AppIcon Equalizer}" IsExpanded="False">
-              <Border Padding="20,16">
+              <Border Padding="{StaticResource HmExpanderContentPadding}">
                 <StackPanel Spacing="12">
                   <local:EqualizerChoiceView />
-                  <TextBlock Text="{Binding EqHint}" Classes="muted" FontSize="12" />
+                  <TextBlock Text="{Binding EqHint}" Classes="caption" TextWrapping="Wrap" />
                   <TextBox x:Name="EqNameEditor" Text="{Binding EqName, Mode=TwoWay}" MaxLength="30" PlaceholderText="均衡器名称"
                            IsEnabled="{Binding CanEditEq}" AutomationProperties.Name="均衡器名称" />
                   <ItemsControl x:Name="BandEditor" ItemsSource="{Binding Bands}" IsEnabled="{Binding CanEditEq}">
@@ -219,38 +248,38 @@
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:EqBandViewModel">
                         <StackPanel HorizontalAlignment="Center" Spacing="4">
-                          <TextBlock Text="{Binding GainLabel}" FontSize="11" HorizontalAlignment="Center" />
+                          <TextBlock Text="{Binding GainLabel}" Classes="band-label" />
                           <Slider Orientation="Vertical" Height="124" Width="32" Minimum="{Binding Minimum}"
                                   Maximum="{Binding Maximum}" Value="{Binding Gain, Mode=TwoWay}"
                                   TickFrequency="1" IsSnapToTickEnabled="True"
                                   AutomationProperties.Name="{Binding FrequencyHz, StringFormat='{}{0} Hz 增益'}" />
-                          <TextBlock Text="{Binding FrequencyLabel}" FontSize="11" HorizontalAlignment="Center" />
+                          <TextBlock Text="{Binding FrequencyLabel}" Classes="band-label" />
                         </StackPanel>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
-                  <TextBlock Text="{Binding EqDirtyText}" Classes="caption" />
-                  <WrapPanel Orientation="Horizontal">
-                    <Button Content="恢复当前" Command="{Binding ResetEqCommand}" Margin="0,0,8,4" />
-                    <Button Content="保存并启用" Command="{Binding SaveEqCommand}" Classes="accent" Margin="0,0,0,4" />
-                  </WrapPanel>
+                  <!-- Draft state and its commands share one row. -->
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                    <TextBlock Text="{Binding EqDirtyText}" Classes="caption" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                      <Button Content="恢复当前" Command="{Binding ResetEqCommand}" />
+                      <Button Content="保存并启用" Command="{Binding SaveEqCommand}" Classes="accent" />
+                    </StackPanel>
+                  </Grid>
                 </StackPanel>
               </Border>
-              <ItemsControl x:Name="EqualizerFeaturesView" ItemsSource="{Binding EqualizerFeatures}" IsVisible="{Binding HasEqualizerFeatures}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:FeatureControlViewModel">
-                    <local:FeatureControlView Background="Transparent" />
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
+              <!-- BassWave rows follow as native items of this expander; code-behind reuses them by feature id. -->
             </fa:FASettingsExpander>
-            <ItemsControl x:Name="FeatureSectionsView" ItemsSource="{Binding FeatureSections}">
+            <ItemsControl x:Name="SoundSectionsView">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Spacing="8" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:FeatureSectionViewModel">
+                <DataTemplate x:DataType="local:FeatureSectionSlot">
                   <local:FeatureSectionView />
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <TextBlock x:Name="HearingGroupHeader" Classes="group-header" Text="听感与佩戴" />
             <fa:FASettingsExpander x:Name="HearingPanel" Header="黄金听感" Description="个性化听感配置"
                                    IconSource="{local:AppIcon Hearing}" IsExpanded="False">
               <fa:FASettingsExpanderItem Content="听感配置">
@@ -268,23 +297,35 @@
                 </fa:FASettingsExpanderItem.Footer>
               </fa:FASettingsExpanderItem>
             </fa:FASettingsExpander>
-            <fa:FASettingsExpanderItem x:Name="FitTestPanel" Classes="card" Content="耳塞贴合度测试" Description="检查两耳的佩戴贴合度"
-                                       IconSource="{local:AppIcon FitTest}">
-              <fa:FASettingsExpanderItem.Footer>
+            <!-- An item-less settings expander is FluentAvalonia's plain card: no chevron, footer on the right. -->
+            <fa:FASettingsExpander x:Name="FitTestPanel" Header="耳塞贴合度测试" Description="检查两耳的佩戴贴合度"
+                                   IconSource="{local:AppIcon FitTest}">
+              <fa:FASettingsExpander.Footer>
                 <Button Content="开始测试" Click="FitTest_Click" IsEnabled="{Binding CanFitTest}" />
-              </fa:FASettingsExpanderItem.Footer>
-            </fa:FASettingsExpanderItem>
+              </fa:FASettingsExpander.Footer>
+            </fa:FASettingsExpander>
+
+            <TextBlock x:Name="DeviceGroupHeader" Classes="group-header" Text="设备" />
+            <ItemsControl x:Name="DeviceSectionsView">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Spacing="8" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="local:FeatureSectionSlot">
+                  <local:FeatureSectionView />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
             <fa:FASettingsExpander x:Name="DeviceInfoPanel" Header="设备信息" Description="名称、产品编号与固件"
                                    IconSource="{local:AppIcon Info}" IsExpanded="False">
-              <Border Padding="20,16">
+              <Border Padding="{StaticResource HmExpanderContentPadding}">
                 <StackPanel Spacing="16">
                   <Grid x:Name="DeviceInfoFields" ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
                     <TextBlock Text="设备名称" Classes="muted" /><TextBlock Grid.Column="1" Text="{Binding Title}" TextWrapping="Wrap" />
                     <TextBlock Grid.Row="1" Text="产品编号" Classes="muted" /><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ProductId, TargetNullValue=—}" />
-                    <TextBlock Grid.Row="2" Text="固件版本" Classes="muted" /><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Firmware, TargetNullValue=—}" />
+                    <TextBlock Grid.Row="2" Text="固件版本" Classes="muted" /><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Firmware, TargetNullValue=—}" TextWrapping="Wrap" />
                   </Grid>
                   <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-                    <TextBlock x:Name="DeviceInfoCopyStatus" Classes="caption" VerticalAlignment="Center" />
+                    <TextBlock x:Name="DeviceInfoCopyStatus" Classes="caption" VerticalAlignment="Center"
+                               AutomationProperties.LiveSetting="Polite" />
                     <Button x:Name="CopyDeviceInfoButton" Click="CopyDeviceInfo_Click" IsEnabled="False"
                             ToolTip.Tip="复制设备名称、产品编号与固件版本" AutomationProperties.Name="复制设备信息">
                       <StackPanel Orientation="Horizontal" Spacing="8">
@@ -298,8 +339,8 @@
             </fa:FASettingsExpander>
             <fa:FASettingsExpander x:Name="OperationLogPanel" Header="操作记录" Description="本次运行的最近操作"
                                    IconSource="{local:AppIcon History}" IsExpanded="False">
-              <Border Padding="20,16">
-                <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
+              <Border Padding="{StaticResource HmExpanderContentPadding}">
+                <TextBox x:Name="OperationLogText" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
                          MaxHeight="200" FontSize="12" AutomationProperties.Name="操作记录" />
               </Border>
             </fa:FASettingsExpander>

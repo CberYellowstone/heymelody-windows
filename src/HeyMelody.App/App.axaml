@@ -5,18 +5,6 @@
              RequestedThemeVariant="Default">
   <Application.Styles>
     <styling:FluentAvaloniaTheme PreferSystemTheme="True" PreferUserAccentColor="True" />
-    <Style Selector="TextBlock.muted">
-      <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-      <Setter Property="TextWrapping" Value="Wrap" />
-    </Style>
-    <Style Selector="TextBlock.caption">
-      <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-      <Setter Property="FontSize" Value="12" />
-    </Style>
-    <Style Selector="Button.icon">
-      <Setter Property="Padding" Value="10" />
-      <Setter Property="MinWidth" Value="36" />
-      <Setter Property="MinHeight" Value="36" />
-    </Style>
+    <StyleInclude Source="avares://HeyMelody/Styles/HeyMelodyTheme.axaml" />
   </Application.Styles>
 </Application>

@@ -1,6 +1,6 @@
 # 文档索引
 
-当前版本为 **0.8.13**。初次使用先读项目 [README](../README.md)；参与开发或研究先读 [AGENTS.md](../AGENTS.md)，再按任务选择下列文档。无需一次展开所有链接。
+当前版本为 **0.9.2**，本轮为 Windows 本地构建，尚未发布到 GitHub。初次使用先读项目 [README](../README.md)；参与开发或研究先读 [AGENTS.md](../AGENTS.md)，再按任务选择下列文档。无需一次展开所有链接。
 
 ## 用户说明
 
@@ -8,7 +8,8 @@
 - [界面说明](gui-notes.md)：设备页、设置、贴合度测试与黄金听感窗口的交互和已知限制。
 - [设备选择与离线控件](device-state.md)：选择恢复、缓存展示、上次连接时间与重新连接刷新。
 - [外观资源持久化与重新下载](artwork-persistence.md)：外观提示、颜色读取、缓存、动态 WebP 与“重新下载在线资源”。
-- [三维模型渲染设置](model-rendering.md)：GPU 优先、软件渲染、即时切换与材质差异。
+- [三维模型渲染设置](model-rendering.md)：GPU 优先、软件渲染、0.9.0 的逐帧旋转与帧率设置、材质差异。
+- [界面与渲染性能（0.9.0）](research/ui-performance-0.9.0.md)：界面重排、120 Hz 渲染预算、简体中文字体与验证范围。
 - [黄金听感预览与声音设置](research/hearing-preview-settings.md)：0.8.13 的结果雷达、原厂音乐试听与频谱、游戏分组、BassWave 和完整固件显示。
 - [发布包说明](../packaging/README.md)、[来源及许可](../packaging/SOURCE-NOTES.md)：发布包内容与第三方来源。
 

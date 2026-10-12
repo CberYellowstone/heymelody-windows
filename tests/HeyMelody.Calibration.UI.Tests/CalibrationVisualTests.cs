@@ -13,6 +13,7 @@ using FluentAvalonia.Styling;
 using HeyMelodyWindows.App;
 using HeyMelodyWindows.Artwork;
 using HeyMelodyWindows.Calibration.UI;
+using HeyMelodyWindows.Ui;
 
 internal static class CalibrationVisualTests
 {
@@ -292,7 +293,8 @@ internal static class CalibrationVisualTests
 public static class CalibrationTestBootstrap
 {
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<CalibrationTestApplication>().UseSkia()
-        .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
+        .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+        .UseHeyMelodyRendering().UseHeyMelodyTypography();
 }
 public sealed class CalibrationTestApplication : Application
 {
@@ -300,5 +302,7 @@ public sealed class CalibrationTestApplication : Application
     {
         RequestedThemeVariant = ThemeVariant.Light;
         Styles.Add(new FluentAvaloniaTheme { CustomAccentColor = Color.FromRgb(0, 120, 212) });
+        Styles.Add(SharedTheme.Create());
+        Typography.ApplyThemeResources(this);
     }
 }

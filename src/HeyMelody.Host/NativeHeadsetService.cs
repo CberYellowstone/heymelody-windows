@@ -300,7 +300,7 @@ public sealed partial class NativeHeadsetService : IHeadsetService, IDeviceManag
             HearingProfiles = _hearingProfiles,
             Connected = snapshot.Connected, SupportedModel = snapshot.ProfileVerified,
             ConnectionState = ConnectionEvidence(snapshot),
-            Failure = snapshot.Error is null ? null : "未能完整读取耳机状态，请刷新或重新连接。",
+            Failure = snapshot.Error,
             LeftBattery = snapshot.Battery?.Left?.Percent, RightBattery = snapshot.Battery?.Right?.Percent,
             CaseBattery = snapshot.Battery?.Case?.Percent, LeftCharging = snapshot.Battery?.Left?.Charging,
             RightCharging = snapshot.Battery?.Right?.Charging, CaseCharging = snapshot.Battery?.Case?.Charging,
@@ -398,12 +398,14 @@ public sealed partial class NativeHeadsetService : IHeadsetService, IDeviceManag
             token.ThrowIfCancellationRequested();
             var devices = WindowsBluetooth.EnumeratePaired().Where(device => device.Address == address && device.Authenticated).ToArray();
             if (devices.Length != 1 || !devices[0].Connected) throw new IOException("The selected peer is disconnected.");
-            var services = _serviceIds.SelectMany(id => WindowsSdp.FindServices(address, id).Where(service => service.ServiceId == id &&
-                service.Channel is > 0 and <= 30)).DistinctBy(service => (service.ServiceId, service.Channel)).ToArray();
-            if (services.Length != 1) throw new IOException("A unique Melody service is required.");
-            using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);
-            budget.CancelAfter(TimeSpan.FromSeconds(5));
-            return new Transport(await RfcommConnection.ConnectAsync(address, services[0].ServiceId, services[0].Channel, budget.Token), record);
+            RfcommConnection connection;
+            try { connection = await RfcommConnection.ConnectControlAsync(address, _serviceIds, token); }
+            catch (RfcommServiceDiscoveryException failure)
+            {
+                throw new ControlTransportUnavailableException(failure.IsAmbiguous
+                    ? ControlTransportFailure.AmbiguousServices : ControlTransportFailure.ServiceNotFound);
+            }
+            return new Transport(connection, record);
         }
     }
 

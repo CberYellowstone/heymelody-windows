@@ -1,0 +1,116 @@
+<!-- Shared design tokens and styles for the main window, device manager and calibration windows.
+     The file is compiled into each UI assembly by source link (see UiMetrics.cs for the code-side values). -->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+  <Styles.Resources>
+    <ResourceDictionary>
+      <!-- Spacing scale and page geometry. -->
+      <sys:Double x:Key="HmSpacingSmall">4</sys:Double>
+      <sys:Double x:Key="HmSpacing">8</sys:Double>
+      <sys:Double x:Key="HmSpacingMedium">12</sys:Double>
+      <sys:Double x:Key="HmSpacingLarge">16</sys:Double>
+      <sys:Double x:Key="HmSpacingXLarge">24</sys:Double>
+      <Thickness x:Key="HmCardPadding">16,14</Thickness>
+      <Thickness x:Key="HmExpanderContentPadding">20,16</Thickness>
+      <sys:Double x:Key="HmFooterHeight">72</sys:Double>
+      <sys:Double x:Key="HmActivityBarHeight">3</sys:Double>
+      <sys:Double x:Key="HmEditorWidth">200</sys:Double>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <Color x:Key="HmChartLeftColor">#13964A</Color>
+          <Color x:Key="HmChartRightColor">#1471CE</Color>
+          <Color x:Key="HmChartEnhancedColor">#C57416</Color>
+          <SolidColorBrush x:Key="HmChartLeftBrush" Color="#13964A" />
+          <SolidColorBrush x:Key="HmChartRightBrush" Color="#1471CE" />
+          <SolidColorBrush x:Key="HmChartEnhancedBrush" Color="#C57416" />
+          <SolidColorBrush x:Key="HmChartLabelBrush" Color="#606060" />
+          <SolidColorBrush x:Key="HmChartGridBrush" Color="#19000000" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <Color x:Key="HmChartLeftColor">#65D68D</Color>
+          <Color x:Key="HmChartRightColor">#72B5FF</Color>
+          <Color x:Key="HmChartEnhancedColor">#FFC177</Color>
+          <SolidColorBrush x:Key="HmChartLeftBrush" Color="#65D68D" />
+          <SolidColorBrush x:Key="HmChartRightBrush" Color="#72B5FF" />
+          <SolidColorBrush x:Key="HmChartEnhancedBrush" Color="#FFC177" />
+          <SolidColorBrush x:Key="HmChartLabelBrush" Color="#D5D5D5" />
+          <SolidColorBrush x:Key="HmChartGridBrush" Color="#35FFFFFF" />
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <!-- Typography: Chinese text stays at 12 px or larger. -->
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.caption">
+    <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+  <Style Selector="TextBlock.body-strong">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.subtitle">
+    <Setter Property="FontSize" Value="20" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <!-- Group headings between settings cards, as in Windows Settings. -->
+  <Style Selector="TextBlock.group-header">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Margin" Value="1,12,0,0" />
+  </Style>
+
+  <!-- A plain card that matches the settings expander surface. -->
+  <Style Selector="Border.card">
+    <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+  </Style>
+  <!-- Opaque command bar at the bottom of the device manager and calibration windows. -->
+  <Style Selector="Border.footer">
+    <Setter Property="Height" Value="{StaticResource HmFooterHeight}" />
+    <Setter Property="VerticalAlignment" Value="Bottom" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+    <Setter Property="Background" Value="{DynamicResource SolidBackgroundFillColorSecondaryBrush}" />
+  </Style>
+
+  <!-- A 3 px activity slot that keeps its space and only fades, so nothing below moves. -->
+  <Style Selector="ProgressBar.activity">
+    <Setter Property="Height" Value="{StaticResource HmActivityBarHeight}" />
+    <Setter Property="MinHeight" Value="{StaticResource HmActivityBarHeight}" />
+    <Setter Property="Opacity" Value="0" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.15" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="ProgressBar.activity.active">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+
+  <!-- A settings-row switch without the on/off caption column, aligned with other right-hand editors. -->
+  <Style Selector="ToggleSwitch.setting">
+    <Setter Property="OnContent" Value="" />
+    <Setter Property="OffContent" Value="" />
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="Margin" Value="0,-4,-12,0" />
+  </Style>
+
+  <Style Selector="Button.icon">
+    <Setter Property="Padding" Value="10" />
+    <Setter Property="MinWidth" Value="36" />
+    <Setter Property="MinHeight" Value="36" />
+  </Style>
+  <!-- FluentAvalonia's ComboBox leaves VerticalContentAlignment at Stretch, so the selection draws from the top padding,
+       and its 5/7 padding is tuned for Segoe Latin glyphs. Centred content with even padding centres Chinese text. -->
+  <Style Selector="ComboBox">
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Padding" Value="12,6,0,6" />
+  </Style>
+</Styles>

@@ -294,3 +294,12 @@ public sealed class DemoDeviceCaptionConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
+
+/// <summary>Screen-reader name of a device card: its name and the caption shown under it.</summary>
+public sealed class DeviceCardNameConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is UiDevice device ? device.Name + "，" + (MainViewModel.IsDemoDevice(device) ? "演示设备" : "已配对") : null;
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}

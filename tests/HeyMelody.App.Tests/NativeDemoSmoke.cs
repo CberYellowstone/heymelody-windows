@@ -255,8 +255,8 @@ internal static class NativeDemoSmoke
             expectedControls = vm.FeatureSections.Sum(section => section.Controls.Count) + vm.EqualizerFeatures.Count, actualControls = controls,
             sections = sections.Select(section => new
             {
-                id = (section.DataContext as FeatureSectionViewModel)?.Id,
-                expectedControls = (section.DataContext as FeatureSectionViewModel)?.Controls.Count,
+                id = section.Section?.Id,
+                expectedControls = section.Section?.Controls.Count,
                 expanded = (section.Content as FASettingsExpander)?.IsExpanded,
                 actualControls = section.GetVisualDescendants().OfType<FeatureControlView>().Count(),
                 width = section.Bounds.Width, height = section.Bounds.Height

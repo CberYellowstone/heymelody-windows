@@ -1,4 +1,5 @@
 using Avalonia;
+using HeyMelodyWindows.Ui;
 
 namespace HeyMelodyWindows.DeviceManager;
 
@@ -14,5 +15,6 @@ internal static class Program
         catch (Exception) { return 2; }
     }
 
-    public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<DeviceManagerApp>().UsePlatformDetect().LogToTrace();
+    public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<DeviceManagerApp>().UsePlatformDetect()
+        .UseHeyMelodyRendering().UseHeyMelodyTypography().LogToTrace();
 }

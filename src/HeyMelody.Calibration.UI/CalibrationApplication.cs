@@ -7,6 +7,7 @@ using Avalonia.Threading;
 using FluentAvalonia.Styling;
 using FluentAvalonia.UI.Windowing;
 using HeyMelodyWindows.App;
+using HeyMelodyWindows.Ui;
 using HeyMelodyWindows.Windowing;
 
 namespace HeyMelodyWindows.Calibration.UI;
@@ -19,10 +20,16 @@ public sealed class CalibrationApplication : Application
     {
         if (args is not ["--handle", var handle] || string.IsNullOrWhiteSpace(handle) || handle.Length > 128 || !OperatingSystem.IsWindows()) return 2;
         Kind = kind; Handle = handle;
-        try { return AppBuilder.Configure<CalibrationApplication>().UsePlatformDetect().LogToTrace().StartWithClassicDesktopLifetime(args); }
+        try { return AppBuilder.Configure<CalibrationApplication>().UsePlatformDetect().UseHeyMelodyRendering().UseHeyMelodyTypography()
+            .LogToTrace().StartWithClassicDesktopLifetime(args); }
         catch { return 2; }
     }
-    public override void Initialize() => Styles.Add(new FluentAvaloniaTheme { PreferSystemTheme = true, PreferUserAccentColor = true });
+    public override void Initialize()
+    {
+        Styles.Add(new FluentAvaloniaTheme { PreferSystemTheme = true, PreferUserAccentColor = true });
+        Styles.Add(SharedTheme.Create());
+        Typography.ApplyThemeResources(this);
+    }
     public override void OnFrameworkInitializationCompleted()
     {
         RequestedThemeVariant = ThemePreferenceReader.Load() switch { "light" => ThemeVariant.Light, "dark" => ThemeVariant.Dark, _ => ThemeVariant.Default };
@@ -30,6 +37,13 @@ public sealed class CalibrationApplication : Application
         { desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown; desktop.MainWindow = new CalibrationWindow(new ClientBridge(), Handle, Kind); }
         base.OnFrameworkInitializationCompleted();
     }
+}
+
+/// <summary>The design tokens shared with the main window and device manager, compiled into this assembly.</summary>
+public static class SharedTheme
+{
+    public static Avalonia.Markup.Xaml.Styling.StyleInclude Create() => new(new Uri("avares://HeyMelody.Calibration.UI/"))
+    { Source = new Uri("avares://HeyMelody.Calibration.UI/Styles/HeyMelodyTheme.axaml") };
 }
 
 public sealed class CalibrationWindow : FAAppWindow
@@ -46,6 +60,8 @@ public sealed class CalibrationWindow : FAAppWindow
     {
         // Register the backdrop's window-style callback before any window property is assigned, as DeviceManager does.
         _backdrop = new MicaAltBackdrop(this);
+        Typography.ApplyTextOptions(this);
+        RenderDiagnostics.Attach(this);
         _service = service; _events = service as IHeadsetEventService;
         _model = new CalibrationViewModel(service, handle, kind);
         Title = kind == "fit" ? "耳塞贴合度测试" : "设置黄金听感";

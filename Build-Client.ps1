@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.8.13',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.9.2',
     [ValidateNotNullOrEmpty()][ValidateSet('x64', 'x86', 'arm64')][string[]]$Architectures = @('x64', 'x86', 'arm64'),
     [switch]$SkipTests,
     [switch]$TestsOnly,
@@ -48,7 +48,10 @@ $builds = @()
 $packageCacheLine = & dotnet nuget locals global-packages --list
 if ($LASTEXITCODE -ne 0 -or $packageCacheLine -notmatch '^global-packages:\s*(.+?)\s*$') { throw 'NuGet package-cache path is unavailable.' }
 $packageCache = $Matches[1]
+# ReadyToRun precompiles the IL-only UI libraries, so the first expander, model drag or wizard page does not pause
+# for JIT; tiered compilation still promotes hot methods. Package size is not a constraint for these builds.
 $publishProperties = @('-p:CopyDebugSymbolFilesFromPackages=false',
+    '-p:PublishReadyToRun=true',
     '-p:CreateHardLinksForCopyLocalIfPossible=true',
     '-p:CreateHardLinksForCopyFilesToOutputDirectoryIfPossible=true',
     '-p:CreateHardLinksForPublishFilesIfPossible=true',

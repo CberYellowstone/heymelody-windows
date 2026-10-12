@@ -57,8 +57,8 @@ internal static class InteractionTests
             Check(notice.Text == string.Join("；", warning.Warnings)
                 && Equals(ToolTip.GetTip(notice), string.Join(Environment.NewLine, warning.Warnings))
                 && notice.TextTrimming == Avalonia.Media.TextTrimming.CharacterEllipsis
-                && subtitle.Bounds.Width > 0 && view.FindControl<Button>("RefreshStateButton")!.Bounds.Width == 32,
-                "Long guidance must remain single-line with complete tooltip and room for connection commands.");
+                && subtitle.Bounds.Width > 0 && HeaderClearsSettings(view, notice),
+                "Long guidance must remain single-line with complete tooltip and stop before the settings button.");
             var cleared = service.Next(); cleared.Warnings = [];
             service.Push(cleared); Dispatcher.UIThread.RunJobs();
             Check(!notice.IsVisible && !separator.IsVisible && notice.Text == "" && service.Actions.Count == 0,
@@ -272,9 +272,9 @@ internal static class InteractionTests
             var snapshot = service.Next(); snapshot.GameMode = true;
             service.Push(FeatureTestData.Decorate(snapshot)); Dispatcher.UIThread.RunJobs();
             section = view.GetVisualDescendants().OfType<FASettingsExpander>().Single(expander => Equals(expander.Header, "连接与体验"));
-            Check(!ReferenceEquals(section, original) && section.IsExpanded
+            Check(ReferenceEquals(section, original) && section.IsExpanded
                 && view.FindControl<FASettingsExpander>("EqualizerPanel")!.IsExpanded && !anc.IsExpanded,
-                "A replacement definition with the same section ID and fixed groups retain the user's expansion choice.");
+                "A replacement definition with the same section ID updates the existing expander and keeps the user's expansion choice.");
             section.IsExpanded = false;
             snapshot = service.Next(); snapshot.GameMode = false;
             service.Push(FeatureTestData.Decorate(snapshot)); Dispatcher.UIThread.RunJobs();
@@ -296,6 +296,18 @@ internal static class InteractionTests
                 "Returning to real settings restores its later expansion choice without submitting a headset setting.");
         }
         finally { window.Close(); }
+    }
+
+    /// <summary>The header keeps only the settings button, centred on both lines, and the warning stops before it.</summary>
+    private static bool HeaderClearsSettings(MainView view, TextBlock notice)
+    {
+        var header = view.FindControl<Grid>("DeviceHeader")!;
+        var settings = view.FindControl<Button>("AppSettingsButton")!;
+        var noticeRight = notice.TranslatePoint(new Point(notice.Bounds.Width, 0), header);
+        var settingsBox = settings.TranslatePoint(default, header);
+        return view.FindControl<Button>("RefreshStateButton") is null && view.FindControl<Button>("ConnectButton") is null
+            && settings.Bounds.Width > 0 && noticeRight is { } right && settingsBox is { } box && right.X <= box.X + .5
+            && Math.Abs(box.Y + settings.Bounds.Height / 2 - header.Bounds.Height / 2) <= 1;
     }
 
     private static Window CreateWindow(MainView view) => new()

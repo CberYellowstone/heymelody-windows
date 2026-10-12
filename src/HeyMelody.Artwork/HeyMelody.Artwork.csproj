@@ -1,8 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Avalonia.Skia" Version="12.1.3" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
     <PackageReference Include="SkiaSharp.Skottie" Version="3.119.4" />
+    <!-- Noto Sans SC (OFL-1.1) is the Simplified Chinese fallback where Microsoft YaHei UI is absent. The files sit
+         beside each UI executable so the platform font manager can open them by path (see Typography.cs). -->
+    <Content Include="Fonts/*.otf" Link="fonts/%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <InternalsVisibleTo Include="HeyMelody.App.Tests" />
     <InternalsVisibleTo Include="HeyMelody.Calibration.UI.Tests" />
   </ItemGroup>

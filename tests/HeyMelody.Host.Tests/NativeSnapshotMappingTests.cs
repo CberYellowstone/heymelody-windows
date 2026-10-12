@@ -22,6 +22,20 @@ internal static class NativeSnapshotMappingTests
             daily.Revision++; daily.ProductId = "06EC10"; daily.FirmwareVersion = "116"; daily.FirmwareDisplayVersion = "116.116.100";
             Check(((UiSnapshot)map.Invoke(service, [daily])!).Firmware == "116.116.100", "Existing X4 component fixture was truncated");
         });
+        await test("native connection diagnostics survive the snapshot bridge and clear on recovery without device I/O", async () =>
+        {
+            await using var service = new NativeHeadsetService(
+                () => throw new InvalidOperationException("Failure projection enumerated Bluetooth"),
+                new DeviceWhitelistStore(Path.Combine(scratch, "failure-projection.json")));
+            var map = typeof(NativeHeadsetService).GetMethod("Map", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var daily = new DailySnapshot { Revision = 1, Error = "查询 0x0100 超时，控制连接未就绪。" };
+            UiSnapshot Project() => (UiSnapshot)map.Invoke(service, [daily])!;
+            Check(Project().Failure == daily.Error, "The capability-query diagnostic was replaced by generic failure text");
+            daily.Error = "连接耳机控制服务失败（Windows 错误码 10060）。"; daily.Revision++;
+            Check(Project().Failure == daily.Error, "The transport diagnostic was lost in snapshot projection");
+            daily.Error = null; daily.Revision++;
+            Check(Project().Failure is null, "A fresh healthy observation retained the earlier connection diagnostic");
+        });
         await test("native warnings preserve notification guidance and identify failed state reads without disabling other controls", async () =>
         {
             await using var service = new NativeHeadsetService(
@@ -67,7 +81,7 @@ internal static class NativeSnapshotMappingTests
             UiSnapshot Project() => (UiSnapshot)map.Invoke(service, [daily])!;
             var projected = Project();
             Check(projected is { AncPrimary: 11, Anc: null, CanSetAncMode: true }
-                && projected.AncModes is [{ Key: 11, Name: "自适应降噪", IconKey: "adaptive" }],
+                && projected.AncModes is [{ Key: 11, Name: "自适应", IconKey: "adaptive" }],
                 "Known parent state or the parent label was replaced by a default adjustment");
             Check(projected.AncOptions.Select(x => x.Key).SequenceEqual(new[] { 0x0B0C, 0x0B0D, 0x0B0E }),
                 "Legacy adjustment values were changed by the new parent state");

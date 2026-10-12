@@ -32,7 +32,7 @@ public class LottieView(ILottieSource source, Func<Control?>? fallback = null,
     private Window? _window;
     private int _generation;
     private bool _attached;
-    private Visual[] _visibilityAncestors = [];
+    private VisibilityTracker? _visibility;
     private long _renderedFrames;
     private Size _sourceSize;
     private DispatcherTimer? _poster;
@@ -47,8 +47,7 @@ public class LottieView(ILottieSource source, Func<Control?>? fallback = null,
         base.OnAttachedToVisualTree(e);
         _attached = true;
         _window = TopLevel.GetTopLevel(this) as Window;
-        _visibilityAncestors = this.GetVisualAncestors().ToArray();
-        foreach (var ancestor in _visibilityAncestors) ancestor.PropertyChanged += WindowChanged;
+        _visibility = new VisibilityTracker(this, RefreshActivity);
         int generation = ++_generation;
         if (poster is not null && !AnimationLoaded)
         {
@@ -92,8 +91,8 @@ public class LottieView(ILottieSource source, Func<Control?>? fallback = null,
     {
         _attached = false; ++_generation;
         StopPoster();
-        foreach (var ancestor in _visibilityAncestors) ancestor.PropertyChanged -= WindowChanged;
-        _visibilityAncestors = [];
+        _visibility?.Dispose();
+        _visibility = null;
         _window = null;
         _composition?.SendHandlerMessage(LottieCommand.Dispose);
         ElementComposition.SetElementChildVisual(this, null);
@@ -111,8 +110,6 @@ public class LottieView(ILottieSource source, Func<Control?>? fallback = null,
             : Stretch.Uniform.CalculateSize(availableSize, _sourceSize);
     private void StopPoster() { _poster?.Stop(); _poster = null; }
     private void Resize() { if (_composition is not null) _composition.Size = new Vector2((float)Bounds.Width, (float)Bounds.Height); }
-    private void WindowChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
-    { if (e.Property == IsVisibleProperty || e.Property == Window.WindowStateProperty) RefreshActivity(); }
     private void RefreshActivity()
     {
         AnimationActive = _attached && IsEffectivelyVisible && _window is { IsVisible: true } && _window.WindowState != WindowState.Minimized;

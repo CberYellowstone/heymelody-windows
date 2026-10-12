@@ -20,6 +20,12 @@
     {
       "url": "https://raw.githubusercontent.com/rsms/inter/master/LICENSE.txt",
       "name": "Inter-OFL-1.1.txt"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/165c01b46ea533872e002e0785ff17e44f6d97d8/LICENSE",
+      "name": "NotoSansSC-OFL-1.1.txt",
+      "retrievedAtUtc": "2026-10-10T23:34:00Z",
+      "covers": "src/HeyMelody.Artwork/Fonts/NotoSansSC-{Regular,Medium,Bold}.otf from notofonts/noto-cjk Sans/SubsetOTF/SC at the same commit (Sans2.004)"
     }
   ]
 }

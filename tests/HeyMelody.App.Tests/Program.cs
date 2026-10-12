@@ -21,6 +21,7 @@ if (args is ["--native-demo-smoke"]) return NativeDemoSmoke.Run();
 if (args is ["--native-demo-smoke", "--output-dir", var nativeDemoOutput]) return NativeDemoSmoke.Run(Path.GetFullPath(nativeDemoOutput));
 
 string output = args.Length == 2 && args[0] == "--output-dir" ? Path.GetFullPath(args[1])
+    : args is ["--anc-feature-tests", "--output-dir", var ancOutput] ? Path.GetFullPath(ancOutput)
     : Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "avalonia-ui-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8]);
 Directory.CreateDirectory(output);
 var receipts = new List<object>();
@@ -29,6 +30,12 @@ int passed = 0;
 using var session = HeadlessUnitTestSession.StartNew(typeof(PreviewBootstrap));
 try
 {
+    if (args is ["--anc-feature-tests"] or ["--anc-feature-tests", "--output-dir", _])
+    {
+        var checks = AncFeatureTests.Run(session, output);
+        Console.WriteLine(JsonSerializer.Serialize(new { passed = checks, success = true, nativeBluetoothCalls = 0, output }));
+        return 0;
+    }
     var propagated = false;
     try { session.Dispatch<bool>(() => Task.FromException<bool>(new InvalidOperationException("expected-dispatch-failure")), CancellationToken.None).GetAwaiter().GetResult(); }
     catch (InvalidOperationException error) when (error.Message == "expected-dispatch-failure") { propagated = true; }
@@ -121,6 +128,8 @@ try
         return true;
     }, CancellationToken.None).GetAwaiter().GetResult();
     passed += InteractionTests.Run(session);
+    var ancFeatureChecks = AncFeatureTests.Run(session, output);
+    passed += ancFeatureChecks;
     var gameAudioChecks = GameAudioInteractionTests.Run(session);
     passed += gameAudioChecks;
     var selectionChecks = SelectionRefreshTests.Run(session, output, receipts);
@@ -139,7 +148,14 @@ try
     var startupChecks = StartupTests.Run(session);
     var settingsManagementChecks = SettingsManagementTests.Run(session);
     passed += startupChecks + settingsManagementChecks;
-    Check(passed == (OperatingSystem.IsWindows() ? 64 : 61) + demoChecks + renderingChecks + animationChecks + layoutChecks + selectionChecks + gameAudioChecks, "Every UI scenario and interaction case must finish");
+    var typographyChecks = TypographyTests.Run(session);
+    passed += typographyChecks;
+    var frameLoopChecks = FrameLoopTests.Run(session, output);
+    passed += frameLoopChecks;
+    var gestureChecks = DeviceGestureTests.Run(session);
+    passed += gestureChecks;
+    Check(passed == (OperatingSystem.IsWindows() ? 64 : 61) + demoChecks + renderingChecks + animationChecks + layoutChecks + selectionChecks
+        + gameAudioChecks + typographyChecks + frameLoopChecks + gestureChecks + ancFeatureChecks, "Every UI scenario and interaction case must finish");
     var report = new { schemaVersion = 1, version = AppVersion.Display, passed, success = true, nativeBluetoothCalls = 0,
         verificationScope = "source/mock checks; not a packaged executable or hardware execution receipt",
         screenshotScope = "headless Skia layout/content only; native titlebar and real 3D renderer pixels are not verified", screenshots = receipts };

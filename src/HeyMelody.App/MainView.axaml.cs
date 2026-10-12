@@ -5,8 +5,12 @@ using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using FluentAvalonia.UI.Controls;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using Avalonia.Controls.Primitives;
+using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
+using HeyMelodyWindows.Ui;
 
 namespace HeyMelodyWindows.App;
 
@@ -34,6 +38,9 @@ public partial class MainView : UserControl
     private ResourcePreferenceDraft? _resourcePreferenceDraft;
     private sealed record ResourcePreferenceDraft(UiOption Source, bool Online, string Key);
     private readonly Dictionary<string, bool> _sectionExpansion = new(StringComparer.Ordinal);
+    private readonly ObservableCollection<FeatureSectionSlot> _soundSections = [];
+    private readonly ObservableCollection<FeatureSectionSlot> _deviceSections = [];
+    private bool _prewarmQueued;
     public DeviceVisualCatalog VisualCatalog { get; } = new();
     private MainViewModel? ViewModel => DataContext as MainViewModel;
     public MainView()
@@ -49,10 +56,13 @@ public partial class MainView : UserControl
                 await vm.SelectHearingProfileAsync(profile);
         });
         AddDeviceHost.IsEnabled = OperatingSystem.IsWindows();
-        SizeChanged += (_, _) => UpdateLayoutMode(Bounds.Width);
+        SoundSectionsView.ItemsSource = _soundSections;
+        DeviceSectionsView.ItemsSource = _deviceSections;
+        SizeChanged += (_, _) => UpdateLayoutMode(Bounds.Size);
         DataContextChanged += (_, _) =>
         {
             CancelAddDeviceHold();
+            CancelDeviceGesture();
             if (_observedViewModel is not null) _observedViewModel.PropertyChanged -= ViewModelPropertyChanged;
             VisualCatalog.Clear();
             _sectionExpansion.Clear();
@@ -67,9 +77,11 @@ public partial class MainView : UserControl
             UpdateConnectionIndicator();
             UpdateHeaderWarnings();
             ResetDeviceInfoCopyFeedback();
+            SyncFeatureSections();
             RequestDeviceSelectionSync();
             RequestDeviceCenter();
         };
+        AttachedToVisualTree += (_, _) => QueueExpanderPrewarm();
     }
 
     private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs change)
@@ -88,6 +100,62 @@ public partial class MainView : UserControl
             or nameof(MainViewModel.Closing)) ResetDeviceInfoCopyFeedback();
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName == nameof(MainViewModel.Indicator)) UpdateConnectionIndicator();
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName == nameof(MainViewModel.WarningsText)) UpdateHeaderWarnings();
+        if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.FeatureSections)
+            or nameof(MainViewModel.EqualizerFeatures)) SyncFeatureSections();
+    }
+
+    /// <summary>
+    /// Places resource sections in the sound or device group and reuses their views by id. A replaced section (any
+    /// value change creates one) updates its existing expander and rows instead of being rebuilt.
+    /// </summary>
+    private void SyncFeatureSections()
+    {
+        var sections = ViewModel?.FeatureSections ?? [];
+        Sync(_soundSections, sections.Where(section => FeatureSectionView.IsSoundSection(section.Id)).ToArray());
+        Sync(_deviceSections, sections.Where(section => !FeatureSectionView.IsSoundSection(section.Id)).ToArray());
+        // An empty group list would still add the stack's spacing.
+        SoundSectionsView.IsVisible = _soundSections.Count != 0;
+        DeviceSectionsView.IsVisible = _deviceSections.Count != 0;
+        // BassWave rows follow the equalizer content (item 0) as rows of the same expander.
+        FeatureRows.Reconcile(EqualizerPanel.Items, ViewModel?.EqualizerFeatures ?? [], start: 1);
+        QueueExpanderPrewarm();
+
+        static void Sync(ObservableCollection<FeatureSectionSlot> slots, IReadOnlyList<FeatureSectionViewModel> sections)
+        {
+            for (var i = slots.Count - 1; i >= 0; i--)
+                if (!sections.Any(section => section.Id == slots[i].Id)) slots.RemoveAt(i);
+            for (var i = 0; i < sections.Count; i++)
+            {
+                var current = -1;
+                for (var j = i; j < slots.Count; j++) if (slots[j].Id == sections[i].Id) { current = j; break; }
+                if (current < 0) { slots.Insert(i, new FeatureSectionSlot(sections[i])); continue; }
+                if (current != i) slots.Move(current, i);
+                slots[i].Section = sections[i];
+            }
+        }
+    }
+
+    /// <summary>
+    /// Applies the templates of collapsed expander content while the window is idle, so the first expansion only
+    /// measures; template instantiation would otherwise land in the first frames of the 333 ms open animation.
+    /// </summary>
+    private void QueueExpanderPrewarm()
+    {
+        if (_prewarmQueued) return;
+        _prewarmQueued = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _prewarmQueued = false;
+            if (TopLevel.GetTopLevel(this) is null) return;
+            foreach (var expander in ControlStack.GetLogicalDescendants().OfType<FASettingsExpander>())
+                foreach (var item in expander.Items.OfType<Control>()) Prewarm(item);
+        }, DispatcherPriority.Background);
+
+        static void Prewarm(Control control)
+        {
+            if (control is TemplatedControl templated) templated.ApplyTemplate();
+            foreach (var child in control.GetLogicalChildren().OfType<Control>()) Prewarm(child);
+        }
     }
 
     private void UpdateHeaderWarnings()
@@ -120,6 +188,7 @@ public partial class MainView : UserControl
         UpdateHeroVisual();
     }
     public bool IsCompact { get; private set; }
+    public bool IsWide { get; private set; }
     public void ExpandAllSettings()
     { foreach (var section in this.GetVisualDescendants().OfType<FASettingsExpander>()) section.IsExpanded = true; }
     internal bool SectionExpanded(string id) => _sectionExpansion.GetValueOrDefault(ExpansionKey(id), false);
@@ -133,27 +202,20 @@ public partial class MainView : UserControl
         UpdateHeroVisual();
     }
 
-    private void UpdateLayoutMode(double width)
+    /// <summary>Selects the responsive tier; the widths themselves are style values in MainView.axaml.</summary>
+    /// <remarks>
+    /// Every tier keeps the hero and the control pane side by side. The former stacked layout below 1080 px left about
+    /// 230 px for settings at the 900 by 640 minimum; the compact tier leaves about 430 px.
+    /// </remarks>
+    private void UpdateLayoutMode(Size size)
     {
-        var compact = width > 0 && width < 1080;
-        if (compact == IsCompact) return;
+        var compact = size.Width > 0 && size.Width < UiMetrics.CompactWidth;
+        var wide = size.Width >= UiMetrics.WideWidth && size.Height >= UiMetrics.WideHeight;
+        if (compact == IsCompact && wide == IsWide) return;
         IsCompact = compact;
-        DeviceArea.ColumnDefinitions.Clear(); DeviceArea.RowDefinitions.Clear();
-        if (compact)
-        {
-            DeviceArea.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
-            DeviceArea.RowDefinitions.Add(new RowDefinition(new GridLength(170)));
-            DeviceArea.RowDefinitions.Add(new RowDefinition(GridLength.Star));
-            Grid.SetColumn(ControlPane, 0); Grid.SetRow(ControlPane, 1);
-            HeroPanel.Margin = new Thickness(0); HeroArt.MaxHeight = 150;
-        }
-        else
-        {
-            DeviceArea.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
-            DeviceArea.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(500)));
-            Grid.SetColumn(ControlPane, 1); Grid.SetRow(ControlPane, 0);
-            HeroPanel.Margin = new Thickness(8, 0, 32, 0); HeroArt.MaxHeight = 520;
-        }
+        IsWide = wide;
+        Classes.Set("compact", compact);
+        Classes.Set("wide", wide);
     }
 
     private async void Device_SelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -312,6 +374,7 @@ public partial class MainView : UserControl
         _closingWindow = true;
         ResetDeviceInfoCopyFeedback();
         CancelAddDeviceHold();
+        CancelDeviceGesture();
         AddDeviceHost.IsEnabled = false;
         _bluetoothSettingsCancellation?.Cancel();
         _settingsCancellation?.Cancel();
@@ -334,17 +397,25 @@ public partial class MainView : UserControl
         if (_closingWindow || TopLevel.GetTopLevel(this) is not { } owner || ViewModel is not { } vm) return;
         token.ThrowIfCancellationRequested();
         FAContentDialog? dialog = null;
-        var panel = new AppSettingsPanel(vm, ThemePreferences.Load(),
-            OperatingSystem.IsWindows() && ManageDevicesRequested is not null && vm.CanManageDevices,
+        var savedTheme = ThemePreferences.Load();
+        var panel = new AppSettingsPanel(vm, savedTheme,
+            OperatingSystem.IsWindows() && ManageDevicesRequested is not null,
             () => { _manageDevicesRequested = true; dialog?.Hide(); });
+        panel.ThemePreviewChanged += theme => (Application.Current as App)?.ApplyTheme(theme);
         dialog = new FAContentDialog { Title = "应用设置", Content = panel, PrimaryButtonText = "保存", CloseButtonText = "取消", DefaultButton = FAContentDialogButton.Primary };
-        if (await ShowSettingsDialogAsync(dialog, owner, token) != FAContentDialogResult.Primary || _closingWindow || token.IsCancellationRequested) return;
+        var result = await ShowSettingsDialogAsync(dialog, owner, token);
+        if (result != FAContentDialogResult.Primary || _closingWindow || token.IsCancellationRequested)
+        {
+            // Cancel, closing or "管理设备" keeps the saved appearance rather than the previewed one.
+            (Application.Current as App)?.ApplyTheme(savedTheme);
+            return;
+        }
         var selected = panel.SelectedTheme;
-        if (panel.SelectedSource is { } resourceSource)
+        if (panel.ResourcesEditable && panel.SelectedSource is { } resourceSource)
             _resourcePreferenceDraft = new(resourceSource, panel.UseOnlineResources, panel.CloudKey);
         if (Application.Current is App app) app.ApplyTheme(selected);
-        ModelRenderingPreferences.Apply(panel.UseModelGpuAcceleration);
-        if (!ThemePreferences.Save(selected, panel.UseModelGpuAcceleration))
+        ModelRenderingPreferences.Apply(panel.UseModelGpuAcceleration, panel.ModelFrameRate);
+        if (!ThemePreferences.Save(selected, panel.UseModelGpuAcceleration, panel.ModelFrameRate))
             await ShowSettingsDialogAsync(new FAContentDialog { Title = "外观已切换", Content = "无法保存外观偏好，下次启动将使用原来的设置。", CloseButtonText = "确定" }, owner, token);
 
     }

@@ -30,8 +30,9 @@ public enum ConnectionIndicator { Offline, Pending, Online }
 public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
     private static readonly int[] Frequencies = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-    private static readonly string[] PresentationProperties = typeof(MainViewModel).GetProperties()
-        .Where(p => !p.Name.EndsWith("Command", StringComparison.Ordinal)).Select(p => p.Name).ToArray();
+    // Resolved once: state notifications compare every presentation property after each backend update.
+    private static readonly System.Reflection.PropertyInfo[] PresentationProperties = typeof(MainViewModel).GetProperties()
+        .Where(p => !p.Name.EndsWith("Command", StringComparison.Ordinal)).ToArray();
     private readonly IHeadsetService _service;
     private readonly IConfirmationService _confirmations;
     private readonly bool _preview;
@@ -59,6 +60,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private string _title = "选择一副耳机", _subtitle = "未连接", _status = "选择耳机后连接", _eqName = "我的均衡器";
     private bool _displaying, _eqDirty, _pendingAnc, _pendingPreset, _pendingSpatial, _closing, _closeRequested, _statusWarning;
     private Task? _disposeTask;
+    private string? _reconnectPaused;
 
     public MainViewModel(IHeadsetService service, IConfirmationService confirmations, bool preview = false)
     {
@@ -69,6 +71,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         RefreshDevicesCommand = Register(new AsyncRelayCommand(RefreshDevicesAsync, () => CanRefreshDevices));
         ConnectCommand = Register(new AsyncRelayCommand(ConnectOrDisconnectAsync, () => CanConnect));
         RefreshStateCommand = Register(new AsyncRelayCommand(RefreshStateAsync, () => CanRefreshState));
+        ReconnectCommand = Register(new AsyncRelayCommand(ReconnectAsync, () => CanReconnect));
         ApplyAncCommand = Register(new AsyncRelayCommand(() => ApplyOptionAsync("Anc", SelectedAnc), () => CanSetAnc && SelectedAnc is not null));
         ApplyPresetCommand = Register(new AsyncRelayCommand(() => ApplyOptionAsync("Equalizer", SelectedPreset), () => CanSetEqualizer && SelectedPreset is not null));
         ApplySpatialCommand = Register(new AsyncRelayCommand(() => ApplyOptionAsync("Spatial", SelectedSpatial), () => CanSetSpatial && SelectedSpatial is not null));
@@ -103,6 +106,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool CanConnect => !Closing && !_lifecyclePending && SelectedDevice is not null;
     public bool CanRefreshDevices => !Closing && !_lifecyclePending;
     public bool CanRefreshState => !Closing && !_lifecyclePending && _sessionIdentity is not null;
+    public bool CanReconnect => CanConnect && !IsDemoSelected;
+    /// <summary>The pause between ending and starting the session in <see cref="ReconnectCommand"/>.</summary>
+    internal TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(1);
     public bool ShowsDisconnect => !IsDemoSelected && (EventService is not null
         ? _snapshot is not null && _snapshot.MonitoringState != MonitoringState.Paused
         : _sessionIdentity is not null);
@@ -172,6 +178,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public IAsyncRelayCommand RefreshDevicesCommand { get; }
     public IAsyncRelayCommand ConnectCommand { get; }
     public IAsyncRelayCommand RefreshStateCommand { get; }
+    public IAsyncRelayCommand ReconnectCommand { get; }
     public IAsyncRelayCommand ApplyAncCommand { get; }
     public IAsyncRelayCommand ApplyPresetCommand { get; }
     public IAsyncRelayCommand ApplySpatialCommand { get; }
@@ -189,9 +196,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         foreach (var control in _featureSections.SelectMany(s => s.Controls).Concat(_equalizerFeatures)) control.RefreshPermissions();
         foreach (var property in PresentationProperties)
         {
-            var value = typeof(MainViewModel).GetProperty(property)!.GetValue(this);
-            if (!_published.TryGetValue(property, out var old) || !Equals(old, value))
-            { _published[property] = value; OnPropertyChanged(property); }
+            var value = property.GetValue(this);
+            if (!_published.TryGetValue(property.Name, out var old) || !Equals(old, value))
+            { _published[property.Name] = value; OnPropertyChanged(property.Name); }
         }
         NotifyCommands();
     }
@@ -268,34 +275,90 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private Task ConnectOrDisconnectAsync() => RunAsync("正在连接耳机并读取状态…", async () =>
     {
         if (IsDemoSelected) { AttachDemo(); return; }
-        if (EventService is { } events)
+        if (EventService is not null && SelectedDevice is null) return;
+        if (SessionActive)
         {
-            if (SelectedDevice is not { } selected) return;
-            var pause = _snapshot is { MonitoringState: not MonitoringState.Paused };
-            if (pause && EqDirty && !await ConfirmAsync("断开客户端", "暂停此设备的控制连接会丢弃尚未保存的均衡器调整。继续吗？")) return;
-            AdvanceSession();
-            if (pause) ResetSelection();
-            _sessionIdentity = selected.Identity;
-            var observed = pause ? await events.PauseAsync(selected.Identity, _lifetime.Token)
-                : await events.ResumeAsync(selected.Identity, _lifetime.Token);
-            AdoptRead(observed);
+            if (EqDirty && !await ConfirmAsync("断开客户端", EventService is not null
+                ? "暂停此设备的控制连接会丢弃尚未保存的均衡器调整。继续吗？" : "断开客户端会丢弃尚未保存的均衡器调整。继续吗？")) return;
+            await EndSessionAsync();
             return;
         }
-        if (_sessionIdentity is not null)
+        await StartSessionAsync();
+    });
+
+    /// <summary>Ends the selected device's control session, waits <see cref="ReconnectDelay"/> and starts it again.</summary>
+    /// <remarks>
+    /// Nothing is replayed: the new session reads the device like any connection. A paused or closed session simply
+    /// connects. The lifecycle gate is held throughout, so device switching and further requests wait for it.
+    /// </remarks>
+    private Task ReconnectAsync() => RunAsync("正在重新连接耳机…", async () =>
+    {
+        if (IsDemoSelected || SelectedDevice is not { } selected) return;
+        if (SessionActive)
         {
-            if (EqDirty && !await ConfirmAsync("断开客户端", "断开客户端会丢弃尚未保存的均衡器调整。继续吗？")) return;
-            AdvanceSession();
-            await _service.DisconnectAsync(_lifetime.Token); _sessionIdentity = null; ResetSelection();
-            SetStatus("客户端已断开 · 蓝牙配对保留"); Log("已断开客户端连接。"); return;
+            if (EqDirty && !await ConfirmAsync("重新连接", "重新连接会丢弃尚未保存的均衡器调整。继续吗？")) return;
+            await EndSessionAsync();
+            if (EventService is not null) _reconnectPaused = selected.Identity;
+            SetStatus("正在重新连接耳机…");
+            await Task.Delay(ReconnectDelay, _lifetime.Token);
+            _reconnectPaused = null;
+            if (SelectedDevice?.Identity != selected.Identity)
+            {
+                // The backend keeps a pause until told otherwise; resume the device even though it is no longer shown.
+                if (EventService is { } events) await events.ResumeAsync(selected.Identity, _lifetime.Token);
+                return;
+            }
         }
+        await StartSessionAsync();
+        Log("已重新发起耳机连接。");
+    });
+
+    /// <summary>
+    /// The backend keeps a pause after this window exits, so closing between a reconnect's pause and resume resumes
+    /// the device before the service is disposed.
+    /// </summary>
+    private async Task ResumeInterruptedReconnectAsync()
+    {
+        if (_reconnectPaused is not { } identity || EventService is not { } events) return;
+        _reconnectPaused = null;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        try { await events.ResumeAsync(identity, timeout.Token); } catch { }
+    }
+
+    /// <summary>An unpaused backend peer, or an open direct connection, that disconnecting would end.</summary>
+    private bool SessionActive => EventService is not null
+        ? _snapshot is { MonitoringState: not MonitoringState.Paused } : _sessionIdentity is not null;
+
+    private async Task EndSessionAsync()
+    {
+        AdvanceSession();
+        if (EventService is { } events && SelectedDevice is { } selected)
+        {
+            ResetSelection();
+            _sessionIdentity = selected.Identity;
+            AdoptRead(await events.PauseAsync(selected.Identity, _lifetime.Token));
+            return;
+        }
+        await _service.DisconnectAsync(_lifetime.Token); _sessionIdentity = null; ResetSelection();
+        SetStatus("客户端已断开 · 蓝牙配对保留"); Log("已断开客户端连接。");
+    }
+
+    private async Task StartSessionAsync()
+    {
         if (SelectedDevice is not { } device) return;
         AdvanceSession();
+        if (EventService is { } events)
+        {
+            _sessionIdentity = device.Identity;
+            AdoptRead(await events.ResumeAsync(device.Identity, _lifetime.Token));
+            return;
+        }
         var snapshot = await _service.ConnectAsync(device.Identity, _lifetime.Token);
         if (snapshot.Identity != device.Identity) throw new InvalidOperationException();
         _sessionIdentity = device.Identity; DisplaySnapshot(snapshot);
         SetStatus(snapshot.Failure is null && snapshot.Connected ? "已连接 · 状态会自动刷新" : "连接尚未就绪，请检查耳机状态。", snapshot.Failure is not null);
         Log(snapshot.Failure is null && snapshot.Connected ? "已连接耳机，读取当前设置。" : "连接尚未就绪，设置暂不可用。");
-    });
+    }
 
     public Task PollAsync() => EventService is null && CanRefreshState && !Busy ? RefreshStateAsync() : Task.CompletedTask;
     private Task RefreshStateAsync()
@@ -342,11 +405,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var message = snapshot.MonitoringState switch
             {
-                MonitoringState.Paused => "已暂停控制连接 · 蓝牙状态与盒盖事件继续监听",
+                MonitoringState.Paused => "已暂停控制连接 · 三击底栏中的当前设备可重新连接",
                 MonitoringState.Connecting => "正在建立耳机控制连接…",
                 MonitoringState.WaitingForConnection => snapshot.ObservationFresh ? "已收到耳机广播 · 等待蓝牙连接" : "等待耳机连接 · 后台继续监听",
                 MonitoringState.Unsupported => "该型号的设置尚未适配",
-                MonitoringState.Unavailable => "耳机控制连接暂不可用，请刷新状态或重新连接耳机。",
+                MonitoringState.Unavailable => string.IsNullOrWhiteSpace(snapshot.Failure)
+                    ? "耳机控制连接暂不可用，请双击底栏中的当前设备刷新，或三击重新连接。"
+                    : $"耳机控制连接暂不可用：{snapshot.Failure.Trim()} 请双击底栏中的当前设备刷新，或三击重新连接。",
                 _ => HasVerifiedSnapshot ? "已连接 · 接收耳机状态更新" : snapshot.ObservationFresh ? "已收到耳机广播 · 设置暂不可用" : "耳机当前状态未确认"
             };
             SetStatus(message, snapshot.MonitoringState == MonitoringState.Unavailable);
@@ -597,6 +662,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private async Task DisposeCoreAsync()
     {
         _closing = true; _lifetime.Cancel();
+        await ResumeInterruptedReconnectAsync();
         try { await _service.DisposeAsync(); } catch { }
         await _operations.WhenIdle;
         ClearDeviceManagement();

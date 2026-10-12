@@ -108,6 +108,7 @@ internal sealed class DeviceStateStore
 
     internal void Remember(string key, string source, DevicePresentation presentation)
     {
+        presentation = NormalizeAncToggles(presentation);
         if (!ValidKey(key) || !ValidSource(source) || !ValidPresentation(presentation)) return;
         lock (_gate)
         {
@@ -178,8 +179,11 @@ internal sealed class DeviceStateStore
                 || document.PreferredDeviceKey is not null && !ValidKey(document.PreferredDeviceKey)) return;
             _preferredKey = document.PreferredDeviceKey;
             foreach (var entry in devices)
-                if (entry is not null && ValidKey(entry.Key) && ValidSource(entry.Source) && ValidPresentation(entry.Presentation))
-                    _entries[(entry.Key, entry.Source)] = entry;
+                if (entry is not null && ValidKey(entry.Key) && ValidSource(entry.Source))
+                {
+                    var presentation = NormalizeAncToggles(entry.Presentation);
+                    if (ValidPresentation(presentation)) _entries[(entry.Key, entry.Source)] = entry with { Presentation = presentation };
+                }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
     }
@@ -209,6 +213,23 @@ internal sealed class DeviceStateStore
     private static bool Id(string? value) => value is { Length: > 0 and <= 128 };
     private static bool Options(IReadOnlyList<UiOption>? options) => options is { Count: <= 256 }
         && options.All(o => o is not null && Text(o.Name)) && options.Select(o => o.Key).Distinct().Count() == options.Count;
+    private static DevicePresentation NormalizeAncToggles(DevicePresentation presentation)
+    {
+        if (presentation?.AncModes is null) return presentation!;
+        return presentation with
+        {
+            // Preserve malformed null entries for ValidPresentation to reject; never repair the mode list itself.
+            AncModes = presentation.AncModes.Select(mode => mode is null ? null!
+                : mode.Toggle is null || ValidAncToggle(mode) ? mode : mode with { Toggle = null }).ToArray()
+        };
+    }
+    private static bool ValidAncToggle(UiAncMode mode) => mode.Toggle is { } toggle
+        && Text(toggle.Title) && toggle.Title.Length > 0 && Text(toggle.Description)
+        && mode.Key is >= 0 and <= byte.MaxValue && toggle.OffKey != toggle.OnKey
+        && toggle.OffKey is >= 0 and <= ushort.MaxValue && toggle.OnKey is >= 0 and <= ushort.MaxValue
+        && (toggle.OffKey >> 8) == mode.Key && (toggle.OnKey >> 8) == mode.Key
+        && mode.Options is { Count: 2 } options && options.All(option => option is not null)
+        && options.Any(option => option.Key == toggle.OffKey) && options.Any(option => option.Key == toggle.OnKey);
     private static bool ValidPresentation(DevicePresentation? p)
     {
         if (p is null || p.ProductId is not { Length: 6 } || !p.ProductId.All(c => c is >= '0' and <= '9' or >= 'A' and <= 'F')
@@ -217,7 +238,8 @@ internal sealed class DeviceStateStore
             || p.EqualizerFrequencies.Any(hz => hz is < 1 or > 200000)
             || p.EqualizerFrequencies.Distinct().Count() != p.EqualizerFrequencies.Length
             || !Options(p.AncOptions) || !Options(p.EqualizerOptions) || !Options(p.SpatialOptions)
-            || p.AncModes is not { Length: <= 64 } || p.AncModes.Any(m => m is null || !Text(m.Name) || !Text(m.IconKey, 128) || !Options(m.Options))
+            || p.AncModes is not { Length: <= 64 } || p.AncModes.Any(m => m is null || !Text(m.Name) || !Text(m.IconKey, 128)
+                || !Text(m.Description) || !Options(m.Options) || m.Toggle is not null && !ValidAncToggle(m))
             || p.AncModes.Select(m => m.Key).Distinct().Count() != p.AncModes.Length
             || p.EqualizerEntries is not { Length: <= 256 } || p.EqualizerEntries.Any(e => e is null || !Text(e.Name)
                 || e.MinimumGain < sbyte.MinValue || e.MaximumGain > sbyte.MaxValue || e.MinimumGain > e.MaximumGain || e.Bands is not { Count: <= 64 }

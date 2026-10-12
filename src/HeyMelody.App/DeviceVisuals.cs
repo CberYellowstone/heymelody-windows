@@ -29,6 +29,13 @@ public static class DeviceVisuals
     private static readonly Dictionary<Uri, Bitmap> Bitmaps = new();
     private static readonly Lazy<BundledResourceStore> Bundled = new(() => new());
 
+    /// <summary>Decodes the bundled default artwork on a worker thread so the first window shows it without a decode pause.</summary>
+    internal static Task PrewarmBundledArtworkAsync() => Task.Run(() =>
+    {
+        try { GetBitmap(X4Product.Source); }
+        catch (Exception) { }
+    });
+
     private static Bitmap GetBitmap(Uri source)
     {
         lock (BitmapLock)
@@ -41,6 +48,9 @@ public static class DeviceVisuals
         }
     }
 
+    // Resolved glyph files per resource source; the bundle index is fixed for the process.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(ResourceSource, string), string?> AncGlyphPaths = new();
+
     internal static Control CreateAncGlyph(string source, string key, string brushKey)
     {
         var name = key switch { "off" => "melody_ui_reduction_noise_close", "transparency" => "melody_ui_reduction_noise_transparent",
@@ -48,11 +58,12 @@ public static class DeviceVisuals
         var selectedSource = source == "WirelessEarphones" ? ResourceSource.WirelessEarphones : ResourceSource.HeyMelody;
         try
         {
-            var asset = Bundled.Value.FindNamedAsset(selectedSource, name);
-            if (asset is not null)
+            var path = AncGlyphPaths.GetOrAdd((selectedSource, name), entry =>
+                Bundled.Value.FindNamedAsset(entry.Item1, entry.Item2) is { } found ? Bundled.Value.FullPath(found) : null);
+            if (path is not null)
             {
                 var glyph = new Border { Width = 26, Height = 26, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-                    OpacityMask = new ImageBrush(GetBitmap(new Uri(Bundled.Value.FullPath(asset)))) { Stretch = Stretch.Uniform } };
+                    OpacityMask = new ImageBrush(GetBitmap(new Uri(path))) { Stretch = Stretch.Uniform } };
                 glyph.Bind(Border.BackgroundProperty, new DynamicResourceExtension(brushKey));
                 return glyph;
             }

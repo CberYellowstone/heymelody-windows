@@ -3,17 +3,23 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
+using HeyMelodyWindows.Ui;
 
 namespace HeyMelodyWindows.App;
 
 public partial class App : Application
 {
-    public override void Initialize() => AvaloniaXamlLoader.Load(this);
+    public override void Initialize()
+    {
+        AvaloniaXamlLoader.Load(this);
+        Typography.ApplyThemeResources(this);
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            _ = DeviceVisuals.PrewarmBundledArtworkAsync();
             ApplyTheme(ThemePreferences.Load());
             ModelRenderingPreferences.Reload();
             if (Program.IsModelDemo)

@@ -16,6 +16,8 @@ public partial class AppSettingsPanel : UserControl
     private readonly Dictionary<int, string> _keys = [];
     private UiOption? _shownSource;
     private bool _redownloadObserved;
+    private readonly bool _canManageDevices;
+    private static readonly ModelFrameRate[] FrameRates = [ModelFrameRate.Display, ModelFrameRate.Fps60, ModelFrameRate.Fps30];
 
     public AppSettingsPanel() => InitializeComponent();
 
@@ -24,6 +26,10 @@ public partial class AppSettingsPanel : UserControl
         _viewModel = viewModel;
         ThemeChoice.ItemsSource = new[] { "跟随系统", "浅色", "深色" };
         ThemeChoice.SelectedIndex = theme switch { "light" => 1, "dark" => 2, _ => 0 };
+        // The theme previews at once; the owner restores the saved theme when the dialog is cancelled.
+        ThemeChoice.SelectionChanged += (_, _) => ThemePreviewChanged?.Invoke(SelectedTheme);
+        ModelFrameRateChoice.ItemsSource = new[] { "跟随显示器", "60 帧", "30 帧" };
+        ModelFrameRateChoice.SelectedIndex = Math.Max(0, Array.IndexOf(FrameRates, ModelRenderingPreferences.FrameRate));
         SourceChoice.ItemTemplate = new FuncDataTemplate<UiOption>((option, _) => new TextBlock { Text = option?.Name });
         SourceChoice.ItemsSource = viewModel.ResourceSourceOptions;
         SourceChoice.SelectedItem = _shownSource = viewModel.SelectedResourceSource;
@@ -32,7 +38,7 @@ public partial class AppSettingsPanel : UserControl
         OnlineSwitch.IsChecked = viewModel.UseOnlineResources;
         ModelGpuSwitch.IsChecked = ModelRenderingPreferences.UseGpuAcceleration;
         SourceChoice.SelectionChanged += (_, _) => SwitchSourceKey();
-        ManageDevicesButton.IsEnabled = canManageDevices;
+        _canManageDevices = canManageDevices;
         ManageDevicesButton.Click += (_, _) => manageDevices();
         RedownloadButton.Click += async (_, _) => { _redownloadObserved = true; await viewModel.RedownloadResourcesAsync(); };
         RedownloadResult.Closed += (_, _) => RedownloadResult.IsVisible = false;
@@ -44,7 +50,11 @@ public partial class AppSettingsPanel : UserControl
     internal UiOption? SelectedSource => SourceChoice.SelectedItem as UiOption;
     internal bool UseOnlineResources => OnlineSwitch.IsChecked == true;
     internal bool UseModelGpuAcceleration => ModelGpuSwitch.IsChecked == true;
+    internal ModelFrameRate ModelFrameRate => FrameRates[Math.Clamp(ModelFrameRateChoice.SelectedIndex, 0, FrameRates.Length - 1)];
     internal string CloudKey => KeyBox.Text ?? "";
+    /// <summary>Resource rows accept edits only while no connection or device switch is in progress.</summary>
+    internal bool ResourcesEditable => _viewModel?.CanManageDevices == true;
+    internal event Action<string>? ThemePreviewChanged;
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -71,15 +81,20 @@ public partial class AppSettingsPanel : UserControl
     {
         if (change.PropertyName is null or nameof(MainViewModel.IsRedownloadingResources) or nameof(MainViewModel.CanRedownloadResources)
             or nameof(MainViewModel.RedownloadMessage) or nameof(MainViewModel.ResourceStatus) or nameof(MainViewModel.ConfiguredResourceSourceName)
-            or nameof(MainViewModel.OnlineResourcesConfigured))
+            or nameof(MainViewModel.OnlineResourcesConfigured) or nameof(MainViewModel.CanManageDevices))
             Present();
     }
 
     private void Present()
     {
         if (_viewModel is not { } vm) return;
+        // Appearance stays editable; resource and device rows wait for a connection or switch to finish.
+        var editable = vm.CanManageDevices;
+        ResourceLockNotice.IsVisible = !editable;
+        SourceChoice.IsEnabled = OnlineSwitch.IsEnabled = KeyBox.IsEnabled = editable;
+        ManageDevicesButton.IsEnabled = editable && _canManageDevices;
         bool running = vm.IsRedownloadingResources;
-        RedownloadProgress.IsVisible = running;
+        RedownloadProgress.IsVisible = RedownloadProgress.IsIndeterminate = running;
         RedownloadButton.IsEnabled = vm.CanRedownloadResources;
         RedownloadCard.Description = running ? "正在重新下载，可以关闭此窗口，完成后结果会写入操作记录。"
             : !vm.ResourceServiceAvailable ? "当前模式不连接资源服务，无法重新下载。"

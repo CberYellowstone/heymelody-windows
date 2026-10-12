@@ -6,7 +6,7 @@ Checked on 2026-10-06. This branch prioritizes migration of the existing Windows
 
 ## Package decision
 
-Use .NET 10, Avalonia **12.1.3**, FluentAvaloniaUI **3.1.0**, and CommunityToolkit.Mvvm **8.4.2**. Keep all directly referenced Avalonia packages at the same patch version.
+Use .NET 10, Avalonia **12.1.4** (from 0.9.0; 0.8.x used 12.1.3), FluentAvaloniaUI **3.1.0**, and CommunityToolkit.Mvvm **8.4.2**. Keep all directly referenced Avalonia packages at the same patch version.
 
 The [official FA 3.1.0 NuGet package](https://www.nuget.org/packages/FluentAvaloniaUI/3.1.0) targets `net10.0` and depends on Avalonia >= 12.1.0. The [Avalonia.Desktop 12.1.3 package](https://www.nuget.org/packages/Avalonia.Desktop/12.1.3) was published on 2026-09-22. Both are stable MIT packages. FA's README minimum-version table is older than these packages; do not use its 2.x entries to select a new branch's dependencies.
 
