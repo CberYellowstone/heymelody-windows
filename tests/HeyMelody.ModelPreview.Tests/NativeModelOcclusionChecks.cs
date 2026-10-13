@@ -26,6 +26,15 @@ internal static class NativeModelOcclusionChecks
         var bytes = ReadOriginalBytes(check);
         var raw = await Task.Run(() => GltfLoader.LoadModel(bytes, "Enco Free4 original alpha scene"));
         var fixedModel = await EncoFree4ModelView.LoadModelAsync();
+        await RunAsync(window, original, raw, fixedModel, output, check, receipts,
+            "Enco Free4", EncoFree4ModelView.ModelSha256, 28);
+    }
+
+    internal static async Task RunAsync(Window window, DeviceModelView original,
+        GltfModel raw, GltfModel fixedModel, string output, Action<bool, string> check,
+        List<object> receipts, string modelName, string modelSha256, int expectedMeshes,
+        bool requireGpu = false, bool windowCaptureRequired = true)
+    {
         var rawMaterial = raw.Materials["1001"];
         var fixedMaterial = fixedModel.Materials["1001"];
         check(rawMaterial.Blend == BlendMode.Alpha && rawMaterial.BaseColor.W == 1,
@@ -34,8 +43,14 @@ internal static class NativeModelOcclusionChecks
         ConfigureLighting(fixedModel.Scene);
         var rawMeshes = CollectMeshes(raw.Root);
         var fixedMeshes = CollectMeshes(fixedModel.Root);
-        check(rawMeshes.Count == 28 && fixedMeshes.Count == 28,
-            "Occlusion comparison preserves all 28 original model meshes");
+        check(rawMeshes.Count == expectedMeshes && fixedMeshes.Count == expectedMeshes,
+            $"Occlusion comparison preserves all {expectedMeshes} original model meshes");
+        check(fixedMaterial.Blend == BlendMode.Opaque && fixedMaterial.DepthWrite && fixedMaterial.DepthTest
+            && fixedMaterial.Cull == rawMaterial.Cull && fixedMaterial.BaseColor == rawMaterial.BaseColor,
+            "Opaque correction enables depth writes while preserving original culling and base color");
+        check(raw.Scene.EnumerateMeshes().Sum(mesh => mesh.Node.Mesh?.TriangleCount ?? 0)
+            == fixedModel.Scene.EnumerateMeshes().Sum(mesh => mesh.Node.Mesh?.TriangleCount ?? 0),
+            "Opaque correction preserves the complete source triangle count");
         check(rawMeshes.All(mesh => mesh.RenderOrder == 0) && fixedMeshes.All(mesh => mesh.RenderOrder == 0),
             "Both occlusion scenes keep every original mesh in the same default render pass");
         var rawReversed = false;
@@ -48,6 +63,7 @@ internal static class NativeModelOcclusionChecks
             IsPanEnabled = false, IsZoomEnabled = false, IsPickingEnabled = false,
             RenderTrigger = RenderTrigger.OnDemand, SampleCount = 4, MaxFrameRate = 30
         };
+        if (requireGpu) viewport.PreferredBackend = RenderBackendKind.Automatic;
         var readyScenes = 0;
         viewport.SceneReady += (_, _) => readyScenes++;
         var comparisons = new List<object>();
@@ -57,7 +73,7 @@ internal static class NativeModelOcclusionChecks
         try
         {
             window.Content = new Border { Padding = new Thickness(16), Child = viewport };
-            window.Title = "Enco Free4 — native opaque occlusion regression";
+            window.Title = modelName + " — native opaque occlusion regression";
             if (!window.IsVisible) window.Show();
             window.Activate();
             check(!original.AnimationActive, "Occlusion comparison detaches and pauses the app's automatic camera");
@@ -77,6 +93,8 @@ internal static class NativeModelOcclusionChecks
                 if (rawReversed) { ReverseSiblings(raw.Root); rawReversed = false; }
                 await AssignSceneAsync(raw.Scene);
                 var alpha = await CaptureAsync(viewport, output, "occlusion-" + camera.Name + "-original-alpha", check);
+                var originalBackend = viewport.Info.ActiveBackend;
+                if (requireGpu) CheckGpu(originalBackend, camera.Name + ": original");
                 ReverseSiblings(raw.Root);
                 rawReversed = true;
                 check(!rawMeshes.SequenceEqual(CollectMeshes(raw.Root)),
@@ -88,8 +106,24 @@ internal static class NativeModelOcclusionChecks
                 if (fixedReversed) { ReverseSiblings(fixedModel.Root); fixedReversed = false; }
                 await AssignSceneAsync(fixedModel.Scene);
                 var corrected = await CaptureAsync(viewport, output, "occlusion-" + camera.Name + "-corrected", check);
+                var correctedBackend = viewport.Info.ActiveBackend;
+                if (requireGpu) CheckGpu(correctedBackend, camera.Name + ": corrected");
                 if (camera.Name is "front" or "quarter")
-                    NativeWindowCapture.Save(hwnd, Path.Combine(output, "occlusion-" + camera.Name + "-corrected-window.png"));
+                {
+                    try
+                    {
+                        NativeWindowCapture.Save(hwnd, Path.Combine(output, "occlusion-" + camera.Name + "-corrected-window.png"));
+                    }
+                    catch (InvalidOperationException error) when (!windowCaptureRequired)
+                    {
+                        receipts.Add(new
+                        {
+                            state = "native-window-capture-warning", camera = camera.Name,
+                            source = "Additional Win32 desktop screenshot", required = false,
+                            mandatorySdkFrameCaptured = true, error = error.Message
+                        });
+                    }
+                }
                 ReverseSiblings(fixedModel.Root);
                 fixedReversed = true;
                 check(!fixedMeshes.SequenceEqual(CollectMeshes(fixedModel.Root)),
@@ -118,6 +152,7 @@ internal static class NativeModelOcclusionChecks
                     originalAlphaOrderSensitivity = alphaOrder,
                     correctedOrderSensitivity = correctedOrder,
                     originalVsCorrected = repaired,
+                    originalBackend = originalBackend.ToString(), correctedBackend = correctedBackend.ToString(),
                     corrected.ForegroundPixels, corrected.Width, corrected.Height,
                     originalSceneItems = rawMeshes.Count, correctedSceneItems = fixedMeshes.Count
                 });
@@ -130,7 +165,7 @@ internal static class NativeModelOcclusionChecks
             check(string.IsNullOrEmpty(viewport.Info.Error), "Occlusion renderer reports no error");
             receipts.Add(new
             {
-                state = "native-occlusion-regression", modelSha256 = EncoFree4ModelView.ModelSha256,
+                state = "native-occlusion-regression", modelName, modelSha256, requireGpu, windowCaptureRequired,
                 originalMaterial = new { name = "1001", blend = rawMaterial.Blend.ToString(), rawMaterial.DepthTest, rawMaterial.DepthWrite,
                     alpha = rawMaterial.BaseColor.W },
                 correctedMaterial = new { name = "1001", blend = fixedMaterial.Blend.ToString(), fixedMaterial.DepthTest, fixedMaterial.DepthWrite,
@@ -162,6 +197,10 @@ internal static class NativeModelOcclusionChecks
                 await Task.Delay(20);
             }
         }
+
+        void CheckGpu(RenderBackendKind backend, string description) => check(
+            backend is not RenderBackendKind.Software and not RenderBackendKind.Automatic,
+            description + ": actual GPU backend renders the scene without software fallback");
     }
 
     private static byte[] ReadOriginalBytes(Action<bool, string> check)

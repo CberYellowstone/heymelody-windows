@@ -17,7 +17,8 @@ internal static class GpuRenderingTests
         Run("model rendering applies saved choices to existing, new and reattached views", ViewsAsync);
         Run("model GPU settings default on, cancel drafts and save either rendering choice", SettingsAsync);
         Run("software materials use each atlas region and restore original GPU materials", SoftwareMaterialTests.AtlasAsync);
-        return 4;
+        Run("audited models receive opaque depth correction without changing unknown artwork", ModelMaterialCorrectionTests.RunAsync);
+        return 5;
 
         void Run(string name, Func<Task> action)
         {

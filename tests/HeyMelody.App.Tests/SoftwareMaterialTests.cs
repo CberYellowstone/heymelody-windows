@@ -15,6 +15,7 @@ internal static class SoftwareMaterialTests
         var baseColour = Texture.FromPixels([70, 80, 90, 255], 1, 1);
         var original = new Material
         {
+            Blend = BlendMode.Opaque, DepthWrite = true,
             Metallic = 1, Roughness = 1, EmissiveColor = Vector3.One,
             MetallicRoughnessTexture = mr, EmissiveTexture = emission, BaseColorTexture = baseColour
         };
@@ -25,6 +26,7 @@ internal static class SoftwareMaterialTests
         model.Scene.Children.Add(left); model.Scene.Children.Add(right); model.Scene.Children.Add(third);
         var profiles = new SoftwareModelMaterials(model);
         profiles.Apply(true);
+        CheckOcclusion(left, right, "The first CPU profile preserves corrected opaque depth writes.");
         Check(left.Material.Metallic == 0 && Near(left.Material.Roughness, 128 / 255f)
             && left.Material.EmissiveColor == Vector3.Zero,
             "An atlas region with black emission is lit by the scene rather than emitting white.");
@@ -43,9 +45,11 @@ internal static class SoftwareMaterialTests
             "An intentionally untextured material retains its authored constants.");
         var firstSoftware = left.Material;
         profiles.Apply(false);
+        CheckOcclusion(left, right, "Restoring GPU materials preserves corrected opaque depth writes.");
         Check(ReferenceEquals(left.Material, original) && ReferenceEquals(right.Material, original)
             && ReferenceEquals(third.Material, untextured), "GPU rendering restores every original material reference.");
         profiles.Apply(true);
+        CheckOcclusion(left, right, "Repeated CPU switches preserve corrected opaque depth writes.");
         Check(ReferenceEquals(left.Material, firstSoftware) && left.Material.EmissiveColor == Vector3.Zero,
             "Repeated backend switches reuse the prepared material without accumulating conversions.");
 
@@ -54,6 +58,10 @@ internal static class SoftwareMaterialTests
         CheckWorldAreaWeights(model);
         CheckUnavailableMaps(model);
     }
+
+    private static void CheckOcclusion(MeshNode left, MeshNode right, string description) =>
+        Check(left.Material.Blend == BlendMode.Opaque && left.Material.DepthWrite
+            && right.Material.Blend == BlendMode.Opaque && right.Material.DepthWrite, description);
 
     private static void CheckMappedUv1(GltfModel model)
     {

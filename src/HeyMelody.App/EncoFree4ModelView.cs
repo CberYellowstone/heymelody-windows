@@ -114,17 +114,7 @@ public class DeviceModelView : UserControl
         {
             var (bytes, hash) = ReadVerifiedModel(visual.File);
             var model = GltfLoader.LoadModel(bytes, "Earbuds");
-            // This verified OEM asset marks its solid material as BLEND, although
-            // its RGB base-color map and factor are fully opaque. Alpha rendering
-            // disables depth writes, letting internal parts overwrite the shell.
-            // Correct only this model's material; retain the original GLB and culling.
-            if (hash == EncoFree4ModelView.ModelSha256 || hash == EncoFree4DynaudioModelView.ModelSha256
-                || hash == "6f6ab09e3b5067d3f1d4fac732243bb5fe723e3eb982d9b84e629560e5813363")
-            {
-                var material = model.Materials["1001"];
-                material.Blend = BlendMode.Opaque;
-                material.DepthWrite = true;
-            }
+            ModelMaterialCorrections.Apply(hash, model.Materials.Find);
             return model;
         }).ConfigureAwait(false);
     }

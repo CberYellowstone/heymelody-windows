@@ -4,13 +4,20 @@ var native = false;
 var occlusionOnly = false;
 var software = false;
 string? requestedOutput = null;
+string? requestedModelFile = null;
 for (var index = 0; index < args.Length; index++)
 {
     if (args[index] == "--native-smoke") native = true;
     else if (args[index] == "--native-software-smoke") { native = true; software = true; }
     else if (args[index] == "--native-occlusion") { native = true; occlusionOnly = true; }
     else if (args[index] == "--output-dir" && ++index < args.Length) requestedOutput = args[index];
-    else { Console.Error.WriteLine("Usage: [--native-smoke | --native-occlusion | --native-software-smoke] [--output-dir <repository/artifacts/path>]"); return 2; }
+    else if (args[index] == "--model-file" && ++index < args.Length) requestedModelFile = args[index];
+    else { Console.Error.WriteLine("Usage: [--native-smoke | --native-occlusion | --native-software-smoke] [--model-file <audited original GLB; requires --native-occlusion>] [--output-dir <repository/artifacts/path>]"); return 2; }
+}
+if (requestedModelFile is not null && (!occlusionOnly || software))
+{
+    Console.Error.WriteLine("--model-file requires --native-occlusion and cannot use --native-software-smoke.");
+    return 2;
 }
 var workspace = new DirectoryInfo(AppContext.BaseDirectory);
 while (workspace is not null && !File.Exists(Path.Combine(workspace.FullName, "src", "HeyMelody.App", "HeyMelody.App.csproj")))
@@ -35,7 +42,9 @@ void Check(bool condition, string description)
 try
 {
     if (!occlusionOnly) MotionChecks.Run(Check);
-    if (native) nativeResult = software ? NativeSoftwareSmoke.Run(output, Check) : NativeModelSmoke.Run(output, Check, occlusionOnly);
+    if (native) nativeResult = requestedModelFile is not null
+        ? NativeExternalModelOcclusionChecks.Run(Path.GetFullPath(requestedModelFile, workspace.FullName), output, Check)
+        : software ? NativeSoftwareSmoke.Run(output, Check) : NativeModelSmoke.Run(output, Check, occlusionOnly);
 }
 catch (Exception error) { failure = error.ToString(); }
 var result = new
@@ -47,6 +56,7 @@ var result = new
     nativeRequested = native,
     nativeOcclusionOnly = occlusionOnly,
     nativeSoftware = software,
+    externalModelRequested = requestedModelFile is not null,
     nativeBluetoothCalls = 0,
     appAssemblySha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
         File.ReadAllBytes(typeof(HeyMelodyWindows.App.ModelOrbitMotion).Assembly.Location))).ToLowerInvariant(),
