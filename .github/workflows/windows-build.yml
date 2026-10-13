@@ -2,7 +2,7 @@ name: Windows build
 
 on:
   push:
-    branches: [main, "arch/**"]
+    branches: [main, "arch/**", "fix/enco-air4pro"]
   pull_request:
   workflow_dispatch:
     inputs:

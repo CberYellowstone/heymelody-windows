@@ -61,6 +61,7 @@ public sealed partial class DailyClient
             try
             {
                 token.ThrowIfCancellationRequested();
+                _session?.SetAir4ProV125CodecReplyAllowed(false);
                 await EnsureSessionAsync(token);
                 phase = "校验设备身份与能力";
                 long startingVersion = NotificationVersion;
@@ -246,6 +247,13 @@ public sealed partial class DailyClient
                     var entries = (List<FirmwareEntry>)reply.Data["firmwareEntries"]!;
                     s.FirmwareVersion = entries
                         .FirstOrDefault(x => x.DeviceType == 1 && x.VersionType == 2)?.Version;
+                    // Device types 1/2 are earbuds; version type 2 is running firmware.
+                    // The charging case has independent firmware and cannot grant this permission.
+                    // v125 reports an absent peer as the exact ASCII sentinel "000".
+                    var earFirmware = entries.Where(x => x.DeviceType is 1 or 2 && x.VersionType == 2).ToArray();
+                    var knownEarFirmware = earFirmware.Where(x => x.Version != "000").ToArray();
+                    _session!.SetAir4ProV125CodecReplyAllowed(s.ProfileVerified && s.ProductId == "067C10"
+                        && knownEarFirmware.Length > 0 && knownEarFirmware.All(x => x.Version == "125"));
                     string? productType = _profile?.RawSource.TryGetProperty("type", out var type) == true
                         && type.ValueKind == System.Text.Json.JsonValueKind.String ? type.GetString() : null;
                     s.FirmwareDisplayVersion = FormatFirmwareDisplay(entries, productType);

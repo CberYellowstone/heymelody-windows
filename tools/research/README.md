@@ -13,6 +13,8 @@
 | [preset_name_audit.py](preset_name_audit.py) | 官方预设名称的资源依据 |
 | [game_audio_spatial_audit.py](game_audio_spatial_audit.py) | 固定两APK与X4固件的游戏／Hi-Res／空间离线审计；保存原件、原DEX、callback原字节和8源配置矩阵，默认另建research输出 |
 | [fetch_hearing_audition.ps1](fetch_hearing_audition.ps1) | 获取并核对官方黄金听感试听原件，离线转换 PCM16；原件、转换工具版本和摘要默认归档到 research/hearing-preview-20261010/audio |
+| [fetch_earbud_firmware.py](fetch_earbud_firmware.py) | 按所选 APK 来源查询官方 OTA，在线需显式 `fetch --online`；离线检查/解包 Air4 Pro 的 legacy 分块 LZMA，保存逐块摘要并区分下载校验与未闭合的内部 CRC |
+| [air4_pro_ghidra/](air4_pro_ghidra/README.md) | Air4 Pro 独立 ARM Thumb 镜像映射、完整已发现函数导出、定向索引及 0x0114/0x0105 字节重构；自动反编译和人工确认分别记录 |
 
 ## 使用与输出
 

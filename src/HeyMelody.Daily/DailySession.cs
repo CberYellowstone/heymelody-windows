@@ -10,7 +10,7 @@ internal sealed class DailySession : IAsyncDisposable
 {
     private readonly IControlTransport _transport;
     private readonly SequenceAllocator _sequences = new();
-    private readonly PacketDecoder _decoder = new();
+    private readonly PacketDecoder _decoder;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _pendingGate = new();
     private readonly Dictionary<ushort, byte> _filterSequences = [];
@@ -18,6 +18,7 @@ internal sealed class DailySession : IAsyncDisposable
     private RequestKey? _key;
     private TaskCompletionSource<Packet>? _reply;
     private Exception? _failure;
+    private bool _allowAir4ProV125CodecReply;
     private int _usable = 1, _disposed, _readerStarted;
     public event Action<Packet>? Notification;
     public event Action<Exception>? Ended;
@@ -26,6 +27,17 @@ internal sealed class DailySession : IAsyncDisposable
     public DailySession(IControlTransport transport)
     {
         _transport = transport;
+        _decoder = new PacketDecoder(AllowAir4ProV125CodecReply);
+    }
+    internal void SetAir4ProV125CodecReplyAllowed(bool allowed)
+    {
+        lock (_pendingGate) _allowAir4ProV125CodecReply = allowed;
+    }
+    private bool AllowAir4ProV125CodecReply(byte sequence)
+    {
+        lock (_pendingGate)
+            return _allowAir4ProV125CodecReply && Usable && _reply is not null && !_reply.Task.IsCompleted
+                && _key is { Command: 0x0114 } key && key.Sequence == sequence;
     }
     public void StartReader()
     {
@@ -137,11 +149,27 @@ internal sealed class DailySession : IAsyncDisposable
     internal static string DescribeFailure(Exception failure) => failure switch
     {
         OperationCanceledException => "等待回执超时",
-        FormatException or InvalidDataException => "控制数据格式无效",
+        FormatException => DescribeFormatFailure(failure),
+        InvalidDataException => "控制数据格式无效",
         Win32Exception socket => $"Windows 蓝牙错误 {socket.NativeErrorCode}",
         IOException => "控制通道已中断",
         _ => "控制请求失败"
     };
+    private static string DescribeFormatFailure(Exception failure)
+    {
+        string? reason = failure.Data["HeyMelody.Protocol.FrameFailure"] switch
+        {
+            "frame-start" => "帧起始标记无效",
+            "frame-length" => "帧长度无效",
+            "fragment-layout" => "分片布局无效",
+            "fragment-order" => "分片顺序无效",
+            "fragment-sequence" => "分片序号无效",
+            "inner-length" => "消息长度不匹配",
+            "incomplete-message" => "消息未完整接收",
+            _ => null
+        };
+        return reason is null ? "控制数据格式无效" : $"控制数据格式无效（{reason}）";
+    }
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
