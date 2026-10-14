@@ -590,6 +590,9 @@ await AudioFeatureCompatibilityTests.Run(Test, (value, message) => Check(value, 
 await ResourceContextTests.RunAsync(Test);
 await AncModeTests.RunAsync(Test);
 await CalibrationTransportTests.RunAsync(Test);
+await FirmwareCompatibilityTests.RunAsync(Test);
+await CodecCompatibilityRecoveryTests.RunAsync(Test);
+await CodecRecoveryPublicationTests.RunAsync(Test);
 await ConnectionDiagnosticTests.RunAsync(Test);
 await Air4ProProfileTests.Run(Test, (value, message) => Check(value, message));
 Console.WriteLine($"Daily tests: {passed} passed; no native devices accessed.");

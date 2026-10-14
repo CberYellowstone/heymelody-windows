@@ -13,6 +13,25 @@ public static class VersionConditionEvaluator
             ? EvaluateApp(x.Minimum, versions?.AndroidAppVersionMarker)
             : EvaluateFirmware(x.Minimum, versions?.FirmwareVersion)).ToArray());
     }
+    /// <summary>Firmware requirements remain diagnostics; actual App requirements still gate controls.</summary>
+    public static VersionConditionStatus EvaluateForControl(VersionConditions conditions, DeviceVersionContext? versions = null)
+    {
+        ArgumentNullException.ThrowIfNull(conditions);
+        return Combine(conditions.Requirements.Select(x => x.Domain switch
+        {
+            VersionDomain.AndroidAppMarker => EvaluateApp(x.Minimum, versions?.AndroidAppVersionMarker),
+            VersionDomain.EarbudFirmware => VersionConditionStatus.Pass,
+            _ => VersionConditionStatus.Conditional
+        }).ToArray());
+    }
+    public static IReadOnlyList<FirmwareConditionIssue> GetFirmwareIssues(VersionConditions conditions, DeviceVersionContext? versions = null)
+    {
+        ArgumentNullException.ThrowIfNull(conditions);
+        return Array.AsReadOnly(conditions.Requirements.Where(x => x.Domain == VersionDomain.EarbudFirmware)
+            .Select(x => new FirmwareConditionIssue(x.SourceField, x.Minimum.Clone(), versions?.FirmwareVersion,
+                EvaluateFirmware(x.Minimum, versions?.FirmwareVersion)))
+            .Where(x => x.Status != VersionConditionStatus.Pass).ToArray());
+    }
     public static VersionConditionStatus Combine(params VersionConditionStatus[] conditions) =>
         conditions.Contains(VersionConditionStatus.Fail) ? VersionConditionStatus.Fail :
         conditions.Contains(VersionConditionStatus.Conditional) ? VersionConditionStatus.Conditional : VersionConditionStatus.Pass;

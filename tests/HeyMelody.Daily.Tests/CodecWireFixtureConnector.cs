@@ -3,8 +3,9 @@ using HeyMelodyWindows.Control;
 // Replaces only the synthetic codec ACK with independent wire bytes, preserving
 // Fake's identity, capability and submission accounting for the other reads.
 internal sealed class CodecWireFixtureConnector(Fake inner, Func<byte, byte[]> codecReply,
-    int chunkSize = 4096, bool holdCodecSend = false) : IControlConnector
+    int chunkSize = 4096, bool holdCodecSend = false, Action<int>? onOpen = null) : IControlConnector
 {
+    private int _opens;
     internal static byte[] Ack(byte sequence)
     {
         byte[] wire = Convert.FromHexString("AA09FC7E14810002000008");
@@ -27,8 +28,11 @@ internal sealed class CodecWireFixtureConnector(Fake inner, Func<byte, byte[]> c
         return wire;
     }
 
-    public async Task<IControlTransport> OpenAsync(CancellationToken token) =>
-        new Transport(await inner.OpenAsync(token), codecReply, chunkSize, holdCodecSend);
+    public async Task<IControlTransport> OpenAsync(CancellationToken token)
+    {
+        onOpen?.Invoke(++_opens);
+        return new Transport(await inner.OpenAsync(token), codecReply, chunkSize, holdCodecSend);
+    }
 
     private sealed class Transport(IControlTransport inner, Func<byte, byte[]> codecReply,
         int chunkSize, bool holdCodecSend) : IControlTransport

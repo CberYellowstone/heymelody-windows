@@ -134,7 +134,7 @@ internal static class DailyFeatureTests
             Check(!f.Requests.Single(x=>x.Command==0x010D).Payload.Skip(1).Contains((byte)4));
             Check(!(await c.ApplyFeatureAsync("wear",1)).Success&&f.Writes.Count==0);
         });
-        await test("fresh firmware and command capabilities independently gate general writes", async () => {
+        await test("missing command capabilities still gate general writes below firmware requirements", async () => {
             var f=new Fake { CapabilityOverride=new byte[9] };f.Features[4]=0;
             await using var c=new DailyClient(f,_=>Profile("{\"wearDetection\":1}","\"minFirmwareVersion\":\"999\","));
             var s=await c.RefreshAsync();Check(!Control(s,"wear").CanWrite);

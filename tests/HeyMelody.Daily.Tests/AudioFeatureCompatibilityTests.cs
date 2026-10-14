@@ -183,7 +183,7 @@ internal static class AudioFeatureCompatibilityTests
                 await using var client = new DailyClient(fake, _ => Profile("{\"gameSoundList\":[{\"type\":3}]}"));
                 Check(!(await client.ApplyFeatureAsync("game-sound-enabled", 1)).SubmissionAttempted && fake.Writes.Count == 0);
             }
-            foreach (string extra in new[] {"\"minFirmwareVersion\":\"999\",", "\"minVersion\":99999999,"})
+            foreach (string extra in new[] {"\"minVersion\":99999999,"})
             {
                 var fake = new Fake(); fake.Features[0x27] = 0;
                 await using var client = new DailyClient(fake, _ => Profile("{\"gameSoundList\":[{\"type\":0},{\"type\":3}]}", extra));
@@ -193,10 +193,12 @@ internal static class AudioFeatureCompatibilityTests
             var restricted = new Fake { GameSoundTypes = [0,3,7] }; restricted.Features[0x27] = 0;
             await using var filtered = new DailyClient(restricted, _ => Profile("{\"gameSoundList\":[{\"type\":0},{\"type\":1},{\"type\":3,\"minFirmVersion\":999}]}"));
             var filteredSnapshot = await filtered.RefreshAsync();
-            Check(Control(filteredSnapshot, "game-sound")!.Options.Select(option => option.Value).SequenceEqual(new[] {0}));
-            Check(!(await filtered.ApplyFeatureAsync("game-sound", 3)).SubmissionAttempted
-                && !(await filtered.ApplyFeatureAsync("game-sound", 7)).SubmissionAttempted && restricted.Writes.Count == 0);
-            Check((await filtered.ApplyFeatureAsync("game-sound-enabled", 1)).Success && restricted.Writes.Single().Command == 0x0403);
+            Check(Control(filteredSnapshot, "game-sound")!.Options.Select(option => option.Value).SequenceEqual(new[] {0,3})
+                && filteredSnapshot.Warnings.Any(warning => warning.Contains("固件兼容提示")));
+            Check((await filtered.ApplyFeatureAsync("game-sound", 3)).Success
+                && !(await filtered.ApplyFeatureAsync("game-sound", 7)).SubmissionAttempted && restricted.Writes.Single().Command == 0x0423);
+            Check((await filtered.ApplyFeatureAsync("game-sound-enabled", 1)).Success
+                && restricted.Writes.Count == 2 && restricted.Writes[1].Command == 0x0403);
         });
         await test("spatial and HiRes require only their own known state for modern and legacy routes", async () =>
         {

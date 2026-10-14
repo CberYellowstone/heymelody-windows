@@ -32,10 +32,10 @@ internal static class CatalogProfileTests
                     foreach (var mode in profile.GetEffectiveEqualizerModes(knownVersions))
                     {
                         Require(mode.ProtocolIndex is >= 0 and <= byte.MaxValue, "EQ protocol ID cannot be encoded");
-                        Equal(VersionConditionStatus.Pass, mode.EvaluateConditions(knownVersions));
+                        Equal(VersionConditionStatus.Pass, mode.EvaluateConditionsForControl(knownVersions));
                     }
-                    Require(profile.GetEffectiveEqualizerModes().All(x => x.EvaluateConditions() == VersionConditionStatus.Pass),
-                        "Unknown version enabled a conditional mode");
+                    Require(profile.GetEffectiveEqualizerModes().All(x => x.EvaluateConditionsForControl() == VersionConditionStatus.Pass),
+                        "Unknown App version enabled a conditional mode");
                 }
                 catch (Exception error)
                 { throw new InvalidOperationException($"{source}/{row.ProductId} ({row.Name}): {error.Message}", error); }
@@ -101,14 +101,16 @@ internal static class CatalogProfileTests
                 Equal(VersionConditionStatus.Fail, mode.EvaluateConditions(new((minimum - 1).ToString())));
                 Equal(VersionConditionStatus.Pass, mode.EvaluateConditions(new(minimum.ToString())));
                 Equal(VersionConditionStatus.Pass, mode.EvaluateConditions(new($"{minimum}.{minimum + 1}.0")));
-                Require(!p.GetEffectiveEqualizerModes().Any(x => x.ProtocolIndex == protocol), "Unknown firmware enabled compatibility EQ");
-                Require(!p.GetEffectiveEqualizerModes(new((minimum - 1).ToString())).Any(x => x.ProtocolIndex == protocol), "Old firmware enabled compatibility EQ");
+                Require(p.GetEffectiveEqualizerModes().Any(x => x.ProtocolIndex == protocol), "Unknown firmware blocked compatibility EQ");
+                Require(p.GetEffectiveEqualizerModes(new((minimum - 1).ToString())).Any(x => x.ProtocolIndex == protocol), "Old firmware blocked compatibility EQ");
+                Equal(VersionConditionStatus.Conditional, mode.GetFirmwareIssues().Single().Status);
+                Equal(VersionConditionStatus.Fail, mode.GetFirmwareIssues(new((minimum - 1).ToString())).Single().Status);
                 Equal(type, p.GetEffectiveEqualizerModes(new(minimum.ToString())).Single(x => x.ProtocolIndex == protocol).ModeType);
                 Equal(p.EqualizerModes.Count + 1, p.GetEffectiveEqualizerModes(new(minimum.ToString())).Count);
             }
             var free4Dynaudio = DeviceProfile.FromResource(catalog.Profiles["06C010"].Raw, source.ToString());
             Sequence(new[] { 0, 1, 2, 7, 3, 8 }, free4Dynaudio.GetEffectiveEqualizerModes(new("136.136.0", 15011000)).Select(x => x.ProtocolIndex));
-            Sequence(new[] { 0, 1, 2, 7, 3 }, free4Dynaudio.GetEffectiveEqualizerModes(new("135.136.0", 15011000)).Select(x => x.ProtocolIndex));
+            Sequence(new[] { 0, 1, 2, 7, 3, 8 }, free4Dynaudio.GetEffectiveEqualizerModes(new("135.136.0", 15011000)).Select(x => x.ProtocolIndex));
         }
     }
 
@@ -135,7 +137,7 @@ internal static class CatalogProfileTests
                 {
                     var context = new DeviceVersionContext(firmware, app);
                     Equal(expected, extra.EvaluateConditions(context));
-                    Equal(expected == VersionConditionStatus.Pass, p.GetEffectiveEqualizerModes(context).Any(x => x.ProtocolIndex == 1));
+                    Equal(app >= 16009000, p.GetEffectiveEqualizerModes(context).Any(x => x.ProtocolIndex == 1));
                     Sequence(p.EqualizerModes.Select(x => x.ProtocolIndex), p.GetEffectiveEqualizerModes(context).Where(x => x.ProtocolIndex != 1).Select(x => x.ProtocolIndex));
                 }
             }
@@ -179,7 +181,8 @@ internal static class CatalogProfileTests
         {
             var mode = Profile("{\"id\":\"ABCDEF\",\"function\":{\"equalizerModeCompat\":[{\"protocolIndex\":7,\"modeType\":34,\"minFirmVersion\":" + minimum + "}]}}");
             Equal(VersionConditionStatus.Conditional, mode.EqualizerModeCompat.Single().EvaluateConditions(new("999", 999999999)));
-            Equal(0, mode.GetEffectiveEqualizerModes(new("999", 999999999)).Count);
+            Equal(1, mode.GetEffectiveEqualizerModes(new("999", 999999999)).Count);
+            Equal(VersionConditionStatus.Conditional, mode.EqualizerModeCompat.Single().GetFirmwareIssues(new("999", 999999999)).Single().Status);
         }
         foreach (string minimum in new[] { "null", "\"16009000\"", "-1", "9223372036854775808", "{}" })
         {

@@ -18,7 +18,7 @@ public sealed partial class DailyClient : ICalibrationTransport
     {
         lock (_stateGate)
         {
-            bool allowed = _profile?.Conditions.Evaluate(new(_latest?.FirmwareVersion, _appVersionMarker)) == VersionConditionStatus.Pass;
+            bool allowed = _profile?.Conditions.EvaluateForControl(new(_latest?.FirmwareVersion, _appVersionMarker)) == VersionConditionStatus.Pass;
             int Version(string name) => allowed ? _profile?.FunctionVersion(name) ?? 0 : 0;
             bool hearing = Version("hearingEnhancement") > 0 || Version("hearingEnhancementNew") > 0;
             bool earScan = Version("earScan") > 0;
@@ -54,8 +54,8 @@ public sealed partial class DailyClient : ICalibrationTransport
             if (_calibrationActive && command == 0x0411 && _session!.Remaining < 16)
                 throw new InvalidOperationException("本次连接的控制次数不足以确认完整保存，请结束测试并重新连接后重试。");
             if (command is 0x0405 or 0x040D or 0x040E or 0x0411 or 0x0415 or 0x0403 && !cleanup
-                && _profile?.Conditions.Evaluate(new(_latest?.FirmwareVersion, _appVersionMarker)) != VersionConditionStatus.Pass)
-                throw new InvalidOperationException("当前固件未通过此测试的配置条件，未提交设置。");
+                && _profile?.Conditions.EvaluateForControl(new(_latest?.FirmwareVersion, _appVersionMarker)) != VersionConditionStatus.Pass)
+                throw new InvalidOperationException("当前应用版本未通过此测试的配置条件，未提交设置。");
             var reply = await _session!.RequestAsync(command, payload, token);
             if (!reply.Matched || reply.Payload is null || !_session.Usable)
                 throw new IOException("设备响应未确认，请重新读取状态。");

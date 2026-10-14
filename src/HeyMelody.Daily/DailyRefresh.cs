@@ -14,6 +14,9 @@ public sealed partial class DailyClient
     private string? _colorProduct;
     private byte? _color;
     private DateTimeOffset? _colorObservedAtUtc;
+    private int _freshReadDepth;
+    private sealed record CodecRecoveryIdentity(string ProductId, SourceProvenance Provenance);
+    private sealed record CodecRecovery(CodecRecoveryIdentity Identity, string Warning);
 
     private async Task DropSessionAsync()
     {
@@ -54,14 +57,22 @@ public sealed partial class DailyClient
     }
     private async Task<DailySnapshot> ReadFreshAsync(CancellationToken token, DailyRefreshScope scope = DailyRefreshScope.Full)
     {
+        Interlocked.Increment(ref _freshReadDepth);
+        try { return await ReadFreshCoreAsync(token, scope); }
+        finally { Interlocked.Decrement(ref _freshReadDepth); }
+    }
+    private async Task<DailySnapshot> ReadFreshCoreAsync(CancellationToken token, DailyRefreshScope scope)
+    {
         string failure = "设备状态读取失败";
+        CodecRecovery? codecRecovery = null;
         for (int attempt = 0; attempt < 2; attempt++)
         {
             string phase = "建立 SPP 控制连接";
+            CodecRecoveryIdentity? verifiedIdentity = null;
             try
             {
                 token.ThrowIfCancellationRequested();
-                _session?.SetAir4ProV125CodecReplyAllowed(false);
+                _session?.SetCodecReplyCompatibilityAllowed(false);
                 await EnsureSessionAsync(token);
                 phase = "校验设备身份与能力";
                 long startingVersion = NotificationVersion;
@@ -70,15 +81,26 @@ public sealed partial class DailyClient
                 // not share mutable state with either the cache or previously returned results.
                 bool initialize = _commands is null || _latest is not { Connected: true };
                 DailySnapshot s;
-                lock (_stateGate) s = scope == DailyRefreshScope.Full || _latest is not { Connected: true }
+                lock (_stateGate) s = codecRecovery is not null || scope == DailyRefreshScope.Full || _latest is not { Connected: true }
                     ? new DailySnapshot() : Clone(_latest);
                 s.Connected = true; if (s.ProfileVerified) s.Error = null; s.Warnings = [];
-                if (scope == DailyRefreshScope.Full || _latest is not { Connected: true }) _readWarnings.Clear();
-                if (initialize || scope is DailyRefreshScope.Full or DailyRefreshScope.Identity)
+                if (codecRecovery is not null || scope == DailyRefreshScope.Full || _latest is not { Connected: true }) _readWarnings.Clear();
+                if (codecRecovery is not null || initialize || scope is DailyRefreshScope.Full or DailyRefreshScope.Identity)
                     s = await ReadIdentityAsync(s, token);
+                if (s.ProfileVerified && _profile is not null)
+                {
+                    verifiedIdentity = new(s.ProductId!, _profile.Provenance);
+                    _session!.SetCodecReplyCompatibilityAllowed(_commands!.Supports(0x0114));
+                }
+                if (codecRecovery is not null)
+                {
+                    if (verifiedIdentity != codecRecovery.Identity)
+                        throw new IOException("编码查询恢复时设备身份或配置来源已变化。");
+                    _session!.SuppressCodecQuery(codecRecovery.Warning);
+                }
                 if (s.ProfileVerified && scope != DailyRefreshScope.Identity)
                 {
-                    if (scope == DailyRefreshScope.Full)
+                    if (codecRecovery is not null || scope == DailyRefreshScope.Full)
                     {
                         foreach (var section in new[] { DailyRefreshScope.Information, DailyRefreshScope.Features,
                             DailyRefreshScope.Battery, DailyRefreshScope.Anc, DailyRefreshScope.Equalizer })
@@ -115,6 +137,9 @@ public sealed partial class DailyClient
             catch (Exception ex) when (!token.IsCancellationRequested)
             {
                 failure = DescribeReadFailure(ex, phase);
+                if (attempt == 0 && verifiedIdentity is not null && ex is DailyReadException read && read.CanRecoverCodec)
+                    codecRecovery = new(verifiedIdentity,
+                        $"音频编码查询 0x0114 暂不可用（{read.Reason}），已跳过该查询；其他功能按各自能力和状态使用。重新连接可重试。");
                 await DropSessionAsync();
                 if (attempt == 0) continue;
             }
@@ -150,12 +175,14 @@ public sealed partial class DailyClient
             throw new IOException("本次连接的控制次数已用完，请结束测试并重新连接后重试。");
         var reply = await _session!.RequestAsync(command, payload, token);
         if (!reply.Matched || !_session.Usable)
-            throw new DailyReadException(command, reply.Failure ?? "未收到匹配回执");
+            throw new DailyReadException(command, reply.Failure ?? "未收到匹配回执", reply);
         if (reply.Status != 0)
         {
             s.Warnings.Add($"查询 0x{command:X4} 被设备拒绝。");
             return null;
         }
+        if (reply.CodecReplyCompatibilityUsed)
+            s.Warnings.Add("音频编码回复使用兼容格式，当前固件的实际效果尚需验证。");
         return reply.Payload;
     }
     private async Task<DailySnapshot> ReadIdentityAsync(DailySnapshot s, CancellationToken token)
@@ -177,7 +204,7 @@ public sealed partial class DailyClient
         _commands = CommandCapabilities.Parse(cap.AsSpan(1));
         await ReadColorAsync(s, productId, token);
         if (_profile is null || !_profile.SupportSpp || _profile.Uuid == Guid.Empty ||
-            _profile.Conditions.Evaluate(new(AndroidAppVersionMarker: _appVersionMarker)) == VersionConditionStatus.Fail)
+            _profile.Conditions.EvaluateForControl(new(AndroidAppVersionMarker: _appVersionMarker)) == VersionConditionStatus.Fail)
         {
             s.ProfileVerified = false;
             s.Error = "当前型号尚无已核实的配置，日常设置不可用。";
@@ -204,8 +231,15 @@ public sealed partial class DailyClient
             4 => "深度降噪", 8 => "中度降噪", 3 => "轻度降噪", 10 => "自适应",
             11 => "更少噪音", 12 => "标准", 13 => "更多噪音", _ => $"降噪档位 {option.ProtocolIndex}"
         };
-    private sealed class DailyReadException(ushort command, string reason)
-        : IOException($"查询 0x{command:X4} 失败（{reason}）");
+    private sealed class DailyReadException(ushort command, string reason, DailyResponse? response = null)
+        : IOException($"查询 0x{command:X4} 失败（{reason}）")
+    {
+        public string Reason => reason;
+        public bool CanRecoverCodec => command == 0x0114 && response is { FailureRequestPending: true }
+            && (response.FailureKind == DailyReadFailureKind.Timeout
+                || response.FailureKind == DailyReadFailureKind.ProtocolFormat && response.FailureCommand == 0x8114
+                    && response.Sequence.HasValue && response.FailureSequence == response.Sequence);
+    }
     /// <summary>
     /// Both official apps read GET 0x010B (a foundation command) and use payload[1] as the artwork color.
     /// The color is fixed hardware metadata, so this client reads it once per product. Rejection or
@@ -247,22 +281,16 @@ public sealed partial class DailyClient
                     var entries = (List<FirmwareEntry>)reply.Data["firmwareEntries"]!;
                     s.FirmwareVersion = entries
                         .FirstOrDefault(x => x.DeviceType == 1 && x.VersionType == 2)?.Version;
-                    // Device types 1/2 are earbuds; version type 2 is running firmware.
-                    // The charging case has independent firmware and cannot grant this permission.
-                    // v125 reports an absent peer as the exact ASCII sentinel "000".
-                    var earFirmware = entries.Where(x => x.DeviceType is 1 or 2 && x.VersionType == 2).ToArray();
-                    var knownEarFirmware = earFirmware.Where(x => x.Version != "000").ToArray();
-                    _session!.SetAir4ProV125CodecReplyAllowed(s.ProfileVerified && s.ProductId == "067C10"
-                        && knownEarFirmware.Length > 0 && knownEarFirmware.All(x => x.Version == "125"));
                     string? productType = _profile?.RawSource.TryGetProperty("type", out var type) == true
                         && type.ValueKind == System.Text.Json.JsonValueKind.String ? type.GetString() : null;
                     s.FirmwareDisplayVersion = FormatFirmwareDisplay(entries, productType);
                 });
-                await Parse(0x0114, [], data => {
-                    var reply = QueryParsers.Parse(0x0114, data);
-                    if (!reply.Success) throw new FormatException();
-                    s.CodecRaw = (byte)reply.Data["codecRaw"]!;
-                });
+                if (_session!.CodecQuerySuppressionWarning is { } codecWarning) s.Warnings.Add(codecWarning);
+                else await Parse(0x0114, [], data => {
+                        var reply = QueryParsers.Parse(0x0114, data);
+                        if (!reply.Success) throw new FormatException();
+                        s.CodecRaw = (byte)reply.Data["codecRaw"]!;
+                    });
                 await Parse(0x0109, [], data => {
                     if (data.Length < 1 || data[0] != 0) throw new FormatException();
                     DateTimeOffset observed = DateTimeOffset.UtcNow;
@@ -321,12 +349,12 @@ public sealed partial class DailyClient
         var versions = new DeviceVersionContext(s.FirmwareVersion, _appVersionMarker);
         var resolved = CapabilityResolver.Resolve(_profile, _commands, s.RawFeatures, versions);
         bool Declared(string name) => _profile.FunctionVersion(name) > 0;
-        bool allowed = _profile.Conditions.Evaluate(versions) == VersionConditionStatus.Pass;
+        bool allowed = _profile.Conditions.EvaluateForControl(versions) == VersionConditionStatus.Pass;
         ResolvePresetOptions(s);
         s.AncOptions = s.AncOptions.Where(x => _profile.NoiseReductionModes.Any(parent => parent.ProtocolIndex == x.Primary
-            && parent.Conditions.Evaluate(versions) == VersionConditionStatus.Pass
+            && parent.Conditions.EvaluateForControl(versions) == VersionConditionStatus.Pass
             && (parent.Children.Count == 0 ? parent.ProtocolIndex == x.Level : parent.Children.Any(child => child.ProtocolIndex == x.Level
-                && child.Conditions.Evaluate(versions) == VersionConditionStatus.Pass)))).ToList();
+                && child.Conditions.EvaluateForControl(versions) == VersionConditionStatus.Pass)))).ToList();
         s.DualConnection = Feature(0x11); s.HiRes = Feature(0x18);
         s.GameMode = resolved.GameMode.FeatureId.HasValue ? Feature(resolved.GameMode.FeatureId.Value) : null;
         bool Commands(ushort read, ushort write) => _commands.Supports(read) && _commands.Supports(write);
@@ -345,7 +373,11 @@ public sealed partial class DailyClient
             SpatialRoute = modern ? "modern" : legacy ? "legacy" : "unavailable"
         };
         BuildFeatureSections(s);
+        RefreshFirmwareWarnings(s);
     }
+    private void RefreshFirmwareWarnings(DailySnapshot s) => s.Warnings = s.Warnings
+        .Where(warning => !warning.StartsWith("固件兼容提示：", StringComparison.Ordinal))
+        .Concat(CollectFirmwareCompatibilityWarnings(s)).Distinct().ToList();
     private static DailySnapshot Clone(DailySnapshot s) => new()
     {
         Revision = s.Revision, ObservedAtUtc = s.ObservedAtUtc, Connected = s.Connected, ProfileVerified = s.ProfileVerified,

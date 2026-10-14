@@ -66,11 +66,11 @@ public sealed class DeviceProfile : SourceMetadata
     public IReadOnlyList<GameSoundMode> GameSoundModes { get; }
     public IReadOnlyList<MultiConnectFunction> MultiConnectFunctions { get; }
     public EqualizerMode? FindEqualizerByProtocolId(int protocolId) => EqualizerModes.FirstOrDefault(x => x.ProtocolIndex == protocolId);
-    /// <summary>APK append order and stable order-sort; unknown firmware/app/color never enables a conditional extra mode.</summary>
+    /// <summary>Preserve APK append order, stable sorting and App/color selection; firmware requirements remain diagnostics.</summary>
     public IReadOnlyList<EqualizerMode> GetEffectiveEqualizerModes(DeviceVersionContext? versions = null, byte? color = null) => Array.AsReadOnly(
         EqualizerModeCompat.Concat(EqualizerModeByColor.Where(x => color.HasValue && x.ColorId == color))
             .Concat(EqualizerModeByVersion).Concat(EqualizerModes)
-            .Where(x => x.EvaluateConditions(versions) == VersionConditionStatus.Pass).OrderBy(x => x.Order).ToArray());
+            .Where(x => x.EvaluateConditionsForControl(versions) == VersionConditionStatus.Pass).OrderBy(x => x.Order).ToArray());
     public NoiseReductionMode? FindNoiseReductionByProtocolId(int protocolId) => NoiseReductionModes
         .SelectMany(Flatten).FirstOrDefault(x => x.ProtocolIndex == protocolId);
     public static DeviceProfile FromResource(JsonElement source, string resourceSource, string sha256 = "")

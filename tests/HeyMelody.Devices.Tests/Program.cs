@@ -25,6 +25,8 @@ var tests = new (string Name, Action Body)[]
     ("Sparse EQ and unknown ANC children use protocol IDs", Modes),
     ("Metadata is detached and read-only", Isolation),
     ("Version conditions preserve domains and three outcomes", Versions),
+    ("Firmware warnings preserve raw conditions and actual App gates", FirmwareControlPolicyTests.ConditionsAndDiagnostics),
+    ("EQ firmware warnings preserve App/color branches and stable order", FirmwareControlPolicyTests.EqualizerSelectionAndDiagnostics),
     ("Read/write command support gates independently", CommandGates),
     ("Unknown product cannot be inferred from commands", UnknownModel),
     ("Missing and unknown states differ from false", States),
@@ -35,7 +37,7 @@ var tests = new (string Name, Action Body)[]
     ("Every bundled source profile parses and cannot authorize setters", CatalogProfileTests.AllBundledProfiles),
     ("Malformed optional profile metadata cannot grant controls", CatalogProfileTests.MalformedOptionalMetadata),
     ("Firmware compatibility EQ branches preserve native protocol IDs", CatalogProfileTests.CompatibilityEqualizers),
-    ("Version EQ requires both firmware and source app marker", CatalogProfileTests.VersionEqualizers),
+    ("Version EQ preserves source App gates and firmware diagnostics", CatalogProfileTests.VersionEqualizers),
     ("APK EQ append order, stable sorting and exact color selection", CatalogProfileTests.ApkEqualizerOrderingAndColor),
     ("EQ firmware markers and malformed conditions follow safe branches", CatalogProfileTests.FirmwareMarkerAndMalformedConditions),
 };

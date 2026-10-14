@@ -129,7 +129,7 @@ internal static class Air4ProProfileTests
                     && fake.Requests.Count(x => x.Command == 0x0114) == 1 && fake.Writes.Count == 0, context);
             }
         });
-        await test("Air4 Pro codec exception rejects mixed missing unknown and non-running ear firmware", async () =>
+        await test("Codec layout compatibility is independent of mixed missing unknown and older ear firmware", async () =>
         {
             var resource = bundles.GetCatalog(ResourceSource.HeyMelody).Profiles[ProductId];
             var profile = DeviceProfile.FromResource(resource.Raw, ResourceSource.HeyMelody.ToString());
@@ -137,6 +137,7 @@ internal static class Air4ProProfileTests
             {
                 ("mixed ears", Firmware("1,2,125", "2,2,150")),
                 ("other firmware", Firmware("1,2,150", "2,2,150")),
+                ("reported older firmware, synthetic wire", Firmware("1,2,115", "2,2,115", "3,2,101")),
                 ("case only", Firmware("3,2,125")),
                 ("all ears absent", Firmware("1,2,000", "2,2,000", "3,2,125")),
                 ("non-sentinel zero", Firmware("1,2,125", "2,2,0")),
@@ -150,25 +151,25 @@ internal static class Air4ProProfileTests
                 var connector = new CodecWireFixtureConnector(fake, sequence => CodecWireFixtureConnector.Air4ProV125Ack(sequence));
                 await using var client = new DailyClient(connector, id => id == ProductId ? profile : null);
                 var snapshot = await client.RefreshAsync();
-                check(!snapshot.Connected && snapshot.Error?.Contains("0x0114") == true
-                    && snapshot.Error.Contains("消息长度不匹配") && fake.Opens == 2 && fake.Writes.Count == 0, firmware.Label);
+                check(snapshot.Connected && snapshot.ProfileVerified && snapshot.Error is null && snapshot.CodecRaw == 8
+                    && snapshot.Warnings.Any(x => x.Contains("兼容格式")) && fake.Opens == 1 && fake.Writes.Count == 0, firmware.Label);
             }
             var noFirmware = SyntheticV125Replies(); noFirmware.CapabilityOverride![0] &= 0xFE;
             await using var noFirmwareClient = new DailyClient(new CodecWireFixtureConnector(noFirmware,
                 sequence => CodecWireFixtureConnector.Air4ProV125Ack(sequence)), id => id == ProductId ? profile : null);
             var unavailable = await noFirmwareClient.RefreshAsync();
-            check(!unavailable.Connected && noFirmware.Requests.All(x => x.Command != 0x0105)
+            check(unavailable.Connected && unavailable.CodecRaw == 8 && noFirmware.Requests.All(x => x.Command != 0x0105)
                 && noFirmware.Writes.Count == 0, "firmware query not advertised");
         });
-        await test("Air4 Pro codec exception rejects another model and unmatched notification or ACK bytes", async () =>
+        await test("Codec compatibility includes other configured models while unrelated ACKs remain strict", async () =>
         {
             var otherModel = new Fake(); otherModel.ReadReplies[0x0105] = Firmware("1,2,125", "2,2,125");
             await using (var client = new DailyClient(new CodecWireFixtureConnector(otherModel,
                 sequence => CodecWireFixtureConnector.Air4ProV125Ack(sequence))))
             {
                 var snapshot = await client.RefreshAsync();
-                check(!snapshot.Connected && snapshot.Error?.Contains("0x0114") == true
-                    && otherModel.Opens == 2 && otherModel.Writes.Count == 0, "other model");
+                check(snapshot.Connected && snapshot.ProfileVerified && snapshot.CodecRaw == 8
+                    && otherModel.Opens == 1 && otherModel.Writes.Count == 0, "other model");
             }
             var resource = bundles.GetCatalog(ResourceSource.HeyMelody).Profiles[ProductId];
             var profile = DeviceProfile.FromResource(resource.Raw, ResourceSource.HeyMelody.ToString());
@@ -186,11 +187,16 @@ internal static class Air4ProProfileTests
                 });
                 await using var client = new DailyClient(connector, id => id == ProductId ? profile : null);
                 var snapshot = await client.RefreshAsync();
-                check(!snapshot.Connected && snapshot.Error?.Contains("0x0114") == true
-                    && snapshot.Error.Contains("消息长度不匹配") && fake.Writes.Count == 0, change.Label);
+                if (change.Offset is 6 or 5)
+                    check(!snapshot.Connected && snapshot.Error?.Contains("0x0114") == true
+                        && snapshot.Error.Contains("消息长度不匹配") && fake.Writes.Count == 0, change.Label);
+                else
+                    check(snapshot.Connected && snapshot.ProfileVerified && snapshot.Error is null && snapshot.CodecRaw is null
+                        && snapshot.Warnings.Any(x => x.Contains("已跳过")) && fake.Opens == 2
+                        && fake.Requests.Count(x => x.Command == 0x0114) == 1 && fake.Writes.Count == 0, change.Label);
             }
         });
-        await test("Current firmware permission is cleared before a refresh and cannot reuse an earlier v125 result", async () =>
+        await test("Current verified identity permits known codec layout after firmware metadata changes", async () =>
         {
             var resource = bundles.GetCatalog(ResourceSource.HeyMelody).Profiles[ProductId];
             var profile = DeviceProfile.FromResource(resource.Raw, ResourceSource.HeyMelody.ToString());
@@ -205,9 +211,9 @@ internal static class Air4ProProfileTests
                 check((await client.RefreshAsync()).Connected, "initial v125");
                 fake.ReadReplies[0x0105] = laterReply;
                 var snapshot = await client.RefreshAsync(DailyRefreshScope.Information);
-                check(!snapshot.Connected && snapshot.Error?.Contains("0x0114") == true
-                    && fake.Opens == 2 && fake.Requests.Count(x => x.Command == 0x0114) == 3
-                    && fake.Writes.Count == 0, "stale v125 permission");
+                check(snapshot.Connected && snapshot.ProfileVerified && snapshot.CodecRaw == 8 && snapshot.Error is null
+                    && fake.Opens == 1 && fake.Requests.Count(x => x.Command == 0x0114) == 2
+                    && fake.Writes.Count == 0, "current identity after firmware change");
             }
         });
         await test("A reported right ear running v125 can authorize the codec exception independently of the display field", async () =>

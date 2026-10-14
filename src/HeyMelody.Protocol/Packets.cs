@@ -56,15 +56,21 @@ public sealed class PacketDecoder
     private int _lengthBytes;
     private int _nextFsn;
     private bool _fragmenting;
-    private readonly Func<byte, bool>? _allowAir4ProV125CodecReply;
+    private readonly Func<byte, bool>? _allowCodecReplyCompatibility;
+    private readonly Action<Packet>? _packetDecoded;
 
-    public PacketDecoder() : this(null) { }
+    public PacketDecoder() : this(null, null) { }
 
-    /// <param name="allowAir4ProV125CodecReply">Optional permission for a known single-frame firmware defect.
-    /// The caller must verify the current product, running firmware and pending GET 0x0114 sequence.</param>
-    public PacketDecoder(Func<byte, bool>? allowAir4ProV125CodecReply)
+    /// <param name="allowCodecReplyCompatibility">Permission for the precisely known single-frame codec layout.
+    /// The caller must verify the current connection, selected profile and pending GET 0x0114 sequence.</param>
+    public PacketDecoder(Func<byte, bool>? allowCodecReplyCompatibility) : this(allowCodecReplyCompatibility, null) { }
+
+    /// <summary>The observer records response correlation before a later frame in the same Feed can fail.
+    /// Observation alone does not make the whole Feed valid or authorize publishing a response.</summary>
+    public PacketDecoder(Func<byte, bool>? allowCodecReplyCompatibility, Action<Packet>? packetDecoded)
     {
-        _allowAir4ProV125CodecReply = allowAir4ProV125CodecReply;
+        _allowCodecReplyCompatibility = allowCodecReplyCompatibility;
+        _packetDecoded = packetDecoded;
     }
     public IReadOnlyList<Packet> Feed(ReadOnlySpan<byte> bytes)
     {
@@ -123,7 +129,7 @@ public sealed class PacketDecoder
         if (control == 0)
         {
             if (_fragmenting) throw Malformed("fragment-order");
-            output.Add(ParseInner(_frame.GetRange(offset, _frame.Count - offset).ToArray(), allowCompatibility: true)); return;
+            AddDecoded(output, ParseInner(_frame.GetRange(offset, _frame.Count - offset).ToArray(), allowCompatibility: true)); return;
         }
         if (offset >= _frame.Count) throw Malformed("fragment-layout");
         byte fsn = _frame[offset++];
@@ -149,8 +155,13 @@ public sealed class PacketDecoder
         }
         if (control == 3)
         {
-            output.Add(ParseInner(_message.ToArray())); _message.Clear(); _fragmenting = false; _nextFsn = 0;
+            AddDecoded(output, ParseInner(_message.ToArray())); _message.Clear(); _fragmenting = false; _nextFsn = 0;
         }
+    }
+    private void AddDecoded(List<Packet> output, Packet packet)
+    {
+        _packetDecoded?.Invoke(packet);
+        output.Add(packet);
     }
     private Packet ParseInner(ReadOnlySpan<byte> bytes, bool allowCompatibility = false)
     {
@@ -158,22 +169,25 @@ public sealed class PacketDecoder
         int declared = BinaryPrimitives.ReadUInt16LittleEndian(bytes[3..]);
         if (bytes.Length != 5 + declared)
         {
-            // Air4 Pro v125 GET 0x0114 sends status + a known LE ushort codec,
+            // The layout reconstructed from Air4 Pro v125 sends status + a known LE ushort codec,
             // while declaring status + one codec byte. Preserve all three bytes.
             // Unknown native codecs leave firmware stack bytes uninitialized,
             // so only the three fully initialized replies may use this exception.
             bool knownReply = allowCompatibility && bytes.Length == 8 && declared == 2
                 && BinaryPrimitives.ReadUInt16LittleEndian(bytes) == 0x8114
                 && bytes[5] == 0 && bytes[6] is 1 or 2 or 8 && bytes[7] == 0;
-            if (!knownReply || _allowAir4ProV125CodecReply?.Invoke(bytes[2]) != true)
-                throw Malformed("inner-length");
+            if (!knownReply || _allowCodecReplyCompatibility?.Invoke(bytes[2]) != true)
+                throw Malformed("inner-length", BinaryPrimitives.ReadUInt16LittleEndian(bytes), bytes[2]);
         }
         return new(BinaryPrimitives.ReadUInt16LittleEndian(bytes), bytes[2], bytes[5..].ToArray());
     }
-    private static FormatException Malformed(string reason)
+    private static FormatException Malformed(string reason, ushort? command = null, byte? sequence = null)
     {
         var failure = new FormatException("Malformed protocol frame or fragment sequence.");
         failure.Data["HeyMelody.Protocol.FrameFailure"] = reason;
+        // Internal numeric correlation only; never attach received bytes or peer information.
+        if (command.HasValue) failure.Data["HeyMelody.Protocol.ResponseCommand"] = command.Value;
+        if (sequence.HasValue) failure.Data["HeyMelody.Protocol.ResponseSequence"] = sequence.Value;
         return failure;
     }
 }

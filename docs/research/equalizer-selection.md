@@ -34,9 +34,9 @@
 
 `refreshEqModelList` 对实际固件字符串执行 Java `split("\\.")`。恰好三段时，解析前两段：都非零取较小者；其中一段为 0 则取另一段。其他段数只解析第一段。第三段不参与比较；Java split 会舍弃末尾空段。例：`118.119.0`、`119.118.0` 都是 marker 118，`0.130.0` 是 130，`118.1` 是 118。这是该 EQ 分支的固件整数规则，不是语义版本比较，不能推广到所有功能条件。
 
-Android 在缺失固件时使用 marker 0，解析抛错时会记录日志并返回当前列表。Windows 为避免在未知条件下开放写入，缺失或无法解析的正固件门槛返回 `Conditional` 并不进入有效 EQ 列表。已知低于门槛返回 `Fail`。无门槛或数值 0 仍可使用。负值、超出整数域、类型异常的条件保留原 JSON，但同样不进入有效列表。
+Android 在缺失固件时使用 marker 0，解析抛错时会记录日志并返回当前列表。Windows 保留该 marker 解释和原条件结果：缺失或无法解析的正固件门槛为 `Conditional`，已知低于门槛为 `Fail`；异常条件保留原 JSON。自 2026-10-14 起，桌面把全部固件条件改为 warning，不再仅因这些结果排除 EQ 条目；来源 App 条件、实际颜色、可编码条目及设备状态仍需通过。该桌面策略与上文恢复的 Android 固件过滤行为分开记录，不将保留条目写成固件兼容已经验证。
 
-Windows API 位于 [DeviceProfile.cs](../../src/HeyMelody.Devices/DeviceProfile.cs)：`GetEffectiveEqualizerModes(DeviceVersionContext? versions = null, byte? color = null)`。未知颜色只保留已经证明的非颜色条目，不假定黑色或第一色；实测颜色 0 是有效颜色。条目的 `EvaluateConditions(context)` 使用 [EqualizerVersionConditionEvaluator.cs](../../src/HeyMelody.Devices/EqualizerVersionConditionEvaluator.cs) 的官方 marker 规则。通用 `VersionConditions.Evaluate` 保持独立域及语义版本规则，因此不能用其再次筛除专用 API 已判定通过的 EQ。
+Windows API 位于 [DeviceProfile.cs](../../src/HeyMelody.Devices/DeviceProfile.cs)：`GetEffectiveEqualizerModes(DeviceVersionContext? versions = null, byte? color = null)`。未知颜色只保留已经证明的非颜色条目，不假定黑色或第一色；实测颜色 0 是有效颜色。条目的 `EvaluateConditions(context)` 保留 [EqualizerVersionConditionEvaluator.cs](../../src/HeyMelody.Devices/EqualizerVersionConditionEvaluator.cs) 的官方 marker 结果；实际列表使用 `EvaluateConditionsForControl`，`GetFirmwareIssues` 提供固件提示。通用 `VersionConditions.Evaluate` 保持独立域及语义版本规则，不能用原固件结果再次筛除已通过控制条件的 EQ。
 
 ## 样本与验收
 
@@ -44,7 +44,7 @@ Windows API 位于 [DeviceProfile.cs](../../src/HeyMelody.Devices/DeviceProfile.
 
 [Devices.Tests](../../tests/HeyMelody.Devices.Tests/CatalogProfileTests.cs) 验证全部欢律 85、无线耳机 141 预置耳机 profile 可解析、完整原 JSON 保留，单靠配置不能开放 SET，省略 SPP 或外部 realme 路由不获得传输许可；另覆盖 Compat/ByVersion 临界值、缺失域、已知失败优先、未知/实际颜色、稳定排序及重复协议 ID、畸形数组和整数、固件 marker 的三段与其他段数。未知 optional 字段不影响完整元数据保留；错误形状的控制条目不投影为可编码值。自定义 EQ 的异常频率数组不推断替代频段，显式异常容量设为 0。
 
-这些是固定样本的静态与模拟验证，不证明所有固件实机行为。SPP、已报告命令能力、功能协议版本和实际条件仍需由调用方共同约束。
+这些是当时固定样本的静态与模拟验证，不证明所有固件实机行为，也不代替 2026-10-14 warning 策略的回归检查。SPP、已报告命令能力、功能协议版本、App 条件和已知设备状态仍需由调用方共同约束。
 
 ## 预设中文标签
 

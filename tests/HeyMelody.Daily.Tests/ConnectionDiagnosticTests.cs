@@ -49,7 +49,7 @@ internal static class ConnectionDiagnosticTests
                     && !snapshot.Error.Contains("private") && connector.Opens == 2);
             }
         });
-        await test("malformed frames around the codec ACK retain the query and fixed reason without SET", async () =>
+        await test("Only a correlated malformed codec ACK can recover; surrounding bad frames remain failures", async () =>
         {
             foreach (var fixture in new (Func<byte, byte[]> Wire, string Reason)[]
             {
@@ -67,9 +67,14 @@ internal static class ConnectionDiagnosticTests
                 var connector = new CodecWireFixtureConnector(fake, fixture.Wire);
                 await using var client = new DailyClient(connector);
                 var snapshot = await client.RefreshAsync();
-                Check(!snapshot.Connected && !snapshot.ProfileVerified && snapshot.Error?.Contains("0x0114") == true
-                    && snapshot.Error.Contains("控制数据格式无效") && snapshot.Error.Contains(fixture.Reason)
-                    && fake.Opens == 2 && fake.Requests.Count(x => x.Command == 0x0114) == 2 && fake.Writes.Count == 0);
+                if (fixture.Reason == "消息长度不匹配")
+                    Check(snapshot.Connected && snapshot.ProfileVerified && snapshot.Error is null && snapshot.CodecRaw is null
+                        && snapshot.Warnings.Any(x => x.Contains(fixture.Reason)) && fake.Opens == 2
+                        && fake.Requests.Count(x => x.Command == 0x0114) == 1 && fake.Writes.Count == 0);
+                else
+                    Check(!snapshot.Connected && !snapshot.ProfileVerified && snapshot.Error?.Contains("0x0114") == true
+                        && snapshot.Error.Contains("控制数据格式无效") && snapshot.Error.Contains(fixture.Reason)
+                        && fake.Opens == 2 && fake.Requests.Count(x => x.Command == 0x0114) == 2 && fake.Writes.Count == 0);
             }
         });
         await test("framing reason diagnostics accept only fixed codes and never exception details", async () =>

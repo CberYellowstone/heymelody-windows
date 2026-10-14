@@ -3,6 +3,8 @@ using HeyMelodyWindows.Protocol;
 internal static class PacketFramingCompatibilityTests
 {
     private const string ReasonKey = "HeyMelody.Protocol.FrameFailure";
+    private const string CommandKey = "HeyMelody.Protocol.ResponseCommand";
+    private const string SequenceKey = "HeyMelody.Protocol.ResponseSequence";
     private const string FailureMessage = "Malformed protocol frame or fragment sequence.";
 
     private static void Check(bool condition)
@@ -25,6 +27,18 @@ internal static class PacketFramingCompatibilityTests
         }
         Check(rejected && !decoder.HasIncompleteMessage);
         CheckCodecReply(decoder.Feed(Convert.FromHexString("AA09000014810702000008")).Single());
+    }
+
+    private static FormatException FailureFrom(byte[] wire, PacketDecoder? decoder = null)
+    {
+        decoder ??= new PacketDecoder();
+        try { decoder.Feed(wire); }
+        catch (FormatException failure)
+        {
+            Check(failure.Message == FailureMessage && !decoder.HasIncompleteMessage);
+            return failure;
+        }
+        throw new Exception("Malformed framing was accepted.");
     }
 
     internal static void Run(Action<string, Action> test)
@@ -147,6 +161,95 @@ internal static class PacketFramingCompatibilityTests
             // retain the exact inner length rule even with a permissive callback.
             Reject(Convert.FromHexString("AA050100001481AA06020001070200AA06030002000800"),
                 "inner-length", new PacketDecoder(_ => true));
+        });
+        test("Complete malformed inner headers expose only typed numeric correlation and reset state", () =>
+        {
+            foreach (var (hex, command, sequence) in new (string, ushort, byte)[]
+            {
+                ("AA0A00001481070200000800", 0x8114, 7),
+                ("AA0A00000681DE0200000800", 0x8106, 0xDE),
+                ("AA0A00000005FF0200000800", 0x0500, 0xFF),
+            })
+            {
+                byte[] wire = Convert.FromHexString(hex);
+                for (int split = 0; split < wire.Length; split++)
+                {
+                    var decoder = new PacketDecoder();
+                    Check(decoder.Feed(wire.AsSpan(0, split)).Count == 0);
+                    var failure = FailureFrom(wire.AsSpan(split).ToArray(), decoder);
+                    Check(Equals(failure.Data[ReasonKey], "inner-length") && failure.Data.Count == 3);
+                    Check(failure.Data[CommandKey] is ushort numericCommand && numericCommand == command);
+                    Check(failure.Data[SequenceKey] is byte numericSequence && numericSequence == sequence);
+                    CheckCodecReply(decoder.Feed(Convert.FromHexString("AA09000014810702000008")).Single());
+                }
+            }
+        });
+        test("Outer errors and incomplete inner headers do not invent response correlation", () =>
+        {
+            foreach (var (hex, reason) in new[]
+            {
+                ("00", "frame-start"),
+                ("AA8700", "frame-length"),
+                ("AA06000014810700", "inner-length"),
+                ("AA09010000148107010000", "inner-length"),
+            })
+            {
+                var failure = FailureFrom(Convert.FromHexString(hex));
+                Check(Equals(failure.Data[ReasonKey], reason) && failure.Data.Count == 1);
+                Check(!failure.Data.Contains(CommandKey) && !failure.Data.Contains(SequenceKey));
+            }
+        });
+        test("Codec length compatibility requires a live matching sequence and never broadens other shapes", () =>
+        {
+            byte[] known = Convert.FromHexString("AA0A00001481070200000800");
+            byte? pendingSequence = null;
+            int permissionCalls = 0;
+            var decoder = new PacketDecoder(sequence => { permissionCalls++; return pendingSequence == sequence; });
+            var noContext = FailureFrom(known, decoder);
+            Check(noContext.Data[CommandKey] is ushort command && command == 0x8114);
+            Check(noContext.Data[SequenceKey] is byte sequence && sequence == 7);
+            Check(permissionCalls == 1);
+            pendingSequence = 8;
+            FailureFrom(known, decoder); Check(permissionCalls == 2);
+            pendingSequence = 7;
+            var packet = decoder.Feed(known).Single();
+            Check(packet.Command == 0x8114 && packet.Sequence == 7
+                && packet.Payload.SequenceEqual(new byte[] { 0, 8, 0 }));
+            Check(permissionCalls == 3);
+
+            foreach (var (offset, value) in new (int, byte)[] { (4, 0x06), (7, 1), (9, 1), (10, 3), (11, 1) })
+            {
+                byte[] wire = known.ToArray(); wire[offset] = value;
+                var failure = FailureFrom(wire, decoder);
+                Check(Equals(failure.Data[ReasonKey], "inner-length") && permissionCalls == 3);
+            }
+            CheckCodecReply(decoder.Feed(Convert.FromHexString("AA09000014810702000008")).Single());
+            Check(permissionCalls == 3); decoder.Complete();
+        });
+        test("The decode observer sees preceding valid frames before a later merged frame fails", () =>
+        {
+            var observed = new List<Packet>();
+            var decoder = new PacketDecoder(null, observed.Add);
+            byte[] good = Convert.FromHexString("AA09000014810702000008");
+            byte[] bad = Convert.FromHexString("AA0A00001481070200000800");
+            var failure = FailureFrom([.. good, .. bad], decoder);
+            Check(observed.Count == 1); CheckCodecReply(observed[0]);
+            Check(failure.Data.Count == 3 && failure.Data[CommandKey] is ushort command && command == 0x8114
+                && failure.Data[SequenceKey] is byte sequence && sequence == 7);
+            CheckCodecReply(decoder.Feed(good).Single()); Check(observed.Count == 2);
+            var noValidFrame = new List<Packet>();
+            FailureFrom(bad, new PacketDecoder(null, noValidFrame.Add));
+            Check(noValidFrame.Count == 0);
+        });
+        test("The decode observer waits for an entire fragmented message before recording a packet", () =>
+        {
+            var observed = new List<Packet>();
+            var decoder = new PacketDecoder(null, observed.Add);
+            Check(decoder.Feed(Convert.FromHexString("AA05FD7E001481")).Count == 0 && observed.Count == 0);
+            Check(decoder.Feed(Convert.FromHexString("AA06FEA501070200")).Count == 0 && observed.Count == 0);
+            var packet = decoder.Feed(Convert.FromHexString("AA05FFFF020008")).Single();
+            CheckCodecReply(packet); Check(observed.Count == 1); CheckCodecReply(observed[0]);
+            decoder.Complete();
         });
     }
 }
