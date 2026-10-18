@@ -320,22 +320,30 @@ internal static class MainLayoutTests
             Check(geometry.Bounds.Width > 0 && geometry.Bounds.Height > 0
                 && geometry.Bounds.Left >= 0 && geometry.Bounds.Top >= 0
                 && geometry.Bounds.Right <= 14 && geometry.Bounds.Bottom <= 14,
-                "The complete device shape fits inside its original, uniformly scaled viewport.");
+                "The complete battery icon fits inside its historical fourteen-pixel viewport.");
             return geometry;
         }
         var left = GeometryFor("LeftBatteryDeviceIcon");
         var right = GeometryFor("RightBatteryDeviceIcon");
         var box = GeometryFor("CaseBatteryDeviceIcon");
-        Point InIcon(double x, double y) => new(x * 14 / 19, y * 14 / 19 + 21d / 19);
-        Check(left.FillContains(InIcon(7, 12)) && !right.FillContains(InIcon(7, 12))
-            && right.FillContains(InIcon(10.5, 12)) && !left.FillContains(InIcon(10.5, 12))
-            && box.FillContains(InIcon(3, 8)) && !left.FillContains(InIcon(3, 8)) && !right.FillContains(InIcon(3, 8)),
-            "Left and right cells show their respective earbud stems, and the case cell shows its wider case body.");
-        Check(!left.FillContains(InIcon(11.3, 6.4)) && !right.FillContains(InIcon(6.5, 6.4))
-            && !box.FillContains(InIcon(9.5, 9.525)) && box.FillContains(InIcon(9.5, 12)),
-            "The imported even-odd earbud and case holes remain open instead of being filled.");
-        Check(box.FillContains(InIcon(17.49, 8)) && !box.FillContains(InIcon(17.51, 8)),
-            "The case retains the source clip at x=17.5, including its small overflowing right edge.");
+        foreach (var circle in new[] { left, right })
+        {
+            Check(circle.Bounds == new Rect(0, 0, 14, 14) && circle.Bounds.Center == new Point(7, 7)
+                && circle.FillContains(new Point(7, .5)) && circle.FillContains(new Point(.5, 7))
+                && circle.FillContains(new Point(13.5, 7)) && circle.FillContains(new Point(7, 13.5))
+                && !circle.FillContains(new Point(1, 1)),
+                "Left and right badges retain matching fourteen-pixel circles centered at seven pixels.");
+        }
+        Check(!left.FillContains(new Point(5, 5)) && !left.FillContains(new Point(8, 10.4))
+            && left.FillContains(new Point(7, 7)) && !right.FillContains(new Point(7, 7)),
+            "The L cutout keeps its vertical and bottom strokes and remains distinct from R.");
+        Check(!right.FillContains(new Point(4.8, 5)) && right.FillContains(new Point(7, 5.4)),
+            "The R cutout keeps its vertical stroke and filled inner counter under even-odd filling.");
+        Check(box.Bounds.Width > box.Bounds.Height && box.Bounds.Top > 0 && box.Bounds.Bottom < 14
+            && box.FillContains(new Point(7, 2.3)) && box.FillContains(new Point(7, 10.5))
+            && !box.FillContains(new Point(7, 5.4)) && !box.FillContains(new Point(7, 8.32))
+            && left.FillContains(new Point(7, 5.4)) && right.FillContains(new Point(7, 5.4)),
+            "The matching case keeps its lid, body, open seam and indicator hole, distinct from both letter badges.");
     }
 
     private static string Expected(MainViewModel vm) => $"设备名称：{vm.Title}{Environment.NewLine}产品编号：{vm.ProductId ?? "—"}{Environment.NewLine}固件版本：{vm.Firmware ?? "—"}";

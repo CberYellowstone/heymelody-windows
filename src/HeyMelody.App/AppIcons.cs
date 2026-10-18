@@ -22,27 +22,18 @@ public static class AppIcons
     // Original 24-unit outline for platforms without the system battery glyph.
     private const string BatteryOutline = "M2,6 H20 V18 H2 Z M4,8 V16 H18 V8 Z M20,10 H23 V14 H20 Z";
 
-    // Exact pathData from HeyMelody 17.6.5 battery hint vectors; see docs/research/battery-device-icons.md.
-    // Android alpha/color are recorded as provenance; the desktop keeps its native foreground and opacity.
-    private static readonly string[] BatteryLeftPaths =
-    [
-        "M5.406,1.676C3.908,3.173 4.347,5.684 5.923,7.258C6.216,7.551 6.541,7.805 6.886,8.014C6.441,6.762 6.517,5.322 7.239,4.072C7.818,3.069 8.715,2.362 9.725,1.999C10.005,1.899 10.286,1.837 10.565,1.81C8.991,0.556 6.775,0.309 5.406,1.676ZM10.507,7.84C10.111,7.611 10.139,6.822 10.57,6.076C11.001,5.33 11.672,4.911 12.068,5.14C12.465,5.369 12.437,6.159 12.006,6.904C11.575,7.65 10.904,8.069 10.507,7.84ZM10.161,3.216C11.281,2.814 12.489,3.41 12.962,4.442C13.406,5.41 13.435,6.532 12.883,7.487C12.406,8.313 11.6,8.827 10.704,9.014C9.639,9.236 8.505,8.668 8.117,7.614C7.777,6.692 7.83,5.633 8.358,4.719C8.778,3.993 9.426,3.48 10.161,3.216Z",
-        "M8.692,9.955C7.761,9.855 6.846,9.51 6.055,9.001V13.027C6.055,14.071 6.901,14.917 7.945,14.917C8.989,14.917 9.835,14.071 9.835,13.027V10.293C9.441,10.235 9.055,10.122 8.692,9.955Z",
-    ];
-    private static readonly string[] BatteryRightPaths =
-    [
-        "M12.368,1.673C13.865,3.17 13.427,5.681 11.851,7.255C11.562,7.544 11.242,7.795 10.902,8.002C11.344,6.753 11.266,5.317 10.546,4.07C9.967,3.067 9.071,2.36 8.061,1.998C7.778,1.896 7.493,1.834 7.211,1.808C8.784,0.553 11,0.306 12.368,1.673ZM7.287,7.838C7.683,7.609 7.655,6.819 7.225,6.074C6.794,5.328 6.123,4.909 5.727,5.138C5.331,5.367 5.359,6.156 5.79,6.902C6.22,7.648 6.891,8.067 7.287,7.838ZM7.625,3.214C6.506,2.812 5.298,3.408 4.825,4.439C4.381,5.407 4.352,6.53 4.904,7.485C5.381,8.311 6.187,8.825 7.083,9.012C8.147,9.234 9.28,8.666 9.668,7.612C10.008,6.69 9.955,5.631 9.427,4.717C9.008,3.991 8.359,3.478 7.625,3.214Z",
-        "M9.086,9.956C10.02,9.857 10.94,9.511 11.734,9V13.028C11.734,14.071 10.888,14.917 9.845,14.917C8.801,14.917 7.956,14.071 7.956,13.028V10.29C8.344,10.233 8.727,10.12 9.086,9.956Z",
-    ];
-    private static readonly string[] BatteryCasePaths =
-    [
-        "M7.976,1.523H7.992H11.039H11.055H11.056C11.394,1.523 11.58,1.523 11.739,1.532C14.304,1.666 16.444,3.377 17.212,5.716H16.795C16.795,5.716 16.795,5.716 16.795,5.716H13.267C13.165,5.279 12.772,4.954 12.303,4.954H6.665C6.197,4.954 5.804,5.279 5.701,5.716H2.208C2.208,5.716 2.208,5.716 2.208,5.716H1.819C2.587,3.377 4.727,1.666 7.292,1.532C7.451,1.523 7.637,1.523 7.976,1.523H7.976ZM16.676,6.706H17.447C17.477,6.901 17.497,7.099 17.507,7.3C17.516,7.459 17.516,7.645 17.516,7.984V8V8.015C17.516,8.354 17.516,8.54 17.507,8.7C17.344,11.815 14.855,14.304 11.739,14.467C11.58,14.476 11.394,14.476 11.055,14.476H11.039H7.992H7.976C7.637,14.476 7.451,14.476 7.292,14.467C4.176,14.304 1.687,11.815 1.524,8.7C1.516,8.54 1.516,8.354 1.516,8.016V8.015V8V7.984V7.984C1.516,7.645 1.516,7.459 1.524,7.3C1.534,7.099 1.555,6.901 1.584,6.706H2.356C2.356,6.706 2.356,6.707 2.356,6.707H5.787C5.952,7.023 6.283,7.24 6.665,7.24H12.303C12.685,7.24 13.017,7.023 13.182,6.707H16.676C16.676,6.707 16.676,6.706 16.676,6.706ZM9.501,10.287C9.922,10.287 10.263,9.946 10.263,9.525C10.263,9.104 9.922,8.763 9.501,8.763C9.081,8.763 8.74,9.104 8.74,9.525C8.74,9.946 9.081,10.287 9.501,10.287Z",
-    ];
+    // Exact pathData from HeyMelody 17.6.5 battery device vectors; see docs/research/battery-device-icons.md.
+    // F0 preserves evenOdd letter/indicator cutouts; the desktop inherits its themed foreground.
+    private const string BatteryLeftShape =
+        "F0 M7,14C10.866,14 14,10.866 14,7C14,3.134 10.866,0 7,0C3.134,0 0,3.134 0,7C0,10.866 3.134,14 7,14ZM4.621,11.133H10.035V9.726H6.366V2.871H4.621V11.133Z";
+    private const string BatteryRightShape =
+        "F0 M7,14C10.866,14 14,10.866 14,7C14,3.134 10.866,0 7,0C3.134,0 0,3.134 0,7C0,10.866 3.134,14 7,14ZM3.992,2.871V11.133H5.726V8.026H6.907L8.934,11.133H11.016L8.708,7.79C9.219,7.602 9.613,7.306 9.89,6.901C10.168,6.488 10.307,6.004 10.307,5.449C10.307,4.931 10.187,4.481 9.947,4.098C9.714,3.708 9.369,3.408 8.911,3.198C8.461,2.98 7.924,2.871 7.301,2.871H3.992ZM8.472,5.449C8.472,6.282 7.969,6.698 6.964,6.698H5.726V4.199H6.964C7.969,4.199 8.472,4.616 8.472,5.449Z";
+    private const string BatteryCaseShape =
+        "F0 M5.667,1.389H5.68H8.32H8.334H8.334C8.627,1.389 8.788,1.389 8.927,1.397C11.148,1.513 13.002,2.995 13.667,5.021H12.967C12.967,5.021 12.967,5.021 12.967,5.02H10.278C10.189,4.642 9.849,4.36 9.443,4.36H4.559C4.153,4.36 3.813,4.642 3.724,5.02H1.034C1.034,5.021 1.033,5.021 1.033,5.021H0.333C0.998,2.995 2.852,1.513 5.074,1.397C5.212,1.389 5.373,1.389 5.666,1.389H5.667ZM13.537,5.879H13.871C13.896,6.048 13.914,6.219 13.923,6.393C13.93,6.531 13.93,6.692 13.93,6.986V6.999V7.013C13.93,7.306 13.93,7.468 13.923,7.606C13.781,10.304 11.625,12.461 8.927,12.602C8.788,12.609 8.627,12.609 8.334,12.609H8.32H5.68H5.666C5.373,12.609 5.212,12.609 5.074,12.602C2.375,12.461 0.219,10.304 0.077,7.606C0.07,7.468 0.07,7.307 0.07,7.013V7.013V6.999V6.986V6.985C0.07,6.692 0.07,6.531 0.077,6.393C0.087,6.219 0.104,6.048 0.129,5.879H0.464C0.464,5.879 0.464,5.879 0.464,5.878H3.798C3.941,6.153 4.228,6.34 4.559,6.34H9.443C9.774,6.34 10.061,6.153 10.204,5.878H13.537C13.537,5.879 13.537,5.879 13.537,5.879ZM7,8.98C7.364,8.98 7.66,8.684 7.66,8.32C7.66,7.955 7.364,7.66 7,7.66C6.635,7.66 6.34,7.955 6.34,8.32C6.34,8.684 6.635,8.98 7,8.98Z";
 
     private abstract record Candidate;
     private sealed record Glyph(int CodePoint) : Candidate;
     private sealed record Vector(string Data, double Viewport) : Candidate;
-    private sealed record ClippedVector(string[] Paths, Rect Clip) : Candidate;
 
     private static Candidate[] Candidates(AppIcon icon) => icon switch
     {
@@ -60,9 +51,9 @@ public static class AppIcons
         AppIcon.Info => [new Glyph(0xE946)],
         AppIcon.History => [new Glyph(0xE81C)],
         AppIcon.Battery => [new Glyph(0xE850), new Vector(BatteryOutline, 24)],
-        AppIcon.BatteryLeft => [new ClippedVector(BatteryLeftPaths, new Rect(0, 0, 19, 16))],
-        AppIcon.BatteryRight => [new ClippedVector(BatteryRightPaths, new Rect(0, 0, 19, 16))],
-        AppIcon.BatteryCase => [new ClippedVector(BatteryCasePaths, new Rect(1.5, 0, 16, 16))],
+        AppIcon.BatteryLeft => [new Vector(BatteryLeftShape, 14)],
+        AppIcon.BatteryRight => [new Vector(BatteryRightShape, 14)],
+        AppIcon.BatteryCase => [new Vector(BatteryCaseShape, 14)],
         _ => throw new ArgumentOutOfRangeException(nameof(icon))
     };
 
@@ -82,20 +73,6 @@ public static class AppIcons
                     var data = Geometry.Parse(vector.Data);
                     data.Transform = new ScaleTransform(size / vector.Viewport, size / vector.Viewport);
                     return new FAPathIconSource { Data = data, Stretch = Stretch.None };
-                case ClippedVector vector:
-                    Geometry? merged = null;
-                    foreach (var pathData in vector.Paths)
-                    {
-                        var path = PathGeometry.Parse(pathData);
-                        path.FillRule = FillRule.EvenOdd;
-                        merged = merged is null ? path : new CombinedGeometry(GeometryCombineMode.Union, merged, path);
-                    }
-                    var clipped = new CombinedGeometry(GeometryCombineMode.Intersect, merged!, new RectangleGeometry(vector.Clip));
-                    // Keep the original 19 x 16 viewport, uniformly centred in the square icon slot.
-                    var scale = Math.Min(size / 19, size / 16);
-                    clipped.Transform = new MatrixTransform(new Matrix(scale, 0, 0, scale,
-                        (size - 19 * scale) / 2, (size - 16 * scale) / 2));
-                    return new FAPathIconSource { Data = clipped, Stretch = Stretch.None };
             }
         }
         return new FASymbolIconSource { Symbol = icon is AppIcon.NoiseControl or AppIcon.Hearing or AppIcon.FitTest or AppIcon.Earbuds
