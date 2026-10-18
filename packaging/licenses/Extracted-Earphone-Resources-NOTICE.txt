@@ -9,11 +9,16 @@ remain the property of their respective rights holders. This project's source
 license does not relicense those materials; no open-source asset license is
 claimed here. The two X4 PNGs were separately supplied for this project.
 
+Current left-ear, right-ear and charging-case interface pictograms are adapted
+from battery-row vectors verified in HeyMelody 17.6.5. Their original resource
+paths and hashes are recorded in docs/research/battery-device-icons.md. These
+interface geometries are separate from the ResourceBundles device artwork.
+
 Earlier releases embedded monochrome outlines copied from Wireless Earphones
-17.6.3 (com.oplus.melody). Those outlines and that component's exclusive
-configuration and artwork have been removed. Historical attribution and
-preserved original evidence remain in the source archive; this distribution
-does not claim to relicense that material.
+17.6.3 (com.oplus.melody). That component's exclusive configuration and artwork
+remain outside the current application. Historical attribution and preserved
+original evidence remain in the source archive; this distribution does not
+claim to relicense that material.
 
 From 0.8.13 the Host also embeds a PCM16 conversion of the official Golden
 Hearing module-2 audition music, res/raw/hearing_enhancement_audition.mp3,

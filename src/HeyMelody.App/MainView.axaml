@@ -181,7 +181,7 @@
                     </MultiBinding>
                   </AutomationProperties.Name>
                   <StackPanel Orientation="Horizontal" Spacing="6">
-                    <fa:FAIconSourceElement IconSource="{local:AppIcon Battery, Size=14}" Width="14" Height="14" VerticalAlignment="Center" />
+                    <fa:FAIconSourceElement x:Name="LeftBatteryDeviceIcon" IconSource="{local:AppIcon BatteryLeft, Size=14}" Width="14" Height="14" VerticalAlignment="Center" />
                     <TextBlock Text="左耳" Classes="caption" VerticalAlignment="Center" />
                   </StackPanel>
                   <StackPanel Orientation="Horizontal" Spacing="4">
@@ -199,7 +199,7 @@
                     </MultiBinding>
                   </AutomationProperties.Name>
                   <StackPanel Orientation="Horizontal" Spacing="6">
-                    <fa:FAIconSourceElement IconSource="{local:AppIcon Battery, Size=14}" Width="14" Height="14" VerticalAlignment="Center" />
+                    <fa:FAIconSourceElement x:Name="RightBatteryDeviceIcon" IconSource="{local:AppIcon BatteryRight, Size=14}" Width="14" Height="14" VerticalAlignment="Center" />
                     <TextBlock Text="右耳" Classes="caption" VerticalAlignment="Center" />
                   </StackPanel>
                   <StackPanel Orientation="Horizontal" Spacing="4">
@@ -217,7 +217,7 @@
                     </MultiBinding>
                   </AutomationProperties.Name>
                   <StackPanel Orientation="Horizontal" Spacing="6">
-                    <fa:FAIconSourceElement IconSource="{local:AppIcon Battery, Size=14}" Width="14" Height="14" VerticalAlignment="Center" />
+                    <fa:FAIconSourceElement x:Name="CaseBatteryDeviceIcon" IconSource="{local:AppIcon BatteryCase, Size=14}" Width="14" Height="14" VerticalAlignment="Center" />
                     <TextBlock Text="充电盒" Classes="caption" VerticalAlignment="Center" />
                   </StackPanel>
                   <StackPanel Orientation="Horizontal" Spacing="4">
