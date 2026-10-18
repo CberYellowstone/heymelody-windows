@@ -66,4 +66,4 @@ jobs:
           name: HeyMelody_Windows_${{ steps.version.outputs.value }}_${{ matrix.architecture }}_${{ steps.version.outputs.commit }}
           path: release/HeyMelody_Windows_${{ steps.version.outputs.value }}/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 2
