@@ -111,9 +111,8 @@ internal static class GameAudioInteractionTests
 
     private static async Task BassWaveAsync()
     {
-        foreach (string source in new[] { "HeyMelody", "WirelessEarphones" })
         {
-            var service = new AudioService { Source = source };
+            var service = new AudioService();
             await using var vm = new MainViewModel(service, new CountingDialogs());
             await vm.InitializeAsync(); await vm.ConnectCommand.ExecuteAsync(null);
             var view = new MainView { DataContext = vm }; var window = Window(view);
@@ -135,7 +134,7 @@ internal static class GameAudioInteractionTests
                 var sound = view.GetVisualDescendants().OfType<FeatureSectionView>().Single().GetVisualDescendants()
                     .OfType<FeatureControlView>().Select(row => ((FeatureControlViewModel)row.DataContext!).Id).ToArray();
                 Check(sound.SequenceEqual(["game", "game-sound-enabled", "spatial", "hires"]) && service.Actions.Count == 0,
-                    "Both source presentations group games and remove the type editor without submitting defaults.");
+                    "Game controls group and remove the type editor without submitting defaults.");
                 var toggle = FeatureTestData.Switch(view, "bass-enabled");
                 await ClickAsync(window, toggle, 16); await SettledAsync(vm);
                 Check(service.Actions is [{ FeatureId: "bass-enabled", Value: 0 }], "BassWave toggles the existing feature exactly once.");
@@ -180,7 +179,6 @@ internal static class GameAudioInteractionTests
         private readonly PreviewService _inner = new();
         private UiSnapshot _snapshot = new();
         private int _gameEnabled, _bassEnabled = 1, _bassGain = -4;
-        public string Source = "HeyMelody";
         public bool Reject, UnknownAck;
         public int Reads;
         public List<UiAction> Actions { get; } = [];
@@ -188,7 +186,7 @@ internal static class GameAudioInteractionTests
         public async Task<UiSnapshot> ConnectAsync(string identity, CancellationToken token)
         {
             _snapshot = await _inner.ConnectAsync(identity, token);
-            _snapshot.HiRes = true; _snapshot.Spatial = 0; _snapshot.SpatialHiResMutex = true; _snapshot.ResourceSource = Source;
+            _snapshot.HiRes = true; _snapshot.Spatial = 0; _snapshot.SpatialHiResMutex = true;
             _snapshot.SpatialOptions = [new(0, "关闭"), new(1, "固定"), new(2, "头部跟踪")];
             _snapshot.ConnectionState = ConnectionState.Connected; Decorate(); return Copy();
         }

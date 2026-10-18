@@ -6,7 +6,7 @@
 
 ## 进程与通信
 
-- App 与 DeviceManager 使用 schema-3 双向命名管道（0.7.0 时为 schema 2）。端点按用户和 Windows Session ID 区分，服务端限制当前用户并检查客户端进程所在会话。公共契约只携带内存中的 opaque Identity，不携带蓝牙地址。
+- App 与 DeviceManager 使用 schema-4 双向命名管道（历史版本为 schema 2／3）。端点按用户和 Windows Session ID 区分，服务端限制当前用户并检查客户端进程所在会话。公共契约只携带内存中的 opaque Identity，不携带蓝牙地址。
 - Host supervisor 管理白名单、设备目录、每台设备的控制状态和观察缓存。设备的产品 ID 与协议颜色按白名单键持久化在 `device-appearance.json`，只作为外观提示随设备目录发布，不授予控制（见 [外观资源持久化](artwork-persistence.md)）。独立的 `--catalog-worker` 执行同步原生枚举；每台耳机使用独立的 `--worker` 执行 SDP/RFCOMM。原生调用卡住时可以结束对应 worker，托盘和其他耳机保持响应。
 - worker 地址通过私有标准输入发送，不放在进程命令行。worker 与 Host 的 stdio 通信只在内部使用。历史 schema-1 RPC 适配器仅位于 Client.Tests，生产 ClientBridge 只使用共享管道。
 - subscribe 在后台锁内加入订阅并排入目录和缓存基线。后续事件与响应共用一个接收通道，以 ID 匹配请求。每个客户端拥有独立、有界的输出队列；普通状态更新可以合并，退出、激活和响应保留。慢客户端不会阻塞蓝牙接收。
@@ -18,7 +18,7 @@ Windows DeviceWatcher 提供已配对设备的连接和解除配对事件，Radi
 
 每条 RFCOMM 连接只有一个持续接收通道，同时分发 ACK、GET 响应和耳机通知；同一接收批次中的其他包仍会被处理。每台设备的命令串行执行，通知接收不等待命令锁。WSAEventSelect 的原生就绪事件代替 100 毫秒 select 轮询。初始化和连接轮换会重新核验型号、能力与通知订阅。未支持或未证实的能力保持未知。
 
-建立控制连接时，SDP 先查所选来源配置的服务 UUID 缓存；缓存缺失、不唯一或缓存通道建连失败时，实际查询远端 SDP，仍要求唯一服务与有效 RFCOMM 通道。每次打开会话至多两次建连，各限五秒，用户取消时停止；同步 SDP 由 worker 总期限兜底。普通设备列表扫描不进行远端 SDP。失败提示保留服务发现类别、查询/通知订阅命令号或 Windows 数字错误码，不包含蓝牙地址或原始异常消息；依据与验证边界见 [Air4 Pro 控制核查](research/enco-air4-pro-control.md)。
+建立控制连接时，SDP 先查欢律配置的服务 UUID 缓存；缓存缺失、不唯一或缓存通道建连失败时，实际查询远端 SDP，仍要求唯一服务与有效 RFCOMM 通道。每次打开会话至多两次建连，各限五秒，用户取消时停止；同步 SDP 由 worker 总期限兜底。普通设备列表扫描不进行远端 SDP。失败提示保留服务发现类别、查询/通知订阅命令号或 Windows 数字错误码，不包含蓝牙地址或原始异常消息；依据与验证边界见 [Air4 Pro 控制核查](research/enco-air4-pro-control.md)。
 
 普通界面状态不再每八秒读取。初始化、重新连接、手动刷新、设置前后确认仍执行 GET；只包含部分信息的通知可以合并为对应 scope 的补充读取。设置推送不会触发绑定控件提交 SET，未提交选项和 EQ 草稿继续按编辑版本保护。
 
@@ -28,7 +28,7 @@ SPP 与 BLE 各自保留观测时间，按耳机部件融合电量、充电盒�
 
 系统挂起停止 watcher 和控制会话；恢复重建 watcher，并丢弃旧 watcher 代次或早于本次扫描的回调。Modern Standby 使用注册式 suspend/resume 通知。广播或监听 API 不可用时会发布诊断，现有可用 RFCOMM 仍可工作；确证蓝牙关闭时才停控制会话。
 
-详细 APK 依据和广播编码见 [bluetooth-events.md](research/bluetooth-events.md)。当前按所选来源配置、已实现的协议、固件条件和设备能力开放设置，适配范围见[设备支持说明](research/oppo-device-support.md)。客户端没有改变 Windows 音频驱动或 LE Audio 管线；后台提供 caseOpen 事件，尚未实现独立开盖弹窗。
+详细 APK 依据和广播编码见 [bluetooth-events.md](research/bluetooth-events.md)。当前按欢律配置、App 条件、已实现的协议和设备能力开放设置；固件条件只产生提醒，适配范围见[设备支持说明](research/oppo-device-support.md)。客户端没有改变 Windows 音频驱动或 LE Audio 管线；后台提供 caseOpen 事件，尚未实现独立开盖弹窗。
 
 ## 暂停、写入与退出
 

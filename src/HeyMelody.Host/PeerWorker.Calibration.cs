@@ -16,15 +16,15 @@ internal interface ICalibrationPeerWorker
 internal sealed partial class PeerWorker
 {
     private string? _catalogGzip;
-    private string _source = "HeyMelody", _stableKey = "";
+    private string _stableKey = "";
     private long _resourceRevision, _appMarker = 17006004, _generation;
     private string? _observedProductId;
     private byte? _observedColor;
     public event Action<UiCalibrationState>? CalibrationChanged;
     public event Action<UiCalibrationSpectrum>? CalibrationSpectrumChanged;
-    public void ConfigureResources(string catalogGzip, string source, long revision, long appMarker, string stableKey, long generation,
+    public void ConfigureResources(string catalogGzip, long revision, long appMarker, string stableKey, long generation,
         string? observedProductId, byte? observedColor)
-    { _catalogGzip = catalogGzip; _source = source; _resourceRevision = revision; _appMarker = appMarker; _stableKey = stableKey; _generation = generation;
+    { _catalogGzip = catalogGzip; _resourceRevision = revision; _appMarker = appMarker; _stableKey = stableKey; _generation = generation;
         _observedProductId = observedProductId; _observedColor = observedColor; }
     public Task<UiSnapshot> SetObservedColorAsync(string productId, byte color, CancellationToken token) =>
         RequestAsync<UiSnapshot>(new() { Operation = "observedColor", ObservedProductId = productId, ObservedColor = color }, token);

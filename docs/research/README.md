@@ -1,5 +1,7 @@
 # 研究资料索引
 
+> 当前客户端仅使用欢律配置与资源，见[当前单源规则](heymelody-only.md)。下文涉及已退出支持来源的覆盖、接口和操作要求仅用于历史研究复核，已由当前规则取代；原版本、路径、摘要和验证范围保留。
+
 本目录是公开研究结果的入口。协作规则和按任务阅读顺序以根目录 [AGENTS.md](../../AGENTS.md) 为准；完整档案、原稿保全和公开稿要求见 [研究资料规范](organization.md)。完整研究对象、理解、结论及产物保存在仓库根 `research/`，维护中的复现工具见 [tools/research/](../../tools/research/README.md)，其原始版本及运行产物仍保留在完整研究档案。
 
 下面的 `research/` 链接是本机完整档案入口，通常不随普通 Git clone 提供；没有这些原件仍可阅读公开结论并正常构建。当前完整档案目录由本地 [research/README.md](../../research/README.md) 索引。先根据任务选一个专题，不自动展开全部原件；读取尺寸与输出预算遵循 [上下文读取风险报告](context-read-risk-2026-10-11.md) 和 `AGENTS.md`。
@@ -8,7 +10,7 @@
 
 ## 公开研究结果
 
-继续设备适配时先读 [设备适配交接](device-adaptation-handoff.md)，配置与美术问题分别进入 [云配置](cloud-device-configuration.md) 和 [云美术](cloud-device-artwork.md)。当前用户说明、开发与历史入口见 [docs/README.md](../README.md)。
+继续设备适配时先读[当前单源规则](heymelody-only.md)，再按需要查阅历史[设备适配交接](device-adaptation-handoff.md)、[云配置](cloud-device-configuration.md)和[云美术](cloud-device-artwork.md)。当前用户说明、开发与历史入口见 [docs/README.md](../README.md)。
 
 | 文档入口 | 内容 |
 | --- | --- |

@@ -48,18 +48,17 @@ public static class DeviceVisuals
         }
     }
 
-    // Resolved glyph files per resource source; the bundle index is fixed for the process.
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(ResourceSource, string), string?> AncGlyphPaths = new();
+    // The bundled HeyMelody glyph index is fixed for the process.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string?> AncGlyphPaths = new();
 
-    internal static Control CreateAncGlyph(string source, string key, string brushKey)
+    internal static Control CreateAncGlyph(string key, string brushKey)
     {
         var name = key switch { "off" => "melody_ui_reduction_noise_close", "transparency" => "melody_ui_reduction_noise_transparent",
             "adaptive" or "smart" => "melody_ui_reduction_noise_adaptive", "weak" => "melody_ui_reduction_noise_weak", _ => "melody_ui_reduction_noise_strong" };
-        var selectedSource = source == "WirelessEarphones" ? ResourceSource.WirelessEarphones : ResourceSource.HeyMelody;
         try
         {
-            var path = AncGlyphPaths.GetOrAdd((selectedSource, name), entry =>
-                Bundled.Value.FindNamedAsset(entry.Item1, entry.Item2) is { } found ? Bundled.Value.FullPath(found) : null);
+            var path = AncGlyphPaths.GetOrAdd(name, entry =>
+                Bundled.Value.FindNamedAsset(entry) is { } found ? Bundled.Value.FullPath(found) : null);
             if (path is not null)
             {
                 var glyph = new Border { Width = 26, Height = 26, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,

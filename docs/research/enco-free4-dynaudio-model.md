@@ -1,5 +1,7 @@
 # Enco Free4 丹拿版官方模型获取与验证
 
+> 当前客户端仅使用欢律配置与资源，见[当前单源规则](heymelody-only.md)。下文涉及已退出支持来源的覆盖、接口和操作要求仅用于历史研究复核，已由当前规则取代；原版本、路径、摘要和验证范围保留。
+
 本文是2026-10-08模型研究的公开整理稿。完整原文保存在[本地研究档案](../../research/migrations/organization-2026-10-09/originals/docs/research/enco-free4-dynaudio-model.md)，研究对象、工具、理解和产物保存在`research/online-artwork/`。下文的`research/`原件、日志和渲染图链接仅供本地档案使用，不随源码分发；克隆仓库包含公开文档和`tools/`工具，不要求拥有这些原件。
 
 **后续接入：0.8.2 的临时 Demo 已改用此模型。** 原始 GLB 独立嵌入 `src/HeyMelody.App/Assets/Devices/EncoFree4Dynaudio/model.glb`，长按主界面“+”两秒或 `Start-3D-Demo.cmd` 可检查布局；精确摘要限定内存不透明/深度写入设置。下文保留获取阶段的研究范围，来源及原件不变。

@@ -107,7 +107,6 @@ public sealed class CalibrationWindow : FAAppWindow
     {
         if (_closed) return;
         if (notification.Calibration is { } state) _model.Adopt(state);
-        if (notification.Resources is { } resources) _model.SetResourceSource(resources.Source);
         if (notification.Kind is "unavailable" or "stopping")
         { _allowLocalClose = true; _model.BackendUnavailable(notification.Message ?? ""); Close(); }
         else if (notification.Kind == "requestExit" && notification.ExitRequestId is { } requestId && _events is not null)

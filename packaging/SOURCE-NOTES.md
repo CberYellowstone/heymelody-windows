@@ -1,3 +1,11 @@
+# Current resource provenance
+
+The application now uses only HeyMelody configuration and artwork. Offline provenance identifies com.heytap.headset 17.6.5; the single artwork index and supplemental manifest identify retained byte hashes, including the HeyMelody scanning image. Shared official model packages, the official Golden Hearing module-2 audition, and the separately supplied X4 PNGs remain. Current interface glyphs use platform or FluentAvalonia symbols. Historical component-derived glyphs and component-only assets have been removed from the application.
+
+The preserved research inputs, prior source notes and tool bytes are listed in research/migrations/drop-coloros-2026-10-18/preservation-manifest.json in the local archive. They are not runtime dependencies. The entries below describe earlier releases and their original verification limits; component-source support described there has ended.
+
+## Historical release provenance (retained as evidence)
+
 # Source and provenance
 
 Version 0.9.2 fixes Windows control-service discovery when cached SDP records are missing, ambiguous or stale. It refreshes only the selected source's permitted UUIDs, keeps unique-channel selection and identity/capability checks, and preserves the failed phase, command or Windows error code through Daily, Host and the UI. It adds no resource, font or third-party dependency. This iteration builds locally on Windows and has not been published to GitHub. Before the full release build, targeted offline validation passed Daily 139, Client 163 and Host 84 checks, Windows x64 SDP/ABI checks, and Release builds of Host and App. Full thirteen-runner results, including any failed attempts and reruns, are established by this build's preserved logs. The package's `manifest.json` contains build-only metadata; it does not certify native execution or headset verification. Package structure, version and SHA256 validation are recorded in the matching static-validation receipt alongside the package directory under `release/`. Actual validation scope is limited to the version and file hashes in those logs and receipts. No Air4 Pro headset or ARM64 hardware verification was performed. Configuration, original APK routing evidence and verification boundaries: `docs/research/enco-air4-pro-control.md`.

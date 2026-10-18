@@ -284,7 +284,6 @@ public sealed partial class NativeHeadsetService : IHeadsetService, IDeviceManag
             CaseBatteryObservationTime = snapshot.CaseBatteryObservedAtUtc,
             ProductId = snapshot.ProductId,
             Color = snapshot.Color, ColorObservationTime = snapshot.ColorObservedAtUtc,
-            ResourceSource = _resourceSource,
             ResourceRevision = _resourceRevision,
             CustomEqualizerCapacity = snapshot.CustomEqualizerCapacity,
             EqualizerFrequencies = snapshot.EqualizerFrequencies.Select(hz => (int)hz).ToArray(),

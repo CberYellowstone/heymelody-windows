@@ -3,7 +3,7 @@ namespace HeyMelodyWindows.App;
 public sealed partial class MainViewModel
 {
     private sealed record AncTarget(UiAction Action, long Version, string Identity, long Epoch,
-        string BackendInstanceId, long DeviceGeneration, string Source, string ConfiguredSource);
+        string BackendInstanceId, long DeviceGeneration);
 
     private AncTarget? _queuedAncTarget;
     private bool _ancQueueRunning;
@@ -20,7 +20,7 @@ public sealed partial class MainViewModel
         _selectedAncSubmode = _selectedAncMode?.Options.FirstOrDefault(option => option.Key == _pendingAncKey);
         _selectedAnc = _ancOptions.FirstOrDefault(option => option.Key == _pendingAncKey);
         _queuedAncTarget = new(action, _ancVersion, _sessionIdentity!, _sessionEpoch,
-            snapshot.BackendInstanceId, snapshot.DeviceGeneration, snapshot.ResourceSource, _configuredResourceSource);
+            snapshot.BackendInstanceId, snapshot.DeviceGeneration);
         NotifyState();
         if (_ancQueueRunning) return _ancQueueTask ?? Task.CompletedTask;
         _ancQueueRunning = true;
@@ -30,8 +30,7 @@ public sealed partial class MainViewModel
     private bool AncContextMatches(AncTarget target) => target.Epoch == _sessionEpoch
         && target.Identity == _sessionIdentity && target.Identity == SelectedDevice?.Identity
         && _liveSnapshot is { } snapshot && snapshot.Identity == target.Identity
-        && snapshot.BackendInstanceId == target.BackendInstanceId && snapshot.DeviceGeneration == target.DeviceGeneration
-        && snapshot.ResourceSource == target.Source && _configuredResourceSource == target.ConfiguredSource;
+        && snapshot.BackendInstanceId == target.BackendInstanceId && snapshot.DeviceGeneration == target.DeviceGeneration;
 
     private static bool AncGoalMatches(UiAction action, UiSnapshot snapshot) => action.Kind == "AncMode"
         ? snapshot.AncPrimary == action.Value : snapshot.Anc == action.Value;

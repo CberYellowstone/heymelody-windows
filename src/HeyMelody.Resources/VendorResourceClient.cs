@@ -23,10 +23,10 @@ public sealed class VendorResourceClient : IDisposable
         if (_owned) _client.Timeout = TimeSpan.FromSeconds(25);
     }
 
-    public static int RequestCompatVersion(ResourceSource source) => source == ResourceSource.HeyMelody ? 17006004 : 17006002;
-    public static byte[] CreateRequestBody(ResourceSource source, string? productId = null, int? color = null, bool model = false)
+    public static int RequestCompatVersion() => 17006004;
+    public static byte[] CreateRequestBody(string? productId = null, int? color = null, bool model = false)
     {
-        var values = new Dictionary<string, string> { ["platform"] = "android", ["channel"] = source == ResourceSource.HeyMelody ? "2" : "1", ["versionCode"] = RequestCompatVersion(source).ToString(CultureInfo.InvariantCulture) };
+        var values = new Dictionary<string, string> { ["platform"] = "android", ["channel"] = "2", ["versionCode"] = RequestCompatVersion().ToString(CultureInfo.InvariantCulture) };
         if (productId is not null)
         { values["productId"] = productId; values["color"] = color?.ToString(CultureInfo.InvariantCulture) ?? throw new ArgumentException("Artwork requires a known protocol color."); }
         if (model) values["moduleId"] = "14";
@@ -35,9 +35,9 @@ public sealed class VendorResourceClient : IDisposable
 
     public static string Sign(string key, ReadOnlySpan<byte> body) => Convert.ToHexStringLower(HMACSHA1.HashData(new UTF8Encoding(false, true).GetBytes(key), body));
 
-    public async Task<ResourceMetadata> GetConfigurationMetadataAsync(ResourceSource source, string key, CancellationToken token)
+    public async Task<ResourceMetadata> GetConfigurationMetadataAsync(string key, CancellationToken token)
     {
-        using var json = await PostAsync("v1/earphone/new/latestWhiteList", CreateRequestBody(source), key, token).ConfigureAwait(false);
+        using var json = await PostAsync("v1/earphone/new/latestWhiteList", CreateRequestBody(), key, token).ConfigureAwait(false);
         JsonElement data = Data(json.RootElement);
         string version = RequiredScalar(data, "version"), url = RequiredString(data, "downloadUrl");
         long? size = data.TryGetProperty("size", out var sizeValue) && long.TryParse(Scalar(sizeValue), out long n) && n >= 0 ? n : null;
@@ -45,9 +45,9 @@ public sealed class VendorResourceClient : IDisposable
         return new(version, url, size);
     }
 
-    public async Task<ArtworkMetadata?> GetArtworkMetadataAsync(ResourceSource source, string key, string productId, int color, bool model, CancellationToken token)
+    public async Task<ArtworkMetadata?> GetArtworkMetadataAsync(string key, string productId, int color, bool model, CancellationToken token)
     {
-        using var json = await PostAsync(model ? "v1/earphone/resource/fetch" : "v1/earphone/resource/control", CreateRequestBody(source, productId, color, model), key, token).ConfigureAwait(false);
+        using var json = await PostAsync(model ? "v1/earphone/resource/fetch" : "v1/earphone/resource/control", CreateRequestBody(productId, color, model), key, token).ConfigureAwait(false);
         JsonElement data = Data(json.RootElement);
         var rows = data.ValueKind == JsonValueKind.Array ? data.EnumerateArray().ToArray() : data.ValueKind == JsonValueKind.Object ? [data] : [];
         var matches = rows.Where(row => row.ValueKind == JsonValueKind.Object &&

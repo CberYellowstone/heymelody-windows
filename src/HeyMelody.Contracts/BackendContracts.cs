@@ -5,7 +5,7 @@ namespace HeyMelodyWindows.App;
 // Public messages contain opaque device identities, never Bluetooth addresses.
 public sealed class BackendRequest
 {
-    public int SchemaVersion { get; set; } = 3;
+    public int SchemaVersion { get; set; } = 4;
     public long Id { get; set; }
     public string Operation { get; set; } = "";
     public string? BackendInstanceId { get; set; }
@@ -23,7 +23,7 @@ public sealed class BackendRequest
 
 public sealed class BackendMessage
 {
-    public int SchemaVersion { get; set; } = 3;
+    public int SchemaVersion { get; set; } = 4;
     public string Kind { get; set; } = "response";
     public long Id { get; set; }
     public bool Success { get; set; }

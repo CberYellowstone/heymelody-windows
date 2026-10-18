@@ -23,7 +23,6 @@ public sealed class CalibrationViewModel(ICalibrationService service, string han
     private CancellationTokenSource? _levelDelay;
     private int _selectedLevel = 5;
     private bool _selectionActive;
-    private string _resourceSource = "HeyMelody";
     private CalibrationPhase _phase;
     private bool _earScanCompleted;
     private long _spectrumSequence;
@@ -34,7 +33,6 @@ public sealed class CalibrationViewModel(ICalibrationService service, string han
     public IReadOnlyList<double> SpectrumLevels { get; private set; } = [];
     public UiCalibrationState State => _state;
     public string Kind => kind;
-    public string ResourceSource => _resourceSource;
     public CalibrationPhase Phase => _phase;
     /// <summary>True once this hearing run has a completed ear scan; drives the stepper only.</summary>
     public bool EarScanCompleted => _earScanCompleted;
@@ -62,8 +60,6 @@ public sealed class CalibrationViewModel(ICalibrationService service, string han
         await RunAsync(async () =>
         {
             Adopt(await service.GetCalibrationAsync(handle, _lifetime.Token));
-            if (service is IResourceSettingsService resources)
-                SetResourceSource((await resources.GetResourceSettingsAsync(_lifetime.Token)).Source);
             if (kind == "hearing") Profiles = await service.GetHearingProfilesAsync(_state.Identity, _state.Generation, _lifetime.Token);
         });
     }
@@ -141,8 +137,6 @@ public sealed class CalibrationViewModel(ICalibrationService service, string han
             + (_stopConfirmed ? "" : "\n无法确认耳机上的测试是否已停止，可关闭此窗口后重新连接核实。"));
         CancellationChanged();
     }
-    public void SetResourceSource(string source)
-    { _resourceSource = source; Changed(nameof(ResourceSource)); }
     public async Task SendAsync(string action, bool? heard = null, int? level = null, bool released = false, bool allowReplacement = false)
     {
         if (_cancelled || _busy) return;

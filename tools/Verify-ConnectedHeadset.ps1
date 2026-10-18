@@ -13,7 +13,6 @@ pwsh -File tools/Verify-ConnectedHeadset.ps1 -HostPath release/HeyMelody_Windows
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string]$HostPath,
-    [ValidateSet('HeyMelody', 'WirelessEarphones')] [string]$Source,
     [switch]$Bundled,
     [string]$TargetName = 'OPPO Enco X4',
     [string]$OutputPath
@@ -150,8 +149,8 @@ try {
     Add-Type -ReferencedAssemblies $resourceAssembly -TypeDefinition @'
 using HeyMelodyWindows.Resources;
 public static class ConnectedHeadsetCacheReader {
-    public static ResourceCatalog Read(byte[] envelope, byte[] key, ResourceSource source) =>
-        ResourceCatalog.Parse(ResourceCacheCodec.Decrypt(envelope, key), source, true);
+    public static ResourceCatalog Read(byte[] envelope, byte[] key) =>
+        ResourceCatalog.Parse(ResourceCacheCodec.Decrypt(envelope, key), true);
 }
 '@
     $storage = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'HeyMelody/resources'
@@ -165,16 +164,11 @@ public static class ConnectedHeadsetCacheReader {
         }
         catch { $receipt.preferencesFallback = $true; $preferences = @{} }
     }
-    $savedSource = if ($preferences.ContainsKey('Source')) { $preferences.Source } else { 0 }
-    if (-not $Source) {
-        $Source = if ($savedSource -eq 1 -or $savedSource -eq 'WirelessEarphones') { 'WirelessEarphones' } else { 'HeyMelody' }
-    }
-    $resourceSource = [Enum]::Parse([HeyMelodyWindows.Resources.ResourceSource], $Source)
     $bundleStore = [HeyMelodyWindows.Resources.BundledResourceStore]::new((Join-Path $script:taskHostDirectory 'ResourceBundles'))
-    $catalog = $bundleStore.GetCatalog($resourceSource)
+    $catalog = $bundleStore.GetCatalog()
     $invalidCaches = 0
     if (-not $Bundled -and $preferences.ContainsKey('CacheEncryptionKey')) {
-        $cacheRoot = Join-Path $storage ('online/' + $(if ($Source -eq 'HeyMelody') { 'heymelody' } else { 'wireless' }) + '/config')
+        $cacheRoot = Join-Path $storage 'online/heymelody/config'
         if ([IO.Directory]::Exists($cacheRoot)) {
             foreach ($directory in [IO.Directory]::EnumerateDirectories($cacheRoot)) {
                 $cacheHash = [IO.Path]::GetFileName($directory)
@@ -185,7 +179,7 @@ public static class ConnectedHeadsetCacheReader {
                     Require (([IO.FileInfo]::new($cachePath)).Length -le 9437184) 'The cache envelope exceeds its size limit.'
                     $key = [Convert]::FromBase64String($preferences.CacheEncryptionKey)
                     Require ($key.Length -eq 32) 'The cache key has an invalid length.'
-                    $candidate = [ConnectedHeadsetCacheReader]::Read([IO.File]::ReadAllBytes($cachePath), $key, $resourceSource)
+                    $candidate = [ConnectedHeadsetCacheReader]::Read([IO.File]::ReadAllBytes($cachePath), $key)
                     if ($candidate.Sha256 -ne $cacheHash) { $invalidCaches++; continue }
                     if ($candidate.ContentVersion -gt $catalog.ContentVersion) { $catalog = $candidate }
                 } catch { $invalidCaches++ }
@@ -194,7 +188,7 @@ public static class ConnectedHeadsetCacheReader {
         }
     }
     $preferences = $null
-    $receipt.resources = [ordered]@{ source = $Source; contentVersion = $catalog.ContentVersion; isOnline = $catalog.IsOnline;
+    $receipt.resources = [ordered]@{ contentVersion = $catalog.ContentVersion; isOnline = $catalog.IsOnline;
         sha256 = $catalog.Sha256; bundledOnlyRequested = [bool]$Bundled; invalidCachedCandidates = $invalidCaches }
     $json = [Text.Encoding]::UTF8.GetBytes($catalog.Raw.GetRawText())
     $compressed = [IO.MemoryStream]::new()
@@ -228,9 +222,9 @@ public static class ConnectedHeadsetCacheReader {
     $script:worker = Start-OwnedProcess '--worker'
     $workerErrors = $script:worker.StandardError.ReadToEndAsync()
     $workerDeadline = [datetime]::UtcNow.AddSeconds(75)
-    $appMarker = if ($Source -eq 'HeyMelody') { 17006004 } else { 17006002 }
+    $appMarker = 17006004
     Send-WorkerRequest @{ id = 1; operation = 'initialize'; identity = [guid]::NewGuid().ToString('N'); name = $target.name;
-        address = $address; catalogGzip = $catalogGzip; source = $Source; resourceRevision = 1; appMarker = $appMarker;
+        address = $address; catalogGzip = $catalogGzip; resourceRevision = 1; appMarker = $appMarker;
         stableKey = $stableKey; generation = 1 }
     $initial = Await-WorkerResponse 1 $workerDeadline
     $receipt.initialization = [ordered]@{ productId = $initial['productId']; connected = [bool]$initial['connected'];

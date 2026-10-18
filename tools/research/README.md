@@ -1,4 +1,4 @@
-# 维护中的研究工具
+# 研究工具
 
 本目录维护项目复现、资源提取和离线验收需要的工具。核心协作与读取规则见 [AGENTS.md](../../AGENTS.md)，目录与原稿保全要求见 [研究资料规范](../../docs/research/organization.md)。完整研究对象、理解、结论、原始工具版本及运行产物保存在根目录 `research/`；整理后适宜公布的结果见 [研究索引](../../docs/research/README.md)。
 
@@ -15,6 +15,14 @@
 | [fetch_hearing_audition.ps1](fetch_hearing_audition.ps1) | 获取并核对官方黄金听感试听原件，离线转换 PCM16；原件、转换工具版本和摘要默认归档到 research/hearing-preview-20261010/audio |
 | [fetch_earbud_firmware.py](fetch_earbud_firmware.py) | 按所选 APK 来源查询官方 OTA，在线需显式 `fetch --online`；离线检查/解包 Air4 Pro 的 legacy 分块 LZMA，保存逐块摘要并区分下载校验与未闭合的内部 CRC |
 | [air4_pro_ghidra/](air4_pro_ghidra/README.md) | Air4 Pro 独立 ARM Thumb 镜像映射、完整已发现函数导出、定向索引及 0x0114/0x0105 字节重构；自动反编译和人工确认分别记录 |
+
+## 当前采集与历史复核
+
+当前配置、外观和固件采集仅使用欢律；`online-whitelist/scripts/fetch_whitelist.py`、`online-artwork/scripts/fetch_artwork.py` 及 `fetch_earbud_firmware.py` 不再提供组件来源。APK 美术提取也只接受欢律。构建资源生成使用 `tools/bundle_resources.py`，不会联网。
+
+固定旧样本的审计入口现在只启动 `historical_replay.py`，从本地 `research/migrations/drop-coloros-2026-10-18/originals/` 加载按原路径保存的原字节。完整文件大小与 SHA256 见该档案的 `preservation-manifest.json`。该路径用于保留历史双来源依据，不表示当前应用仍支持组件来源；普通构建及应用测试不依赖这些档案。
+
+历史复核禁止联网、设备操作和覆盖已有证据。传入原工具的离线参数，并使用新的 `research/` 输出路径；缺少本地归档时明确失败，不以当前单源结果冒充旧双源验收。七份已跟踪静态契约保持原位置与原字节。
 
 ## 使用与输出
 

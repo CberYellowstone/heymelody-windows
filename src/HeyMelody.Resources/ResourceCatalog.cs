@@ -5,30 +5,23 @@ using System.Text.RegularExpressions;
 
 namespace HeyMelodyWindows.Resources;
 
-public enum ResourceSource { HeyMelody, WirelessEarphones }
-
 public sealed record ResourcePreferences
 {
-    public ResourceSource Source { get; init; } = ResourceSource.HeyMelody;
     public bool UseOnlineResources { get; init; } = true;
     public string HeyMelodyKey { get; init; } = "";
-    public string WirelessEarphonesKey { get; init; } = "";
     public string CacheEncryptionKey { get; init; } = "";
-    [System.Text.Json.Serialization.JsonIgnore]
-    public string CustomKey => Source == ResourceSource.HeyMelody ? HeyMelodyKey : WirelessEarphonesKey;
 }
 
 public sealed record ResourceDeviceProfile(string ProductId, string Name, string Brand, string Type,
-    string? Uuid, bool SupportSpp, bool ExternalOnly, JsonElement Raw)
+    string? Uuid, bool SupportSpp, JsonElement Raw)
 {
     public JsonElement Functions => Raw.TryGetProperty("function", out var value) ? value : default;
-    public bool CanUseControlTransport => SupportSpp && !ExternalOnly && Guid.TryParse(Uuid, out var service) && service != Guid.Empty;
+    public bool CanUseControlTransport => SupportSpp && Guid.TryParse(Uuid, out var service) && service != Guid.Empty;
 }
 
-/// <summary>An immutable whole-source snapshot. Raw retains unknown vendor fields for future codecs.</summary>
+/// <summary>An immutable HeyMelody snapshot. Raw retains unknown vendor fields for future codecs.</summary>
 public sealed class ResourceCatalog
 {
-    public ResourceSource Source { get; }
     public int ContentVersion { get; }
     public bool IsOnline { get; }
     public string Sha256 { get; }
@@ -36,13 +29,13 @@ public sealed class ResourceCatalog
     public IReadOnlyDictionary<string, ResourceDeviceProfile> Profiles { get; }
     internal byte[] OriginalBytes { get; }
 
-    private ResourceCatalog(ResourceSource source, int version, bool online, string hash, JsonElement raw,
+    private ResourceCatalog(int version, bool online, string hash, JsonElement raw,
         Dictionary<string, ResourceDeviceProfile> profiles, byte[] originalBytes)
-    { Source = source; ContentVersion = version; IsOnline = online; Sha256 = hash; Raw = raw; Profiles = new ReadOnlyDictionary<string, ResourceDeviceProfile>(profiles); OriginalBytes = originalBytes; }
+    { ContentVersion = version; IsOnline = online; Sha256 = hash; Raw = raw; Profiles = new ReadOnlyDictionary<string, ResourceDeviceProfile>(profiles); OriginalBytes = originalBytes; }
 
     public ResourceDeviceProfile? Find(string? productId) => productId is not null && Profiles.TryGetValue(productId, out var value) ? value : null;
 
-    public static ResourceCatalog Parse(ReadOnlySpan<byte> utf8, ResourceSource source, bool online, int? bundledVersion = null)
+    public static ResourceCatalog Parse(ReadOnlySpan<byte> utf8, bool online, int? bundledVersion = null)
     {
         if (utf8.Length > ResourceLimits.ConfigBytes) throw new InvalidDataException("Configuration exceeds size limit.");
         using var document = JsonDocument.Parse(utf8.ToArray(), new JsonDocumentOptions { MaxDepth = 96 });
@@ -77,7 +70,7 @@ public sealed class ResourceCatalog
                 Add(inherited);
             }
         }
-        return new(source, version, online, Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(utf8)),
+        return new(version, online, Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(utf8)),
             JsonSerializer.SerializeToElement(content), profiles, utf8.ToArray());
 
         void Add(JsonObject row)
@@ -88,14 +81,13 @@ public sealed class ResourceCatalog
             if (type.StartsWith("S", StringComparison.OrdinalIgnoreCase) || type.Contains("speaker", StringComparison.OrdinalIgnoreCase)) return;
             bool spp = row["supportSpp"] is JsonValue value && value.TryGetValue<bool>(out var supported) && supported;
             var profile = new ResourceDeviceProfile(id, Text(row["name"]), brand, type, Text(row["uuid"]) is { Length: > 0 } uuid ? uuid : null,
-                spp, source == ResourceSource.WirelessEarphones && brand.Equals("realme", StringComparison.OrdinalIgnoreCase), JsonSerializer.SerializeToElement(row));
+                spp, JsonSerializer.SerializeToElement(row));
             if (!profiles.TryAdd(id, profile)) throw new InvalidDataException("Duplicate product identifier.");
         }
     }
 
     public static ResourceCatalog Select(ResourceCatalog bundled, ResourceCatalog? cached)
     {
-        if (cached is not null && cached.Source != bundled.Source) throw new ArgumentException("Sources must not be mixed.");
         return cached is not null && cached.ContentVersion > bundled.ContentVersion ? cached : bundled;
     }
 

@@ -186,7 +186,7 @@ internal static class NativeSmoke
                 });
             }
             var bundle = new BundledResourceStore();
-            var animationAsset = bundle.FindNamedAsset(ResourceSource.HeyMelody, "melody_ui_gold_hearing_detecting_guide")
+            var animationAsset = bundle.FindNamedAsset("melody_ui_gold_hearing_detecting_guide")
                 ?? throw new InvalidOperationException("Original Lottie asset missing.");
             var animationPath = bundle.FullPath(animationAsset);
             var artwork = page.FindControl<ProductArtwork>("HeroArt")!;
@@ -215,7 +215,12 @@ internal static class NativeSmoke
                 .Any(dialog => Equals(dialog.Title, "应用设置")), "Settings waits behind the native failure dialog.");
             dialogs.CancelActiveDialog(); await alertTask;
             _state.FailureDialogsCompleted = true;
-            await FindDialogAsync(window, "应用设置");
+            var settingsDialog = await FindDialogAsync(window, "应用设置");
+            Check(!settingsDialog.GetVisualDescendants().OfType<ComboBox>().Any(control =>
+                    Avalonia.Automation.AutomationProperties.GetName(control) == "资源来源")
+                && settingsDialog.GetVisualDescendants().OfType<TextBox>().Any(control =>
+                    Avalonia.Automation.AutomationProperties.GetName(control) == "云端资源密钥"),
+                "Native settings expose one HeyMelody key and no source selector.");
             Check(!settingsTask.IsCompleted, "Settings dialog opens after the failure dialog releases ownership.");
         }
         catch (Exception error) { _state.Failure = error.ToString(); }

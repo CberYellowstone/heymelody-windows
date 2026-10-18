@@ -13,7 +13,6 @@ internal static class SelectionPresentationTests
             foreach (var identity in new[] { "a", "b" })
             {
                 var cached = Cached(Snapshot(identity));
-                cached.ResourceSource = identity == "a" ? "HeyMelody" : "WirelessEarphones";
                 cached.FeatureSections = [cached.FeatureSections[0] with { Controls = cached.FeatureSections[0].Controls
                     .Append(new UiFeatureControl("auto-volume", "自动音量", "Switch", 0, CanWrite: true)).ToArray() },
                     new("legacy-only", "旧功能", false, [new("auto-volume", "自动音量", "Switch", 1, CanWrite: true),

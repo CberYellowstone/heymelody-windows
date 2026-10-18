@@ -71,6 +71,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Test
 
 `Build-Client.ps1` 当前编排十三个默认 runner，包含资源、校准、GUI 和 `Windows.OfflineChecks`。默认检查通过模拟、资源与静态断言验证实现；应按改动选取验证，完整发布不是每次编辑的默认步骤。`HeyMelody.ModelPreview.Tests` 是独立模型检查；App、DeviceManager 和模型相关的 Windows 原生窗口检查也需单独运行。具体命令和适用条件见[三维模型渲染](model-rendering.md)及[研究文档索引](research/README.md)。
 
+欢律单源改造的 UI 检查限于资源设置区、变更的电量／标题图标和校准步骤，其他默认 runner 照常执行。测试生成的完整 PNG 保留本地，不向会话载入整套截图；局部原生窗口检查可使用 App.Tests 的 `--native-smoke`，该模式不连接耳机或打开系统设置。
+
 验证记录须说明对应层级与条件：
 
 - 协议模拟、资源解析和无头 UI 检查证明对应代码或布局行为。
@@ -78,7 +80,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Test
 - 静态发布校验检查包结构、版本、运行时、资源及许可材料，不连接蓝牙。
 - 真机记录须注明型号、固件、应用版本、命令范围与环境；旧 X4 记录不能证明所有目录型号、后续版本或 ARM64 实机行为。
 
-内置资源包含 85 个欢律、141 个无线耳机耳塞产品 ID。这是目录覆盖数量；未知 codec、缺少 SPP 或仅外部控制路由的功能会被禁用，目录条目本身不是硬件验证结论。跨窗口并发、校准流程、手机同时操作、休眠恢复及特定硬件的渲染仍需相应范围的实测证据。
+内置资源仅包含欢律的 85 个耳机产品 ID。这是目录覆盖数量；未知 codec、缺少 SPP 或仅外部控制路由的功能会被禁用，目录条目本身不是硬件验证结论。跨窗口并发、校准流程、手机同时操作、休眠恢复及特定硬件的渲染仍需相应范围的实测证据。
 
 ## 发布与包校验
 

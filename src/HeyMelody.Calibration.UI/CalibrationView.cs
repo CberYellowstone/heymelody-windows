@@ -72,7 +72,7 @@ public sealed class CalibrationView : UserControl
         _model = model; _hearing = model.Kind == "hearing";
         Styles.Add(SegmentStyle("ProgressBarRoot")); Styles.Add(SegmentStyle("ProgressBarTrack", 4)); Styles.Add(SegmentStyle("PART_Indicator"));
         Styles.Add(RippleStyle());
-        _scanStep = new StepNode("耳道扫描", brush => Glyph(OppoGlyphs.Ear, 22, brush));
+        _scanStep = new StepNode("耳道扫描", brush => Icon(AppIcon.Hearing, 22, brush));
         _testStep = new StepNode("听音测试", brush => Wave(20, brush));
         _stepper = new Grid { ColumnDefinitions = new("Auto,*,Auto"), MaxWidth = 320, HorizontalAlignment = HorizontalAlignment.Stretch,
             Children = { _scanStep.Root, _stepConnector, _testStep.Root } };
@@ -165,7 +165,7 @@ public sealed class CalibrationView : UserControl
         _progress.IsVisible = _progress.Text.Length > 0;
         var key = string.Join('/', resultPage ? "Results" : state.Stage, _model.Phase, state.HearingVersion, state.SupportsEarScan, state.StepIndex > 0,
             state.FiltersReady, state.CanPreview, state.HearingRadar is not null,
-            state.HearingLevels.Count == state.StepCount, state.FitResults.Count, _model.ResourceSource, ActualThemeVariant);
+            state.HearingLevels.Count == state.StepCount, state.FitResults.Count, ActualThemeVariant);
         if (_bodyKey != key)
         {
             _bodyKey = key; _body.Children.Clear(); _actions.Children.Clear(); _level = null; _next = _retryLevel = _save = _resume = null; _radar = null;
@@ -247,7 +247,7 @@ public sealed class CalibrationView : UserControl
         {
             case "Ready" or "Idle":
                 if (state.HearingVersion == "V2") AddHearingGuide();
-                else AddHero(Glyph(OppoGlyphs.Ear, 30, OnAccent));
+                else AddHero(Icon(AppIcon.Hearing, 30, OnAccent));
                 AddHeading("为你的双耳建立专属听感", state.SupportsEarScan
                     ? "先扫描耳道，再分别测试左耳和右耳的 6 个频段，整个过程需要几分钟。"
                     : "将分别测试左耳和右耳的 6 个频段，整个过程需要几分钟。");
@@ -288,7 +288,7 @@ public sealed class CalibrationView : UserControl
                 AddHeading("黄金听感已保存并启用", "可在主界面的“听感配置”中切换或关闭。");
                 return;
             case "Failed":
-                AddHero(Glyph(OppoGlyphs.Ear, 30, OnAccent));
+                AddHero(Icon(AppIcon.Hearing, 30, OnAccent));
                 AddHeading("测试未能完成", "请检查佩戴和连接后重试。");
                 if (state.HearingLevels.Count == state.StepCount) AddAction("重新获取结果", "retry-curves", true);
                 else AddAction("重试", "start", true);
@@ -299,7 +299,7 @@ public sealed class CalibrationView : UserControl
             default:
                 // Wear checks and start-up stages belong to the scan or to the test, as the phase records.
                 var scanning = _model.Phase == CalibrationPhase.EarScan;
-                if (scanning) AddHero(Glyph(OppoGlyphs.Ear, 30, OnAccent), ripple: true);
+                if (scanning) AddHero(Icon(AppIcon.Hearing, 30, OnAccent), ripple: true);
                 else AddEarHero(followTone: false, ripple: true);
                 AddHeading(state.Stage switch
                 {
@@ -481,7 +481,7 @@ public sealed class CalibrationView : UserControl
             _ => ("未获得结果", Pending)
         };
         var badge = new Border { Width = 44, Height = 44, CornerRadius = new CornerRadius(22), VerticalAlignment = VerticalAlignment.Center,
-            Child = Glyph(OppoGlyphs.Earbud, 26, OnAccent, mirrored: component == 2) };
+            Child = Icon(AppIcon.FitTest, 26, OnAccent, mirrored: component == 2) };
         badge.Bind(Border.BackgroundProperty, new DynamicResourceExtension(brush));
         var labels = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center,
             Children = { SecondaryText(component == 1 ? "左耳" : "右耳"), Text(text, 16, FontWeight.SemiBold) } };
@@ -505,7 +505,7 @@ public sealed class CalibrationView : UserControl
     }
     private void AddEarHero(bool followTone, bool ripple = false)
     {
-        var glyph = Glyph(OppoGlyphs.Ear, 30, OnAccent);
+        var glyph = Icon(AppIcon.Hearing, 30, OnAccent);
         glyph.Name = "HeroGlyph";
         AddHero(glyph, ripple: ripple);
         _heroGlyph = glyph; _rippleFollowsTone = followTone;
@@ -562,7 +562,7 @@ public sealed class CalibrationView : UserControl
     }
     private void AddPreparation()
     {
-        _body.Children.Add(Card(Glyph(OppoGlyphs.Earbud, 20, Primary), "佩戴好两只耳机", SecondaryText("两只耳机均已连接，并稳定佩戴在耳道中。")));
+        _body.Children.Add(Card(Icon(AppIcon.FitTest, 20, Primary), "佩戴好两只耳机", SecondaryText("两只耳机均已连接，并稳定佩戴在耳道中。")));
         _body.Children.Add(Card(Symbol(FASymbol.SpeakerMute, 20, Primary), "保持环境安静", SecondaryText("测试期间请暂停音乐，避免接听电话。")));
     }
     private Button AddAction(string text, string action, bool primary)
@@ -577,15 +577,14 @@ public sealed class CalibrationView : UserControl
     {
         try
         {
-            var source = _model.ResourceSource == "WirelessEarphones" ? ResourceSource.WirelessEarphones : ResourceSource.HeyMelody;
-            var asset = Artwork.Value.FindNamedAsset(source, "melody_ui_gold_hearing_detecting_guide", ActualThemeVariant == ThemeVariant.Dark);
-            if (asset is null || asset.Kind != "lottie") { AddHero(Glyph(OppoGlyphs.Ear, 30, OnAccent)); return; }
+            var asset = Artwork.Value.FindNamedAsset("melody_ui_gold_hearing_detecting_guide", ActualThemeVariant == ThemeVariant.Dark);
+            if (asset is null || asset.Kind != "lottie") { AddHero(Icon(AppIcon.Hearing, 30, OnAccent)); return; }
             var path = Artwork.Value.FullPath(asset);
             // The official volume-guide animation shows how the slider is used.
             _body.Children.Add(Card(new LottieView(new FileLottieSource(new Uri(path), System.IO.Path.GetDirectoryName(path)!, asset.Sha256,
                 () => Artwork.Value.Acquire(asset) ?? throw new FileNotFoundException("Hearing guide asset is unavailable."))) { Height = 96, HorizontalAlignment = HorizontalAlignment.Stretch }));
         }
-        catch (IOException) { AddHero(Glyph(OppoGlyphs.Ear, 30, OnAccent)); }
+        catch (IOException) { AddHero(Icon(AppIcon.Hearing, 30, OnAccent)); }
     }
 
     private static Border Card(Control icon, string title, TextBlock description, Control? content = null, Control? trailing = null)
@@ -622,10 +621,10 @@ public sealed class CalibrationView : UserControl
         label.FontWeight = current ? FontWeight.SemiBold : FontWeight.Normal;
         label.Bind(TextBlock.ForegroundProperty, new DynamicResourceExtension(current ? Primary : Secondary));
     }
-    private static Control Glyph(string data, double size, string brush, bool mirrored = false)
+    private static Control Icon(AppIcon icon, double size, string brush, bool mirrored = false)
     {
-        var path = new PathShape { Data = Geometry.Parse(data), Stretch = Stretch.Uniform, Width = size, Height = size };
-        path.Bind(Shape.FillProperty, new DynamicResourceExtension(brush));
+        var path = AppIcons.Element(icon, size);
+        path.Bind(FAIconElement.ForegroundProperty, new DynamicResourceExtension(brush));
         if (mirrored) path.RenderTransform = new ScaleTransform(-1, 1);
         return path;
     }
@@ -644,7 +643,7 @@ public sealed class CalibrationView : UserControl
     private static Control Check() => Symbol(FASymbol.Checkmark, 30, OnAccent);
     private static Control Ring() => new FAProgressRing { IsActive = true, IsIndeterminate = true, Width = 48, Height = 48 };
     private static Control EarbudPair() => new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2,
-        Children = { Glyph(OppoGlyphs.Earbud, 28, OnAccent), Glyph(OppoGlyphs.Earbud, 28, OnAccent, mirrored: true) } };
+        Children = { Icon(AppIcon.FitTest, 28, OnAccent), Icon(AppIcon.FitTest, 28, OnAccent, mirrored: true) } };
     private static Style SegmentStyle(string part, double? height = null)
     {
         var style = new Style(x => x.OfType<ProgressBar>().Class("segment").Template().OfType<Border>().Name(part))

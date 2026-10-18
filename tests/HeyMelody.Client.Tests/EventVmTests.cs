@@ -319,7 +319,7 @@ internal static class EventVmTests
         });
         await test("event VM discards the last queued ANC target across target and capability changes", async () =>
         {
-            foreach (var change in new[] { "generation", "backend", "disconnect", "source", "capability", "selection" })
+            foreach (var change in new[] { "generation", "backend", "disconnect", "capability", "selection" })
             {
                 var service = new EventService { ApplyBlocked = Completion<UiApplyResult>() };
                 var initial = service.Snapshots["device-a"];
@@ -338,7 +338,6 @@ internal static class EventVmTests
                     case "backend": changed.BackendInstanceId = "backend-b"; changed.Revision = 1; break;
                     case "disconnect": changed.ControlReady = false; changed.Connected = false;
                         changed.ConnectionState = ConnectionState.Disconnected; break;
-                    case "source": changed.ResourceSource = "WirelessEarphones"; break;
                     case "capability": changed.CanSetAnc = false; changed.CanSetAncMode = false; break;
                     case "selection": selection = vm.SelectDeviceAsync(vm.Devices.Single(x => x.Identity == "device-b")); break;
                 }
@@ -352,7 +351,7 @@ internal static class EventVmTests
         });
         await test("event VM accepts a new ANC click in a changed context after the old blocked SET fails", async () =>
         {
-            foreach (var change in new[] { "generation", "source" })
+            foreach (var change in new[] { "generation", "backend" })
             {
                 var service = new EventService { ApplyBlocked = Completion<UiApplyResult>() };
                 var initial = service.Snapshots["device-a"];
@@ -362,7 +361,7 @@ internal static class EventVmTests
                 var old = vm.SelectAncModeAsync(vm.AncModes.Single(x => x.Key == 11));
                 var changed = Next(initial);
                 if (change == "generation") { changed.DeviceGeneration++; changed.Revision = 1; }
-                else changed.ResourceSource = "WirelessEarphones";
+                else { changed.BackendInstanceId = "backend-b"; changed.Revision = 1; }
                 service.Push(changed);
                 var fresh = vm.ApplyAncSubmodeAsync(vm.SelectedAncMode!.Options.Last());
                 Check(service.Actions.Count == 1 && vm.SelectedAncSubmode?.Key == 0x0107);
@@ -372,7 +371,7 @@ internal static class EventVmTests
                 await Task.WhenAll(old, fresh).WaitAsync(TimeSpan.FromSeconds(3));
                 Check(service.Actions.Count == 2 && service.Actions.Last() is { Action.Kind: "Anc", Action.Value: 0x0107 });
                 Check(service.Actions.Last().Generation == changed.DeviceGeneration && vm.SelectedAncSubmode?.Key == 0x0107);
-                Check(vm.ResourceSource == changed.ResourceSource && vm.CanSetAnc);
+                Check(vm.CanSetAnc);
             }
         });
         await test("event VM header indicator follows control, connection and pending writes", async () =>

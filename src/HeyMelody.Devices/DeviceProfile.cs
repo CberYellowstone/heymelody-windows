@@ -73,8 +73,8 @@ public sealed class DeviceProfile : SourceMetadata
             .Where(x => x.EvaluateConditionsForControl(versions) == VersionConditionStatus.Pass).OrderBy(x => x.Order).ToArray());
     public NoiseReductionMode? FindNoiseReductionByProtocolId(int protocolId) => NoiseReductionModes
         .SelectMany(Flatten).FirstOrDefault(x => x.ProtocolIndex == protocolId);
-    public static DeviceProfile FromResource(JsonElement source, string resourceSource, string sha256 = "")
-        => new(source, new(resourceSource, ValidProductId(source), sha256));
+    public static DeviceProfile FromResource(JsonElement source, string sha256 = "")
+        => new(source, new("HeyMelody", ValidProductId(source), sha256));
     public int? FunctionVersion(string name) => ProfileJson.Int(_rawFunctions, name);
     private static IEnumerable<NoiseReductionMode> Flatten(NoiseReductionMode mode)
     { yield return mode; foreach (var child in mode.Children.SelectMany(Flatten)) yield return child; }

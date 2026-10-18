@@ -1,5 +1,7 @@
 # 云端设备美术资源：验收与后续适配交接
 
+> 当前客户端仅使用欢律配置与资源，见[当前单源规则](heymelody-only.md)。下文涉及已退出支持来源的覆盖、接口和操作要求仅用于历史研究复核，已由当前规则取代；原版本、路径、摘要和验证范围保留。
+
 本文为公开整理稿；[整理前完整原文](../../research/migrations/organization-2026-10-09/originals/docs/research/cloud-device-artwork.md)保存在本地研究档案，不随普通Git clone提供。历史版本、来源及验证范围保留，完整研究对象与产物由 `research/` 保存。
 
 **2026-10-09 更新：X4 产品旋转已复核。** 两来源对 `06EC10 / color=1 / moduleId=14` 均返回动态 `modelWebp`，非 GLB 或 Lottie。control 包的 Lottie 属于操作教程，不能成为主展示；`support3DModel` 也不是 WebP 获取的必要条件。原件摘要、APK 加载调用与解码证据见 [X4 美术报告](enco-x4-artwork-audit.md)。下文旧库存和未取得状态保留其原采样范围。

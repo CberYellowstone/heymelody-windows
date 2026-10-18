@@ -7,10 +7,10 @@ namespace HeyMelodyWindows.App;
 public enum AppIcon
 {
     Settings, Refresh, Copy, Charging, NoiseControl, Equalizer, Sound, Earbuds, Gestures,
-    Hearing, FitTest, Info, History, BatteryLeft, BatteryRight, BatteryCase
+    Hearing, FitTest, Info, History, Battery
 }
 
-/// <summary>Resolves interface icons from Segoe Fluent Icons code points, falling back to OPPO vectors.</summary>
+/// <summary>Resolves interface icons from system or FluentAvalonia fonts with independent fallbacks.</summary>
 public static class AppIcons
 {
     private const string SegoeFluentName = "Segoe Fluent Icons", BundledSymbolsName = "Symbols";
@@ -18,6 +18,8 @@ public static class AppIcons
     // FluentAvalonia's bundled symbol font maps the same code points, so Windows 10 and previews keep the glyphs.
     private static readonly FontFamily BundledSymbols = new("avares://FluentAvalonia/Fonts#Symbols");
     private static readonly Dictionary<(string Family, int CodePoint), bool> Coverage = [];
+    // Original 24-unit outline for platforms without the system battery glyph.
+    private const string BatteryOutline = "M2,6 H20 V18 H2 Z M4,8 V16 H18 V8 Z M20,10 H23 V14 H20 Z";
 
     private abstract record Candidate;
     private sealed record Glyph(int CodePoint) : Candidate;
@@ -29,19 +31,16 @@ public static class AppIcons
         AppIcon.Refresh => [new Glyph(0xE72C)],
         AppIcon.Copy => [new Glyph(0xE8C8)],
         AppIcon.Charging => [new Glyph(0xE945)],
-        AppIcon.NoiseControl => [new Glyph(0xF61F), new Vector(OppoGlyphs.NoiseReduction, OppoGlyphs.NoiseReductionViewport)],
+        AppIcon.NoiseControl => [new Glyph(0xF61F)],
         AppIcon.Equalizer => [new Glyph(0xE9E9)],
         AppIcon.Sound => [new Glyph(0xE995)],
         AppIcon.Earbuds => [new Glyph(0xF4C0)],
         AppIcon.Gestures => [new Glyph(0xE815)],
-        AppIcon.Hearing => [new Glyph(0xF270), new Vector(OppoGlyphs.Ear, OppoGlyphs.EarViewport)],
-        AppIcon.FitTest => [new Glyph(0xF27C), new Vector(OppoGlyphs.Earbud, OppoGlyphs.EarbudViewport)],
+        AppIcon.Hearing => [new Glyph(0xF270)],
+        AppIcon.FitTest => [new Glyph(0xF27C)],
         AppIcon.Info => [new Glyph(0xE946)],
         AppIcon.History => [new Glyph(0xE81C)],
-        // Segoe Fluent Icons has no left/right earbud or case battery glyphs.
-        AppIcon.BatteryLeft => [new Vector(OppoGlyphs.BatteryLeft, OppoGlyphs.BatteryLeftViewport)],
-        AppIcon.BatteryRight => [new Vector(OppoGlyphs.BatteryRight, OppoGlyphs.BatteryRightViewport)],
-        AppIcon.BatteryCase => [new Vector(OppoGlyphs.BatteryCase, OppoGlyphs.BatteryCaseViewport)],
+        AppIcon.Battery => [new Glyph(0xE850), new Vector(BatteryOutline, 24)],
         _ => throw new ArgumentOutOfRangeException(nameof(icon))
     };
 
@@ -57,13 +56,14 @@ public static class AppIcons
                 case Glyph glyph when Covers(BundledSymbols, BundledSymbolsName, glyph.CodePoint):
                     return Font(BundledSymbols, glyph.CodePoint, size);
                 case Vector vector:
-                    // Scale the original viewport instead of stretching, keeping the designer's padding.
+                    // Keep the fallback's padding at the requested icon size.
                     var data = Geometry.Parse(vector.Data);
                     data.Transform = new ScaleTransform(size / vector.Viewport, size / vector.Viewport);
                     return new FAPathIconSource { Data = data, Stretch = Stretch.None };
             }
         }
-        return new FASymbolIconSource { Symbol = FASymbol.Help, FontSize = size };
+        return new FASymbolIconSource { Symbol = icon is AppIcon.NoiseControl or AppIcon.Hearing or AppIcon.FitTest or AppIcon.Earbuds
+            ? FASymbol.Audio : FASymbol.Help, FontSize = size };
     }
 
     public static FAIconSourceElement Element(AppIcon icon, double size = 16) =>

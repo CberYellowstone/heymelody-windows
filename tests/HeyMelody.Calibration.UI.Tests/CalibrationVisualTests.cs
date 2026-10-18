@@ -36,7 +36,7 @@ internal static class CalibrationVisualTests
                 var guide = view.GetVisualDescendants().OfType<LottieView>().Single();
                 for (int attempt = 0; !guide.AnimationLoaded && guide.LoadError is null && attempt < 300; attempt++)
                 { await Task.Delay(10); Dispatcher.UIThread.RunJobs(); }
-                Check(guide.AnimationLoaded && guide.AnimationActive, "The independent setup's ready page actually displays its source's original Lottie guide.");
+                Check(guide.AnimationLoaded && guide.AnimationActive, "The independent setup's ready page displays the bundled HeyMelody Lottie guide.");
                 for (int frame = 0; frame < 15; frame++)
                 { using var tick = window.CaptureRenderedFrame(); await Task.Delay(100); Dispatcher.UIThread.RunJobs(); }
                 Check(guide.RenderedFrameCount > 1, "The setup guide produces actual Avalonia compositor frames.");

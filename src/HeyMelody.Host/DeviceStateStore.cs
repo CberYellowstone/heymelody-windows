@@ -83,18 +83,22 @@ internal sealed class DeviceStateStore
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private readonly string _path;
     private readonly object _gate = new();
-    private readonly Dictionary<(string Key, string Source), Entry> _entries = [];
+    private readonly Dictionary<string, Entry> _entries = [];
     private string? _preferredKey;
     private long _version, _savedVersion;
     private bool _writing;
     private Task _writer = Task.CompletedTask;
 
-    internal DeviceStateStore(string path) { _path = path; Load(); }
+    internal DeviceStateStore(string path)
+    {
+        _path = path; Load();
+        lock (_gate) if (_version != _savedVersion) StartWriterLocked();
+    }
     internal static DeviceStateStore NextTo(DeviceWhitelistStore whitelist) =>
         new(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(whitelist.FilePath))!, "device-state.json"));
     internal string? PreferredKey { get { lock (_gate) return _preferredKey; } }
-    internal DevicePresentation? Find(string key, string source)
-    { lock (_gate) return _entries.GetValueOrDefault((key, source))?.Presentation; }
+    internal DevicePresentation? Find(string key)
+    { lock (_gate) return _entries.GetValueOrDefault(key)?.Presentation; }
 
     internal bool RememberSelection(string key)
     {
@@ -106,26 +110,26 @@ internal sealed class DeviceStateStore
         }
     }
 
-    internal void Remember(string key, string source, DevicePresentation presentation)
+    internal void Remember(string key, DevicePresentation presentation)
     {
         presentation = NormalizeAncToggles(presentation);
-        if (!ValidKey(key) || !ValidSource(source) || !ValidPresentation(presentation)) return;
+        if (!ValidKey(key) || !ValidPresentation(presentation)) return;
         lock (_gate)
         {
-            _entries[(key, source)] = new(key, source, presentation);
+            _entries[key] = new(key, presentation);
             foreach (var old in _entries.Values.OrderBy(e => e.Presentation.SampleTime)
-                .Take(Math.Max(0, _entries.Count - MaximumEntries)).ToArray()) _entries.Remove((old.Key, old.Source));
+                .Take(Math.Max(0, _entries.Count - MaximumEntries)).ToArray()) _entries.Remove(old.Key);
             ChangedLocked();
         }
     }
 
-    // A verified different product retires every source's history for that physical peer.
+    // A verified different product retires the display history for that physical peer.
     internal void RetireOtherProducts(string key, string productId)
     {
         lock (_gate)
         {
             var obsolete = _entries.Values.Where(e => e.Key == key && e.Presentation.ProductId != productId).ToArray();
-            foreach (var old in obsolete) _entries.Remove((old.Key, old.Source));
+            foreach (var old in obsolete) _entries.Remove(old.Key);
             if (obsolete.Length != 0) ChangedLocked();
         }
     }
@@ -147,8 +151,7 @@ internal sealed class DeviceStateStore
             {
                 if (_version == _savedVersion) { _writing = false; return; }
                 version = _version;
-                document = new(1, _preferredKey, _entries.Values.OrderBy(e => e.Key, StringComparer.Ordinal)
-                    .ThenBy(e => e.Source, StringComparer.Ordinal).ToArray());
+                document = new(2, _preferredKey, _entries.Values.OrderBy(e => e.Key, StringComparer.Ordinal).ToArray());
             }
             bool saved = false;
             try { Write(document); saved = true; }
@@ -174,16 +177,31 @@ internal sealed class DeviceStateStore
         {
             using var stream = new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             if (stream.Length > MaximumFileBytes) return;
-            var document = JsonSerializer.Deserialize<Document>(stream, Json);
-            if (document is not { SchemaVersion: 1, Devices: { Length: <= MaximumEntries } devices }
+            using var json = JsonDocument.Parse(stream);
+            if (json.RootElement.ValueKind != JsonValueKind.Object
+                || !json.RootElement.TryGetProperty("schemaVersion", out var schema)
+                || schema.ValueKind != JsonValueKind.Number || !schema.TryGetInt32(out int version)) return;
+            Document? document;
+            if (version == 1)
+            {
+                var legacy = json.RootElement.Deserialize<LegacyDocument>(Json);
+                if (legacy?.Devices is not { Length: <= MaximumEntries }) return;
+                document = new(2, legacy.PreferredDeviceKey, legacy.Devices
+                    .Where(e => e is not null && e.Source == "HeyMelody")
+                    .Select(e => new Entry(e.Key, e.Presentation)).ToArray());
+            }
+            else if (version == 2) document = json.RootElement.Deserialize<Document>(Json);
+            else return;
+            if (document is not { SchemaVersion: 2, Devices: { Length: <= MaximumEntries } devices }
                 || document.PreferredDeviceKey is not null && !ValidKey(document.PreferredDeviceKey)) return;
             _preferredKey = document.PreferredDeviceKey;
             foreach (var entry in devices)
-                if (entry is not null && ValidKey(entry.Key) && ValidSource(entry.Source))
+                if (entry is not null && ValidKey(entry.Key))
                 {
                     var presentation = NormalizeAncToggles(entry.Presentation);
-                    if (ValidPresentation(presentation)) _entries[(entry.Key, entry.Source)] = entry with { Presentation = presentation };
+                    if (ValidPresentation(presentation)) _entries[entry.Key] = entry with { Presentation = presentation };
                 }
+            if (version == 1) _version++;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
     }
@@ -208,7 +226,6 @@ internal sealed class DeviceStateStore
 
     private static bool ValidKey(string? key) => key is { Length: 64 }
         && key.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
-    private static bool ValidSource(string? source) => source is "HeyMelody" or "WirelessEarphones";
     private static bool Text(string? value, int limit = 4096) => value is not null && value.Length <= limit;
     private static bool Id(string? value) => value is { Length: > 0 and <= 128 };
     private static bool Options(IReadOnlyList<UiOption>? options) => options is { Count: <= 256 }
@@ -260,6 +277,9 @@ internal sealed class DeviceStateStore
             && JsonSerializer.SerializeToUtf8Bytes(p, Json).Length <= MaximumPresentationBytes;
     }
 
-    private sealed record Entry(string Key, string Source, DevicePresentation Presentation);
+    private sealed record Entry(string Key, DevicePresentation Presentation);
     private sealed record Document(int SchemaVersion, string? PreferredDeviceKey, Entry[] Devices);
+    // Read-only schema-1 migration: never relabel an unsupported source's presentation.
+    private sealed record LegacyEntry(string Key, string Source, DevicePresentation Presentation);
+    private sealed record LegacyDocument(int SchemaVersion, string? PreferredDeviceKey, LegacyEntry[] Devices);
 }

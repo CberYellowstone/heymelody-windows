@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Inventory APK artwork and extract local research copies; never execute APK code.
 
-Usage: python extract_artwork.py --apk research/apps/欢律.apk --apk research/apps/无线耳机_17.6.3.apk
+Usage: python extract_artwork.py --apk research/apps/欢律.apk
 Pillow is required for decoding bitmaps. --pillow-path accepts an existing local
 site-packages directory; no packages are installed and no network is contacted.
 """
@@ -292,6 +292,8 @@ class Extraction:
             if len(entries) != len({entry.filename for entry in entries}):
                 raise ValueError("Ambiguous archive: duplicate entry names")
             metadata = apk_manifest(archive.read("AndroidManifest.xml"))
+            if metadata.get("package") != "com.heytap.headset":
+                raise ValueError("Current artwork extraction accepts only HeyMelody APKs")
             metadata["apk_sha256"] = before
             mapping = resource_table(archive.read("resources.arsc"))
             for entry in entries:

@@ -21,13 +21,13 @@ internal static class DeviceStateTests
             string directory = DirectoryFor("atomic"); string path = Path.Combine(directory, "device-state.json");
             var store = new DeviceStateStore(path); string key = DeviceWhitelistStore.KeyFor(0x112233445566);
             Check(!File.Exists(path) && store.PreferredKey is null, "Reading an absent cache created state");
-            for (int i = 0; i < 20; i++) store.Remember(key, "HeyMelody", DevicePresentation.From(Full("revision-" + i), DateTimeOffset.UtcNow));
+            for (int i = 0; i < 20; i++) store.Remember(key, DevicePresentation.From(Full("revision-" + i), DateTimeOffset.UtcNow));
             store.RememberSelection(key);
-            store.Remember(key, "HeyMelody", DevicePresentation.From(Full("last"), DateTimeOffset.UtcNow));
-            Check(store.Find(key, "HeyMelody")?.Firmware == "last", "Memory waited for disk persistence");
+            store.Remember(key, DevicePresentation.From(Full("last"), DateTimeOffset.UtcNow));
+            Check(store.Find(key)?.Firmware == "last", "Memory waited for disk persistence");
             await store.FlushAsync();
             var loaded = new DeviceStateStore(path);
-            Check(loaded.PreferredKey == key && loaded.Find(key, "HeyMelody")?.Firmware == "last", "Shutdown flush lost the final state");
+            Check(loaded.PreferredKey == key && loaded.Find(key)?.Firmware == "last", "Shutdown flush lost the final state");
             string saved = File.ReadAllText(path); using var document = JsonDocument.Parse(saved);
             var forbidden = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { "identity", "backendInstanceId", "deviceGeneration", "revision", "connected", "controlReady", "supportedModel", "failure",
@@ -41,20 +41,20 @@ internal static class DeviceStateTests
         {
             string directory = DirectoryFor("invalid"); string path = Path.Combine(directory, "device-state.json"); string key = DeviceWhitelistStore.KeyFor(1);
             var store = new DeviceStateStore(path); store.RememberSelection(key);
-            store.Remember(key, "HeyMelody", DevicePresentation.From(Full("good"), DateTimeOffset.UtcNow)); await store.FlushAsync();
+            store.Remember(key, DevicePresentation.From(Full("good"), DateTimeOffset.UtcNow)); await store.FlushAsync();
             var unsafeData = JsonNode.Parse(File.ReadAllText(path))!;
             unsafeData["devices"]![0]!["presentation"]!["featureSections"]![0]!["controls"]![0]!["kind"] = "unsupported-kind";
             File.WriteAllText(path, unsafeData.ToJsonString());
             var loaded = new DeviceStateStore(path);
-            Check(loaded.PreferredKey == key && loaded.Find(key, "HeyMelody") is null, "Malformed control definitions reached the UI or erased the independent preference");
+            Check(loaded.PreferredKey == key && loaded.Find(key) is null, "Malformed control definitions reached the UI or erased the independent preference");
             File.WriteAllText(path, "{"); loaded = new(path);
-            Check(loaded.PreferredKey is null && loaded.Find(key, "HeyMelody") is null && File.ReadAllText(path) == "{", "Damaged cache was treated as mandatory configuration");
+            Check(loaded.PreferredKey is null && loaded.Find(key) is null && File.ReadAllText(path) == "{", "Damaged cache was treated as mandatory configuration");
             using (var large = new FileStream(path, FileMode.Create)) large.SetLength(16 * 1024 * 1024 + 1);
             Check(new DeviceStateStore(path).PreferredKey is null, "Oversized file was accepted");
             File.Delete(path); loaded = new(path);
             var tooLong = DevicePresentation.From(Full("large"), DateTimeOffset.UtcNow) with { Warnings = [new string('x', 4097)] };
-            loaded.Remember(key, "HeyMelody", tooLong); await loaded.FlushAsync();
-            Check(loaded.Find(key, "HeyMelody") is null && !File.Exists(path), "Oversized entry was scheduled for persistence");
+            loaded.Remember(key, tooLong); await loaded.FlushAsync();
+            Check(loaded.Find(key) is null && !File.Exists(path), "Oversized entry was scheduled for persistence");
         });
         await test("main selection persists through host restart rename disconnect and fresh catalogs without internal reads changing it", async () =>
         {
@@ -154,55 +154,60 @@ internal static class DeviceStateTests
             workers[0].Emit(s => { s.ControlReady = true; s.Failure = null; s.Firmware = "stale-generation"; });
             Check(backend.Select(id).Firmware == "after", "Late old-generation callback poisoned display history");
         });
-        await test("verified product replacement retires older model history across every source", async () =>
+        await test("verified product replacement retires older model history", async () =>
         {
             string directory = DirectoryFor("product"); string key = DeviceWhitelistStore.KeyFor(1);
             var state = new DeviceStateStore(Path.Combine(directory, "device-state.json"));
-            state.Remember(key, "HeyMelody", DevicePresentation.From(Full("old-model"), DateTimeOffset.UtcNow));
-            state.Remember(key, "WirelessEarphones", DevicePresentation.From(Full("old-other-source"), DateTimeOffset.UtcNow));
+            state.Remember(key, DevicePresentation.From(Full("old-model"), DateTimeOffset.UtcNow));
             var replacement = Full("new-model"); replacement.ProductId = "063C10";
             await using var backend = Backend(Whitelist(directory, 1), [Audio(1, true)], () => new FakePeer(replacement), state);
             await backend.InitializeAsync(default); string id = backend.Devices().Single().Identity; await Until(() => backend.Select(id).ControlReady);
             backend.ObserveConnection(1, false);
             Check(backend.Select(id) is { PresentationCached: true, ProductId: "063C10", Firmware: "new-model" }
-                && state.Find(key, "WirelessEarphones") is null, "Old model capabilities survived verified product change");
+                && state.Find(key)?.ProductId == "063C10", "Old model capabilities survived verified product change");
         });
-        await test("resource switching isolates source presentation and never relabels retiring worker state", async () =>
+        await test("legacy display history migrates only HeyMelody presentation and preserves device preference", async () =>
         {
-            string directory = DirectoryFor("sources"); var devices = new List<BluetoothCandidate> { Audio(1, true) }; var workers = new List<FakePeer>();
-            using var http = new HttpClient(new NeverNetwork()); var coordinator = new ResourceCoordinator(Path.Combine(directory, "resources"), http);
-            await coordinator.InitializeAsync(); await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { UseOnlineResources = false });
-            var state = new DeviceStateStore(Path.Combine(directory, "device-state.json"));
-            await using var backend = new BackendSupervisor(Whitelist(directory, 1), _ => Task.FromResult<IReadOnlyList<BluetoothCandidate>>(devices),
-                () => { var w = new FakePeer(() => Full("source")); workers.Add(w); return w; }, resources: coordinator, deviceState: state);
-            await backend.InitializeAsync(default); string id = backend.Devices().Single().Identity; await Until(() => backend.Select(id).ControlReady);
-            workers[0].Emit(s => s.Firmware = "hey-good"); backend.ObserveConnection(1, false);
-            await Switch(ResourceSource.WirelessEarphones);
-            Check(!backend.Select(id).PresentationCached && backend.Select(id).Firmware is null, "A source borrowed another source's cache");
-            backend.ObserveConnection(1, true); await Until(() => backend.Select(id).ControlReady);
-            workers[^1].Emit(s => s.Firmware = "wireless-good"); var retired = workers[^1];
-            backend.ObserveConnection(1, false); await Switch(ResourceSource.HeyMelody);
-            Check(backend.Select(id) is { PresentationCached: true, Firmware: "hey-good", ResourceSource: "HeyMelody" }, "Switching back did not restore its own cache");
-            retired.Emit(s => s.Firmware = "late-wireless");
-            Check(state.Find(DeviceWhitelistStore.KeyFor(1), "HeyMelody")?.Firmware == "hey-good", "Retiring worker contaminated target-source cache");
-            await Switch(ResourceSource.WirelessEarphones);
-            Check(backend.Select(id) is { PresentationCached: true, Firmware: "wireless-good", ResourceSource: "WirelessEarphones" }, "Target-source history was lost or merged");
-            async Task Switch(ResourceSource source) => await backend.SaveResourceSettingsAsync(backend.ResourceSettings() with
-                { Source = source.ToString(), UseOnlineResources = false }, default);
+            string directory = DirectoryFor("migration"), path = Path.Combine(directory, "device-state.json");
+            string key = DeviceWhitelistStore.KeyFor(1), other = DeviceWhitelistStore.KeyFor(2);
+            var good = DevicePresentation.From(Full("hey-good"), DateTimeOffset.UtcNow);
+            var retired = DevicePresentation.From(Full("retired"), DateTimeOffset.UtcNow);
+            File.WriteAllText(path, JsonSerializer.Serialize(new
+            {
+                schemaVersion = 1, preferredDeviceKey = other,
+                devices = new[]
+                {
+                    new { key, source = "HeyMelody", presentation = good },
+                    new { key, source = "WirelessEarphones", presentation = retired },
+                    new { key = other, source = "WirelessEarphones", presentation = retired }
+                }
+            }, RpcWire.Json));
+            var state = new DeviceStateStore(path);
+            Check(state.Find(key)?.Firmware == "hey-good" && state.Find(other) is null,
+                "Legacy presentation was merged or relabelled");
+            Check(state.PreferredKey == other, "Migration erased the independent preferred device identity");
+            await state.FlushAsync(); using var migrated = JsonDocument.Parse(File.ReadAllText(path));
+            Check(migrated.RootElement.GetProperty("schemaVersion").GetInt32() == 2
+                && migrated.RootElement.GetProperty("devices").GetArrayLength() == 1
+                && !Names(migrated.RootElement).Contains("source", StringComparer.OrdinalIgnoreCase), "Migration retained the legacy schema or provider field");
+            var reloaded = new DeviceStateStore(path);
+            Check(reloaded.Find(key)?.Firmware == "hey-good" && reloaded.Find(other) is null && reloaded.PreferredKey == other,
+                "Migrated history changed after restart");
         });
-        await test("a peer discovered while resource adoption waits for commands is retired and restarted with the target source", async () =>
+        await test("a peer discovered while catalog adoption waits for commands is retired and restarted with the updated catalog", async () =>
         {
-            string directory = DirectoryFor("source-discovery-race"); var devices = new List<BluetoothCandidate> { Audio(1, true) };
-            var workers = new List<FakePeer>(); using var http = new HttpClient(new NeverNetwork());
+            string directory = DirectoryFor("catalog-discovery-race"); var devices = new List<BluetoothCandidate> { Audio(1, true) };
+            var workers = new List<FakePeer>(); var network = new CatalogNetwork(); using var http = new HttpClient(network);
             var coordinator = new ResourceCoordinator(Path.Combine(directory, "resources"), http);
             await coordinator.InitializeAsync(); await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { UseOnlineResources = false });
             await using var backend = new BackendSupervisor(Whitelist(directory, 1, 2), _ => Task.FromResult<IReadOnlyList<BluetoothCandidate>>(devices),
-                () => { var worker = new FakePeer(Full("source")) { StampSource = true }; workers.Add(worker); return worker; }, resources: coordinator);
-            int wrongSourceSnapshots = 0;
+                () => { var worker = new FakePeer(Full("catalog")) { StampCatalogVersion = true }; workers.Add(worker); return worker; }, resources: coordinator);
+            int oldCatalogSnapshots = 0; long adoptedRevision = long.MaxValue;
+            int oldVersion = coordinator.Catalog.ContentVersion, newVersion = oldVersion + 1;
             backend.EventPublished += e =>
             {
-                if (e.Snapshot is { ResourceSource: "WirelessEarphones", Firmware: "HeyMelody" })
-                    Interlocked.Increment(ref wrongSourceSnapshots);
+                if (e.Snapshot is { ControlReady: true } s && s.ResourceRevision >= adoptedRevision && s.Firmware == oldVersion.ToString())
+                    Interlocked.Increment(ref oldCatalogSnapshots);
             };
             await backend.InitializeAsync(default); string firstId = backend.Devices().Single().Identity;
             await Until(() => backend.Select(firstId).ControlReady); var before = backend.Select(firstId); var firstWorker = workers.Single();
@@ -215,7 +220,11 @@ internal static class DeviceStateTests
             await gate.WaitAsync();
             try
             {
-                await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { Source = ResourceSource.WirelessEarphones });
+                var node = JsonNode.Parse(coordinator.Catalog.Raw.GetRawText())!.AsObject(); node["versionCode"] = newVersion;
+                network.Configuration = node.ToJsonString(); network.Version = newVersion;
+                await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { UseOnlineResources = true });
+                Check(await coordinator.RefreshAsync(true), "Updated catalog was not validated");
+                adoptedRevision = coordinator.Revision;
                 // Calling an async method synchronously runs through its first pending
                 // await. The first peer's held command proves the old peer set was taken.
                 var adopting = (Task)typeof(BackendSupervisor).GetMethod("AdoptResourcesAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -225,49 +234,52 @@ internal static class DeviceStateTests
                 string secondId = backend.Devices().Single(d => d.Identity != firstId).Identity;
                 await Until(() => workers.Any(w => w.Address == 2)); var oldSecond = workers.Single(w => w.Address == 2);
                 var blocked = backend.Select(secondId);
-                Check(oldSecond.Source == "HeyMelody" && !blocked.ControlReady, "Newly discovered peer escaped the active transition");
+                Check(oldSecond.CatalogVersion == oldVersion && !blocked.ControlReady, "Newly discovered peer escaped the active transition");
                 var rejected = await backend.ApplyAsync(secondId, blocked.DeviceGeneration, new("GameMode", 1), default);
                 Check(!rejected.TargetSubmitted && oldSecond.Applies == 0, "Newly discovered peer submitted a SET while transition waited");
                 firstWorker.ApplyRelease.TrySetResult(); var receipt = await submitted;
                 await adopting.WaitAsync(TimeSpan.FromSeconds(5));
-                await Until(() => backend.Subscribe().Snapshots.Count(s => s.ControlReady && s.ResourceSource == "WirelessEarphones") == 2);
+                await Until(() => backend.Subscribe().Snapshots.Count(s => s.ControlReady && s.Firmware == newVersion.ToString()) == 2);
                 Check(receipt.TargetSubmitted && firstWorker.Applies == 1, "The submitted pre-transition command was not allowed to finish");
                 Check(oldSecond.Disposals == 1 && workers.Count(w => w.Address == 2) == 2
-                    && workers.Last(w => w.Address == 2).Source == "WirelessEarphones", "Additional peer retained its old-source worker");
+                    && workers.Last(w => w.Address == 2).CatalogVersion == newVersion, "Additional peer retained its old-catalog worker");
                 Check(backend.Select(secondId).DeviceGeneration != blocked.DeviceGeneration
-                    && backend.Select(secondId).Firmware == "WirelessEarphones" && wrongSourceSnapshots == 0,
-                    "Additional peer retained its generation or published old-source presentation under the new source");
+                    && backend.Select(secondId).Firmware == newVersion.ToString() && oldCatalogSnapshots == 0,
+                    "Additional peer retained its generation or published outdated presentation after adopting the new catalog");
                 Check(workers.Where(w => w != firstWorker).All(w => w.Applies == 0), "Resource adoption issued an extra SET");
             }
             finally { firstWorker.ApplyRelease.TrySetResult(); gate.Release(); }
         });
-        await test("wrong-source SPP cannot supply fallback presentation failure or model verification with or without a cache", async () =>
+        await test("retired-generation SPP cannot supply presentation failure or authority with or without a cache", async () =>
         {
-            string directory = DirectoryFor("source-guard"); string key = DeviceWhitelistStore.KeyFor(1);
-            var state = new DeviceStateStore(Path.Combine(directory, "device-state.json")); var worker = new FakePeer(Full("correct-source"));
+            string directory = DirectoryFor("generation-guard"); string key = DeviceWhitelistStore.KeyFor(1);
+            var state = new DeviceStateStore(Path.Combine(directory, "device-state.json")); var worker = new FakePeer(Full("current"));
             await using var backend = Backend(Whitelist(directory, 1), [Audio(1, true)], () => worker, state);
             await backend.InitializeAsync(default); string id = backend.Devices().Single().Identity; await Until(() => backend.Select(id).ControlReady);
-            worker.Emit(s => { s.ResourceSource = "WirelessEarphones"; s.Firmware = "wrong-source"; s.Failure = "wrong-source-failure"; s.GameMode = true; });
+            backend.ObserveConnection(1, false);
+            worker.Emit(s => { s.Firmware = "retired"; s.Failure = "retired-failure"; s.GameMode = true; });
             var cached = backend.Select(id);
-            Check(cached is { PresentationCached: true, Firmware: "correct-source", ResourceSource: "HeyMelody", Failure: null,
-                    SupportedModel: false, ControlReady: false, GameMode: false }, "Wrong-source SPP overlaid current-source cache or live verification");
-            Check(state.Find(key, "HeyMelody")?.Firmware == "correct-source" && state.Find(key, "WirelessEarphones") is null,
-                "Wrong-source observation was persisted as current configuration");
-            state.RetireOtherProducts(key, "FFFFFF"); // Exercise the same publication without a matching history entry.
+            Check(cached is { PresentationCached: true, Firmware: "current", Failure: null,
+                    SupportedModel: false, ControlReady: false, GameMode: false }, "Retired SPP overlaid current cache or live verification");
+            Check(state.Find(key)?.Firmware == "current", "Retired observation was persisted as current presentation");
+            state.RetireOtherProducts(key, "FFFFFF");
+            // Store changes do not republish an existing snapshot. Resume while the OS
+            // still reports disconnected publishes the empty state without opening a worker.
+            var cleared = backend.Resume(id);
             worker.Emit(s => s.Failure = null);
             var empty = backend.Select(id);
-            Check(empty is { PresentationCached: false, Firmware: null, ProductId: null, Failure: null, SupportedModel: false, ControlReady: false, GameMode: null }
+            Check(empty.Revision == cleared.Revision
+                && empty is { PresentationCached: false, Firmware: null, ProductId: null, Failure: null, SupportedModel: false, ControlReady: false, GameMode: null }
                 && empty.FeatureSections.Count == 0 && empty.AncOptions.Count == 0 && empty.EqualizerEntries.Count == 0,
-                "Wrong-source SPP was copied as a no-cache fallback");
+                "Retired SPP was copied as a no-cache fallback");
         });
         await test("real bundled X4, Buds3 and Free4 projections preserve discrete audio options and independent controls", async () =>
         {
             var bundled = new BundledResourceStore(); string directory = DirectoryFor("profiles"); var state = new DeviceStateStore(Path.Combine(directory, "device-state.json"));
-            foreach (ResourceSource source in Enum.GetValues<ResourceSource>())
             foreach (string productId in new[] { "06EC10", "063C14", "06C010" })
             {
-                var resource = bundled.GetCatalog(source).Find(productId) ?? throw new InvalidOperationException("Bundled profile missing");
-                var profile = DeviceProfile.FromResource(resource.Raw, source.ToString(), "fixture");
+                var resource = bundled.GetCatalog().Find(productId) ?? throw new InvalidOperationException("Bundled profile missing");
+                var profile = DeviceProfile.FromResource(resource.Raw, "fixture");
                 await using var client = new DailyClient(new NeverConnector());
                 typeof(DailyClient).GetField("_profile", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(client, profile);
                 typeof(DailyClient).GetField("_commands", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(client, CommandCapabilities.Parse(Enumerable.Repeat((byte)255, 9).ToArray()));
@@ -300,11 +312,11 @@ internal static class DeviceStateTests
                         && gameType.Options!.Select(option => option.Key).SequenceEqual(new[] { type, 0 })
                         && gameType.Options!.Single(option => option.Key == 0).Name == "关闭"
                         && controls.Single(control => control.Id == "game-sound-enabled") is { Value: 0, CanWrite: true },
-                        "Each source must retain its model's game IDs with type selection available while the switch is off.");
+                        "HeyMelody must retain its model's game IDs with type selection available while the switch is off.");
                 }
                 string key = DeviceWhitelistStore.KeyFor(Convert.ToUInt64(productId, 16));
-                state.Remember(key, source.ToString(), DevicePresentation.From(ui, DateTimeOffset.UtcNow));
-                var stored = state.Find(key, source.ToString())?.ToSnapshot();
+                state.Remember(key, DevicePresentation.From(ui, DateTimeOffset.UtcNow));
+                var stored = state.Find(key)?.ToSnapshot();
                 Check(stored is not null && stored.FeatureSections.SelectMany(s => s.Controls).Select(c => c.Id)
                     .SequenceEqual(ui.FeatureSections.SelectMany(s => s.Controls).Select(c => c.Id)), "Validation silently dropped real native definitions");
             }
@@ -375,11 +387,11 @@ internal static class DeviceStateTests
     private sealed class FakePeer : IPeerWorker, IResourcePeerWorker, ICalibrationPeerWorker
     {
         private readonly Func<UiSnapshot> _seed;
-        private UiSnapshot _snapshot = new(); private string _source = "HeyMelody";
+        private UiSnapshot _snapshot = new();
         internal int Applies, Disposals;
         internal ulong Address;
-        internal bool HoldApply, StampSource;
-        internal string Source => _source;
+        internal bool HoldApply, StampCatalogVersion;
+        internal int CatalogVersion;
         internal readonly TaskCompletionSource ApplyEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource ApplyRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal FakePeer(UiSnapshot seed) : this(() => seed) { }
@@ -389,8 +401,8 @@ internal static class DeviceStateTests
         public event Action<UiCalibrationState>? CalibrationChanged { add { } remove { } }
         public event Action<UiCalibrationSpectrum>? CalibrationSpectrumChanged { add { } remove { } }
         public Task<UiSnapshot> InitializeAsync(ulong address, string identity, string name, CancellationToken token)
-        { Address = address; _snapshot = Copy(_seed()); _snapshot.Identity = identity; _snapshot.DeviceName = name; _snapshot.ResourceSource = _source; _snapshot.Revision = 1;
-            if (StampSource) _snapshot.Firmware = _source;
+        { Address = address; _snapshot = Copy(_seed()); _snapshot.Identity = identity; _snapshot.DeviceName = name; _snapshot.Revision = 1;
+            if (StampCatalogVersion) _snapshot.Firmware = CatalogVersion.ToString();
             SnapshotChanged?.Invoke(_snapshot); return Task.FromResult(_snapshot); }
         public Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken token) => Task.FromResult(Copy(_snapshot));
         public async Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token)
@@ -400,7 +412,12 @@ internal static class DeviceStateTests
             return new UiApplyResult { TargetSubmitted = true, After = Copy(_snapshot) };
         }
         internal void Emit(Action<UiSnapshot> change) { _snapshot = Copy(_snapshot); _snapshot.Revision++; change(_snapshot); SnapshotChanged?.Invoke(_snapshot); }
-        public void ConfigureResources(string catalogGzip, string source, long revision, long appMarker, string stableKey, long generation, string? observedProductId, byte? observedColor) => _source = source;
+        public void ConfigureResources(string catalogGzip, long revision, long appMarker, string stableKey, long generation, string? observedProductId, byte? observedColor)
+        {
+            using var zipped = new System.IO.Compression.GZipStream(new MemoryStream(Convert.FromBase64String(catalogGzip)), System.IO.Compression.CompressionMode.Decompress);
+            using var bytes = new MemoryStream(); zipped.CopyTo(bytes);
+            CatalogVersion = ResourceCatalog.Parse(bytes.ToArray(), false).ContentVersion;
+        }
         public Task<UiSnapshot> SetObservedColorAsync(string productId, byte color, CancellationToken token) => Task.FromResult(Copy(_snapshot));
         public Task<IReadOnlyList<UiHearingProfile>> HearingProfilesAsync(CancellationToken token) => Task.FromResult<IReadOnlyList<UiHearingProfile>>([new(8, "刷新后的听感", true, true)]);
         public Task<UiApplyResult> SelectHearingAsync(int? uid, CancellationToken token) => throw new InvalidOperationException("Unexpected setting");
@@ -409,6 +426,18 @@ internal static class DeviceStateTests
         public Task<UiCalibrationState> AdvanceCalibrationAsync(string handle, long revision, UiCalibrationInput input, CancellationToken token) => throw new InvalidOperationException();
         public Task<UiCalibrationState> CancelCalibrationAsync(string handle, CancellationToken token) => throw new InvalidOperationException();
         public ValueTask DisposeAsync() { Disposals++; return ValueTask.CompletedTask; }
+    }
+    private sealed class CatalogNetwork : HttpMessageHandler
+    {
+        internal string Configuration = "{}";
+        internal int Version;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            byte[] bytes = request.Method == HttpMethod.Post
+                ? JsonSerializer.SerializeToUtf8Bytes(new { code = 0, data = new { version = Version.ToString(), size = Encoding.UTF8.GetByteCount(Configuration).ToString(), downloadUrl = "https://iot-earbuds-cn.heytapimage.com/config" } })
+                : Encoding.UTF8.GetBytes(Configuration);
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new ByteArrayContent(bytes), RequestMessage = request });
+        }
     }
     private sealed class NeverNetwork : HttpMessageHandler
     { protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) => throw new InvalidOperationException("Offline tests requested the network"); }

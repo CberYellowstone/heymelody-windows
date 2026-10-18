@@ -273,7 +273,7 @@ public sealed partial class ClientBridge : IHeadsetEventService, IDeviceManageme
                 string? record = await RpcWire.ReadLineAsync(connection.Reader, _lifetime.Token);
                 if (record is null) break;
                 var message = JsonSerializer.Deserialize<BackendMessage>(record, RpcWire.Json) ?? throw new InvalidDataException();
-                if (message.SchemaVersion != 3)
+                if (message.SchemaVersion != 4)
                 { _versionMismatch = true; throw new InvalidDataException("后台通信版本不一致。"); }
                 if (message.Kind == "response" && message.Id > 0 && message.Id <= Interlocked.Read(ref _nextId))
                 {

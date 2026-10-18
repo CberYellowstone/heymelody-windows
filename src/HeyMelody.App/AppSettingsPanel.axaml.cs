@@ -1,20 +1,17 @@
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Templates;
 using FluentAvalonia.UI.Controls;
 
 namespace HeyMelodyWindows.App;
 
 /// <summary>
 /// Settings-card content of the application settings dialog. Edits stay local until the dialog's
-/// Save button; each resource source keeps its own key draft. Re-downloading acts on the saved source.
+/// Save button. Re-downloading acts on saved resource preferences.
 /// </summary>
 public partial class AppSettingsPanel : UserControl
 {
     private readonly MainViewModel? _viewModel;
-    private readonly Dictionary<int, string> _keys = [];
-    private UiOption? _shownSource;
     private bool _redownloadObserved;
     private readonly bool _canManageDevices;
     private static readonly ModelFrameRate[] FrameRates = [ModelFrameRate.Display, ModelFrameRate.Fps60, ModelFrameRate.Fps30];
@@ -30,14 +27,9 @@ public partial class AppSettingsPanel : UserControl
         ThemeChoice.SelectionChanged += (_, _) => ThemePreviewChanged?.Invoke(SelectedTheme);
         ModelFrameRateChoice.ItemsSource = new[] { "跟随显示器", "60 帧", "30 帧" };
         ModelFrameRateChoice.SelectedIndex = Math.Max(0, Array.IndexOf(FrameRates, ModelRenderingPreferences.FrameRate));
-        SourceChoice.ItemTemplate = new FuncDataTemplate<UiOption>((option, _) => new TextBlock { Text = option?.Name });
-        SourceChoice.ItemsSource = viewModel.ResourceSourceOptions;
-        SourceChoice.SelectedItem = _shownSource = viewModel.SelectedResourceSource;
-        _keys[_shownSource.Key] = viewModel.CloudKey;
         KeyBox.Text = viewModel.CloudKey;
         OnlineSwitch.IsChecked = viewModel.UseOnlineResources;
         ModelGpuSwitch.IsChecked = ModelRenderingPreferences.UseGpuAcceleration;
-        SourceChoice.SelectionChanged += (_, _) => SwitchSourceKey();
         _canManageDevices = canManageDevices;
         ManageDevicesButton.Click += (_, _) => manageDevices();
         RedownloadButton.Click += async (_, _) => { _redownloadObserved = true; await viewModel.RedownloadResourcesAsync(); };
@@ -47,7 +39,6 @@ public partial class AppSettingsPanel : UserControl
     }
 
     internal string SelectedTheme => ThemeChoice.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" };
-    internal UiOption? SelectedSource => SourceChoice.SelectedItem as UiOption;
     internal bool UseOnlineResources => OnlineSwitch.IsChecked == true;
     internal bool UseModelGpuAcceleration => ModelGpuSwitch.IsChecked == true;
     internal ModelFrameRate ModelFrameRate => FrameRates[Math.Clamp(ModelFrameRateChoice.SelectedIndex, 0, FrameRates.Length - 1)];
@@ -68,19 +59,10 @@ public partial class AppSettingsPanel : UserControl
         base.OnDetachedFromVisualTree(e);
     }
 
-    private void SwitchSourceKey()
-    {
-        if (_viewModel is null || SourceChoice.SelectedItem is not UiOption next || _shownSource is null || next.Key == _shownSource.Key) return;
-        _keys[_shownSource.Key] = KeyBox.Text ?? "";
-        if (!_keys.TryGetValue(next.Key, out var key)) _keys[next.Key] = key = _viewModel.ResourceKeyFor(next);
-        _shownSource = next;
-        KeyBox.Text = key;
-    }
-
     private void ViewModelChanged(object? sender, PropertyChangedEventArgs change)
     {
         if (change.PropertyName is null or nameof(MainViewModel.IsRedownloadingResources) or nameof(MainViewModel.CanRedownloadResources)
-            or nameof(MainViewModel.RedownloadMessage) or nameof(MainViewModel.ResourceStatus) or nameof(MainViewModel.ConfiguredResourceSourceName)
+            or nameof(MainViewModel.RedownloadMessage) or nameof(MainViewModel.ResourceStatus)
             or nameof(MainViewModel.OnlineResourcesConfigured) or nameof(MainViewModel.CanManageDevices))
             Present();
     }
@@ -91,7 +73,7 @@ public partial class AppSettingsPanel : UserControl
         // Appearance stays editable; resource and device rows wait for a connection or switch to finish.
         var editable = vm.CanManageDevices;
         ResourceLockNotice.IsVisible = !editable;
-        SourceChoice.IsEnabled = OnlineSwitch.IsEnabled = KeyBox.IsEnabled = editable;
+        OnlineSwitch.IsEnabled = KeyBox.IsEnabled = editable;
         ManageDevicesButton.IsEnabled = editable && _canManageDevices;
         bool running = vm.IsRedownloadingResources;
         RedownloadProgress.IsVisible = RedownloadProgress.IsIndeterminate = running;
@@ -99,7 +81,7 @@ public partial class AppSettingsPanel : UserControl
         RedownloadCard.Description = running ? "正在重新下载，可以关闭此窗口，完成后结果会写入操作记录。"
             : !vm.ResourceServiceAvailable ? "当前模式不连接资源服务，无法重新下载。"
             : !vm.OnlineResourcesConfigured ? "需要开启并保存“使用在线资源”后才能重新下载。"
-            : $"重新获取“{vm.ConfiguredResourceSourceName}”的配置与美术资源；新文件校验通过后才替换本机缓存。";
+            : "重新获取欢律的配置与美术资源；新文件校验通过后才替换本机缓存。";
         ResourceStatusText.Text = vm.ResourceStatus;
         ResourceStatusText.IsVisible = vm.ResourceStatus.Length != 0;
         if (running) { _redownloadObserved = true; RedownloadResult.IsOpen = false; RedownloadResult.IsVisible = false; return; }

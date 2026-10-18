@@ -81,20 +81,36 @@ internal static class SharedBridgeTests
             Check(!result.BackendReceiptReceived && result.SubmissionAttempted && result.PartialEffects
                 && result.AcknowledgementUnknown && result.FailureKind == ApplyFailure.WorkerUnavailable && submitted == 1);
         });
-        await test("shared pipe rejects incompatible schema without restarting an existing backend", async () =>
+        await test("shared pipe rejects schema 3 after subscribing without reconnecting or restarting the backend", async () =>
         {
-            string pipe = Name(); int started = 0;
+            string pipe = Name(); int started = 0, reconnected = 0;
+            var unavailable = new TaskCompletionSource<BackendEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
             await using var server = new Server(pipe, async (reader, writer, token) =>
             {
+                var subscribe = await Read(reader, token);
+                Check(subscribe.Operation == "subscribe" && subscribe.SchemaVersion == 4);
+                await Reply(writer, subscribe, new BackendSubscription { BackendInstanceId = "instance" }, token);
                 var request = await Read(reader, token);
-                await Send(writer, new BackendMessage { SchemaVersion = 1, Id = request.Id, Success = true,
+                Check(request.Operation == "enumerate" && request.SchemaVersion == 4);
+                await Send(writer, new BackendMessage { SchemaVersion = 3, Id = request.Id, Success = true,
                     Data = JsonSerializer.SerializeToElement(Array.Empty<UiDevice>(), RpcWire.Json) }, token);
                 await Drain(reader, token);
-            });
+            }, 2);
             await using var bridge = new ClientBridge(pipe, () => Interlocked.Increment(ref started), TimeSpan.FromSeconds(4));
+            bridge.EventReceived += notification =>
+            { if (notification.Kind == "unavailable") unavailable.TrySetResult(notification); };
+            await bridge.SubscribeAsync("main", default);
+            await using var reconnectServer = new Server(pipe, async (reader, writer, token) =>
+            {
+                Interlocked.Increment(ref reconnected);
+                await Drain(reader, token);
+            }, 2);
             await Throws(() => bridge.EnumerateAsync(default));
+            Check((await unavailable.Task.WaitAsync(TimeSpan.FromSeconds(3))).Message?.Contains("版本不一致") == true);
             await Throws(() => bridge.EnumerateAsync(default));
-            Check(started == 0);
+            // The normal subscription reconnect delay is one second.
+            await Task.Delay(1500);
+            Check(started == 0 && Volatile.Read(ref reconnected) == 0);
         });
         await test("shared pipe reconnects subscriptions with a new backend instance and never replays writes", async () =>
         {

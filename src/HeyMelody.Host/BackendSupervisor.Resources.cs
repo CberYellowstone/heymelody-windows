@@ -54,9 +54,9 @@ internal sealed partial class BackendSupervisor
         lock (_sync)
         {
             if (_stopping) return;
-            if (catalogChanged && _calibrations.Values.Any(IsActiveCalibration))
+            restart = _activeCatalog?.Sha256 != _resources.Catalog.Sha256;
+            if (restart && _calibrations.Values.Any(IsActiveCalibration))
             { _catalogPending = true; EmitLocked(new() { Kind = "resources", Resources = ResourceSettings() }); return; }
-            restart = _activeCatalog?.Sha256 != _resources.Catalog.Sha256 || _activeCatalog?.Source != _resources.Catalog.Source;
             peers = _peers.Values.ToArray();
             // Capture the peers whose existing commands need draining at the same
             // instant that new submissions are blocked, including newly discovered peers.
@@ -71,12 +71,12 @@ internal sealed partial class BackendSupervisor
                 foreach (var peer in peers) { await peer.Commands.WaitAsync(token); acquired.Add(peer); }
                 lock (_sync)
                 {
-                    if (_activeCatalog?.Source == _resources.Catalog.Source && _calibrations.Values.Any(IsActiveCalibration))
+                    if (_calibrations.Values.Any(IsActiveCalibration))
                     { _catalogPending = true; EmitLocked(new() { Kind = "resources", Resources = ResourceSettings() }); return; }
                     _activeCatalog = _resources.Catalog; _activeResourceRevision = _resources.Revision; _catalogPending = false;
                     // Catalog refresh can add a peer while the command gates above are
                     // awaited. It could only start reads during the transition, so cancel
-                    // those reads and retire its old-source worker along with all others.
+                    // those reads and retire its old-configuration worker along with all others.
                     peers = _peers.Values.ToArray();
                     foreach (var peer in peers) { StopPeerLocked(peer); peer.Broadcast = null; peer.Failures = 0; PublishLocked(peer); }
                 }
@@ -90,6 +90,7 @@ internal sealed partial class BackendSupervisor
         }
         else lock (_sync)
         {
+            _catalogPending = false;
             _activeResourceRevision = _resources.Revision;
             foreach (var peer in peers) PublishLocked(peer);
         }
@@ -99,33 +100,22 @@ internal sealed partial class BackendSupervisor
     {
         if (_resources is null) return new();
         var p = _resources.Preferences; var c = _activeCatalog ?? _resources.Catalog;
-        return new(p.Source.ToString(), p.UseOnlineResources, p.CustomKey, c.ContentVersion, c.IsOnline,
-            _catalogPending ? "已下载更新，当前测试完成后应用。" : _resources.LastError ?? (c.IsOnline ? "使用已下载的在线资源" : "使用预装资源"))
-        { HeyMelodyKey = p.HeyMelodyKey, WirelessEarphonesKey = p.WirelessEarphonesKey };
+        return new(p.UseOnlineResources, p.HeyMelodyKey, c.ContentVersion, c.IsOnline,
+            _catalogPending ? "已下载更新，当前测试完成后应用。" : _resources.LastError ?? (c.IsOnline ? "使用已下载的在线资源" : "使用预装资源"));
     }
     public async Task<UiResourceSettings> SaveResourceSettingsAsync(UiResourceSettings settings, CancellationToken token)
     {
         if (_resources is null) throw new InvalidOperationException("资源服务不可用。");
-        if (!Enum.TryParse<ResourceSource>(settings.Source, out var source) || !Enum.IsDefined(source) || settings.CloudKey.Length > 4096
-            || settings.HeyMelodyKey?.Length > 4096 || settings.WirelessEarphonesKey?.Length > 4096)
+        if (settings.HeyMelodyKey is not { Length: <= 4096 })
             throw new InvalidDataException();
         await _resourceGate.WaitAsync(token);
-        bool transition = _resources.Preferences.Source != source;
         try
         {
-            if (transition)
-            {
-                lock (_sync) SetResourceTransitionLocked(true);
-                await CancelAllCalibrationsAsync();
-            }
-            var p = _resources.Preferences with { Source = source, UseOnlineResources = settings.UseOnlineResources };
-            if (settings.HeyMelodyKey is not null) p = p with { HeyMelodyKey = settings.HeyMelodyKey };
-            if (settings.WirelessEarphonesKey is not null) p = p with { WirelessEarphonesKey = settings.WirelessEarphonesKey };
-            p = source == ResourceSource.HeyMelody ? p with { HeyMelodyKey = settings.CloudKey } : p with { WirelessEarphonesKey = settings.CloudKey };
+            var p = _resources.Preferences with { UseOnlineResources = settings.UseOnlineResources, HeyMelodyKey = settings.HeyMelodyKey };
             await _resources.UpdatePreferencesAsync(p, token);
             await AdoptResourcesAsync(true, token);
         }
-        finally { if (transition) lock (_sync) SetResourceTransitionLocked(false); _resourceGate.Release(); }
+        finally { _resourceGate.Release(); }
         if (settings.UseOnlineResources) _ = RefreshResourcesSafelyAsync();
         return ResourceSettings();
     }
@@ -137,8 +127,8 @@ internal sealed partial class BackendSupervisor
         using var bytes = new MemoryStream();
         using (var gzip = new GZipStream(bytes, CompressionLevel.SmallestSize, true))
             gzip.Write(Encoding.UTF8.GetBytes(_activeCatalog.Raw.GetRawText()));
-        target.ConfigureResources(Convert.ToBase64String(bytes.ToArray()), _activeCatalog.Source.ToString(),
-            _activeResourceRevision, VendorResourceClient.RequestCompatVersion(_activeCatalog.Source),
+        target.ConfigureResources(Convert.ToBase64String(bytes.ToArray()),
+            _activeResourceRevision, VendorResourceClient.RequestCompatVersion(),
             DeviceWhitelistStore.KeyFor(peer.Candidate.Address), peer.Generation, peer.Broadcast?.ProductId, peer.Broadcast?.Color);
     }
     private async Task UpdateWorkerColorAsync(Peer peer, string productId, byte color)
@@ -168,12 +158,11 @@ internal sealed partial class BackendSupervisor
         if (_resources is null) return null;
         if (role is not ("hero" or "model" or "case" or "left" or "right" or "lottie" or "capsule" or "detail" or "both"))
             throw new InvalidDataException();
-        // Remembered hints can name a model the selected source does not list: it simply has no art.
+        // Remembered hints can name a model HeyMelody does not list: it simply has no art.
         if (_resources.Catalog.Find(productId) is null) return null;
-        var source = _resources.Preferences.Source;
         var lease = await _resources.ResolveArtworkAsync(productId, color, role, token);
         if (lease is null) return null;
-        if (source != _resources.Preferences.Source || token.IsCancellationRequested)
+        if (token.IsCancellationRequested || _resources.Catalog.Find(productId) is null)
         { lease.Dispose(); token.ThrowIfCancellationRequested(); return null; }
         string id = Guid.NewGuid().ToString("N");
         lock (_sync)
@@ -181,7 +170,7 @@ internal sealed partial class BackendSupervisor
             if (_stopping) { lease.Dispose(); return null; }
             _artworkLeases[id] = (owner, lease);
         }
-        return new(id, lease.FullPath, lease.Kind, lease.PackageRoot, lease.Sha256, lease.Length, lease.Source.ToString(), lease.Revision);
+        return new(id, lease.FullPath, lease.Kind, lease.PackageRoot, lease.Sha256, lease.Length, lease.Revision);
     }
     public bool ReleaseArtwork(string owner, string leaseId)
     {
@@ -221,7 +210,7 @@ internal sealed partial class BackendSupervisor
 
 internal interface IResourcePeerWorker
 {
-    void ConfigureResources(string catalogGzip, string source, long revision, long appMarker, string stableKey, long generation,
+    void ConfigureResources(string catalogGzip, long revision, long appMarker, string stableKey, long generation,
         string? observedProductId, byte? observedColor);
     Task<UiSnapshot> SetObservedColorAsync(string productId, byte color, CancellationToken token);
 }

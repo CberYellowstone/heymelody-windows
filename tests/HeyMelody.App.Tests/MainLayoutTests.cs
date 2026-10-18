@@ -282,7 +282,9 @@ internal static class MainLayoutTests
             && view.FindControl<FASettingsExpander>("FitTestPanel")!.IconSource is not null
             && sections.Length == ((MainViewModel)view.DataContext!).FeatureSections.Count
             && view.FindControl<Border>("BatteryPanel")!.GetVisualDescendants().OfType<FAIconSourceElement>()
-                .Count(icon => icon.IconSource is FAPathIconSource) == 3,
+                .Count(icon => icon.IconSource is FAFontIconSource { Glyph: "\uE850" } or FAPathIconSource) == 3
+            && view.FindControl<Border>("BatteryPanel")!.GetVisualDescendants().OfType<TextBlock>()
+                .Count(label => label.Text is "左耳" or "右耳" or "充电盒") == 3,
             "Every settings card, dynamic section and battery cell has an icon, and every card has a description.");
     }
 

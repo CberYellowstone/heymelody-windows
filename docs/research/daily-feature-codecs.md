@@ -1,5 +1,7 @@
 # 日常控制的协议证据与适配边界
 
+> 当前客户端仅使用欢律配置与资源，见[当前单源规则](heymelody-only.md)。下文涉及已退出支持来源的覆盖、接口和操作要求仅用于历史研究复核，已由当前规则取代；原版本、路径、摘要和验证范围保留。
+
 **2026-10-10 游戏音效纠正：** 开关为 `0403 [27,value]`；类型为 `0423 [type,01]`，第二字节是原厂 `game_sound_type_enable`，不是开关状态。类型 `0` 的原厂名称是“关闭”；`gameSoundMutexes` 是带包名和操作方向的界面策略，不能直接禁止开启游戏音效。两包原 DEX、X4 原始固件及 Hi-Res／空间分支的复核见 [游戏音效与空间音效](game-audio-spatial.md)。本次修改前全文已逐字节归档到 [本地原稿](../../research/game-audio-spatial-20261010/original-documents/docs/research/daily-feature-codecs.md)，日期、来源和历史测试范围保持可追溯。
 
 **2026-10-10 实施决定：** 0.8.10 对所有型号统一隐藏 `controlAutoVolumeSupport` / `1C`，停止常规查询、写入及通知联动；下文保留历史协议映射，不能据此认定该项仍在当前应用开放。`adaptiveVolume` / `30` 继续独立处理。决定与依据见 [智能音量处理记录](auto-volume.md)。

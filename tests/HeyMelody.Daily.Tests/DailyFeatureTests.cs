@@ -5,8 +5,8 @@ using HeyMelodyWindows.Protocol;
 
 internal static class DailyFeatureTests
 {
-    private static DeviceProfile Profile(string functions, string extra = "", string resourceSource = "daily-feature-fixture") => DeviceProfile.FromResource(JsonSerializer.SerializeToElement(
-        JsonDocument.Parse("{\"id\":\"06EC10\",\"name\":\"Fixture\",\"uuid\":\"00001101-0000-1000-8000-00805f9b34fb\",\"supportSpp\":true," + extra + "\"function\":" + functions + "}").RootElement), resourceSource);
+    private static DeviceProfile Profile(string functions, string extra = "") => DeviceProfile.FromResource(JsonSerializer.SerializeToElement(
+        JsonDocument.Parse("{\"id\":\"06EC10\",\"name\":\"Fixture\",\"uuid\":\"00001101-0000-1000-8000-00805f9b34fb\",\"supportSpp\":true," + extra + "\"function\":" + functions + "}").RootElement));
     private static DailyFeatureControl Control(DailySnapshot s, string id) => s.FeatureSections.SelectMany(x => x.Controls).Single(x => x.Id == id);
     internal static async Task Run(Func<string, Func<Task>, Task> test, Action<bool, string> check)
     {
@@ -188,17 +188,17 @@ internal static class DailyFeatureTests
                 &&f.Writes.Last().Payload.SequenceEqual(new byte[]{0x27,1})&&f.GameSoundType==3);
             Check(!(await c.ApplyFeatureAsync("game-sound",7)).Success&&f.Writes.Count==2);
         });
-        await test("OEM game commands do not require disabling other settings", async () => {
+        await test("Game commands preserve enabled hearing and bass settings", async () => {
             var f=new Fake();f.Features[0x27]=0;f.Features[0x1D]=1;f.Features[0x38]=0;
-            await using var c=new DailyClient(f,_=>Profile("{\"bassEngineSupport\":1,\"hearingOptimize\":1,\"gameSoundMutexes\":[3,4],\"gameSoundList\":[{\"type\":0},{\"type\":3}]}",resourceSource:"WirelessEarphones"));
+            await using var c=new DailyClient(f,_=>Profile("{\"bassEngineSupport\":1,\"hearingOptimize\":1,\"gameSoundMutexes\":[3,4],\"gameSoundList\":[{\"type\":0},{\"type\":3}]}"));
             var s=await c.RefreshAsync();Check(Control(s,"game-sound-enabled").CanWrite);
             Check((await c.ApplyFeatureAsync("game-sound-enabled",1)).Success&&f.Writes.Single().Payload.SequenceEqual(new byte[]{0x27,1}));
             Check((await c.ApplyFeatureAsync("game-sound",3)).Success&&f.Features[0x1D]==1&&f.Features[0x38]==0);
             Check((await c.ApplyFeatureAsync("game-sound-enabled",0)).Success&&f.Writes.Count==3);
         });
-        await test("Hey game commands do not reinterpret OEM mutex maps", async () => {
+        await test("Game commands preserve disabled hearing and bass settings", async () => {
             var f=new Fake();f.Features[0x27]=0;f.Features[0x1D]=0;f.Features[0x38]=0;
-            await using var c=new DailyClient(f,_=>Profile("{\"bassEngineSupport\":1,\"hearingOptimize\":1,\"gameSoundMutexes\":[3,4],\"gameSoundList\":[{\"type\":0},{\"type\":3}]}",resourceSource:"HeyMelody"));
+            await using var c=new DailyClient(f,_=>Profile("{\"bassEngineSupport\":1,\"hearingOptimize\":1,\"gameSoundMutexes\":[3,4],\"gameSoundList\":[{\"type\":0},{\"type\":3}]}"));
             var s=await c.RefreshAsync();Check(Control(s,"game-sound-enabled").CanWrite&&Control(s,"game-sound-enabled").Text is null);
             Check((await c.ApplyFeatureAsync("game-sound-enabled",1)).Success&&f.Writes.Single().Payload.SequenceEqual(new byte[]{0x27,1}));
             Check((await c.ApplyFeatureAsync("game-sound-enabled",0)).Success&&f.Writes.Count==2);

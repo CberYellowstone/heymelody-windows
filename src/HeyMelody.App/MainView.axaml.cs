@@ -36,7 +36,7 @@ public partial class MainView : UserControl
     private bool _manageDevicesRequested;
     private bool _savingResourcePreferences;
     private ResourcePreferenceDraft? _resourcePreferenceDraft;
-    private sealed record ResourcePreferenceDraft(UiOption Source, bool Online, string Key);
+    private sealed record ResourcePreferenceDraft(bool Online, string Key);
     private readonly Dictionary<string, bool> _sectionExpansion = new(StringComparer.Ordinal);
     private readonly ObservableCollection<FeatureSectionSlot> _soundSections = [];
     private readonly ObservableCollection<FeatureSectionSlot> _deviceSections = [];
@@ -87,7 +87,7 @@ public partial class MainView : UserControl
     private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs change)
     {
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.ProductId) or nameof(MainViewModel.HasVerifiedSnapshot)
-            or nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices) or nameof(MainViewModel.ResourceSource)
+            or nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices)
             or nameof(MainViewModel.ArtworkEpoch) or nameof(MainViewModel.DeviceColor)) UpdateArtwork();
         if (string.IsNullOrEmpty(change.PropertyName) || change.PropertyName is nameof(MainViewModel.SelectedDevice) or nameof(MainViewModel.Devices))
         {
@@ -198,7 +198,7 @@ public partial class MainView : UserControl
     {
         var vm = ViewModel;
         VisualCatalog.Update(vm?.Devices ?? [], vm?.SelectedDevice, vm?.ProductId, vm?.DeviceColor,
-            vm?.ResourceSource ?? "HeyMelody", vm?.ArtworkEpoch ?? "", vm?.ArtworkService);
+            vm?.ArtworkEpoch ?? "", vm?.ArtworkService);
         UpdateHeroVisual();
     }
 
@@ -351,14 +351,13 @@ public partial class MainView : UserControl
         try { await _settingsOperation; }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested || vm.Closing) { }
         finally { _settingsOperation = null; _settingsCancellation = null; }
-        // The settings lease must be released before the EQ discard confirmation.
+        // Apply preferences after the settings dialog has released its shared lease.
         if (_resourcePreferenceDraft is { } draft && !_closingWindow && !vm.Closing)
         {
             _resourcePreferenceDraft = null;
             _savingResourcePreferences = true;
             try
             {
-                vm.SelectedResourceSource = draft.Source;
                 vm.UseOnlineResources = draft.Online;
                 vm.CloudKey = draft.Key;
                 await vm.SaveResourcePreferencesAsync();
@@ -411,8 +410,8 @@ public partial class MainView : UserControl
             return;
         }
         var selected = panel.SelectedTheme;
-        if (panel.ResourcesEditable && panel.SelectedSource is { } resourceSource)
-            _resourcePreferenceDraft = new(resourceSource, panel.UseOnlineResources, panel.CloudKey);
+        if (panel.ResourcesEditable)
+            _resourcePreferenceDraft = new(panel.UseOnlineResources, panel.CloudKey);
         if (Application.Current is App app) app.ApplyTheme(selected);
         ModelRenderingPreferences.Apply(panel.UseModelGpuAcceleration, panel.ModelFrameRate);
         if (!ThemePreferences.Save(selected, panel.UseModelGpuAcceleration, panel.ModelFrameRate))

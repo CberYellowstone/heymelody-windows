@@ -15,7 +15,7 @@ internal static class InteractionTests
         Run("background reads preserve editing and queued mouse actions", BackgroundInteractionAsync);
         Run("backend pushes update bound controls without setters and BLE observations keep settings disabled", EventInteractionAsync);
         Run("settings waits for the shared dialog owner and cancels cleanly", SettingsSerializationAsync);
-        Run("resource settings keep keys separate and release the dialog before EQ confirmation", ResourceSettingsAsync);
+        Run("resource settings keep edits local and preserve the EQ draft", ResourceSettingsAsync);
         Run("retry and alert dialogs use the required buttons", DialogButtonsAsync);
         Run("ANC and resource expansion choices survive refreshes and presentation switches", ExpansionPersistenceAsync);
         Run("ANC radio sends a parent and explicit dropdown sends only a child", AncModeInteractionAsync);
@@ -196,30 +196,25 @@ internal static class InteractionTests
             window.Show(); Dispatcher.UIThread.RunJobs();
             var operation = view.OpenSettingsDialogAsync(); await Task.Delay(20); Dispatcher.UIThread.RunJobs();
             var dialog = window.GetVisualDescendants().OfType<FAContentDialog>().Single(d => Equals(d.Title, "应用设置"));
-            var source = dialog.GetVisualDescendants().OfType<ComboBox>().Single(c => Avalonia.Automation.AutomationProperties.GetName(c) == "资源来源");
+            Check(!dialog.GetVisualDescendants().OfType<ComboBox>().Any(c => Avalonia.Automation.AutomationProperties.GetName(c) == "资源来源"),
+                "Single-source settings have no resource selector.");
             var key = dialog.GetVisualDescendants().OfType<TextBox>().Single(c => Avalonia.Automation.AutomationProperties.GetName(c) == "云端资源密钥");
-            key.Text = "edited-a"; source.SelectedItem = vm.ResourceSourceOptions[1]; Dispatcher.UIThread.RunJobs();
-            Check(key.Text == "key-b", "The second source displays its own stored key.");
-            key.Text = "edited-b"; source.SelectedItem = vm.ResourceSourceOptions[0]; Dispatcher.UIThread.RunJobs();
-            Check(key.Text == "edited-a" && vm.CloudKey == "key-a" && vm.SelectedResourceSource.Key == 0,
-                "Switching the dialog source preserves local edits without changing view-model drafts.");
+            key.Text = "edited-a"; Dispatcher.UIThread.RunJobs();
+            Check(vm.CloudKey == "key-a", "The dialog keeps key edits local until Save.");
             dialog.Hide(); await operation.WaitAsync(TimeSpan.FromSeconds(3));
             Check(service.Saves == 0 && vm.CloudKey == "key-a", "Cancelling never saves or changes the original key.");
 
             vm.EqName = "待确认的调整";
-            Check(vm.EqDirty, "An unsaved EQ adjustment requires a discard confirmation.");
+            Check(vm.EqDirty, "An unsaved EQ adjustment exists before resource preferences are saved.");
             operation = view.OpenSettingsDialogAsync(); await Task.Delay(20); Dispatcher.UIThread.RunJobs();
             dialog = window.GetVisualDescendants().OfType<FAContentDialog>().Single(d => Equals(d.Title, "应用设置"));
-            source = dialog.GetVisualDescendants().OfType<ComboBox>().Single(c => Avalonia.Automation.AutomationProperties.GetName(c) == "资源来源");
             key = dialog.GetVisualDescendants().OfType<TextBox>().Single(c => Avalonia.Automation.AutomationProperties.GetName(c) == "云端资源密钥");
-            source.SelectedItem = vm.ResourceSourceOptions[1]; key.Text = "saved-b";
+            key.Text = "  saved key  ";
             Dispatcher.UIThread.RunJobs();
             var save = dialog.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "保存"));
             Click(window, save); await operation.WaitAsync(TimeSpan.FromSeconds(3));
-            Check(confirmations.Count == 1 && service.Saves == 1 && service.Settings.Source == "WirelessEarphones"
-                && service.Settings.CloudKey == "saved-b" && service.Settings.HeyMelodyKey == "key-a"
-                && service.Settings.WirelessEarphonesKey == "saved-b",
-                "Saving can acquire the shared EQ confirmation dialog and updates only the selected source key.");
+            Check(confirmations.Count == 0 && service.Saves == 1 && service.Settings.HeyMelodyKey == "  saved key  " && vm.EqDirty,
+                "Saving preserves the exact key text and the unsaved EQ adjustment without a confirmation.");
         }
         finally { ThemePreferences.SettingsPathOverride = null; await view.DismissSettingsDialogAsync(); window.Close(); }
     }
@@ -234,8 +229,7 @@ internal static class InteractionTests
     {
         private readonly PreviewService _inner = new();
         public int Saves { get; private set; }
-        public UiResourceSettings Settings { get; private set; } = new(CloudKey: "key-a")
-            { HeyMelodyKey = "key-a", WirelessEarphonesKey = "key-b" };
+        public UiResourceSettings Settings { get; private set; } = new(HeyMelodyKey: "key-a");
         public Task<UiResourceSettings> GetResourceSettingsAsync(CancellationToken token) => Task.FromResult(Settings);
         public Task<UiResourceSettings> SaveResourceSettingsAsync(UiResourceSettings settings, CancellationToken token)
         { Settings = settings; Saves++; return Task.FromResult(settings); }

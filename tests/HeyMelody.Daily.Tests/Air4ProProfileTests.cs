@@ -41,16 +41,15 @@ internal static class Air4ProProfileTests
         var bundles = new BundledResourceStore();
         await test("Air4 Pro original source profiles verify identity and preserve EQ and legacy feature declarations", async () =>
         {
-            foreach (var source in Enum.GetValues<ResourceSource>())
             {
-                var catalog = bundles.GetCatalog(source);
+                var catalog = bundles.GetCatalog();
                 var resource = catalog.Profiles[ProductId];
-                var profile = DeviceProfile.FromResource(resource.Raw, source.ToString(), catalog.Sha256);
+                var profile = DeviceProfile.FromResource(resource.Raw, catalog.Sha256);
                 var fake = SyntheticLegacyReplies();
                 await using var client = new DailyClient(fake,
                     id => id == ProductId && resource.CanUseControlTransport ? profile : null);
                 var snapshot = await client.RefreshAsync();
-                string context = $"Air4 Pro/{source}";
+                string context = $"Air4 Pro/HeyMelody";
                 check(profile.SupportSpp && profile.Uuid == Guid.Parse("0000079A-D102-11E1-9B23-00025B00A5A5"), context);
                 check(snapshot.Connected && snapshot.ProfileVerified && snapshot.ProductId == ProductId, context);
                 check(snapshot.CodecRaw == 8 && fake.Requests.Count(x => x.Command == 0x0114) == 1, context);
@@ -59,7 +58,7 @@ internal static class Air4ProProfileTests
                 check(!profile.RawFunctions.TryGetProperty("customEqualizer", out _)
                     && !snapshot.Capabilities.CustomEqualizer, context);
                 check(snapshot.Capabilities.GameFeatureId == 0x06 && snapshot.GameMode == false
-                    && snapshot.Capabilities.GameMode == (source == ResourceSource.HeyMelody), context);
+                    && snapshot.Capabilities.GameMode == true, context);
                 check(snapshot.DualConnection == false && snapshot.Capabilities.DualConnection
                     && snapshot.HiRes == true && snapshot.Capabilities.HiRes, context);
                 check(fake.Writes.Count == 0, context);
@@ -67,19 +66,18 @@ internal static class Air4ProProfileTests
         });
         await test("Air4 Pro advertised codec reads flagged wire ACK with notifications before and after without SET", async () =>
         {
-            foreach (var source in Enum.GetValues<ResourceSource>())
             foreach (int chunkSize in new[] { 1, 4096 })
             {
-                var catalog = bundles.GetCatalog(source);
+                var catalog = bundles.GetCatalog();
                 var resource = catalog.Profiles[ProductId];
-                var profile = DeviceProfile.FromResource(resource.Raw, source.ToString(), catalog.Sha256);
+                var profile = DeviceProfile.FromResource(resource.Raw, catalog.Sha256);
                 var fake = SyntheticLegacyReplies();
                 var connector = new CodecWireFixtureConnector(fake, sequence =>
                     [.. CodecWireFixtureConnector.PresetNotification(sequence), .. CodecWireFixtureConnector.Ack(sequence),
                         .. CodecWireFixtureConnector.PresetNotification(sequence)], chunkSize);
                 await using var client = new DailyClient(connector, id => id == ProductId ? profile : null);
                 var snapshot = await client.RefreshAsync();
-                string context = $"Air4 Pro flagged wire/{source}/{chunkSize}";
+                string context = $"Air4 Pro flagged wire/HeyMelody/{chunkSize}";
                 check(snapshot.Connected && snapshot.ProfileVerified && snapshot.Error is null && snapshot.CodecRaw == 8, context);
                 check(snapshot.Capabilities.Preset && fake.Requests.Count(x => x.Command == 0x0114) == 1, context);
                 check(fake.Opens == 1 && fake.MaximumReaders == 1 && fake.Writes.Count == 0, context);
@@ -87,16 +85,15 @@ internal static class Air4ProProfileTests
         });
         await test("Air4 Pro unknown legacy states do not gain switch capabilities from profiles or command bits", async () =>
         {
-            foreach (var source in Enum.GetValues<ResourceSource>())
             {
-                var catalog = bundles.GetCatalog(source);
+                var catalog = bundles.GetCatalog();
                 var resource = catalog.Profiles[ProductId];
-                var profile = DeviceProfile.FromResource(resource.Raw, source.ToString(), catalog.Sha256);
+                var profile = DeviceProfile.FromResource(resource.Raw, catalog.Sha256);
                 var fake = SyntheticLegacyReplies();
                 fake.Features[0x06] = fake.Features[0x11] = fake.Features[0x18] = 3;
                 await using var client = new DailyClient(fake, id => id == ProductId ? profile : null);
                 var snapshot = await client.RefreshAsync();
-                string context = $"Air4 Pro unknown/{source}";
+                string context = $"Air4 Pro unknown/HeyMelody";
                 check(snapshot.Connected && snapshot.ProfileVerified && snapshot.Capabilities.Preset, context);
                 check(snapshot.RawFeatures[0x06] == 3 && snapshot.RawFeatures[0x11] == 3
                     && snapshot.RawFeatures[0x18] == 3, context);
@@ -108,13 +105,12 @@ internal static class Air4ProProfileTests
         });
         await test("Air4 Pro v125 reconstructed codec ACK uses current ear firmware and preserves ACK notification routing", async () =>
         {
-            foreach (var source in Enum.GetValues<ResourceSource>())
             foreach (byte codec in new byte[] { 1, 2, 8 })
             foreach (int chunkSize in new[] { 1, 4096 })
             {
-                var catalog = bundles.GetCatalog(source);
+                var catalog = bundles.GetCatalog();
                 var resource = catalog.Profiles[ProductId];
-                var profile = DeviceProfile.FromResource(resource.Raw, source.ToString(), catalog.Sha256);
+                var profile = DeviceProfile.FromResource(resource.Raw, catalog.Sha256);
                 var fake = SyntheticV125Replies();
                 var connector = new CodecWireFixtureConnector(fake, sequence =>
                     [.. CodecWireFixtureConnector.PresetNotification(sequence),
@@ -122,7 +118,7 @@ internal static class Air4ProProfileTests
                         .. CodecWireFixtureConnector.PresetNotification(sequence)], chunkSize);
                 await using var client = new DailyClient(connector, id => id == ProductId ? profile : null);
                 var snapshot = await client.RefreshAsync();
-                string context = $"Air4 Pro v125 wire/{source}/{codec}/{chunkSize}";
+                string context = $"Air4 Pro v125 wire/HeyMelody/{codec}/{chunkSize}";
                 check(snapshot.Connected && snapshot.ProfileVerified && snapshot.Error is null
                     && snapshot.FirmwareVersion == "125" && snapshot.CodecRaw == codec, context);
                 check(snapshot.Capabilities.Preset && fake.Opens == 1 && fake.MaximumReaders == 1
@@ -131,8 +127,8 @@ internal static class Air4ProProfileTests
         });
         await test("Codec layout compatibility is independent of mixed missing unknown and older ear firmware", async () =>
         {
-            var resource = bundles.GetCatalog(ResourceSource.HeyMelody).Profiles[ProductId];
-            var profile = DeviceProfile.FromResource(resource.Raw, ResourceSource.HeyMelody.ToString());
+            var resource = bundles.GetCatalog().Profiles[ProductId];
+            var profile = DeviceProfile.FromResource(resource.Raw);
             foreach (var firmware in new (string Label, byte[] Reply)[]
             {
                 ("mixed ears", Firmware("1,2,125", "2,2,150")),
@@ -171,8 +167,8 @@ internal static class Air4ProProfileTests
                 check(snapshot.Connected && snapshot.ProfileVerified && snapshot.CodecRaw == 8
                     && otherModel.Opens == 1 && otherModel.Writes.Count == 0, "other model");
             }
-            var resource = bundles.GetCatalog(ResourceSource.HeyMelody).Profiles[ProductId];
-            var profile = DeviceProfile.FromResource(resource.Raw, ResourceSource.HeyMelody.ToString());
+            var resource = bundles.GetCatalog().Profiles[ProductId];
+            var profile = DeviceProfile.FromResource(resource.Raw);
             foreach (var change in new (string Label, int Offset, byte Value)[]
             {
                 ("old sequence", 6, 0xFE), ("notification command", 5, 0x05),
@@ -198,8 +194,8 @@ internal static class Air4ProProfileTests
         });
         await test("Current verified identity permits known codec layout after firmware metadata changes", async () =>
         {
-            var resource = bundles.GetCatalog(ResourceSource.HeyMelody).Profiles[ProductId];
-            var profile = DeviceProfile.FromResource(resource.Raw, ResourceSource.HeyMelody.ToString());
+            var resource = bundles.GetCatalog().Profiles[ProductId];
+            var profile = DeviceProfile.FromResource(resource.Raw);
             foreach (byte[] laterReply in new byte[][]
             {
                 Firmware("1,2,150", "2,2,150"), [1], [0, 1, 0]
@@ -218,8 +214,8 @@ internal static class Air4ProProfileTests
         });
         await test("A reported right ear running v125 can authorize the codec exception independently of the display field", async () =>
         {
-            var resource = bundles.GetCatalog(ResourceSource.HeyMelody).Profiles[ProductId];
-            var profile = DeviceProfile.FromResource(resource.Raw, ResourceSource.HeyMelody.ToString());
+            var resource = bundles.GetCatalog().Profiles[ProductId];
+            var profile = DeviceProfile.FromResource(resource.Raw);
             var fake = SyntheticV125Replies(); fake.ReadReplies[0x0105] = Firmware("2,2,125", "3,2,105");
             await using var client = new DailyClient(new CodecWireFixtureConnector(fake,
                 sequence => CodecWireFixtureConnector.Air4ProV125Ack(sequence)), id => id == ProductId ? profile : null);
@@ -238,25 +234,24 @@ internal static class Air4ProProfileTests
                 Firmware("1,1,111", "1,2,000", "1,3,000", "2,1,111", "2,2,125", "2,3,125",
                     "3,1,111", "3,2,000", "3,3,000")
             };
-            foreach (var source in Enum.GetValues<ResourceSource>())
             foreach (byte[] reply in firmwareReplies)
             {
-                var catalog = bundles.GetCatalog(source);
+                var catalog = bundles.GetCatalog();
                 var resource = catalog.Profiles[ProductId];
-                var profile = DeviceProfile.FromResource(resource.Raw, source.ToString(), catalog.Sha256);
+                var profile = DeviceProfile.FromResource(resource.Raw, catalog.Sha256);
                 var fake = SyntheticV125Replies(); fake.ReadReplies[0x0105] = reply;
                 await using var client = new DailyClient(new CodecWireFixtureConnector(fake,
                     sequence => CodecWireFixtureConnector.Air4ProV125Ack(sequence)), id => id == ProductId ? profile : null);
                 var snapshot = await client.RefreshAsync();
                 check(snapshot.Connected && snapshot.ProfileVerified && snapshot.CodecRaw == 8
                     && fake.Opens == 1 && fake.Requests.Count(x => x.Command == 0x0114) == 1
-                    && fake.Writes.Count == 0, $"reconstructed firmware local ear/{source}");
+                    && fake.Writes.Count == 0, $"reconstructed firmware local ear/HeyMelody");
             }
         });
         await test("A completed codec reply cannot authorize another malformed ACK while the request key still exists", async () =>
         {
-            var resource = bundles.GetCatalog(ResourceSource.HeyMelody).Profiles[ProductId];
-            var profile = DeviceProfile.FromResource(resource.Raw, ResourceSource.HeyMelody.ToString());
+            var resource = bundles.GetCatalog().Profiles[ProductId];
+            var profile = DeviceProfile.FromResource(resource.Raw);
             var fake = SyntheticV125Replies();
             var connector = new CodecWireFixtureConnector(fake, sequence =>
                 [.. CodecWireFixtureConnector.Air4ProV125Ack(sequence), .. CodecWireFixtureConnector.Air4ProV125Ack(sequence)],
@@ -269,8 +264,8 @@ internal static class Air4ProProfileTests
         });
         await test("A silent current firmware query ends the session without reusing earlier codec permission", async () =>
         {
-            var resource = bundles.GetCatalog(ResourceSource.HeyMelody).Profiles[ProductId];
-            var profile = DeviceProfile.FromResource(resource.Raw, ResourceSource.HeyMelody.ToString());
+            var resource = bundles.GetCatalog().Profiles[ProductId];
+            var profile = DeviceProfile.FromResource(resource.Raw);
             var fake = SyntheticV125Replies();
             await using var client = new DailyClient(new CodecWireFixtureConnector(fake,
                 sequence => CodecWireFixtureConnector.Air4ProV125Ack(sequence)), id => id == ProductId ? profile : null);

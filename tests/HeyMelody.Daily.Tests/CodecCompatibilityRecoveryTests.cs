@@ -51,20 +51,20 @@ internal static class CodecCompatibilityRecoveryTests
         await test("Codec recovery refuses a different product or resource provenance", async () =>
         {
             var bundles = new BundledResourceStore();
-            foreach (bool changeSource in new[] { false, true })
+            foreach (bool changeCatalog in new[] { false, true })
             {
                 var fake = new Fake();
-                var source = ResourceSource.HeyMelody;
+                string catalogDigest = bundles.GetCatalog().Sha256;
                 var connector = new CodecWireFixtureConnector(fake, UnknownCodecLayout, onOpen: number =>
                 {
                     if (number != 2) return;
-                    if (changeSource) source = ResourceSource.WirelessEarphones;
+                    if (changeCatalog) catalogDigest = new string('0', 64);
                     else fake.ProductId = "067C10";
                 });
                 await using var client = new DailyClient(connector, id =>
                 {
-                    var catalog = bundles.GetCatalog(source);
-                    return catalog.Find(id) is { } resource ? DeviceProfile.FromResource(resource.Raw, source.ToString(), catalog.Sha256) : null;
+                    var catalog = bundles.GetCatalog();
+                    return catalog.Find(id) is { } resource ? DeviceProfile.FromResource(resource.Raw, catalogDigest) : null;
                 });
                 var snapshot = await client.RefreshAsync();
                 Check(!snapshot.Connected && !snapshot.ProfileVerified && snapshot.Error is not null && fake.Opens == 2

@@ -436,7 +436,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (snapshot.Identity != _sessionIdentity
             || EventService is null && (snapshot.Failure is not null || !snapshot.Connected))
         { InvalidateSnapshot(); return false; }
-        if (_snapshot is { } previous && previous.ResourceSource != snapshot.ResourceSource) ClearAncChoices();
         _snapshot = snapshot;
         // A current backend snapshot can combine cached settings with fresh BLE
         // telemetry. Keep that observation, but IsVerifiedControl rejects its cache flag.

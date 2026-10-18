@@ -62,6 +62,46 @@ function Checked-File([string]$Directory, [string]$RelativePath) {
 function Add-CriticalFile([string]$Path) {
     [void]$criticalPaths.Add([IO.Path]::GetRelativePath($taskStage, $Path).Replace('\', '/'))
 }
+function Check-ResourceBundle([string]$Bundle) {
+    $reference = Join-Path $taskRoot 'src/HeyMelody.Resources/Bundles'
+    $manifests = @('artwork.json', 'provenance.json', 'supplemental.json')
+    $actualManifests = @(Get-ChildItem -LiteralPath $Bundle -File | ForEach-Object Name)
+    Require (@(Compare-Object $manifests $actualManifests).Count -eq 0) 'Unexpected offline resource manifest.'
+    foreach ($name in $manifests) {
+        Require ((Hash-File (Checked-File $Bundle $name)) -eq (Hash-File (Checked-File $reference $name))) ('Offline manifest differs from source: ' + $name)
+    }
+    $provenance = @(Read-Json (Join-Path $Bundle 'provenance.json'))
+    Require ($provenance.Count -eq 1 -and $provenance[0].package -eq 'com.heytap.headset' -and $provenance[0].PSObject.Properties.Name -notcontains 'source') 'Invalid HeyMelody provenance.'
+    $entries = @(Read-Json (Join-Path $Bundle 'artwork.json'))
+    $supplemental = @(Read-Json (Join-Path $Bundle 'supplemental.json'))
+    Require ($entries.Count -gt 0 -and $supplemental.Count -gt 0) 'Offline resource manifests are empty.'
+    $reachable = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($entry in $supplemental) { Require ($entry.package -eq 'com.heytap.headset') 'Invalid supplemental asset provenance.' }
+    foreach ($entry in @($entries) + @($supplemental)) {
+        Require ($entry.PSObject.Properties.Name -notcontains 'source') 'Artwork source selection is no longer supported.'
+        $file = Checked-File $Bundle $entry.path
+        Require ((Get-Item -LiteralPath $file).Length -eq $entry.length -and (Hash-File $file) -eq $entry.sha256) ('Offline artwork bytes do not match index: ' + $entry.path)
+        [void]$reachable.Add($entry.path)
+        if ($entry.originalPath) {
+            Require ((Hash-File (Checked-File $Bundle $entry.originalPath)) -eq $entry.originalSha256) ('Offline original artwork hash mismatch: ' + $entry.originalPath)
+            [void]$reachable.Add($entry.originalPath)
+        }
+        if ($entry.kind -eq 'lottie') {
+            foreach ($asset in @((Read-Json $file).assets)) {
+                $relative = [string]$asset.u + [string]$asset.p
+                if (-not $relative -or $relative.StartsWith('data:')) { continue }
+                Require ($relative -notmatch ':' -and $relative -notmatch '(^|[\\/])\.\.([\\/]|$)') 'Unsafe animation dependency.'
+                $dependency = Checked-File (Split-Path -Parent $file) $relative
+                $name = [IO.Path]::GetRelativePath($Bundle, $dependency).Replace('\', '/')
+                Require ((Hash-File $dependency) -eq (Hash-File (Checked-File $reference $name))) ('Animation dependency differs from source: ' + $name)
+                [void]$reachable.Add($name)
+            }
+        }
+    }
+    $actual = @(Get-ChildItem -LiteralPath (Join-Path $Bundle 'data') -File -Recurse | ForEach-Object { [IO.Path]::GetRelativePath($Bundle, $_.FullName).Replace('\', '/') })
+    Require (@(Compare-Object @($reachable) $actual).Count -eq 0) 'Offline artwork contains missing or unreferenced files.'
+    [ordered]@{ indexSha256 = (Hash-File (Join-Path $Bundle 'artwork.json')); artworkEntries = $entries.Count; catalogCount = 1; dataFiles = $reachable.Count; allIndexedBytesVerified = $true }
+}
 function Check-Notice([string]$Directory, [object]$Notice) {
     Require (@($Notice.packages).Count -gt 0) ('Package notices are empty: ' + $Directory)
     $packageNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -232,21 +272,10 @@ foreach ($architecture in @('x64', 'x86', 'arm64')) {
             $bundle = Join-Path $directory 'ResourceBundles'
             $indexPath = Checked-File $bundle 'artwork.json'
             $provenancePath = Checked-File $bundle 'provenance.json'
-            $entries = @(Read-Json $indexPath)
-            Require ($entries.Count -ge 800) ('Incomplete offline artwork index: ' + $architecture)
-            Require (@(Read-Json $provenancePath).Count -eq 2) ('Both source catalogs require provenance: ' + $architecture)
+            $bundleCheck = Check-ResourceBundle $bundle
             if ($directory -eq $appDirectory) { Require ((Hash-File $indexPath) -eq $build.resourceIndexSha256) ('Resource index does not match manifest: ' + $architecture) }
-            foreach ($entry in $entries) {
-                Require ($entry.source -in @(0, 1)) ('Invalid artwork source: ' + $entry.path)
-                $file = Checked-File $bundle $entry.path
-                Require ((Get-Item -LiteralPath $file).Length -eq $entry.length -and (Hash-File $file) -eq $entry.sha256) ('Offline artwork bytes do not match index: ' + $entry.path)
-                if ($entry.originalPath) {
-                    $original = Checked-File $bundle $entry.originalPath
-                    Require ((Hash-File $original) -eq $entry.originalSha256) ('Offline original artwork hash mismatch: ' + $entry.originalPath)
-                }
-            }
             foreach ($file in [IO.Directory]::EnumerateFiles($bundle, '*', [IO.SearchOption]::AllDirectories)) { Add-CriticalFile $file }
-            $resourceChecks += [ordered]@{ architecture = $architecture; directory = [IO.Path]::GetRelativePath($taskStage, $bundle).Replace('\', '/'); sourceCount = 2; artworkEntries = $entries.Count; indexSha256 = (Hash-File $indexPath); allIndexedBytesVerified = $true }
+            $resourceChecks += [ordered]@{ architecture = $architecture; directory = [IO.Path]::GetRelativePath($taskStage, $bundle).Replace('\', '/'); catalogCount = 1; dataFiles = $bundleCheck.dataFiles; artworkEntries = $bundleCheck.artworkEntries; indexSha256 = (Hash-File $indexPath); allIndexedBytesVerified = $true }
         }
         foreach ($component in @('HeyMelody.FitTest', 'HeyMelody.HearingSetup')) {
             $deps = Read-Json (Checked-File $appDirectory ($component + '.deps.json'))

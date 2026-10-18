@@ -40,7 +40,7 @@ LZMA_MEMORY_LIMIT = 128 * 1024 * 1024
 TRAILER = re.compile(rb"CRC32_OF_IMAGE=0x([0-9A-Fa-f]{8})\nPRODUCT_ID=0x([0-9A-Fa-f]{6})\n")
 PRODUCT_ID = re.compile(r"[0-9A-Fa-f]{6}\Z")
 SHA256 = re.compile(r"[0-9A-Fa-f]{64}\Z")
-SOURCES = {"heymelody": "com.heytap.headset", "wireless": "com.oplus.melody"}
+SOURCES = {"heymelody": "com.heytap.headset"}
 
 
 class FormatError(ValueError):
