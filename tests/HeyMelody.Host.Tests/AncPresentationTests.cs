@@ -15,13 +15,12 @@ internal static class AncPresentationTests
     internal static async Task RunAsync(Func<string, Func<Task>, Task> test, string scratch)
     {
         var bundles = new BundledResourceStore();
-        await test("X2 and X3 transparency metadata and exact child writes follow each configured source", async () =>
+        await test("X2 and X3 transparency metadata and exact child writes follow HeyMelody configuration", async () =>
         {
-            foreach (var source in Enum.GetValues<ResourceSource>())
             foreach (string productId in new[] { "063C10", "067410" })
             {
-                var catalog = bundles.GetCatalog(source);
-                var profile = DeviceProfile.FromResource(catalog.Find(productId)!.Raw, source.ToString());
+                var catalog = bundles.GetCatalog();
+                var profile = DeviceProfile.FromResource(catalog.Find(productId)!.Raw);
                 var connector = new Connector(productId, 8);
                 await using var client = new DailyClient(connector, _ => profile);
                 var daily = await client.RefreshAsync();
@@ -48,7 +47,6 @@ internal static class AncPresentationTests
         });
         await test("standalone listening and adaptive modes retain their own descriptions without a transparency toggle", async () =>
         {
-            foreach (var source in Enum.GetValues<ResourceSource>())
             foreach (var (productId, key, name) in new[]
             {
                 ("062010", 3, "聆听"), ("064010", 3, "聆听"), ("063810", 3, "聆听"), ("065010", 3, "聆听"),
@@ -57,8 +55,8 @@ internal static class AncPresentationTests
                 ("061410", 2, "弱降噪"), ("061410", 3, "强降噪"), ("060C14", 4, "智能降噪"), ("06F010", 0, "降噪")
             })
             {
-                var catalog = bundles.GetCatalog(source);
-                var profile = DeviceProfile.FromResource(catalog.Find(productId)!.Raw, source.ToString());
+                var catalog = bundles.GetCatalog();
+                var profile = DeviceProfile.FromResource(catalog.Find(productId)!.Raw);
                 await using var client = new DailyClient(new Connector(productId, (byte)key), _ => profile);
                 var daily = await client.RefreshAsync();
                 var mode = (await Project(catalog, daily, scratch)).Single(mode => mode.Key == key);
@@ -77,7 +75,7 @@ internal static class AncPresentationTests
         });
         await test("transparency presentation uses configured IDs and falls back for filtered or unfamiliar structures", async () =>
         {
-            var raw = JsonNode.Parse(bundles.GetCatalog(ResourceSource.HeyMelody).Find("067410")!.Raw.GetRawText())!.AsObject();
+            var raw = JsonNode.Parse(bundles.GetCatalog().Find("067410")!.Raw.GetRawText())!.AsObject();
             var modes = raw["function"]!["noiseReductionMode"]!.AsArray();
             var parent = modes.Single(mode => mode!["modeType"]!.GetValue<int>() == 2)!;
             parent["protocolIndex"] = 11;
@@ -98,11 +96,10 @@ internal static class AncPresentationTests
             Check((await Mode()).Toggle is null, "A different primary mode was treated as transparency");
             parent["modeType"] = 2; children.Add(new JsonObject { ["modeType"] = 2, ["protocolIndex"] = 24 });
             Check((await Mode()).Toggle is null, "A multi-adjustment mode was collapsed into a boolean");
-            foreach (var source in Enum.GetValues<ResourceSource>())
             foreach (string productId in new[] { "06BC10", "066810" })
             {
-                var catalog = bundles.GetCatalog(source);
-                var profile = DeviceProfile.FromResource(catalog.Find(productId)!.Raw, source.ToString());
+                var catalog = bundles.GetCatalog();
+                var profile = DeviceProfile.FromResource(catalog.Find(productId)!.Raw);
                 await using var client = new DailyClient(new Connector(productId, 8), _ => profile);
                 Check((await Project(catalog, await client.RefreshAsync(), scratch)).Single(mode => mode.Key == 2).Toggle is null,
                     "A model with only ordinary transparency received reinforcement controls");
@@ -121,8 +118,8 @@ internal static class AncPresentationTests
             var store = new DeviceStateStore(path);
             var presentation = new DevicePresentation { ProductId = "067410", Firmware = "preserved", SampleTime = DateTimeOffset.UtcNow,
                 AncPrimary = 2, Anc = 0x0209, AncModes = [mode], AncOptions = mode.Options.ToArray() };
-            store.Remember(key, "HeyMelody", presentation); await store.FlushAsync();
-            var restored = new DeviceStateStore(path).Find(key, "HeyMelody")!.ToSnapshot();
+            store.Remember(key, presentation); await store.FlushAsync();
+            var restored = new DeviceStateStore(path).Find(key)!.ToSnapshot();
             Check(restored.AncModes.Single().Toggle == mode.Toggle && restored.AncModes.Single().Description == mode.Description
                 && restored.Anc == 0x0209 && restored.PresentationCached
                 && !restored.ControlReady && !restored.CanSetAnc && !restored.CanSetAncMode, "Display metadata restored write authority");
@@ -130,7 +127,7 @@ internal static class AncPresentationTests
             var savedMode = saved["devices"]![0]!["presentation"]!["ancModes"]![0]!;
             savedMode.AsObject().Remove("description"); savedMode.AsObject().Remove("toggle");
             File.WriteAllText(path, saved.ToJsonString());
-            Check(new DeviceStateStore(path).Find(key, "HeyMelody")?.AncModes.Single() is { Description: "", Toggle: null },
+            Check(new DeviceStateStore(path).Find(key)?.AncModes.Single() is { Description: "", Toggle: null },
                 "Existing display history stopped loading after the additive fields");
             foreach (var invalid in new[]
             {
@@ -141,21 +138,21 @@ internal static class AncPresentationTests
             })
             {
                 var cache = new DeviceStateStore(path);
-                cache.Remember(key, "HeyMelody", presentation with { AncModes = [mode with { Toggle = invalid }] });
+                cache.Remember(key, presentation with { AncModes = [mode with { Toggle = invalid }] });
                 await cache.FlushAsync();
-                var loaded = new DeviceStateStore(path).Find(key, "HeyMelody");
+                var loaded = new DeviceStateStore(path).Find(key);
                 Check(loaded?.Firmware == "preserved" && loaded.AncModes.Single().Toggle is null
                     && loaded.AncModes.Single().Options.SequenceEqual(mode.Options), "Invalid switch metadata discarded valid display history");
                 savedMode["toggle"] = JsonSerializer.SerializeToNode(invalid, RpcWire.Json);
                 File.WriteAllText(path, saved.ToJsonString());
-                var reloaded = new DeviceStateStore(path).Find(key, "HeyMelody");
+                var reloaded = new DeviceStateStore(path).Find(key);
                 Check(reloaded?.Firmware == "preserved" && reloaded.AncModes.Single().Toggle is null,
                     "Invalid stored switch metadata was not downgraded during load");
             }
             store = new DeviceStateStore(path);
-            store.Remember(key, "HeyMelody", presentation with { AncModes = [mode with { Options = [mode.Options[0]] }] });
+            store.Remember(key, presentation with { AncModes = [mode with { Options = [mode.Options[0]] }] });
             await store.FlushAsync();
-            Check(new DeviceStateStore(path).Find(key, "HeyMelody")?.AncModes.Single() is { Toggle: null, Options.Count: 1 },
+            Check(new DeviceStateStore(path).Find(key)?.AncModes.Single() is { Toggle: null, Options.Count: 1 },
                 "A toggle without both option keys discarded the valid ordinary choice or retained switch metadata");
         });
     }
@@ -163,7 +160,7 @@ internal static class AncPresentationTests
     private static UiAncMode Transparent() => new(2, "通透", "transparency", [new(0x0208, "通透"), new(0x0209, "强化人声")])
     { Description = "模式说明", Toggle = new(0x0208, 0x0209, "强化人声", "弱化环境声的同时突出人声") };
     private static ResourceCatalog Catalog(JsonObject raw) => ResourceCatalog.Parse(JsonSerializer.SerializeToUtf8Bytes(
-        new { versionCode = 17006004, whiteList = new[] { raw } }), ResourceSource.HeyMelody, false);
+        new { versionCode = 17006004, whiteList = new[] { raw } }), false);
     private static async Task<IReadOnlyList<UiAncMode>> Project(ResourceCatalog catalog, DailySnapshot daily, string scratch)
     {
         await using var service = new NativeHeadsetService(() => throw new InvalidOperationException("Presentation test enumerated Bluetooth"),

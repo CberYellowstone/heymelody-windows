@@ -7,7 +7,7 @@ public sealed partial class DailyClient
 {
     private static string? FormatFirmwareDisplay(IReadOnlyList<FirmwareEntry> entries, string? productType)
     {
-        // HeyMelody EarphoneUtils Q.z and Wireless Earphones L.D: only running versions,
+        // HeyMelody EarphoneUtils Q.z: only running versions,
         // in left/right/case order. Hardware, backup and vendor versions are not display components.
         string? Running(int component) => entries.LastOrDefault(x => x.DeviceType == component && x.VersionType == 2)?.Version;
         static bool Numeric(string? value) => value is { Length: > 0 } && value.All(c => c is >= '0' and <= '9');

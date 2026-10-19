@@ -19,7 +19,6 @@ public sealed class AncModeSelector : UserControl
     private MainViewModel? _model;
     private MainViewModel? _builtModel;
     private IReadOnlyList<UiAncMode> _builtModes = [];
-    private string _builtSource = "";
     private readonly Dictionary<int, (RadioButton Radio, Border Circle)> _radios = [];
     private ComboBox? _combo;
     private FASettingsExpanderItem? _toggleRow;
@@ -39,17 +38,17 @@ public sealed class AncModeSelector : UserControl
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     { base.OnAttachedToVisualTree(e); if (_model is not null) { _model.PropertyChanged -= Changed; _model.PropertyChanged += Changed; } }
     private void Changed(object? sender, PropertyChangedEventArgs e)
-    { if (e.PropertyName is nameof(MainViewModel.AncModes) or nameof(MainViewModel.SelectedAncMode) or nameof(MainViewModel.SelectedAncSubmode) or nameof(MainViewModel.CanChooseAnc) or nameof(MainViewModel.CanChooseAncMode) or nameof(MainViewModel.ResourceSource) or null) Build(); }
+    { if (e.PropertyName is nameof(MainViewModel.AncModes) or nameof(MainViewModel.SelectedAncMode) or nameof(MainViewModel.SelectedAncSubmode) or nameof(MainViewModel.CanChooseAnc) or nameof(MainViewModel.CanChooseAncMode) or null) Build(); }
     private void Build()
     {
         if (_model is not { } model) { Content = null; return; }
-        if (ReferenceEquals(_builtModel, model) && _builtSource == model.ResourceSource
+        if (ReferenceEquals(_builtModel, model)
             && _builtModes.Count == model.AncModes.Count && _builtModes.Zip(model.AncModes).All(pair =>
                 pair.First.Key == pair.Second.Key && pair.First.Name == pair.Second.Name && pair.First.IconKey == pair.Second.IconKey
                 && pair.First.Description == pair.Second.Description && pair.First.Toggle == pair.Second.Toggle
                 && pair.First.Options.SequenceEqual(pair.Second.Options)))
         { RefreshSelection(model); return; }
-        _builtModel = model; _builtSource = model.ResourceSource; _builtModes = model.AncModes.ToArray(); _radios.Clear();
+        _builtModel = model; _builtModes = model.AncModes.ToArray(); _radios.Clear();
         var panel = new StackPanel { Spacing = 16, Margin = new Thickness(20, 16) };
         // Modes wrap instead of clipping when a resource defines more or longer names; arrow keys move between them.
         var modes = new WrapPanel { Orientation = Orientation.Horizontal, ItemSpacing = 16, LineSpacing = 12,
@@ -57,7 +56,7 @@ public sealed class AncModeSelector : UserControl
         Avalonia.Input.XYFocus.SetNavigationModes(modes, Avalonia.Input.XYFocusNavigationModes.Keyboard);
         foreach (var mode in model.AncModes)
         {
-            var icon = DeviceVisuals.CreateAncGlyph(model.ResourceSource, mode.IconKey, mode.Key == model.SelectedAncMode?.Key
+            var icon = DeviceVisuals.CreateAncGlyph(mode.IconKey, mode.Key == model.SelectedAncMode?.Key
                 ? "TextOnAccentFillColorPrimaryBrush" : "TextFillColorSecondaryBrush");
             var circle = new Border { Width = 52, Height = 52, CornerRadius = new CornerRadius(26), Child = icon,
                 BorderThickness = new Thickness(1), Tag = mode.Key == model.SelectedAncMode?.Key };
@@ -135,7 +134,7 @@ public sealed class AncModeSelector : UserControl
             item.Radio.IsChecked = selected;
             if (Equals(item.Circle.Tag, selected)) continue;
             item.Circle.Tag = selected;
-            item.Circle.Child = DeviceVisuals.CreateAncGlyph(model.ResourceSource, mode.IconKey,
+            item.Circle.Child = DeviceVisuals.CreateAncGlyph(mode.IconKey,
                 selected ? "TextOnAccentFillColorPrimaryBrush" : "TextFillColorSecondaryBrush");
             item.Circle.Bind(Border.BackgroundProperty, new DynamicResourceExtension(selected ? "AccentFillColorDefaultBrush" : "ControlFillColorSecondaryBrush"));
             item.Circle.Bind(Border.BorderBrushProperty, new DynamicResourceExtension(selected ? "AccentFillColorDefaultBrush" : "ControlStrokeColorDefaultBrush"));

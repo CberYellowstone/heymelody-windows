@@ -6,7 +6,6 @@ namespace HeyMelodyWindows.Resources;
 
 public sealed record ResourceArtwork
 {
-    public ResourceSource Source { get; init; }
     public string[] ProductIds { get; init; } = [];
     public int? Color { get; init; }
     public string Kind { get; init; } = "";
@@ -35,35 +34,34 @@ public sealed class BundledResourceStore
         Artwork = JsonSerializer.Deserialize<ResourceArtwork[]>(ReadEmbedded("artwork.json"), ResourceJson.Options) ?? [];
     }
 
-    public ResourceCatalog GetCatalog(ResourceSource source) => ResourceCatalog.Parse(ReadEmbedded(source == ResourceSource.HeyMelody ? "heymelody.json" : "wireless.json"),
-        source, false, source == ResourceSource.HeyMelody ? 117006004 : 17006002);
+    public ResourceCatalog GetCatalog() => ResourceCatalog.Parse(ReadEmbedded("heymelody.json"), false, 117006004);
 
-    public string GetDefaultKey(ResourceSource source)
+    public string GetDefaultKey()
     {
         var keys = JsonSerializer.Deserialize<Dictionary<string, string>>(ReadEmbedded("default-keys.json"))!;
-        return keys[source == ResourceSource.HeyMelody ? "heymelody" : "wireless"];
+        return keys["HeyMelodyKey"];
     }
 
-    public ResourceArtwork? FindAsset(ResourceSource source, string productId, int? color, string role)
+    public ResourceArtwork? FindAsset(string productId, int? color, string role)
     {
-        var matches = Artwork.Where(a => a.Source == source && a.ProductIds.Contains(productId, StringComparer.Ordinal)
+        var matches = Artwork.Where(a => a.ProductIds.Contains(productId, StringComparer.Ordinal)
             && (a.Color is null || color.HasValue && a.Color == color) && MatchesRole(a.Role, role));
         return matches.OrderByDescending(a => a.Color == color && color.HasValue).ThenBy(a => a.Night).FirstOrDefault(IsAvailable);
     }
 
-    public ResourceArtwork? FindNamedAsset(ResourceSource source, string androidName, bool night = false) => Artwork
-        .Where(a => a.Source == source && a.AndroidName == androidName).OrderByDescending(a => a.Night == night).FirstOrDefault(IsAvailable);
+    public ResourceArtwork? FindNamedAsset(string androidName, bool night = false) => Artwork
+        .Where(a => a.AndroidName == androidName).OrderByDescending(a => a.Night == night).FirstOrDefault(IsAvailable);
 
-    public ResourceArtwork? FindGenericAsset(ResourceSource source, string type, string role)
+    public ResourceArtwork? FindGenericAsset(string type, string role)
     {
         string category = type.StartsWith("N", StringComparison.OrdinalIgnoreCase) ? "device_neck" : type == "O1" ? "device_ows" : "device_default";
         if (role is "left" or "right")
         {
-            var earpiece = Artwork.Where(a => a.Source == source && a.ProductIds.Length == 0 && a.Kind == "bitmap" && !a.Night && a.Role == category
+            var earpiece = Artwork.Where(a => a.ProductIds.Length == 0 && a.Kind == "bitmap" && !a.Night && a.Role == category
                 && a.AndroidName.Contains("_ear_" + role + "_", StringComparison.OrdinalIgnoreCase)).FirstOrDefault(IsAvailable);
             if (earpiece is not null) return earpiece;
         }
-        return Artwork.Where(a => a.Source == source && a.ProductIds.Length == 0 && a.Kind == "bitmap" && !a.Night && a.Role == category)
+        return Artwork.Where(a => a.ProductIds.Length == 0 && a.Kind == "bitmap" && !a.Night && a.Role == category)
             .OrderByDescending(a => a.AndroidName.Contains("detail_default_img", StringComparison.OrdinalIgnoreCase))
             .ThenBy(a => a.AndroidName.Contains("left", StringComparison.OrdinalIgnoreCase) || a.AndroidName.Contains("right", StringComparison.OrdinalIgnoreCase))
             .FirstOrDefault(IsAvailable);
@@ -73,7 +71,7 @@ public sealed class BundledResourceStore
     {
         if (artwork is null || !IsAvailable(artwork)) return null;
         string path = FullPath(artwork);
-        return new ResourceArtworkLease(path, artwork.Kind, System.IO.Path.GetDirectoryName(path)!, artwork.Sha256, artwork.Length, artwork.Source, revision, null);
+        return new ResourceArtworkLease(path, artwork.Kind, System.IO.Path.GetDirectoryName(path)!, artwork.Sha256, artwork.Length, revision, null);
     }
 
     public string FullPath(ResourceArtwork artwork) => ResourcePaths.Resolve(_directory, artwork.Path);
@@ -95,10 +93,9 @@ public sealed class ResourceArtworkLease : IDisposable
     public string PackageRoot { get; }
     public string Sha256 { get; }
     public long Length { get; }
-    public ResourceSource Source { get; }
     public long Revision { get; }
-    internal ResourceArtworkLease(string path, string kind, string root, string hash, long length, ResourceSource source, long revision, Action? release)
-    { FullPath = path; Kind = kind; PackageRoot = root; Sha256 = hash; Length = length; Source = source; Revision = revision; _release = release; }
+    internal ResourceArtworkLease(string path, string kind, string root, string hash, long length, long revision, Action? release)
+    { FullPath = path; Kind = kind; PackageRoot = root; Sha256 = hash; Length = length; Revision = revision; _release = release; }
     public void Dispose() => Interlocked.Exchange(ref _release, null)?.Invoke();
 }
 

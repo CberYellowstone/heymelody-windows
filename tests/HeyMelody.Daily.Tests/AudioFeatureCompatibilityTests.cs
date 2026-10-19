@@ -20,22 +20,21 @@ internal static class AudioFeatureCompatibilityTests
     {
         void Check(bool value, string message = "audio compatibility assertion") => check(value, message);
         var bundles = new BundledResourceStore();
-        foreach (var source in Enum.GetValues<ResourceSource>())
         {
-            var catalog = bundles.GetCatalog(source);
-            await test($"{source} complete bundled profiles preserve declared audio controls and target-only SETs", async () =>
+            var catalog = bundles.GetCatalog();
+            await test($"HeyMelody complete bundled profiles preserve declared audio controls and target-only SETs", async () =>
             {
                 int gameProfiles = 0, hiresProfiles = 0, spatialProfiles = 0;
                 foreach (var resource in catalog.Profiles.Values)
                 {
-                    var profile = DeviceProfile.FromResource(resource.Raw, source.ToString(), catalog.Sha256);
+                    var profile = DeviceProfile.FromResource(resource.Raw, catalog.Sha256);
                     var fake = new Fake { ProductId = profile.ProductId };
                     fake.Features[0x27] = 0;
                     if (profile.GameSoundModes.Count > 0)
                         fake.GameSoundTypes = profile.GameSoundModes.Select(mode => checked((byte)mode.Type)).Distinct().ToArray();
                     await using var client = new DailyClient(fake, id => resource.CanUseControlTransport && id == profile.ProductId ? profile : null);
                     var snapshot = await client.RefreshAsync();
-                    string context = $"{source}/{profile.ProductId}/{profile.Name}";
+                    string context = $"HeyMelody/{profile.ProductId}/{profile.Name}";
                     if (!resource.CanUseControlTransport)
                     {
                         Check(!snapshot.ProfileVerified && snapshot.FeatureSections.Count == 0 && fake.Writes.Count == 0, context);
@@ -91,47 +90,45 @@ internal static class AudioFeatureCompatibilityTests
                 }
                 // The wireless catalog also inherits OnePlus Nord Newton (065814)
                 // from its parent profile; it is a separate controllable product ID.
-                Check(gameProfiles == 17 && hiresProfiles == 28 && spatialProfiles == (source == ResourceSource.HeyMelody ? 48 : 50),
-                    $"{source} declared profile totals: game={gameProfiles}, HiRes={hiresProfiles}, spatial={spatialProfiles}");
+                Check(gameProfiles == 17 && hiresProfiles == 28 && spatialProfiles == 48,
+                    $"HeyMelody declared profile totals: game={gameProfiles}, HiRes={hiresProfiles}, spatial={spatialProfiles}");
             });
-            await test($"{source} all spatial profiles preserve legacy feature1B route and reject head tracking", async () =>
+            await test($"HeyMelody all spatial profiles preserve legacy feature1B route and reject head tracking", async () =>
             {
                 foreach (var resource in catalog.Profiles.Values.Where(resource => resource.CanUseControlTransport))
                 {
-                    var profile = DeviceProfile.FromResource(resource.Raw, source.ToString(), catalog.Sha256);
+                    var profile = DeviceProfile.FromResource(resource.Raw, catalog.Sha256);
                     if (profile.SpatialTypes.Count == 0) continue;
                     var fake = new Fake { ProductId = profile.ProductId, NoModernSpatial = true };
                     await using var client = new DailyClient(fake, _ => profile);
                     var snapshot = await client.RefreshAsync();
                     Check(snapshot.Capabilities.SpatialRoute == "legacy" && Control(snapshot, "spatial")!.Options.All(option => option.Value <= 1),
-                        $"{source}/{profile.ProductId} legacy route");
+                        $"HeyMelody/{profile.ProductId} legacy route");
                     var result = await client.SetSpatialModeAsync(1);
                     Check(result.Success && fake.Writes.Single().Command == 0x0403
                         && fake.Writes.Single().Payload.SequenceEqual(new byte[] {0x1B,1}) && result.After?.HiRes == true,
-                        $"{source}/{profile.ProductId} legacy SET");
+                        $"HeyMelody/{profile.ProductId} legacy SET");
                     Check(!(await client.SetSpatialModeAsync(2)).SubmissionAttempted && fake.Writes.Count == 1);
                 }
             });
         }
-        await test("source differences remain whole-source for BudsPro2 spatial and version2 HiRes", async () =>
+        await test("HeyMelody declarations gate BudsPro2 spatial and HiRes without importing other capabilities", async () =>
         {
-            foreach (var source in Enum.GetValues<ResourceSource>())
             {
-                var catalog = bundles.GetCatalog(source);
+                var catalog = bundles.GetCatalog();
                 foreach (string id in new[] {"062014", "06EC10", "067814"})
                 {
                     var resource = catalog.Find(id)!;
-                    var profile = DeviceProfile.FromResource(resource.Raw, source.ToString(), catalog.Sha256);
+                    var profile = DeviceProfile.FromResource(resource.Raw, catalog.Sha256);
                     var fake = new Fake { ProductId = id };
                     await using var client = new DailyClient(fake, _ => profile);
                     var snapshot = await client.RefreshAsync();
                     if (id == "062014")
                     {
-                        Check((Control(snapshot, "spatial") is not null) == (source == ResourceSource.WirelessEarphones));
-                        if (source == ResourceSource.HeyMelody)
-                            Check(!(await client.SetSpatialModeAsync(1)).SubmissionAttempted && fake.Writes.Count == 0);
+                        Check(Control(snapshot, "spatial") is null);
+                        Check(!(await client.SetSpatialModeAsync(1)).SubmissionAttempted && fake.Writes.Count == 0);
                     }
-                    else Check(profile.HighToneQuality == (source == ResourceSource.HeyMelody ? 1 : 2)
+                    else Check(profile.HighToneQuality == 1
                         && Control(snapshot, "hires")!.CanWrite);
                 }
             }
@@ -183,7 +180,7 @@ internal static class AudioFeatureCompatibilityTests
                 await using var client = new DailyClient(fake, _ => Profile("{\"gameSoundList\":[{\"type\":3}]}"));
                 Check(!(await client.ApplyFeatureAsync("game-sound-enabled", 1)).SubmissionAttempted && fake.Writes.Count == 0);
             }
-            foreach (string extra in new[] {"\"minFirmwareVersion\":\"999\",", "\"minVersion\":99999999,"})
+            foreach (string extra in new[] {"\"minVersion\":99999999,"})
             {
                 var fake = new Fake(); fake.Features[0x27] = 0;
                 await using var client = new DailyClient(fake, _ => Profile("{\"gameSoundList\":[{\"type\":0},{\"type\":3}]}", extra));
@@ -193,10 +190,12 @@ internal static class AudioFeatureCompatibilityTests
             var restricted = new Fake { GameSoundTypes = [0,3,7] }; restricted.Features[0x27] = 0;
             await using var filtered = new DailyClient(restricted, _ => Profile("{\"gameSoundList\":[{\"type\":0},{\"type\":1},{\"type\":3,\"minFirmVersion\":999}]}"));
             var filteredSnapshot = await filtered.RefreshAsync();
-            Check(Control(filteredSnapshot, "game-sound")!.Options.Select(option => option.Value).SequenceEqual(new[] {0}));
-            Check(!(await filtered.ApplyFeatureAsync("game-sound", 3)).SubmissionAttempted
-                && !(await filtered.ApplyFeatureAsync("game-sound", 7)).SubmissionAttempted && restricted.Writes.Count == 0);
-            Check((await filtered.ApplyFeatureAsync("game-sound-enabled", 1)).Success && restricted.Writes.Single().Command == 0x0403);
+            Check(Control(filteredSnapshot, "game-sound")!.Options.Select(option => option.Value).SequenceEqual(new[] {0,3})
+                && filteredSnapshot.Warnings.Any(warning => warning.Contains("固件兼容提示")));
+            Check((await filtered.ApplyFeatureAsync("game-sound", 3)).Success
+                && !(await filtered.ApplyFeatureAsync("game-sound", 7)).SubmissionAttempted && restricted.Writes.Single().Command == 0x0423);
+            Check((await filtered.ApplyFeatureAsync("game-sound-enabled", 1)).Success
+                && restricted.Writes.Count == 2 && restricted.Writes[1].Command == 0x0403);
         });
         await test("spatial and HiRes require only their own known state for modern and legacy routes", async () =>
         {

@@ -14,7 +14,6 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
     // identity/hero -> slot whose visual is displayed; replaced only once the desired slot is ready.
     private readonly Dictionary<string, string> _shown = new(StringComparer.Ordinal);
     private readonly DispatcherTimer _retry = new();
-    private string _source = "";
     private string _epoch = "";
     private IArtworkService? _artwork;
     private bool _disposed;
@@ -53,15 +52,15 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
     }
 
     internal void Update(IReadOnlyList<UiDevice> devices, UiDevice? selected, string? productId,
-        int? color = null, string source = "HeyMelody", string epoch = "", IArtworkService? artwork = null)
+        int? color = null, string epoch = "", IArtworkService? artwork = null)
     {
         if (_disposed) return;
         bool changed = false;
-        if (!StringComparer.OrdinalIgnoreCase.Equals(_source, source) || !ReferenceEquals(_artwork, artwork))
+        if (!ReferenceEquals(_artwork, artwork))
         {
-            // Another source or backend owns different packages: its responses must never be displayed.
+            // Another backend owns different leases: its responses must never be displayed.
             changed = _slots.Count != 0;
-            ResetSlots(); _source = source; _artwork = artwork;
+            ResetSlots(); _artwork = artwork;
         }
         if (_epoch != epoch)
         {
@@ -142,10 +141,10 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
     {
         var loading = new CancellationTokenSource();
         slot.Loading = loading;
-        _ = ResolveAsync(slot, _epoch, _source, _artwork!, loading.Token);
+        _ = ResolveAsync(slot, _epoch, _artwork!, loading.Token);
     }
 
-    private async Task ResolveAsync(Slot slot, string epoch, string source, IArtworkService service, CancellationToken token)
+    private async Task ResolveAsync(Slot slot, string epoch, IArtworkService service, CancellationToken token)
     {
         UiArtwork? main = null, fallback = null;
         try
@@ -160,7 +159,7 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
             }
             var (ownedMain, ownedFallback) = (main, fallback);
             main = fallback = null;
-            await Dispatcher.UIThread.InvokeAsync(() => Complete(slot, epoch, source, service, ownedMain, ownedFallback));
+            await Dispatcher.UIThread.InvokeAsync(() => Complete(slot, epoch, service, ownedMain, ownedFallback));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception) { await Dispatcher.UIThread.InvokeAsync(() => Fail(slot, token)); }
@@ -171,19 +170,12 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private void Complete(Slot slot, string epoch, string source, IArtworkService service, UiArtwork? main, UiArtwork? fallback)
+    private void Complete(Slot slot, string epoch, IArtworkService service, UiArtwork? main, UiArtwork? fallback)
     {
-        bool current = !_disposed && ReferenceEquals(service, _artwork) && StringComparer.OrdinalIgnoreCase.Equals(source, _source)
+        bool current = !_disposed && ReferenceEquals(service, _artwork)
             && _slots.TryGetValue(slot.Key, out var live) && ReferenceEquals(live, slot) && slot.Loading is { IsCancellationRequested: false };
         if (!current) { Release(service, main); Release(service, fallback); return; }
         slot.Loading!.Dispose(); slot.Loading = null;
-        if (main is not null && !StringComparer.OrdinalIgnoreCase.Equals(main.Source, _source))
-        {
-            // The Host changed source while answering; ask again rather than show the other source.
-            Release(service, main); Release(service, fallback); ScheduleRetry(slot);
-            return;
-        }
-        if (fallback is not null && !StringComparer.OrdinalIgnoreCase.Equals(fallback.Source, _source)) { Release(service, fallback); fallback = null; }
         slot.Failures = 0; slot.RetryAt = null; slot.ResolvedEpoch = epoch;
         // Equal digests mean equal bytes; a republished or bundled copy needs no new renderer.
         string content = main is null ? "none" : main.Kind.ToLowerInvariant() + "|" + main.Sha256 + "|" + fallback?.Sha256;

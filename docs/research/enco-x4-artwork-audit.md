@@ -1,5 +1,7 @@
 # Enco X4 产品展示与操作引导资源复核
 
+> 当前客户端仅使用欢律配置与资源，见[当前单源规则](heymelody-only.md)。下文涉及已退出支持来源的覆盖、接口和操作要求仅用于历史研究复核，已由当前规则取代；原版本、路径、摘要和验证范围保留。
+
 本文为公开整理稿；[整理前完整原文](../../research/migrations/organization-2026-10-09/originals/docs/research/enco-x4-artwork-audit.md)保存在本地研究档案，不随普通Git clone提供。历史版本、来源及验证范围保留，完整研究对象与产物由 `research/` 保存。
 
 2026-10-09（香港时间；在线证据时间为 2026-10-08 22:03 UTC），从保存的两份官方 APK 复核资源调用链，并向官方接口查询精确产品 `06EC10` 的 `color=0/1`。**X4 水平旋转的产品展示资源是 Animated WebP，位于模块 14 的 `modelWebp` 字段；control 包的 Lottie 是按捏、滑动等操作引导。** 不能把同型号任意 Lottie 作为主页面产品展示，也不能将模块 14 一律视为 GLB/3D 模型。

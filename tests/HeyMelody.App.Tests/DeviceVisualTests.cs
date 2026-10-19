@@ -16,7 +16,7 @@ internal static class DeviceVisualTests
     public static int Run(HeadlessUnitTestSession session)
     {
         Run("artwork requires actual PID and does not infer models from Bluetooth names", IdentityAsync);
-        Run("source changes reject old artwork requests and release their leases", SourceAsync);
+        Run("backend replacement rejects old artwork requests and releases their leases", BackendAsync);
         Run("colour changes cancel stale requests and resolve the replacement artwork", ColorAsync);
         Run("X4 product PNG uses independent presentation controls and shared bitmap data", PngAsync);
         Run("active renderer leases outlive catalog replacement and release exactly once", LeaseAsync);
@@ -47,18 +47,21 @@ internal static class DeviceVisualTests
         Check(Equals(catalog.ProductFor(device), DeviceVisuals.GenericProduct), "Removed devices lose temporary product knowledge.");
         return Task.CompletedTask;
     }
-    private static async Task SourceAsync()
+    private static async Task BackendAsync()
     {
-        var service = new ArtworkService();
+        var service = new ArtworkService(); var replacement = new ArtworkService();
         using var catalog = new DeviceVisualCatalog();
         var device = new UiDevice("earbuds", "耳机", false);
-        catalog.Update([device], device, "06EC10", 1, "HeyMelody", artwork: service);
-        catalog.Update([device], device, "06EC10", 1, "WirelessEarphones", artwork: service);
-        foreach (var request in service.Requests.ToArray()) request.Completion.TrySetResult(Art(request.Role, "HeyMelody"));
+        catalog.Update([device], device, "06EC10", 1, artwork: service);
+        catalog.Update([device], device, "06EC10", 1, artwork: replacement);
+        foreach (var request in service.Requests) request.Completion.TrySetResult(Art(request.Role));
         await Task.Delay(10); Dispatcher.UIThread.RunJobs();
-        Check(Equals(catalog.ProductFor(device), DeviceVisuals.GenericProduct), "A response from another resource source cannot be displayed.");
-        Check(service.Requests.Count == 2 && service.Requests.All(request => request.Role == "hero")
-            && service.Releases.Count == 2, "Stale and wrong-source hero leases are released without requesting device icons.");
+        Check(Equals(catalog.ProductFor(device), DeviceVisuals.GenericProduct) && service.Releases.Count == 1,
+            "A stale backend response is released before it can be displayed.");
+        foreach (var request in replacement.Requests) request.Completion.TrySetResult(Art(request.Role));
+        await Task.Delay(10); Dispatcher.UIThread.RunJobs();
+        Check(catalog.ProductFor(device) is FileBitmapVisual && replacement.Requests.Count == 1,
+            "The current backend's hero replaces the placeholder.");
     }
     private static Task PngAsync()
     {
@@ -83,13 +86,13 @@ internal static class DeviceVisualTests
         var service = new ArtworkService();
         using var catalog = new DeviceVisualCatalog();
         var device = new UiDevice("earbuds", "耳机", false);
-        catalog.Update([device], device, "068C10", 1, "HeyMelody", artwork: service);
+        catalog.Update([device], device, "068C10", 1, artwork: service);
         var stale = service.Requests.ToArray();
-        catalog.Update([device], device, "068C10", 2, "HeyMelody", artwork: service);
+        catalog.Update([device], device, "068C10", 2, artwork: service);
         Check(service.Requests.Count == 2 && service.Requests.All(request => request.Role == "hero"),
             "Changing colour starts fresh hero requests without waiting for old requests or fetching device icons.");
-        foreach (var request in stale) request.Completion.TrySetResult(Art(request.Role, "HeyMelody"));
-        foreach (var request in service.Requests.Except(stale)) request.Completion.TrySetResult(Art(request.Role, "HeyMelody"));
+        foreach (var request in stale) request.Completion.TrySetResult(Art(request.Role));
+        foreach (var request in service.Requests.Except(stale)) request.Completion.TrySetResult(Art(request.Role));
         await Task.Delay(10); Dispatcher.UIThread.RunJobs();
         Check(catalog.ProductFor(device) is FileBitmapVisual && service.Releases.Count == 1,
             "Only the replacement colour is accepted; the stale hero package lease is released.");
@@ -143,7 +146,7 @@ internal static class DeviceVisualTests
     private static async Task OriginalLottieAsync()
     {
         var bundled = new BundledResourceStore();
-        var asset = bundled.FindNamedAsset(ResourceSource.HeyMelody, "melody_ui_gold_hearing_detecting_guide")
+        var asset = bundled.FindNamedAsset("melody_ui_gold_hearing_detecting_guide")
             ?? throw new InvalidOperationException("Original hearing Lottie is missing from the installed resource bundle.");
         var path = bundled.FullPath(asset);
         var file = new ArtworkFile(new Uri(path), Path.GetDirectoryName(path)!, asset.Sha256);
@@ -183,7 +186,7 @@ internal static class DeviceVisualTests
         }
         finally { window.Close(); }
     }
-    private static UiArtwork Art(string role, string source) => new(Guid.NewGuid().ToString("N"), Path.GetFullPath("artwork-" + role + ".png"), "image", Path.GetFullPath("."), "", 1, source, 0);
+    private static UiArtwork Art(string role) => new(Guid.NewGuid().ToString("N"), Path.GetFullPath("artwork-" + role + ".png"), "image", Path.GetFullPath("."), "", 1, 0);
     private sealed class ArtworkService : IArtworkService
     {
         public sealed record Request(string Role, TaskCompletionSource<UiArtwork?> Completion);

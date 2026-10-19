@@ -121,18 +121,18 @@ internal static class CalibrationTransportTests
                     && packets.Single(x => x.Command == (command | 0x8000)).Sequence == current.Sequence);
             }
         });
-        await test("description writes obey changed firmware conditions while preview stop stays available", async () =>
+        await test("description writes retain firmware warnings while preview stop stays available", async () =>
         {
             var source = JsonNode.Parse(X4Profile.Load().RawSource.GetRawText())!.AsObject(); source["minFirmVersion"] = 100;
             var profile = DeviceProfile.FromResource(JsonSerializer.SerializeToElement(source), "HeyMelody");
             var fake = new Fake(); await using var client = new DailyClient(fake, _ => profile); await client.RefreshAsync();
             fake.ReadReplies[0x0105] = [0,3,..Encoding.UTF8.GetBytes("1,2,90,2,2,90,3,2,100")];
-            await client.RefreshAsync(DailyRefreshScope.Information);
-            try { await client.RequestAsync(0x0411, [1,1,1,0,7], default); throw new Exception("Description write was submitted."); }
-            catch (InvalidOperationException) { }
-            Check(fake.Writes.Count == 0);
+            var changedFirmware = await client.RefreshAsync(DailyRefreshScope.Information);
+            Check(changedFirmware.Warnings.Any(warning => warning.Contains("固件兼容提示")));
+            await client.RequestAsync(0x0411, [1,1,1,0,7], default);
+            Check(fake.Writes.Single().Command == 0x0411);
             await client.RequestAsync(0x0415, [2], default);
-            Check(fake.Writes.Single().Payload.SequenceEqual(new byte[] {2}));
+            Check(fake.Writes.Count == 2 && fake.Writes[1].Payload.SequenceEqual(new byte[] {2}));
         });
         await test("new hearing-filter request invalidates previous ear-scan fragments before its new query", async () =>
         {

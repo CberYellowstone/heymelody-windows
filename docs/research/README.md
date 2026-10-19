@@ -1,5 +1,7 @@
 # 研究资料索引
 
+> 当前客户端仅使用欢律配置与资源，见[当前单源规则](heymelody-only.md)。下文涉及已退出支持来源的覆盖、接口和操作要求仅用于历史研究复核，已由当前规则取代；原版本、路径、摘要和验证范围保留。
+
 本目录是公开研究结果的入口。协作规则和按任务阅读顺序以根目录 [AGENTS.md](../../AGENTS.md) 为准；完整档案、原稿保全和公开稿要求见 [研究资料规范](organization.md)。完整研究对象、理解、结论及产物保存在仓库根 `research/`，维护中的复现工具见 [tools/research/](../../tools/research/README.md)，其原始版本及运行产物仍保留在完整研究档案。
 
 下面的 `research/` 链接是本机完整档案入口，通常不随普通 Git clone 提供；没有这些原件仍可阅读公开结论并正常构建。当前完整档案目录由本地 [research/README.md](../../research/README.md) 索引。先根据任务选一个专题，不自动展开全部原件；读取尺寸与输出预算遵循 [上下文读取风险报告](context-read-risk-2026-10-11.md) 和 `AGENTS.md`。
@@ -8,11 +10,11 @@
 
 ## 公开研究结果
 
-继续设备适配时先读 [设备适配交接](device-adaptation-handoff.md)，配置与美术问题分别进入 [云配置](cloud-device-configuration.md) 和 [云美术](cloud-device-artwork.md)。当前用户说明、开发与历史入口见 [docs/README.md](../README.md)。
+继续设备适配时先读[当前单源规则](heymelody-only.md)，再按需要查阅历史[设备适配交接](device-adaptation-handoff.md)、[云配置](cloud-device-configuration.md)和[云美术](cloud-device-artwork.md)。当前用户说明、开发与历史入口见 [docs/README.md](../README.md)。
 
 | 文档入口 | 内容 |
 | --- | --- |
-| [Enco Air4 Pro 控制连接核查](enco-air4-pro-control.md) | 两来源配置与原 APK SPP 路由、Windows SDP 缓存缺项修复、具体失败诊断和真机复测边界 |
+| [Enco Air4 Pro 控制连接核查](enco-air4-pro-control.md) | 两来源配置与原 APK SPP 路由、官方 v125 OTA 镜像、0x0114 长度与外帧兼容修复、具体失败诊断和离线验证边界 |
 | [蓝牙音频编码可行性审计](bluetooth-audio-codec.md) | 参考工具采集方式、普通权限边界与遗留实现撤回；研究结论，功能未纳入 0.9.2 |
 | [降噪区域的通透人声与模式名称核查](anc-transparency-controls.md) | X2／X3 强化人声开关、四型号独立聆听、分层模式名称与原 App 控件证据；本轮局部验证边界 |
 | [界面审计与渲染性能（0.9.0）](ui-performance-0.9.0.md) | 四个界面的重排、120 Hz 预算与逐项优化、简体中文字体与嵌入字体内存问题、Linux 验证范围与 Windows 验收方法 |

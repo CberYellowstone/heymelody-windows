@@ -40,19 +40,13 @@
     <TextBlock Classes="settings-group" Text="耳机资源" />
     <TextBlock x:Name="ResourceLockNotice" Classes="caption" TextWrapping="Wrap" Margin="2,0,0,6" IsVisible="False"
                Text="正在连接或切换耳机，完成后可修改资源与设备设置。" />
-    <fa:FASettingsExpanderItem Content="资源来源" Description="耳机配置与外观所依据的 App 资源">
-      <fa:FASettingsExpanderItem.IconSource><fa:FASymbolIconSource Symbol="Library" /></fa:FASettingsExpanderItem.IconSource>
-      <fa:FASettingsExpanderItem.Footer>
-        <ComboBox x:Name="SourceChoice" MinWidth="150" AutomationProperties.Name="资源来源" />
-      </fa:FASettingsExpanderItem.Footer>
-    </fa:FASettingsExpanderItem>
     <fa:FASettingsExpanderItem Content="使用在线资源" Description="关闭后，已缓存的较新版本仍可使用">
       <fa:FASettingsExpanderItem.IconSource><fa:FASymbolIconSource Symbol="Globe" /></fa:FASettingsExpanderItem.IconSource>
       <fa:FASettingsExpanderItem.Footer>
         <ToggleSwitch x:Name="OnlineSwitch" OnContent="开" OffContent="关" AutomationProperties.Name="使用在线资源" />
       </fa:FASettingsExpanderItem.Footer>
     </fa:FASettingsExpanderItem>
-    <fa:FASettingsExpanderItem Content="自定义云端密钥" Description="留空时使用该来源的预置密钥">
+    <fa:FASettingsExpanderItem Content="自定义云端密钥" Description="留空时使用欢律预置密钥">
       <fa:FASettingsExpanderItem.IconSource><fa:FASymbolIconSource Symbol="Permissions" /></fa:FASettingsExpanderItem.IconSource>
       <fa:FASettingsExpanderItem.Footer>
         <TextBox x:Name="KeyBox" Width="190" PasswordChar="●" PlaceholderText="自定义云端密钥" MaxLength="1024"

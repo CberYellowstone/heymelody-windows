@@ -16,6 +16,28 @@ public static class EqualizerVersionConditionEvaluator
                 : FirmwareMarker(x.Minimum, versions?.FirmwareVersion)).ToArray());
     }
 
+    public static VersionConditionStatus EvaluateForControl(EqualizerMode mode, DeviceVersionContext? versions = null)
+    {
+        ArgumentNullException.ThrowIfNull(mode);
+        return VersionConditionEvaluator.Combine(mode.Conditions.Requirements
+            .Where(x => x.Domain != VersionDomain.AndroidAppMarker || mode.SourceArray == "equalizerModeByVersion")
+            .Select(x => x.Domain switch
+            {
+                VersionDomain.EarbudFirmware => VersionConditionStatus.Pass,
+                VersionDomain.AndroidAppMarker => AppMarker(x.Minimum, versions?.AndroidAppVersionMarker),
+                _ => VersionConditionStatus.Conditional
+            }).ToArray());
+    }
+
+    public static IReadOnlyList<FirmwareConditionIssue> GetFirmwareIssues(EqualizerMode mode, DeviceVersionContext? versions = null)
+    {
+        ArgumentNullException.ThrowIfNull(mode);
+        return Array.AsReadOnly(mode.Conditions.Requirements.Where(x => x.Domain == VersionDomain.EarbudFirmware)
+            .Select(x => new FirmwareConditionIssue(x.SourceField, x.Minimum.Clone(), versions?.FirmwareVersion,
+                FirmwareMarker(x.Minimum, versions?.FirmwareVersion)))
+            .Where(x => x.Status != VersionConditionStatus.Pass).ToArray());
+    }
+
     public static bool TryGetFirmwareMarker(string? firmware, out int marker)
     {
         marker = 0;

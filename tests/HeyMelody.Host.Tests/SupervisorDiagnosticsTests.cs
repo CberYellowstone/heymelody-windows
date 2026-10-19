@@ -47,12 +47,12 @@ internal static class SupervisorDiagnosticsTests
             Check(fixture.Snapshot.Failure is null && fixture.Snapshot.ControlReady && fixture.Workers.All(worker => worker.Applies == 0),
                 "A previous connection generation changed the recovered snapshot.");
         });
-        await test("blank or wrong-identity and wrong-source failures remain generic after retirement", async () =>
+        await test("blank or wrong-identity failures remain generic after retirement", async () =>
         {
-            foreach (int mode in new[] { 0, 1, 2 })
+            foreach (int mode in new[] { 0, 1 })
             {
                 await using var fixture = await Fixture.Create(scratch, _ => new DiagnosticPeer(true, mode == 0 ? "  " : "查询 0x0103 失败（等待回执超时）")
-                    { WrongIdentity = mode == 1, WrongSource = mode == 2 });
+                    { WrongIdentity = mode == 1 });
                 await Until(() => fixture.Snapshot.MonitoringState == MonitoringState.Unavailable);
                 Check(fixture.Snapshot.Failure is null && NoWrites(fixture.Snapshot),
                     "Blank or unbound failures escaped into the current device snapshot.");
@@ -72,24 +72,28 @@ internal static class SupervisorDiagnosticsTests
             Check(fixture.Snapshot.Failure is null && fixture.Workers.All(worker => worker.Applies == 0),
                 "OS reconnect restored a retired failure or submitted a setting.");
         });
-        await test("resource source switching clears the previous source diagnostic and returning does not revive it", async () =>
+        await test("resource settings preserve current diagnostics and retired generations cannot revive them", async () =>
         {
+            const string reason = "未发现所选配置的 SPP 控制服务";
             await using var fixture = await Fixture.Create(scratch, index => new DiagnosticPeer(index < 2,
-                index == 0 ? "未发现所选配置的 SPP 控制服务" : null), resources: true);
+                index == 0 ? reason : null), resources: true);
             await Until(() => fixture.Snapshot.MonitoringState == MonitoringState.Unavailable);
             var oldWorker = fixture.Current; var oldGeneration = fixture.Snapshot.DeviceGeneration;
-            await fixture.SwitchSource(ResourceSource.WirelessEarphones);
+            await fixture.Backend.SaveResourceSettingsAsync(fixture.Backend.ResourceSettings() with
+                { HeyMelodyKey = "updated-key", UseOnlineResources = false }, default);
+            Check(fixture.Workers.Count == 1 && fixture.Snapshot.Failure == reason
+                && fixture.Snapshot.DeviceGeneration == oldGeneration && NoWrites(fixture.Snapshot),
+                "A settings update restarted a worker or erased its current diagnostic");
+            fixture.Backend.Resume(fixture.Id);
             await Until(() => fixture.Workers.Count == 2 && fixture.Snapshot.MonitoringState == MonitoringState.Unavailable);
-            Check(fixture.Snapshot.ResourceSource == "WirelessEarphones" && fixture.Snapshot.Failure is null
-                && fixture.Snapshot.DeviceGeneration > oldGeneration && NoWrites(fixture.Snapshot),
-                "A source switch reused the previous source's diagnostic.");
+            Check(fixture.Snapshot.Failure is null && fixture.Snapshot.DeviceGeneration > oldGeneration && NoWrites(fixture.Snapshot),
+                "A new generation reused the previous connection diagnostic");
             oldWorker.EmitFailure("查询 0x0103 失败（等待回执超时）");
-            Check(fixture.Snapshot.Failure is null, "A wrong-source retired callback supplied a diagnostic.");
+            Check(fixture.Snapshot.Failure is null, "A retired callback supplied a diagnostic");
             fixture.Backend.Resume(fixture.Id); await Until(() => fixture.Snapshot.ControlReady);
-            await fixture.SwitchSource(ResourceSource.HeyMelody); await Until(() => fixture.Snapshot.ControlReady && fixture.Workers.Count == 4);
-            Check(fixture.Snapshot.ResourceSource == "HeyMelody" && fixture.Snapshot.Failure is null
+            Check(fixture.Snapshot.Failure is null && fixture.Workers.Count == 3
                 && fixture.Workers.All(worker => worker.Applies == 0) && fixture.Handler.Requests == 0,
-                "Returning to a source revived its historical failure or performed device/network writes.");
+                "Reconnect revived a historical failure or performed device/network writes");
         });
     }
 
@@ -134,8 +138,6 @@ internal static class SupervisorDiagnosticsTests
             var fixture = new Fixture(path, workers, coordinator, http, handler);
             await fixture.Backend.InitializeAsync(default); return fixture;
         }
-        internal Task SwitchSource(ResourceSource source) => Backend.SaveResourceSettingsAsync(Backend.ResourceSettings() with
-            { Source = source.ToString(), UseOnlineResources = false }, default);
         public async ValueTask DisposeAsync() { await Backend.DisposeAsync(); _http.Dispose(); }
     }
 
@@ -143,27 +145,26 @@ internal static class SupervisorDiagnosticsTests
     {
         public event Action<UiSnapshot>? SnapshotChanged;
         public event Action? Unavailable { add { } remove { } }
-        internal bool EmitReadyBeforeFailure, EmitFailureBeforeResponse, WrongIdentity, WrongSource;
+        internal bool EmitReadyBeforeFailure, EmitFailureBeforeResponse, WrongIdentity;
         internal int Disposals, Applies;
         internal long Generation = 1;
-        private string _source = "HeyMelody";
         private UiSnapshot _snapshot = new();
-        public void ConfigureResources(string catalogGzip, string source, long revision, long appMarker, string stableKey,
-            long generation, string? observedProductId, byte? observedColor) { _source = source; Generation = generation; }
+        public void ConfigureResources(string catalogGzip, long revision, long appMarker, string stableKey,
+            long generation, string? observedProductId, byte? observedColor) { Generation = generation; }
         public Task<UiSnapshot> InitializeAsync(ulong address, string identity, string name, CancellationToken token)
         {
-            _snapshot = new() { Identity = identity, DeviceName = name, ResourceSource = _source, Revision = 1,
+            _snapshot = new() { Identity = identity, DeviceName = name, Revision = 1,
                 Connected = true, ControlReady = true, SupportedModel = true, ProductId = "067C10", CanSetGameMode = true,
                 CanSetAncMode = true, CanSetEqualizer = true, GameMode = false };
             if (EmitReadyBeforeFailure) SnapshotChanged?.Invoke(_snapshot);
             if (fails) _snapshot = new() { Identity = WrongIdentity ? "another-device" : identity, DeviceName = name,
-                ResourceSource = WrongSource ? "WirelessEarphones" : _source, Revision = 2, Connected = false,
+                Revision = 2, Connected = false,
                 Failure = failure, CanSetGameMode = true, CanSetAncMode = true, CanSetEqualizer = true };
             if (EmitFailureBeforeResponse || !fails) SnapshotChanged?.Invoke(_snapshot);
             return Task.FromResult(_snapshot);
         }
         internal void EmitFailure(string failure) => SnapshotChanged?.Invoke(new() { Identity = _snapshot.Identity,
-            ResourceSource = _source, Revision = 999, Failure = failure, Connected = false });
+            Revision = 999, Failure = failure, Connected = false });
         public Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken token) => Task.FromResult(_snapshot);
         public Task<UiSnapshot> SetObservedColorAsync(string productId, byte color, CancellationToken token) => Task.FromResult(_snapshot);
         public Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token)

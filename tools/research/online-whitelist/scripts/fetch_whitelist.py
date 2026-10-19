@@ -42,11 +42,6 @@ SPECS = {
         "builtin_member": "res/30.json", "metadata_version": 17006004,
         "builtin_effective_version": 117006004,
     },
-    "com.oplus.melody": {
-        "auth_dex": "classes2.dex", "auth_class": "LC7/a;", "auth_method": "c",
-        "builtin_member": "res/AQ.json", "metadata_version": 17006002,
-        "builtin_effective_version": 17006002,
-    },
 }
 
 
@@ -392,9 +387,9 @@ def contract() -> dict:
                           "compat": "Non-null compatVersionCode/compatWhiteList replace formal fields",
                           "provisional": "Only add IDs missing from selected official content"},
             "corrections_to_previous_research": [
-                "Request versionCode is application metadata: H17006004, O17006002",
+                "Request versionCode is HeyMelody application metadata: 17006004",
                 "H loader opcode 0xb0 is add-int/2addr: builtin effective version 117006004",
-                "O builtin effective version is17006002; package manifest versions remain unchanged"],
+                "Package manifest version remains separate from the request and content versions"],
             "research_limits": {"metadata_bytes": MAX_METADATA_BYTES, "config_bytes": MAX_CONFIG_BYTES,
                                 "redirects": "blocked", "tls": "normal Python certificate verification",
                                 "vendor_tls_pinning_reproduced": False,
@@ -415,7 +410,7 @@ def main() -> int:
             parser.error("Use an HTTP proxy without credentials")
     run = checked(ROOT / "runs" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ"))
     run.mkdir(parents=True, exist_ok=False)
-    save_json(ROOT / "evidence/static-contract.json", contract())
+    save_json(run / "static-contract.json", contract())
     report = {"schema_version": 1, "started_at": datetime.now(timezone.utc).isoformat(),
               "run": run.relative_to(ROOT).as_posix(), "online": args.online,
               "proxy_used": bool(args.proxy), "python_version": sys.version.split()[0],

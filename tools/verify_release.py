@@ -4,6 +4,7 @@ import datetime
 import hashlib
 import json
 import pathlib
+from pathlib import Path
 import struct
 
 
@@ -101,16 +102,39 @@ def verify_resource_bundle(directory):
     index = checked_file(bundle, "artwork.json")
     rows = json.loads(index.read_text("utf-8"))
     provenance = json.loads(checked_file(bundle, "provenance.json").read_text("utf-8"))
-    assert len(rows) >= 800 and len(provenance) == 2, "Incomplete offline resources"
-    for row in rows:
-        assert row["source"] in (0, 1)
+    reference = Path(__file__).resolve().parents[1] / "src/HeyMelody.Resources/Bundles"
+    manifests = {"artwork.json", "provenance.json", "supplemental.json"}
+    assert {p.name for p in bundle.iterdir() if p.is_file()} == manifests, "Unexpected offline manifest"
+    for name in manifests:
+        assert sha(checked_file(bundle, name)) == sha(checked_file(reference, name)), "Offline manifest differs from source"
+    assert len(provenance) == 1 and provenance[0]["package"] == "com.heytap.headset"
+    assert "source" not in provenance[0] and rows, "Invalid HeyMelody provenance"
+    reachable = set()
+    supplemental = json.loads((bundle / "supplemental.json").read_text("utf-8"))
+    assert supplemental and all(row["package"] == "com.heytap.headset" for row in supplemental)
+    for row in rows + supplemental:
+        assert "source" not in row, "Artwork source selection is no longer supported"
         path = checked_file(bundle, row["path"])
         assert path.stat().st_size == row["length"] and sha(path) == row["sha256"]
+        reachable.add(row["path"])
         if row.get("originalPath"):
             assert sha(checked_file(bundle, row["originalPath"])) == row["originalSha256"]
+            reachable.add(row["originalPath"])
+        if row.get("kind") == "lottie":
+            for asset in json.loads(path.read_text("utf-8")).get("assets", []):
+                relative = str(asset.get("u", "")) + str(asset.get("p", ""))
+                if not relative or relative.startswith("data:"):
+                    continue
+                assert ":" not in relative and ".." not in Path(relative).parts, "Unsafe animation dependency"
+                dependency = checked_file(path.parent, relative)
+                name = dependency.relative_to(bundle).as_posix()
+                assert sha(dependency) == sha(checked_file(reference, name)), "Animation dependency differs from source"
+                reachable.add(name)
+    actual = {p.relative_to(bundle).as_posix() for p in (bundle / "data").rglob("*") if p.is_file()}
+    assert actual == reachable, "Offline artwork contains missing or unreferenced files"
     checked_file(directory, "HeyMelody.Resources.dll")
     checked_file(directory, "licenses/upstream/Extracted-Earphone-Resources-NOTICE.txt")
-    return dict(artworkEntries=len(rows), sources=len(provenance), indexSha256=sha(index), allIndexedBytesVerified=True)
+    return dict(artworkEntries=len(rows), catalogCount=1, dataFiles=len(reachable), indexSha256=sha(index), allIndexedBytesVerified=True)
 
 
 def verify(root, package, evidence=None, architectures=("x64", "x86", "arm64")):

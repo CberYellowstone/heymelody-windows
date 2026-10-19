@@ -18,6 +18,7 @@ public sealed partial class DailyClient
             {
                 next = _latest is null ? new() : Clone(_latest);
                 ResolvePresetOptions(next);
+                RefreshFirmwareWarnings(next);
                 next.Revision = ++_revision;
                 _latest = Clone(next);
             }

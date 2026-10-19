@@ -56,6 +56,22 @@ public sealed class PacketDecoder
     private int _lengthBytes;
     private int _nextFsn;
     private bool _fragmenting;
+    private readonly Func<byte, bool>? _allowCodecReplyCompatibility;
+    private readonly Action<Packet>? _packetDecoded;
+
+    public PacketDecoder() : this(null, null) { }
+
+    /// <param name="allowCodecReplyCompatibility">Permission for the precisely known single-frame codec layout.
+    /// The caller must verify the current connection, selected profile and pending GET 0x0114 sequence.</param>
+    public PacketDecoder(Func<byte, bool>? allowCodecReplyCompatibility) : this(allowCodecReplyCompatibility, null) { }
+
+    /// <summary>The observer records response correlation before a later frame in the same Feed can fail.
+    /// Observation alone does not make the whole Feed valid or authorize publishing a response.</summary>
+    public PacketDecoder(Func<byte, bool>? allowCodecReplyCompatibility, Action<Packet>? packetDecoded)
+    {
+        _allowCodecReplyCompatibility = allowCodecReplyCompatibility;
+        _packetDecoded = packetDecoded;
+    }
     public IReadOnlyList<Packet> Feed(ReadOnlySpan<byte> bytes)
     {
         var result = new List<Packet>();
@@ -65,25 +81,25 @@ public sealed class PacketDecoder
             {
                 if (_frame.Count == 0)
                 {
-                    if (value != 0xAA) throw Malformed();
+                    if (value != 0xAA) throw Malformed("frame-start");
                     _frame.Add(value); continue;
                 }
                 _frame.Add(value);
                 if (_expectedFrameSize == 0)
                 {
-                    if (++_lengthBytes > 2) throw Malformed();
+                    if (++_lengthBytes > 2) throw Malformed("frame-length");
                     _length |= (value & 127) << (7 * (_lengthBytes - 1));
                     if ((value & 128) != 0) continue;
-                    if (_lengthBytes > 1 && value == 0) throw Malformed();
+                    if (_lengthBytes > 1 && value == 0) throw Malformed("frame-length");
                     _expectedFrameSize = 1 + _lengthBytes + _length;
-                    if (_length < 3 || _expectedFrameSize > MaximumFrameBytes) throw Malformed();
+                    if (_length < 3 || _expectedFrameSize > MaximumFrameBytes) throw Malformed("frame-length");
                 }
                 if (_frame.Count == _expectedFrameSize)
                 {
                     ProcessFrame(result);
                     _frame.Clear(); _expectedFrameSize = _length = _lengthBytes = 0;
                 }
-                if (_frame.Count > MaximumFrameBytes) throw Malformed();
+                if (_frame.Count > MaximumFrameBytes) throw Malformed("frame-length");
             }
             return result;
         }
@@ -96,7 +112,7 @@ public sealed class PacketDecoder
     {
         bool incomplete = HasIncompleteMessage;
         Reset();
-        if (incomplete) throw Malformed();
+        if (incomplete) throw Malformed("incomplete-message");
     }
 
     public void Reset()
@@ -106,42 +122,72 @@ public sealed class PacketDecoder
     private void ProcessFrame(List<Packet> output)
     {
         int offset = 1 + _lengthBytes;
-        byte control = _frame[offset++];
-        if (control > 3 || _frame[offset++] != 0) throw Malformed();
+        // Both official OPOv1 wrappers use only the low two control bits and
+        // skip the second L1 header byte. Neither byte authorizes a command.
+        byte control = (byte)(_frame[offset++] & 3);
+        offset++;
         if (control == 0)
         {
-            if (_fragmenting) throw Malformed();
-            output.Add(ParseInner(_frame.GetRange(offset, _frame.Count - offset).ToArray())); return;
+            if (_fragmenting) throw Malformed("fragment-order");
+            AddDecoded(output, ParseInner(_frame.GetRange(offset, _frame.Count - offset).ToArray(), allowCompatibility: true)); return;
         }
-        if (offset >= _frame.Count) throw Malformed();
+        if (offset >= _frame.Count) throw Malformed("fragment-layout");
         byte fsn = _frame[offset++];
-        if (offset == _frame.Count) throw Malformed();
+        if (offset == _frame.Count) throw Malformed("fragment-layout");
         if (control == 1)
         {
-            if (_fragmenting || fsn != 0) throw Malformed();
+            if (_fragmenting) throw Malformed("fragment-order");
+            if (fsn != 0) throw Malformed("fragment-sequence");
             _fragmenting = true; _nextFsn = 1;
         }
         else
         {
-            if (!_fragmenting || _nextFsn > 255 || fsn != _nextFsn) throw Malformed();
+            if (!_fragmenting) throw Malformed("fragment-order");
+            if (_nextFsn > 255 || fsn != _nextFsn) throw Malformed("fragment-sequence");
             _nextFsn++;
         }
-        if (_message.Count + _frame.Count - offset > MaximumMessageBytes) throw Malformed();
+        if (_message.Count + _frame.Count - offset > MaximumMessageBytes) throw Malformed("inner-length");
         for (; offset < _frame.Count; offset++) _message.Add(_frame[offset]);
         if (_message.Count >= 5)
         {
             int declared = _message[3] | (_message[4] << 8);
-            if (_message.Count > declared + 5 || (control != 3 && _message.Count == declared + 5)) throw Malformed();
+            if (_message.Count > declared + 5 || (control != 3 && _message.Count == declared + 5)) throw Malformed("inner-length");
         }
         if (control == 3)
         {
-            output.Add(ParseInner(_message.ToArray())); _message.Clear(); _fragmenting = false; _nextFsn = 0;
+            AddDecoded(output, ParseInner(_message.ToArray())); _message.Clear(); _fragmenting = false; _nextFsn = 0;
         }
     }
-    private static Packet ParseInner(ReadOnlySpan<byte> bytes)
+    private void AddDecoded(List<Packet> output, Packet packet)
     {
-        if (bytes.Length < 5 || bytes.Length != 5 + BinaryPrimitives.ReadUInt16LittleEndian(bytes[3..])) throw Malformed();
+        _packetDecoded?.Invoke(packet);
+        output.Add(packet);
+    }
+    private Packet ParseInner(ReadOnlySpan<byte> bytes, bool allowCompatibility = false)
+    {
+        if (bytes.Length < 5) throw Malformed("inner-length");
+        int declared = BinaryPrimitives.ReadUInt16LittleEndian(bytes[3..]);
+        if (bytes.Length != 5 + declared)
+        {
+            // The layout reconstructed from Air4 Pro v125 sends status + a known LE ushort codec,
+            // while declaring status + one codec byte. Preserve all three bytes.
+            // Unknown native codecs leave firmware stack bytes uninitialized,
+            // so only the three fully initialized replies may use this exception.
+            bool knownReply = allowCompatibility && bytes.Length == 8 && declared == 2
+                && BinaryPrimitives.ReadUInt16LittleEndian(bytes) == 0x8114
+                && bytes[5] == 0 && bytes[6] is 1 or 2 or 8 && bytes[7] == 0;
+            if (!knownReply || _allowCodecReplyCompatibility?.Invoke(bytes[2]) != true)
+                throw Malformed("inner-length", BinaryPrimitives.ReadUInt16LittleEndian(bytes), bytes[2]);
+        }
         return new(BinaryPrimitives.ReadUInt16LittleEndian(bytes), bytes[2], bytes[5..].ToArray());
     }
-    private static FormatException Malformed() => new("Malformed protocol frame or fragment sequence.");
+    private static FormatException Malformed(string reason, ushort? command = null, byte? sequence = null)
+    {
+        var failure = new FormatException("Malformed protocol frame or fragment sequence.");
+        failure.Data["HeyMelody.Protocol.FrameFailure"] = reason;
+        // Internal numeric correlation only; never attach received bytes or peer information.
+        if (command.HasValue) failure.Data["HeyMelody.Protocol.ResponseCommand"] = command.Value;
+        if (sequence.HasValue) failure.Data["HeyMelody.Protocol.ResponseSequence"] = sequence.Value;
+        return failure;
+    }
 }

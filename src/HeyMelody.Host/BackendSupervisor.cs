@@ -21,7 +21,7 @@ internal sealed record BroadcastObservation(string ProductId, CaseLidState Lid, 
 /// <summary>The single owner of device identities, policy and published state. Native work lives in disposable child processes.</summary>
 internal sealed partial class BackendSupervisor : IAsyncDisposable
 {
-    private sealed record PeerDiagnostic(string Source, long Generation, string Message);
+    private sealed record PeerDiagnostic(long Generation, string Message);
     private sealed class Peer(BluetoothCandidate candidate)
     {
         internal BluetoothCandidate Candidate = candidate;
@@ -296,12 +296,11 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
         if (peer.Generation != generation || peer.Paused || _stopping) return;
         // Keep only the safe diagnostic, never the retired transport's state or permissions.
         // Initialization responses can arrive before their snapshot events.
-        var source = _activeCatalog?.Source.ToString() ?? "HeyMelody";
         var failed = failureSnapshot ?? peer.Spp;
-        var message = failed is { } observed && observed.Identity == peer.Identity && observed.ResourceSource == source
+        var message = failed is { } observed && observed.Identity == peer.Identity
             ? observed.Failure : null;
         StopPeerLocked(peer);
-        if (!string.IsNullOrWhiteSpace(message)) peer.Diagnostic = new(source, peer.Generation, message);
+        if (!string.IsNullOrWhiteSpace(message)) peer.Diagnostic = new(peer.Generation, message);
         peer.State = MonitoringState.Unavailable; PublishLocked(peer);
         var failures = ++peer.Failures;
         if (failures > 3 || !EligibleLocked(peer)) return;
@@ -512,21 +511,17 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
 
     private void PublishLocked(Peer peer, bool suppressEquivalentObservation = false)
     {
-        string source = _activeCatalog?.Source.ToString() ?? "HeyMelody";
-        bool sameSourceSpp = peer.Spp?.ResourceSource == source;
-        bool verifiedSpp = peer.Spp is { ControlReady: true, SupportedModel: true, Failure: null, PresentationCached: false }
-            && sameSourceSpp;
+        bool verifiedSpp = peer.Spp is { ControlReady: true, SupportedModel: true, Failure: null, PresentationCached: false };
         var snapshot = verifiedSpp ? Copy(peer.Spp!)
-            : _deviceState.Find(DeviceWhitelistStore.KeyFor(peer.Candidate.Address), source)?.ToSnapshot()
-                ?? (sameSourceSpp ? Copy(peer.Spp!) : new UiSnapshot());
-        if (!verifiedSpp && sameSourceSpp && peer.Spp is { } unverified)
+            : _deviceState.Find(DeviceWhitelistStore.KeyFor(peer.Candidate.Address))?.ToSnapshot()
+                ?? (peer.Spp is { } spp ? Copy(spp) : new UiSnapshot());
+        if (!verifiedSpp && peer.Spp is { } unverified)
         { snapshot.Failure = unverified.Failure; snapshot.SupportedModel = unverified.SupportedModel; }
         if (peer.State == MonitoringState.Unavailable && peer.Diagnostic is { } diagnostic
-            && diagnostic.Source == source && diagnostic.Generation == peer.Generation)
+            && diagnostic.Generation == peer.Generation)
             snapshot.Failure = diagnostic.Message;
         snapshot.Identity = peer.Identity; snapshot.DeviceName = peer.Candidate.Name;
         snapshot.BackendInstanceId = InstanceId; snapshot.DeviceGeneration = peer.Generation;
-        snapshot.ResourceSource = source;
         snapshot.ResourceRevision = _activeResourceRevision;
         snapshot.Connected = peer.Candidate.Connected && _radioAvailable && !_suspended;
         snapshot.ConnectionState = !_radioAvailable || _suspended ? ConnectionState.Unknown
@@ -590,7 +585,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
     }
     private static DateTimeOffset? Latest(params DateTimeOffset?[] values) => values.Where(v => v.HasValue).DefaultIfEmpty().Max();
     private static bool SameObservation(UiSnapshot left, UiSnapshot right) => left.ProductId == right.ProductId
-        && left.Color == right.Color && left.ResourceSource == right.ResourceSource && left.ResourceRevision == right.ResourceRevision
+        && left.Color == right.Color && left.ResourceRevision == right.ResourceRevision
         && left.CaseLid == right.CaseLid && left.LeftPlacement == right.LeftPlacement && left.RightPlacement == right.RightPlacement
         && left.LeftBattery == right.LeftBattery && left.RightBattery == right.RightBattery && left.CaseBattery == right.CaseBattery
         && left.LeftCharging == right.LeftCharging && left.RightCharging == right.RightCharging && left.CaseCharging == right.CaseCharging
@@ -606,11 +601,8 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
     {
         if (_disposed || !peer.Allowed || peer.Spp is not { ControlReady: true, SupportedModel: true, Failure: null,
                 PresentationCached: false, ProductId.Length: 6 } snapshot) return;
-        string source = _activeCatalog?.Source.ToString() ?? "HeyMelody";
-        // Resource replacement can overlap an old worker's final readback. Its own source
-        // must match; relabeling that read as the new source would mix capability definitions.
-        if (snapshot.ResourceSource != source) return;
-        _deviceState.Remember(DeviceWhitelistStore.KeyFor(peer.Candidate.Address), source,
+        // Worker generation is checked before accepting readbacks, including configuration replacement.
+        _deviceState.Remember(DeviceWhitelistStore.KeyFor(peer.Candidate.Address),
             DevicePresentation.From(snapshot, _time.GetUtcNow()));
     }
 

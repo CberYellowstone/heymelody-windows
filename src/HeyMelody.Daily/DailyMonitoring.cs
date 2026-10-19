@@ -131,13 +131,17 @@ public sealed partial class DailyClient
     }
     private void OnSessionEnded(DailySession source, Exception failure)
     {
+        // A temporary offline push would retire an already active Host worker and cancel
+        // its read-only recovery. The final refresh publishes either the recovery or failure.
+        if (ReferenceEquals(_session, source) && !_calibrationActive && Volatile.Read(ref _freshReadDepth) > 0
+            && source.CodecReadRecoveryPending) return;
         if (ReferenceEquals(_session, source)) Disconnected?.Invoke();
         DailySnapshot? snapshot = null;
         lock (_stateGate)
         {
             if (!ReferenceEquals(_session, source) || _disposed || _latest is null) return;
             _latest = Clone(_latest); _latest.Connected = false;
-            _latest.Error = "耳机控制连接已中断。";
+            _latest.Error = $"耳机控制连接已中断（{DailySession.DescribeFailure(failure)}）。";
             _latest.Revision = ++_revision; _latest.ObservedAtUtc = DateTimeOffset.UtcNow;
             snapshot = Clone(_latest);
         }

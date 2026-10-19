@@ -38,7 +38,7 @@ public sealed partial class DailyClient
         return [(byte)ids.Distinct().Count(), .. ids.Distinct()];
     }
     private bool GeneralAllowed(DailySnapshot s) => s.ProfileVerified && s.Connected &&
-        _profile?.Conditions.Evaluate(new(s.FirmwareVersion, _appVersionMarker)) == VersionConditionStatus.Pass;
+        _profile?.Conditions.EvaluateForControl(new(s.FirmwareVersion, _appVersionMarker)) == VersionConditionStatus.Pass;
     private bool GeneralCommands(ushort read, ushort write) => _commands?.Supports(read) == true && _commands.Supports(write);
     private static int? BinaryValue(DailySnapshot s, byte id) => s.RawFeatures.TryGetValue(id, out byte raw) && raw <= 1 ? raw : null;
     private static int? JsonInt(JsonElement source, string name) => source.ValueKind == JsonValueKind.Object && source.TryGetProperty(name, out var value)
@@ -87,7 +87,7 @@ public sealed partial class DailyClient
         if (_profile.GameSoundModes.Count > 0)
         {
             var versions = new DeviceVersionContext(s.FirmwareVersion, _appVersionMarker);
-            var options = _profile.GameSoundModes.Where(x => x.Type is >= 0 and <= 255 && x.Conditions.Evaluate(versions) == VersionConditionStatus.Pass
+            var options = _profile.GameSoundModes.Where(x => x.Type is >= 0 and <= 255 && x.Conditions.EvaluateForControl(versions) == VersionConditionStatus.Pass
                 && s.GameSound?.SupportedTypes.Contains((byte)x.Type) == true).Select(x => new DailyFeatureOption(x.Type,
                     x.Type switch { 0 => "关闭", 1 => "和平精英职业联赛游戏音效", 3 => "射击类游戏音效", _ => $"游戏音效 {x.Type}" })).DistinctBy(x => x.Value).ToArray();
             // GameSoundMutexes describes prompts on other settings in the official UI,
@@ -137,7 +137,7 @@ public sealed partial class DailyClient
         {
             int? action = JsonInt(control, "action");
             if (!action.HasValue || ProtocolAction(action.Value) != assignment.Action || (JsonInt(control, "button") ?? 0) != assignment.Button
-                || VersionConditions.FromSource(control).Evaluate(versions) != VersionConditionStatus.Pass) continue;
+                || VersionConditions.FromSource(control).EvaluateForControl(versions) != VersionConditionStatus.Pass) continue;
             int? support = JsonInt(control, "support"); if (support.HasValue) mask |= unchecked((uint)support.Value);
         }
         bool onePlusLegacy = _profile.Name is "OnePlus Buds" or "OnePlus Buds Z"; // B1/b.J @ 19E6EC.

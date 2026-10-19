@@ -8,21 +8,22 @@ using HeyMelodyWindows.Resources;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
-    ("Both complete bundled catalogs load and exclude speakers", Bundles),
+    ("The complete HeyMelody catalog and artwork load", Bundles),
     ("Compatibility honors non-null zero and empty lists", Compatibility),
     ("Child expansion matches the official inheritance whitelist", Children),
-    ("Whole-source selection rejects cross-source comparison", Selection),
+    ("Whole snapshot selection respects content version", Selection),
     ("Duplicate JSON keys and malformed identifiers are rejected", InvalidCatalogs),
     ("HMAC signs the exact UTF-8 request including raw custom key", Signature),
     ("Cache envelope authenticates data and rejects tampering", Cache),
     ("Plaintext keys and offline preference survive restart", Preferences),
+    ("Legacy selections preserve HeyMelody settings and cached resources", LegacyPreferences),
     ("Online update picks strictly higher content and deletes older online cache", Versions),
     ("Failed download keeps the effective catalog and cache", FailedUpdate),
     ("Online off avoids every request and reuses downloaded content", Offline),
     ("Unchanged metadata repairs a damaged cache without publishing equal content", CacheRepair),
     ("Art publication preserves leases and cleans retired online packages", ArtworkLeases),
     ("Hash failures and unsafe archives retain current art", UnsafeArtwork),
-    ("Known color and source are required for model artwork", ArtworkIdentity),
+    ("Known product identity and color are required for model artwork", ArtworkIdentity),
     ("Model metadata without PID is bound to request and validates GLB", ModelPackages),
     ("Model WebP is obtained without a 3D flag, stays animated offline and rejects damaged replacements", AnimatedModelPackages),
     ("Cached art is served before any network check and refreshed in the background", CachedFirst),
@@ -35,7 +36,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Startup removes interrupted downloads and superseded packages", StartupSweep),
 };
 if (args is ["--verify-x4-artwork", var controlPackage, var modelPackage])
-    tests = [.. tests, ("Real X4 packages resolve animated product art and static fallback in both sources", () => RealX4Artwork(controlPackage, modelPackage))];
+    tests = [.. tests, ("Real X4 packages resolve animated product art and static fallback from HeyMelody", () => RealX4Artwork(controlPackage, modelPackage))];
 int failed = 0;
 foreach (var test in tests)
 {
@@ -53,13 +54,11 @@ static byte[] Config(int version, string list = "[{\"id\":\"06EC10\",\"name\":\"
     => Encoding.UTF8.GetBytes("{\"versionCode\":" + version + ",\"whiteList\":" + list + "}");
 static Task Bundles() => Done(() =>
 {
-    var store = new BundledResourceStore(); var hey = store.GetCatalog(ResourceSource.HeyMelody); var oem = store.GetCatalog(ResourceSource.WirelessEarphones);
-    Eq(85, hey.Profiles.Count); Eq(141, oem.Profiles.Count); Eq(117006004, hey.ContentVersion); Eq(17006002, oem.ContentVersion);
-    Check(oem.Find("49074B") is null, "Speaker was included"); Check(oem.Find("065814") is not null, "Explicit child missing");
-    Check(oem.Profiles.Values.Where(p => p.Brand == "realme").All(p => p.ExternalOnly), "External realme routes exposed as controls");
-    Check(oem.Find("061010")?.SupportSpp == false, "No-SPP model guessed supported");
+    var store = new BundledResourceStore(); var hey = store.GetCatalog();
+    Eq(85, hey.Profiles.Count); Eq(117006004, hey.ContentVersion);
+    Check(hey.Find("49074B") is null, "Speaker was included");
     Check(hey.Find("06EC10")!.CanUseControlTransport, "X4 transport missing");
-    Check(store.Artwork.Count > 800, "Incomplete art inventory");
+    Eq(365, store.Artwork.Count);
     foreach (var asset in store.Artwork)
     {
         string file = store.FullPath(asset); Check(File.Exists(file), "Missing bundled art"); Eq(asset.Length, new FileInfo(file).Length);
@@ -72,49 +71,49 @@ static Task Bundles() => Done(() =>
                     Check(File.Exists(Path.Combine(Path.GetDirectoryName(file)!, image.TryGetProperty("u", out var u) ? u.GetString() ?? "" : "", p.GetString()!)), "Bundled Lottie image missing");
         }
     }
-    Eq(24, store.GetDefaultKey(ResourceSource.HeyMelody).Length); Eq(24, store.GetDefaultKey(ResourceSource.WirelessEarphones).Length);
+    Eq(24, store.GetDefaultKey().Length);
 });
 static Task Compatibility() => Done(() =>
 {
     var json = Encoding.UTF8.GetBytes("{\"versionCode\":50,\"compatVersionCode\":0,\"whiteList\":[{\"id\":\"06EC10\",\"brand\":\"oppo\"}],\"compatWhiteList\":[],\"caseNumSite\":5,\"compatCaseNumSite\":0,\"appMarket\":\"a\",\"compatAppMarket\":\"\"}");
-    var parsed = ResourceCatalog.Parse(json, ResourceSource.HeyMelody, true); Eq(0, parsed.ContentVersion); Eq(0, parsed.Profiles.Count);
+    var parsed = ResourceCatalog.Parse(json, true); Eq(0, parsed.ContentVersion); Eq(0, parsed.Profiles.Count);
     Eq(0, parsed.Raw.GetProperty("caseNumSite").GetInt32()); Eq("", parsed.Raw.GetProperty("appMarket").GetString());
-    parsed = ResourceCatalog.Parse(Encoding.UTF8.GetBytes("{\"versionCode\":50,\"compatVersionCode\":null,\"whiteList\":[],\"compatWhiteList\":null}"), ResourceSource.HeyMelody, true); Eq(50, parsed.ContentVersion);
+    parsed = ResourceCatalog.Parse(Encoding.UTF8.GetBytes("{\"versionCode\":50,\"compatVersionCode\":null,\"whiteList\":[],\"compatWhiteList\":null}"), true); Eq(50, parsed.ContentVersion);
 });
 static Task Children() => Done(() =>
 {
     string list = "[{\"id\":\"060414\",\"name\":\"parent\",\"brand\":\"oneplus\",\"type\":\"T1\",\"supportSpp\":true,\"uuid\":\"0000079A-D102-11E1-9B23-00025B00A5A5\",\"function\":{\"equalizer\":4},\"children\":[{\"name\":\"alias\"},{\"id\":\"060814\",\"name\":\"child\",\"uuid\":\"\",\"function\":{\"equalizer\":99},\"supportSpp\":false}]}]";
-    var parsed = ResourceCatalog.Parse(Config(1, list), ResourceSource.HeyMelody, false); Eq(2, parsed.Profiles.Count);
+    var parsed = ResourceCatalog.Parse(Config(1, list), false); Eq(2, parsed.Profiles.Count);
     var child = parsed.Find("060814")!; Eq("child", child.Name); Check(child.SupportSpp, "Arbitrary child field replaced parent");
     Eq(4, child.Functions.GetProperty("equalizer").GetInt32()); Eq(1, child.Functions.GetProperty("hideFromUIList").GetInt32());
     Check(!child.Raw.TryGetProperty("children", out _), "Child kept nested children");
 });
 static Task Selection() => Done(() =>
 {
-    var bundled = ResourceCatalog.Parse(Config(5), ResourceSource.HeyMelody, false);
+    var bundled = ResourceCatalog.Parse(Config(5), false);
     foreach (int version in new[] { 3, 5, 6 })
     {
-        var online = ResourceCatalog.Parse(Config(version), ResourceSource.HeyMelody, true);
+        var online = ResourceCatalog.Parse(Config(version), true);
         Check(ReferenceEquals(version > 5 ? online : bundled, ResourceCatalog.Select(bundled, online)), "Whole snapshot precedence wrong");
     }
-    Throws<ArgumentException>(() => ResourceCatalog.Select(bundled, ResourceCatalog.Parse(Config(100), ResourceSource.WirelessEarphones, true)));
 });
 static Task InvalidCatalogs() => Done(() =>
 {
-    Throws<InvalidDataException>(() => ResourceCatalog.Parse(Encoding.UTF8.GetBytes("{\"versionCode\":1,\"versionCode\":2,\"whiteList\":[]}"), ResourceSource.HeyMelody, true));
-    Throws<InvalidDataException>(() => ResourceCatalog.Parse(Encoding.UTF8.GetBytes("{\"versionCode\":true,\"whiteList\":[]}"), ResourceSource.HeyMelody, true));
-    Throws<InvalidDataException>(() => ResourceCatalog.Parse(Config(1, "[{\"id\":\"06ec10\",\"brand\":\"oppo\"}]"), ResourceSource.HeyMelody, true));
-    var profile = ResourceCatalog.Parse(Config(1, "[{\"id\":\"06EC10\",\"brand\":\"oppo\",\"uuid\":\"0000079A-D102-11E1-9B23-00025B00A5A5\"}]"), ResourceSource.HeyMelody, true).Find("06EC10")!;
+    Throws<InvalidDataException>(() => ResourceCatalog.Parse(Encoding.UTF8.GetBytes("{\"versionCode\":1,\"versionCode\":2,\"whiteList\":[]}"), true));
+    Throws<InvalidDataException>(() => ResourceCatalog.Parse(Encoding.UTF8.GetBytes("{\"versionCode\":true,\"whiteList\":[]}"), true));
+    Throws<InvalidDataException>(() => ResourceCatalog.Parse(Config(1, "[{\"id\":\"06ec10\",\"brand\":\"oppo\"}]"), true));
+    var profile = ResourceCatalog.Parse(Config(1, "[{\"id\":\"06EC10\",\"brand\":\"oppo\",\"uuid\":\"0000079A-D102-11E1-9B23-00025B00A5A5\"}]"), true).Find("06EC10")!;
     Check(!profile.SupportSpp && !profile.CanUseControlTransport, "Missing SPP flag guessed true");
 });
 static Task Signature() => Done(() =>
 {
-    byte[] body = VendorResourceClient.CreateRequestBody(ResourceSource.HeyMelody);
+    byte[] body = VendorResourceClient.CreateRequestBody();
     Eq("{\"platform\":\"android\",\"channel\":\"2\",\"versionCode\":\"17006004\"}", Encoding.UTF8.GetString(body));
     string rawKey = "明文-custom-key";
     using var hmac = new HMACSHA1(Encoding.UTF8.GetBytes(rawKey)); Eq(Convert.ToHexStringLower(hmac.ComputeHash(body)), VendorResourceClient.Sign(rawKey, body));
-    var model = JsonDocument.Parse(VendorResourceClient.CreateRequestBody(ResourceSource.WirelessEarphones, "067410", 2, true)).RootElement;
-    Eq("14", model.GetProperty("moduleId").GetString()); Eq("17006002", model.GetProperty("versionCode").GetString());
+    var model = JsonDocument.Parse(VendorResourceClient.CreateRequestBody("067410", 2, true)).RootElement;
+    Eq("14", model.GetProperty("moduleId").GetString()); Eq("17006004", model.GetProperty("versionCode").GetString());
+    Eq("2", model.GetProperty("channel").GetString());
     Throws<InvalidDataException>(() => VendorResourceClient.ValidateDownloadUri("https://evil.example/resource"));
 });
 static Task Cache() => Done(() =>
@@ -128,14 +127,48 @@ static Task Cache() => Done(() =>
 static async Task Preferences()
 {
     using var fixture = new Fixture(); using var first = fixture.Coordinator(); await first.InitializeAsync();
-    Eq(ResourceSource.HeyMelody, first.Preferences.Source); Check(first.Preferences.UseOnlineResources, "Online should default on");
+    Check(first.Preferences.UseOnlineResources, "Online should default on");
     string encryption = first.Preferences.CacheEncryptionKey;
-    await first.UpdatePreferencesAsync(first.Preferences with { Source = ResourceSource.WirelessEarphones, UseOnlineResources = false, HeyMelodyKey = "user-hey", WirelessEarphonesKey = "user-wireless" });
+    await first.UpdatePreferencesAsync(first.Preferences with { UseOnlineResources = false, HeyMelodyKey = "user-hey" });
     using var saved = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(fixture.Path, "preferences.json")));
     Eq("user-hey", saved.RootElement.GetProperty("HeyMelodyKey").GetString());
-    Eq("user-wireless", saved.RootElement.GetProperty("WirelessEarphonesKey").GetString());
+    Check(!saved.RootElement.TryGetProperty("Source", out _) && !saved.RootElement.TryGetProperty("WirelessEarphonesKey", out _), "Removed preferences were written");
     Eq(encryption, saved.RootElement.GetProperty("CacheEncryptionKey").GetString());
-    using var second = fixture.Coordinator(); await second.InitializeAsync(); Eq(encryption, second.Preferences.CacheEncryptionKey); Eq(ResourceSource.WirelessEarphones, second.Preferences.Source); Check(!second.Preferences.UseOnlineResources, "Offline preference lost"); Eq(0, fixture.Handler.Requests);
+    using var second = fixture.Coordinator(); await second.InitializeAsync(); Eq(encryption, second.Preferences.CacheEncryptionKey);
+    Check(!second.Preferences.UseOnlineResources, "Offline preference lost"); Eq(0, fixture.Handler.Requests);
+}
+static async Task LegacyPreferences()
+{
+    foreach (int legacySelection in new[] { 0, 1 })
+    {
+        using var fixture = new Fixture();
+        byte[] key = RandomNumberGenerator.GetBytes(32), cached = Config(117006009), ignored = Config(999999999);
+        string encryption = Convert.ToBase64String(key);
+        Directory.CreateDirectory(fixture.Path);
+        await File.WriteAllTextAsync(Path.Combine(fixture.Path, "preferences.json"), JsonSerializer.Serialize(new
+        {
+            Source = legacySelection, UseOnlineResources = false, HeyMelodyKey = "user-hey",
+            WirelessEarphonesKey = "retired-key", CacheEncryptionKey = encryption
+        }));
+        async Task<string> Seed(string directory, byte[] bytes)
+        {
+            string digest = Convert.ToHexStringLower(SHA256.HashData(bytes));
+            string path = Path.Combine(fixture.Path, "online", directory, "config", digest, "config.cache");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            await File.WriteAllBytesAsync(path, ResourceCacheCodec.Encrypt(bytes, key));
+            return path;
+        }
+        await Seed("heymelody", cached);
+        string ignoredCache = await Seed("wireless", ignored);
+        using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
+        Eq("user-hey", coordinator.Preferences.HeyMelodyKey); Eq(encryption, coordinator.Preferences.CacheEncryptionKey);
+        Check(!coordinator.Preferences.UseOnlineResources, "Legacy offline preference lost");
+        Eq(117006009, coordinator.Catalog.ContentVersion); Check(coordinator.Catalog.IsOnline, "Encrypted HeyMelody cache was discarded");
+        Check(File.Exists(ignoredCache), "Unrelated legacy cache was mutated");
+        Check(!await coordinator.RefreshAsync(true), "Offline migration attempted an update"); Eq(0, fixture.Handler.Requests);
+        using var saved = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(fixture.Path, "preferences.json")));
+        Check(!saved.RootElement.TryGetProperty("Source", out _) && !saved.RootElement.TryGetProperty("WirelessEarphonesKey", out _), "Legacy fields survived migration");
+    }
 }
 static async Task Versions()
 {
@@ -148,8 +181,7 @@ static async Task Versions()
     fixture.Handler.Configuration = Config(117006011); fixture.Handler.FileVersion = "81"; Check(!await coordinator.RefreshAsync(true), "Equal content replaced current");
     fixture.Handler.Configuration = Config(117006009); fixture.Handler.FileVersion = "82"; Check(!await coordinator.RefreshAsync(true), "Older content adopted"); Eq(117006011, coordinator.Catalog.ContentVersion);
     Eq("test-key", fixture.Handler.LastVerifiedKey); Eq(1, Directory.GetDirectories(Path.Combine(fixture.Path, "online/heymelody/config")).Length);
-    await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { Source = ResourceSource.WirelessEarphones, UseOnlineResources = false }); Eq(17006002, coordinator.Catalog.ContentVersion);
-    await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { Source = ResourceSource.HeyMelody }); Eq(117006011, coordinator.Catalog.ContentVersion);
+    await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { UseOnlineResources = false }); Eq(117006011, coordinator.Catalog.ContentVersion);
 }
 static async Task FailedUpdate()
 {
@@ -173,7 +205,7 @@ static async Task ArtworkLeases()
     var lease = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail"); Check(lease is not null, "No art lease"); string old = lease!.PackageRoot;
     fixture.Handler.Artwork = ArtZip(2); Check(await coordinator.RefreshArtworkAsync("06EC10", 0, force: true), "New art failed"); Check(Directory.Exists(old), "Active renderer lost old resource");
     using var newer = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail"); Check(newer is not null && newer.PackageRoot != old, "New pointer not published"); lease.Dispose(); Check(!Directory.Exists(old), "Released old online package not cleaned");
-    using var installed = coordinator.Bundled.Acquire(coordinator.Bundled.FindAsset(ResourceSource.HeyMelody, "06EC10", null, "detail")); Check(installed is not null && File.Exists(installed.FullPath), "Bundled art removed");
+    using var installed = coordinator.Bundled.Acquire(coordinator.Bundled.FindAsset("06EC10", null, "detail")); Check(installed is not null && File.Exists(installed.FullPath), "Bundled art removed");
 }
 static async Task CacheRepair()
 {
@@ -198,15 +230,15 @@ static async Task UnsafeArtwork()
 }
 static Task ArtworkIdentity() => Done(() =>
 {
-    var store = new BundledResourceStore(); Check(store.FindAsset(ResourceSource.HeyMelody, "068C10", 1, "model") is not null, "Verified Free4 model missing");
-    Check(store.FindAsset(ResourceSource.HeyMelody, "068C10", null, "model") is null, "Model color guessed"); Check(store.FindAsset(ResourceSource.HeyMelody, "06C010", 1, "model") is null, "Free4 model applied to Dynaudio"); Check(store.FindAsset(ResourceSource.HeyMelody, "06EC10", 1, "model") is null, "Free4 model applied to X4");
-    Check(store.FindAsset(ResourceSource.HeyMelody, "060410", 0, "detail") is null, "OEM-only downloaded art crossed source"); Check(store.FindAsset(ResourceSource.WirelessEarphones, "060410", 0, "detail") is not null, "Same-source art missing");
-    foreach (string shape in new[] { "T1", "N", "O1" }) Check(store.FindGenericAsset(ResourceSource.HeyMelody, shape, "hero") is not null, "Generic shape fallback missing");
+    var store = new BundledResourceStore(); Check(store.FindAsset("068C10", 1, "model") is not null, "Verified Free4 model missing");
+    Check(store.FindAsset("068C10", null, "model") is null, "Model color guessed"); Check(store.FindAsset("06C010", 1, "model") is null, "Free4 model applied to Dynaudio"); Check(store.FindAsset("06EC10", 1, "model") is null, "Free4 model applied to X4");
+    Check(store.FindAsset("060410", 0, "detail") is null, "Removed artwork remained in the bundle");
+    foreach (string shape in new[] { "T1", "N", "O1" }) Check(store.FindGenericAsset(shape, "hero") is not null, "Generic shape fallback missing");
 });
 static async Task ModelPackages()
 {
     using var fixture = new Fixture(); using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
-    var verified = coordinator.Bundled.FindAsset(ResourceSource.HeyMelody, "068C10", 1, "model")!;
+    var verified = coordinator.Bundled.FindAsset("068C10", 1, "model")!;
     fixture.Handler.Artwork = ModelZip(File.ReadAllBytes(coordinator.Bundled.FullPath(verified)));
     Check(await coordinator.RefreshArtworkAsync("068C10", 1, model: true, force: true), "Valid self-contained model rejected");
     using var lease = await coordinator.ResolveArtworkAsync("068C10", 1, "model"); Check(lease is not null && lease.Kind == "model", "Request-only model association was lost"); Eq(verified.Sha256, lease!.Sha256);
@@ -231,7 +263,6 @@ static async Task CachedFirst()
 static async Task AnimatedModelPackages()
 {
     byte[] animation = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "two-frame.webp"));
-    foreach (ResourceSource source in Enum.GetValues<ResourceSource>())
     {
         using var fixture = new Fixture();
         fixture.Handler.Artwork = LottieZip(); fixture.Handler.ModelArtwork = ModelWebpZip(animation);
@@ -239,10 +270,9 @@ static async Task AnimatedModelPackages()
         using (var coordinator = fixture.Coordinator())
         {
             await coordinator.InitializeAsync();
-            await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { Source = source });
             Check(!coordinator.Catalog.Find("06EC10")!.Functions.TryGetProperty("support3DModel", out _), "Fixture no longer exercises an appearance without the 3D flag");
             using var hero = await coordinator.ResolveArtworkAsync("06EC10", 1, "hero");
-            Check(hero is { Kind: "animated-webp" } && hero.Source == source, "Module 14 WebP was skipped or frozen as a bitmap");
+            Check(hero is { Kind: "animated-webp" }, "Module 14 WebP was skipped or frozen as a bitmap");
             root = hero!.PackageRoot;
             using var detail = await coordinator.ResolveArtworkAsync("06EC10", 1, "detail");
             Check(detail is { Kind: "bitmap" } && detail.PackageRoot != root, "Control package did not provide the static fallback");
@@ -313,7 +343,6 @@ static async Task RealX4Artwork(string controlPath, string modelPath)
     byte[] control = File.ReadAllBytes(controlPath), model = File.ReadAllBytes(modelPath);
     Eq("c3f1b327c3ad31d57e47250dad3ccf9e1fc25f3cba0dd170df8388e03f3f5411", Convert.ToHexStringLower(SHA256.HashData(control)));
     Eq("1bb49ddc6d0ffe4f1ab9e6282bc72962d15629bd5ef0dc7480ea4903d51ba6e0", Convert.ToHexStringLower(SHA256.HashData(model)));
-    foreach (ResourceSource source in Enum.GetValues<ResourceSource>())
     {
         using var fixture = new Fixture();
         fixture.Handler.Artwork = control; fixture.Handler.ModelArtwork = model;
@@ -321,14 +350,13 @@ static async Task RealX4Artwork(string controlPath, string modelPath)
         using (var coordinator = fixture.Coordinator())
         {
             await coordinator.InitializeAsync();
-            await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { Source = source });
             Check(await coordinator.RefreshArtworkAsync("06EC10", 1, force: true), "Real control package rejected");
             Check(await coordinator.RefreshArtworkAsync("06EC10", 1, model: true, force: true), "Real modelWebp package rejected");
             using var hero = await coordinator.ResolveArtworkAsync("06EC10", 1, "hero");
-            Check(hero is { Kind: "animated-webp" } && hero.Source == source, "Real animated product art was not selected");
+            Check(hero is { Kind: "animated-webp" }, "Real animated product art was not selected");
             modelRoot = hero!.PackageRoot;
             using var detail = await coordinator.ResolveArtworkAsync("06EC10", 1, "detail");
-            Check(detail is { Kind: "bitmap" } && detail.Source == source && detail.FullPath.EndsWith("img_detail.png", StringComparison.Ordinal), "Real static fallback missing");
+            Check(detail is { Kind: "bitmap" } && detail.FullPath.EndsWith("img_detail.png", StringComparison.Ordinal), "Real static fallback missing");
             await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { UseOnlineResources = false });
         }
         int requests = fixture.Handler.Requests;

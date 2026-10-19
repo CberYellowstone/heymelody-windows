@@ -47,7 +47,7 @@ internal static class ResourceContextTests
                 Check(current.FirmwareVersion == "1.2.3" && current.FirmwareDisplayVersion is null);
             }
         });
-        await test("calibration transport rechecks firmware conditions while keeping explicit stop available", async () =>
+        await test("calibration transport reports changed firmware requirements while keeping explicit start and stop available", async () =>
         {
             var source = JsonNode.Parse(X4Profile.Load().RawSource.GetRawText())!.AsObject();
             source["minFirmVersion"] = 100;
@@ -55,13 +55,13 @@ internal static class ResourceContextTests
             var fake = new Fake(); await using var client = new DailyClient(fake, _ => profile);
             await client.RefreshAsync();
             fake.ReadReplies[0x0105] = [0,3,..Encoding.UTF8.GetBytes("1,2,90,2,2,90,3,2,100")];
-            await client.RefreshAsync(DailyRefreshScope.Information);
-            Check(!client.CalibrationContext("device-key", 1).HearingV1 && !client.CalibrationContext("device-key", 1).HearingV2);
-            try { await client.RequestAsync(0x0403, [0x0B,1], default); throw new Exception("Conditional calibration was submitted."); }
-            catch (InvalidOperationException) { }
-            Check(fake.Writes.Count == 0);
+            var changedFirmware = await client.RefreshAsync(DailyRefreshScope.Information);
+            Check(client.CalibrationContext("device-key", 1).HearingV2
+                && changedFirmware.Warnings.Any(warning => warning.Contains("固件兼容提示")));
+            await client.RequestAsync(0x0403, [0x0B,1], default);
+            Check(fake.Writes.Count == 1 && fake.Writes[0].Payload.SequenceEqual(new byte[] {0x0B,1}));
             await client.RequestAsync(0x0403, [0x0B,0], default);
-            Check(fake.Writes.Count == 1 && fake.Writes[0].Payload.SequenceEqual(new byte[] {0x0B,0}));
+            Check(fake.Writes.Count == 2 && fake.Writes[1].Payload.SequenceEqual(new byte[] {0x0B,0}));
         });
         await test("effective EQ follows source marker firmware and verified BLE color without device writes", async () =>
         {
@@ -90,7 +90,9 @@ internal static class ResourceContextTests
             Check((await client.ApplyPresetAsync(7)).Success && fake.Writes.Count == 1);
             var other = new Fake();
             await using var oem = new DailyClient(other, _ => profile, 17006002);
-            Check((await oem.RefreshAsync()).Presets.Select(x => x.ProtocolId).SequenceEqual(new byte[] {9,0}));
+            var oemState = await oem.RefreshAsync();
+            Check(oemState.Presets.Select(x => x.ProtocolId).SequenceEqual(new byte[] {9,7,0})
+                && oemState.Warnings.Any(warning => warning.Contains("固件兼容提示")));
         });
         await test("the session color selects color-conditioned presets without a broadcast", async () =>
         {

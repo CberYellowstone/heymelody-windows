@@ -1,5 +1,7 @@
 # macOS / Linux 控制与音频可行性
 
+> 当前客户端仅使用欢律配置与资源，见[当前单源规则](heymelody-only.md)。下文涉及已退出支持来源的覆盖、接口和操作要求仅用于历史研究复核，已由当前规则取代；原版本、路径、摘要和验证范围保留。
+
 本文为公开整理稿；[整理前完整原文](../../research/migrations/organization-2026-10-09/originals/docs/research/cross-platform.md)保存在本地研究档案，不随普通Git clone提供。历史版本、来源及验证范围保留，完整研究对象与产物由 `research/` 保存。
 
 **状态：后续暂缓。** 当前实现范围为 Windows 上现有 Enco X4 功能、Avalonia 界面及共享托盘后台。以下保留已完成的调研记录，不继续推进新平台、其他型号或高码率音频实现，也不构成本轮支持承诺。

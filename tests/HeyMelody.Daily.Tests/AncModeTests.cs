@@ -101,13 +101,7 @@ internal static class AncModeTests
         {
             foreach (var profile in new[]
             {
-                Profile(source => Mode(source, 11)["minAppVersion"] = 17006005),
-                Profile(source => Mode(source, 11)["minFirmVersion"] = 118),
-                Profile(source => source["minFirmVersion"] = 118),
-                Profile(source =>
-                {
-                    foreach (var child in Mode(source, 11)["childrenMode"]!.AsArray()) child!["minFirmVersion"] = 118;
-                })
+                Profile(source => Mode(source, 11)["minAppVersion"] = 17006005)
             })
             {
                 var fake = new Fake(); await using var client = new DailyClient(fake, _ => profile);
@@ -118,7 +112,9 @@ internal static class AncModeTests
             await using var changingClient = new DailyClient(changing, _ => gated);
             Check((await changingClient.RefreshAsync()).AncOptions.Any(x => x.Primary == 11));
             changing.ReadReplies[0x0105] = Firmware("116");
-            Check(!(await changingClient.ApplyAncModeAsync(11)).SubmissionAttempted && changing.Writes.Count == 0);
+            var changedFirmware = await changingClient.ApplyAncModeAsync(11);
+            Check(changedFirmware.Success && changing.Writes.Count == 1
+                && changedFirmware.Before!.Warnings.Any(warning => warning.Contains("固件兼容提示")));
             var unavailable = new Fake { CapabilityOverride = new byte[9] };
             await using var unavailableClient = new DailyClient(unavailable);
             Check(!(await unavailableClient.ApplyAncModeAsync(11)).SubmissionAttempted && unavailable.Writes.Count == 0);

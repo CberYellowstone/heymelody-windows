@@ -6,9 +6,9 @@
     <ProjectReference Include="../HeyMelody.Client/HeyMelody.Client.csproj" />
     <ProjectReference Include="../HeyMelody.Artwork/HeyMelody.Artwork.csproj" />
     <ProjectReference Include="../HeyMelody.Resources/HeyMelody.Resources.csproj" />
-    <!-- Shared window backdrop and OPPO vector glyphs are compiled from their owners' sources, not a new assembly. -->
+    <!-- Shared window backdrop and interface icons are compiled from their owners' sources. -->
     <Compile Include="../HeyMelody.DeviceManager/MicaAltBackdrop.cs" Link="Windowing/MicaAltBackdrop.cs" />
-    <Compile Include="../HeyMelody.App/OppoGlyphs.cs" Link="Shared/OppoGlyphs.cs" />
+    <Compile Include="../HeyMelody.App/AppIcons.cs" Link="Shared/AppIcons.cs" />
     <Compile Include="../HeyMelody.App/RenderingSetup.cs" Link="Shared/RenderingSetup.cs" />
     <Compile Include="../HeyMelody.App/Typography.cs" Link="Shared/Typography.cs" />
     <Compile Include="../HeyMelody.App/UiMetrics.cs" Link="Shared/UiMetrics.cs" />

@@ -9,6 +9,7 @@ public enum VersionDomain { AndroidAppMarker, EarbudFirmware }
 
 /// <summary>Supply versions from their actual domain; the Windows app version is never used.</summary>
 public sealed record DeviceVersionContext(string? FirmwareVersion = null, long? AndroidAppVersionMarker = null);
+public sealed record FirmwareConditionIssue(string SourceField, JsonElement Minimum, string? CurrentVersion, VersionConditionStatus Status);
 public sealed record SourceProvenance(string ArchivePath, string ArchiveMember, string Sha256);
 
 /// <summary>Detached source JSON preserves all unprojected fields, including future conditions.</summary>
@@ -39,6 +40,8 @@ public sealed class VersionConditions : SourceMetadata
     public JsonElement? MinimumFirmware => Requirements.FirstOrDefault(x => x.Domain == VersionDomain.EarbudFirmware)?.Minimum.Clone();
     public static VersionConditions FromSource(JsonElement source) => ProfileJson.Conditions(source);
     public VersionConditionStatus Evaluate(DeviceVersionContext? versions = null) => VersionConditionEvaluator.Evaluate(this, versions);
+    public VersionConditionStatus EvaluateForControl(DeviceVersionContext? versions = null) => VersionConditionEvaluator.EvaluateForControl(this, versions);
+    public IReadOnlyList<FirmwareConditionIssue> GetFirmwareIssues(DeviceVersionContext? versions = null) => VersionConditionEvaluator.GetFirmwareIssues(this, versions);
 }
 
 public sealed class NoiseReductionMode : SourceMetadata
@@ -70,6 +73,8 @@ public sealed class EqualizerMode : SourceMetadata
     public int Order { get; }
     public byte? ColorId { get; }
     public VersionConditionStatus EvaluateConditions(DeviceVersionContext? versions = null) => EqualizerVersionConditionEvaluator.Evaluate(this, versions);
+    public VersionConditionStatus EvaluateConditionsForControl(DeviceVersionContext? versions = null) => EqualizerVersionConditionEvaluator.EvaluateForControl(this, versions);
+    public IReadOnlyList<FirmwareConditionIssue> GetFirmwareIssues(DeviceVersionContext? versions = null) => EqualizerVersionConditionEvaluator.GetFirmwareIssues(this, versions);
 }
 
 public sealed class GameSoundMode : SourceMetadata

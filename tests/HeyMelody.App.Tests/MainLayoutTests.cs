@@ -1,8 +1,10 @@
 using System.Security.Cryptography;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -34,7 +36,7 @@ internal static class MainLayoutTests
                 foreach (var size in new[] { new Size(1280, 900), new Size(900, 640) })
                 {
                     Application.Current.RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light;
-                    await using var vm = new MainViewModel(new PreviewService(), new NoConfirm(), preview: true);
+                    await using var vm = new MainViewModel(new ChargingPreviewService(), new NoConfirm(), preview: true);
                     await vm.InitializeAsync();
                     if (demo) await vm.AddDemoDeviceAsync();
                     var view = new MainView { DataContext = vm };
@@ -60,6 +62,21 @@ internal static class MainLayoutTests
                             "All optional main-interface groups start collapsed, including demo groups and the operation log.");
                         CheckHeader(view, vm, window);
                         CheckIcons(view);
+                        if (!demo)
+                        {
+                            var charging = view.FindControl<Border>("BatteryPanel")!.GetVisualDescendants()
+                                .OfType<FAIconSourceElement>().Single(icon => icon.GetValue(AutomationProperties.NameProperty) == "左耳正在充电");
+                            Check(charging.IsVisible && view.FindControl<FAIconSourceElement>("LeftBatteryDeviceIcon")!.IsVisible,
+                                $"The device shape and charging bolt remain visible together (charging={charging.IsVisible}, value={vm.LeftCharging}).");
+                            Console.WriteLine($"Battery charging {view.ActualThemeVariant}: source={charging.IconSource?.GetType().Name}, "
+                                + $"glyph={(charging.IconSource is FAFontIconSource font ? $"U+{char.ConvertToUtf32(font.Glyph!, 0):X4}" : "none")}, foreground={charging.Foreground}");
+                            Check(charging.IconSource is FAFontIconSource { Glyph: "\uE945" },
+                                "The charging marker retains the existing lightning glyph.");
+                            var expected = view.FindResource(view.ActualThemeVariant, "SystemFillColorSuccessBrush");
+                            Check(charging.Foreground is ISolidColorBrush actual && expected is ISolidColorBrush success
+                                && actual.Color == success.Color,
+                                $"The charging bolt retains its success colour (actual={charging.Foreground}, expected={expected}).");
+                        }
                         var fit = view.FindControl<FASettingsExpander>("FitTestPanel")!;
                         var hearing = view.FindControl<FASettingsExpander>("HearingPanel")!;
                         var information = view.FindControl<FASettingsExpander>("DeviceInfoPanel")!;
@@ -92,11 +109,15 @@ internal static class MainLayoutTests
                         Check(view.IsCompact == (size.Width < 1080), "The simplified hero respects the responsive breakpoint.");
 
                         using var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("Missing main-layout pixels.");
+                        var batteryPanel = view.FindControl<Border>("BatteryPanel")!;
+                        var batteryOrigin = batteryPanel.TranslatePoint(default, window)!.Value;
                         var name = $"main-collapsed-{(demo ? "demo" : "real")}-{(dark ? "dark" : "light")}-{(int)size.Width}x{(int)size.Height}.png";
                         var path = Path.Combine(output, name);
                         using (var stream = new FileStream(path, FileMode.CreateNew)) frame.Save(stream, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
                         receipts.Add(new { scenario = "main-collapsed", demo, theme = dark ? "dark" : "light",
                             width = size.Width, height = size.Height, file = name,
+                            battery = new { x = batteryOrigin.X, y = batteryOrigin.Y,
+                                width = batteryPanel.Bounds.Width, height = batteryPanel.Bounds.Height },
                             sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant() });
 
                         // Inspect the controls below the initial viewport without opening
@@ -281,9 +302,48 @@ internal static class MainLayoutTests
             && view.FindControl<FASettingsExpander>("EqualizerPanel")!.IconSource is FAFontIconSource { Glyph: "\uE9E9" }
             && view.FindControl<FASettingsExpander>("FitTestPanel")!.IconSource is not null
             && sections.Length == ((MainViewModel)view.DataContext!).FeatureSections.Count
-            && view.FindControl<Border>("BatteryPanel")!.GetVisualDescendants().OfType<FAIconSourceElement>()
-                .Count(icon => icon.IconSource is FAPathIconSource) == 3,
+            && view.FindControl<Border>("BatteryPanel")!.GetVisualDescendants().OfType<TextBlock>()
+                .Count(label => label.Text is "左耳" or "右耳" or "充电盒") == 3,
             "Every settings card, dynamic section and battery cell has an icon, and every card has a description.");
+        CheckBatteryDeviceIcons(view);
+    }
+
+    private static void CheckBatteryDeviceIcons(MainView view)
+    {
+        Geometry GeometryFor(string name)
+        {
+            var icon = view.FindControl<FAIconSourceElement>(name)!;
+            Check(icon.Width == 14 && icon.Height == 14 && icon.Bounds.Width == 14 && icon.Bounds.Height == 14
+                && icon.Opacity == 1 && icon.IconSource is FAPathIconSource { Stretch: Stretch.None },
+                "Battery device icons keep their native opacity and fourteen-pixel slots.");
+            var geometry = ((FAPathIconSource)icon.IconSource!).Data!;
+            Check(geometry.Bounds.Width > 0 && geometry.Bounds.Height > 0
+                && geometry.Bounds.Left >= 0 && geometry.Bounds.Top >= 0
+                && geometry.Bounds.Right <= 14 && geometry.Bounds.Bottom <= 14,
+                "The complete battery icon fits inside its historical fourteen-pixel viewport.");
+            return geometry;
+        }
+        var left = GeometryFor("LeftBatteryDeviceIcon");
+        var right = GeometryFor("RightBatteryDeviceIcon");
+        var box = GeometryFor("CaseBatteryDeviceIcon");
+        foreach (var circle in new[] { left, right })
+        {
+            Check(circle.Bounds == new Rect(0, 0, 14, 14) && circle.Bounds.Center == new Point(7, 7)
+                && circle.FillContains(new Point(7, .5)) && circle.FillContains(new Point(.5, 7))
+                && circle.FillContains(new Point(13.5, 7)) && circle.FillContains(new Point(7, 13.5))
+                && !circle.FillContains(new Point(1, 1)),
+                "Left and right badges retain matching fourteen-pixel circles centered at seven pixels.");
+        }
+        Check(!left.FillContains(new Point(5, 5)) && !left.FillContains(new Point(8, 10.4))
+            && left.FillContains(new Point(7, 7)) && !right.FillContains(new Point(7, 7)),
+            "The L cutout keeps its vertical and bottom strokes and remains distinct from R.");
+        Check(!right.FillContains(new Point(4.8, 5)) && right.FillContains(new Point(7, 5.4)),
+            "The R cutout keeps its vertical stroke and filled inner counter under even-odd filling.");
+        Check(box.Bounds.Width > box.Bounds.Height && box.Bounds.Top > 0 && box.Bounds.Bottom < 14
+            && box.FillContains(new Point(7, 2.3)) && box.FillContains(new Point(7, 10.5))
+            && !box.FillContains(new Point(7, 5.4)) && !box.FillContains(new Point(7, 8.32))
+            && left.FillContains(new Point(7, 5.4)) && right.FillContains(new Point(7, 5.4)),
+            "The matching case keeps its lid, body, open seam and indicator hole, distinct from both letter badges.");
     }
 
     private static string Expected(MainViewModel vm) => $"设备名称：{vm.Title}{Environment.NewLine}产品编号：{vm.ProductId ?? "—"}{Environment.NewLine}固件版本：{vm.Firmware ?? "—"}";
@@ -303,6 +363,19 @@ internal static class MainLayoutTests
         var point = await MainUiTestLayout.ClickPointAsync(window, control);
         window.MouseDown(point, MouseButton.Left); window.MouseUp(point, MouseButton.Left); Dispatcher.UIThread.RunJobs();
     }
+    private sealed class ChargingPreviewService : IHeadsetService
+    {
+        private readonly PreviewService _inner = new();
+        public Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken token) => _inner.EnumerateAsync(token);
+        public async Task<UiSnapshot> ConnectAsync(string identity, CancellationToken token) => Charging(await _inner.ConnectAsync(identity, token));
+        public Task DisconnectAsync(CancellationToken token) => _inner.DisconnectAsync(token);
+        public async Task<UiSnapshot> RefreshAsync(CancellationToken token) => Charging(await _inner.RefreshAsync(token));
+        public Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken token) => RefreshAsync(token);
+        public Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token) => _inner.ApplyAsync(action, token);
+        public ValueTask DisposeAsync() => _inner.DisposeAsync();
+        private static UiSnapshot Charging(UiSnapshot snapshot) { snapshot.LeftCharging = true; return snapshot; }
+    }
+
     private static bool CanHit(Window window, Control control)
     {
         if (control.Bounds.Width <= 0 || control.Bounds.Height <= 0) return false;

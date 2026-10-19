@@ -20,7 +20,7 @@ internal static class ArtworkPackageExtractor
     private static readonly string[] ImageExtensions = [".png", ".webp", ".jpg", ".jpeg"];
     private static readonly JsonDocumentOptions AnimationJson = new() { MaxDepth = 128 };
 
-    internal static ResourceArtwork[] Extract(byte[] bytes, string root, ResourceSource source, string productId, int color)
+    internal static ResourceArtwork[] Extract(byte[] bytes, string root, string productId, int color)
     {
         ExtractArchive(bytes, root);
         string configPath = Path.Combine(root, "config.json");
@@ -28,7 +28,7 @@ internal static class ArtworkPackageExtractor
         using var json = JsonDocument.Parse(File.ReadAllBytes(configPath), new JsonDocumentOptions { MaxDepth = 64 });
         ResourceJson.ValidateUniqueProperties(json.RootElement);
         if (json.RootElement.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Resource configuration must be an object.");
-        var package = new Package(root, source, productId, color);
+        var package = new Package(root, productId, color);
         foreach (var property in json.RootElement.EnumerateObject())
         {
             string? role = RoleFor(property.Name);
@@ -317,7 +317,7 @@ internal static class ArtworkPackageExtractor
         return path;
     }
 
-    private sealed class Package(string root, ResourceSource source, string productId, int color)
+    private sealed class Package(string root, string productId, int color)
     {
         public string Root { get; } = root;
         public List<ResourceArtwork> Entries { get; } = [];
@@ -327,7 +327,7 @@ internal static class ArtworkPackageExtractor
             byte[] raw = File.ReadAllBytes(file);
             Entries.Add(entry with
             {
-                Source = source, ProductIds = [productId], Color = color, Path = Relative(file), Length = raw.Length,
+                ProductIds = [productId], Color = color, Path = Relative(file), Length = raw.Length,
                 Sha256 = Convert.ToHexStringLower(SHA256.HashData(raw)),
                 OriginalPath = original is null ? null : Relative(original),
                 OriginalSha256 = original is null ? null : Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(original)))

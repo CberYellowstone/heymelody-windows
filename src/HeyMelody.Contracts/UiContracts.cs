@@ -61,7 +61,6 @@ public sealed class UiSnapshot
     public bool Connected { get; set; }
     public ConnectionState ConnectionState { get; set; }
     public bool SupportedModel { get; set; }
-    public string ResourceSource { get; set; } = "HeyMelody";
     public long ResourceRevision { get; set; }
     public byte? Color { get; set; }
     public DateTimeOffset? ColorObservationTime { get; set; }

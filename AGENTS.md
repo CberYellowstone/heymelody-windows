@@ -12,7 +12,7 @@
 | 后台、IPC、连接生命周期与退出 | [共享后台架构](docs/backend-architecture.md) |
 | 界面、设备选择、离线状态与缓存 | [界面说明](docs/gui-notes.md)、[设备状态](docs/device-state.md) |
 | 日常设置、EQ 和校准 | [日常设置](docs/daily-notes.md)、[黄金听感与贴合度修复](docs/research/calibration-repair.md)、[听感预览与声音设置](docs/research/hearing-preview-settings.md) |
-| 型号门控、协议与配置 | [适配交接](docs/research/device-adaptation-handoff.md)、[设备支持](docs/research/oppo-device-support.md)、[配置来源](docs/research/cloud-device-configuration.md) |
+| 型号门控、协议与配置 | [当前单源规则](docs/research/heymelody-only.md)、[设备支持](docs/research/oppo-device-support.md)、[历史适配交接](docs/research/device-adaptation-handoff.md) |
 | 美术、三维模型、下载与持久化 | [云美术](docs/research/cloud-device-artwork.md)、[外观持久化](docs/artwork-persistence.md)、[模型渲染](docs/model-rendering.md) |
 | 研究结论与完整本地证据 | [研究索引](docs/research/README.md)、[资料规范](docs/research/organization.md) |
 | 提取、复现与研究验收工具 | [研究工具](tools/research/README.md)、[历史 CLI](docs/cli-tools.md) |
@@ -37,8 +37,8 @@
 ## 实现与验证规则
 
 - 以任务和会话中已有授权为范围，完成必要修改及验证；不要因普通实现选择反复请求确认。发布、设备操作、版本调整等依据实际任务授权执行，不能由文档中的示例命令自动扩大范围。
-- 控制是否开放由所选来源配置、已实现的协议 codec、固件条件及设备能力共同决定。资源目录、图片、名称、BLE 广播和缓存不授予控制权限；未知协议、状态和能力保持未知。
-- 欢律与“无线耳机”来源的参数、美术和缓存独立，不能为补全缺项随意混合。协议编号、显示顺序和来源条件分开处理，修复需有来源与测试依据。
+- 控制是否开放由欢律配置、App 条件、已实现的协议 codec 及设备能力共同决定。所有型号的固件版本与最低固件条件默认仅产生页头 warning，不阻止连接或单独禁用控制；原条件与验证范围仍保留。资源目录、图片、名称、BLE 广播和缓存不授予控制权限；未知协议、状态和能力保持未知。
+- 当前客户端只使用欢律 App 的配置与资源。历史退出支持的来源只用于证据复核，不得回填参数、美术或缓存；当前规则见[欢律单源说明](docs/research/heymelody-only.md)。协议编号、显示顺序和 App 条件分开处理，修复需有来源与测试依据。
 - Host 管理设备连接和持续接收；App、设备管理器与校准组件共享后台。保持每台连接的单一接收通道、设备身份/连接代次/快照顺序校验；通知或缓存回填不得触发 SET。缺失回执、超时或重启后不能擅自重放设置。
 - 实设备操作按当前授权及操作范围执行；区分 ACK、设备回读与独立观测，不把提交成功写成设置已验证。校准遵守设备生命周期、取消和冲突写入规则，禁止用离线模拟推断真机效果。
 - 使用 .NET 10 SDK，按改动选择相关构建与测试入口，具体命令见开发指南。测试项目多数是可执行验收程序，遵循其 `dotnet run --project ...` 入口。文档修改优先核对链接、命令、版本和原稿保全，无需运行无关应用测试。

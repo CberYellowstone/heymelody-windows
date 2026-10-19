@@ -13,37 +13,58 @@ internal static class ResourceBackendTests
 {
     internal static async Task RunAsync(Func<string, Func<Task>, Task> test, string scratch)
     {
-        await test("resource source changes configure one whole catalog and isolate artwork ownership", async () =>
+        await test("HeyMelody configures one complete catalog and artwork leases retain ownership", async () =>
         {
             await using var f = await Fixture.Create(scratch);
-            var before = f.Snapshot; var oldWorker = f.Current;
-            Check(oldWorker.Configuration is { Source: "HeyMelody", AppMarker: 17006004, ProfileCount: 85 }, "Initial resource snapshot was not the whole HeyMelody source");
-            Check(oldWorker.Configuration.StableKey == DeviceWhitelistStore.KeyFor(1), "Worker persistence key was not bound to peer address");
+            var worker = f.Current;
+            Check(worker.Configuration is { AppMarker: 17006004, ProfileCount: 85 }, "Initial HeyMelody catalog or App marker was incomplete");
+            Check(worker.Configuration.StableKey == DeviceWhitelistStore.KeyFor(1), "Worker persistence key was not bound to peer address");
             var lease = await f.Backend.AcquireArtworkAsync("first", "06EC10", null, "detail", default)
                 ?? throw new InvalidOperationException("Bundled artwork lease was not available");
-            Check(lease.Source == "HeyMelody" && File.Exists(lease.FullPath), "Bundled artwork did not acquire a source-qualified lease");
+            Check(File.Exists(lease.FullPath), "Bundled artwork lease has no file");
             Check(!f.Backend.ReleaseArtwork("other", lease.LeaseId), "Another owner released an artwork lease");
-            await f.SwitchSource(ResourceSource.WirelessEarphones);
-            await Until(() => f.Snapshot.ControlReady && f.Workers.Count == 2);
-            Check(f.Current.Configuration is { Source: "WirelessEarphones", AppMarker: 17006002, ProfileCount: 141 }, "Source switch merged catalogs or reused app marker");
-            Check(f.Snapshot.DeviceGeneration != before.DeviceGeneration && oldWorker.Disposals == 1, "Old control generation was not retired");
-            Check(f.Workers.All(w => w.Applies == 0), "Changing source wrote device settings");
-            Check(File.Exists(lease.FullPath), "Source switch removed a held bundled asset");
             f.Backend.ClientDetached("first");
             Check(!f.Backend.ReleaseArtwork("first", lease.LeaseId), "Client EOF retained its artwork lease");
-            var wireless = await f.Backend.AcquireArtworkAsync("second", "06EC10", null, "detail", default);
-            Check(wireless?.Source == "WirelessEarphones", "Artwork crossed the selected source");
+            var second = await f.Backend.AcquireArtworkAsync("second", "06EC10", null, "detail", default);
+            Check(second is not null && File.Exists(second.FullPath), "Artwork could not be reacquired");
+            Check(worker.Applies == 0 && f.Workers.Count == 1, "Artwork lookup changed device settings or connection");
         });
-        await test("same-source settings updates preserve worker connection and issue no device writes", async () =>
+        await test("resource settings updates preserve worker connection and active calibration", async () =>
         {
             await using var f = await Fixture.Create(scratch);
             var before = f.Snapshot; var worker = f.Current;
-            var settings = f.Backend.ResourceSettings() with { CloudKey = "local-plaintext-test", UseOnlineResources = false };
-            await f.Backend.SaveResourceSettingsAsync(settings, default);
+            string catalogHash = f.Coordinator.Catalog.Sha256;
+            var calibration = await f.Backend.CreateCalibrationAsync("editor", before.Identity, before.DeviceGeneration, "fit", default);
+            var settings = f.Backend.ResourceSettings() with { HeyMelodyKey = "local-plaintext-test", UseOnlineResources = false };
+            var saved = await f.Backend.SaveResourceSettingsAsync(settings, default);
             await Until(() => f.Snapshot.ResourceRevision > before.ResourceRevision);
             Check(f.Workers.Count == 1 && f.Snapshot.DeviceGeneration == before.DeviceGeneration && worker.Disposals == 0,
                 "Changing a key restarted an unchanged catalog");
             Check(worker.Applies == 0 && worker.Refreshes == 0 && f.Handler.Requests == 0, "Offline setting update issued device or network commands");
+            Check(f.Backend.GetCalibration("editor", calibration.Handle, null).Stage == "Ready", "A settings update cancelled the active calibration");
+            Check(saved.HeyMelodyKey == "local-plaintext-test" && !saved.UseOnlineResources
+                && f.Coordinator.Catalog.Sha256 == catalogHash
+                && !saved.Status.Contains("当前测试完成后应用", StringComparison.Ordinal)
+                && !f.Backend.ResourceSettings().Status.Contains("当前测试完成后应用", StringComparison.Ordinal),
+                "Saving a key against an unchanged catalog invented a pending configuration update");
+
+            long revision = f.Snapshot.ResourceRevision;
+            saved = await f.Backend.SaveResourceSettingsAsync(saved with { UseOnlineResources = true }, default);
+            await Until(() => f.Snapshot.ResourceRevision > revision && f.Handler.Requests > 0);
+            Check(saved.UseOnlineResources && f.Coordinator.Catalog.Sha256 == catalogHash
+                && !saved.Status.Contains("当前测试完成后应用", StringComparison.Ordinal)
+                && !f.Backend.ResourceSettings().Status.Contains("当前测试完成后应用", StringComparison.Ordinal)
+                && f.Backend.GetCalibration("editor", calibration.Handle, null).Stage == "Ready"
+                && f.Workers.Count == 1 && worker.Disposals == 0 && f.Snapshot.DeviceGeneration == before.DeviceGeneration,
+                "Enabling online resources without a catalog change interrupted calibration or invented a pending update");
+
+            worker.CompleteCalibration();
+            await Until(() => f.Snapshot.ControlReady);
+            Check(f.Backend.GetCalibration("editor", calibration.Handle, null).Stage == "Completed"
+                && !f.Backend.ResourceSettings().Status.Contains("当前测试完成后应用", StringComparison.Ordinal)
+                && f.Coordinator.Catalog.Sha256 == catalogHash && f.Workers.Count == 1 && worker.Disposals == 0
+                && f.Snapshot.DeviceGeneration == before.DeviceGeneration && worker.Applies == 0 && worker.Refreshes == 0,
+                "Completing calibration retained a false pending update or restarted the unchanged worker");
         });
         await test("observed BLE color is PID-bound and stale queued colors cannot write or reconnect", async () =>
         {
@@ -126,20 +147,20 @@ internal static class ResourceBackendTests
             await f.Backend.CancelCalibrationAsync("editor", lease.Handle);
             await Until(() => f.Snapshot.ControlReady && f.Workers.Count == 2);
         });
-        await test("source transition rejects queued old-generation SET while finishing its submitted command", async () =>
+        await test("catalog adoption rejects queued old-generation SET while finishing its submitted command", async () =>
         {
             await using var f = await Fixture.Create(scratch);
-            var before = f.Snapshot; var worker = f.Current; worker.HoldApply = true;
+            await f.EnableOnline(); var before = f.Snapshot; var worker = f.Current; worker.HoldApply = true;
             var submitted = f.Backend.ApplyAsync(before.Identity, before.DeviceGeneration, new("GameMode", 1), default);
             await worker.ApplyEntered.Task.WaitAsync(TimeSpan.FromSeconds(3));
             var queued = f.Backend.ApplyAsync(before.Identity, before.DeviceGeneration, new("GameMode", 0), default);
-            var changing = f.SwitchSource(ResourceSource.WirelessEarphones);
-            await Until(() => f.Coordinator.Preferences.Source == ResourceSource.WirelessEarphones);
+            Check(await f.PublishNewCatalog(), "New catalog was not downloaded");
+            await Until(() => f.ResourceGate.CurrentCount == 0);
             worker.ApplyRelease.TrySetResult(); var first = await submitted; var second = await queued;
-            await changing; await Until(() => f.Snapshot.ControlReady && f.Workers.Count == 2);
-            Check(first.TargetSubmitted, "Source transition invalidated the receipt of its already submitted command");
+            await Until(() => f.Snapshot.ControlReady && f.Workers.Count == 2);
+            Check(first.TargetSubmitted, "Catalog adoption invalidated the receipt of its already submitted command");
             Check(!second.TargetSubmitted && worker.Applies == 1 && f.Current.Applies == 0,
-                "Queued old-source SET was submitted after the source selection changed");
+                "Queued old-generation SET reached a retired catalog");
         });
     }
 
@@ -174,7 +195,7 @@ internal static class ResourceBackendTests
             Check(f.Backend.Devices().Single().Color == 4, "A broadcast overrode the control session color");
             Check(await f.Backend.AcquireArtworkAsync("owner", "FFFFFF", 0, "hero", default) is null, "An uncatalogued hint failed instead of having no art");
         });
-        await test("re-download refreshes the saved source once and requires online resources", async () =>
+        await test("re-download refreshes HeyMelody once and requires online resources", async () =>
         {
             await using var f = await Fixture.Create(scratch);
             await f.EnableOnline(); int before = f.Handler.Requests;
@@ -229,8 +250,6 @@ internal static class ResourceBackendTests
             if (connected) await Until(() => fixture.Snapshot.ControlReady);
             return fixture;
         }
-        internal Task SwitchSource(ResourceSource source) => Backend.SaveResourceSettingsAsync(Backend.ResourceSettings() with
-            { Source = source.ToString(), UseOnlineResources = false }, default);
         internal async Task EnableOnline()
         { await Backend.SaveResourceSettingsAsync(Backend.ResourceSettings() with { UseOnlineResources = true }, default); await Coordinator.RefreshAsync(true); }
         internal Task<bool> PublishNewCatalog()
@@ -240,14 +259,14 @@ internal static class ResourceBackendTests
         }
         public async ValueTask DisposeAsync() { await Backend.DisposeAsync(); _http.Dispose(); }
     }
-    private sealed record Configuration(string Source, long AppMarker, int ProfileCount, string StableKey, long Generation, string? ObservedProduct, byte? ObservedColor);
+    private sealed record Configuration(long AppMarker, int ProfileCount, string StableKey, long Generation, string? ObservedProduct, byte? ObservedColor);
     private sealed class ResourcePeer(string product) : IPeerWorker, IResourcePeerWorker, ICalibrationPeerWorker
     {
         public event Action<UiSnapshot>? SnapshotChanged;
         public event Action? Unavailable { add { } remove { } }
         public event Action<UiCalibrationState>? CalibrationChanged;
         public event Action<UiCalibrationSpectrum>? CalibrationSpectrumChanged { add { } remove { } }
-        internal Configuration Configuration = new("", 0, 0, "", 0, null, null);
+        internal Configuration Configuration = new(0, 0, "", 0, null, null);
         internal byte? InitialColor;
         internal int Applies, Refreshes, Disposals, CalibrationCreates;
         internal bool HoldApply;
@@ -256,18 +275,17 @@ internal static class ResourceBackendTests
         internal readonly TaskCompletionSource ApplyRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private UiSnapshot _snapshot = new();
         private UiCalibrationState _calibration = new();
-        public void ConfigureResources(string catalogGzip, string source, long revision, long appMarker, string stableKey, long generation, string? observedProductId, byte? observedColor)
+        public void ConfigureResources(string catalogGzip, long revision, long appMarker, string stableKey, long generation, string? observedProductId, byte? observedColor)
         {
             using var zipped = new GZipStream(new MemoryStream(Convert.FromBase64String(catalogGzip)), CompressionMode.Decompress);
             using var bytes = new MemoryStream(); zipped.CopyTo(bytes);
-            var catalog = ResourceCatalog.Parse(bytes.ToArray(), Enum.Parse<ResourceSource>(source), false);
-            Configuration = new(source, appMarker, catalog.Profiles.Count, stableKey, generation, observedProductId, observedColor);
+            var catalog = ResourceCatalog.Parse(bytes.ToArray(), false);
+            Configuration = new(appMarker, catalog.Profiles.Count, stableKey, generation, observedProductId, observedColor);
         }
         public Task<UiSnapshot> InitializeAsync(ulong address, string identity, string name, CancellationToken token)
         {
             InitialColor = product == Configuration.ObservedProduct ? Configuration.ObservedColor : null;
             _snapshot = new() { Identity = identity, DeviceName = name, ProductId = product, Revision = 1, Connected = true,
-                ResourceSource = Configuration.Source,
                 ConnectionState = ConnectionState.Connected, ControlReady = true, SupportedModel = true, CanSetGameMode = true,
                 CanFitTest = true, CanSetupHearing = true, LeftPlacement = EarbudPlacement.InEar, RightPlacement = EarbudPlacement.InEar, Color = InitialColor };
             SnapshotChanged?.Invoke(_snapshot); return Task.FromResult(_snapshot);
@@ -288,6 +306,8 @@ internal static class ResourceBackendTests
         public Task<UiCalibrationState> CreateCalibrationAsync(string handle, string kind, CancellationToken token)
         { CalibrationCreates++; _calibration = new() { Handle = handle, Workflow = kind, Stage = "Ready", Revision = 1 }; return Task.FromResult(_calibration); }
         public Task<UiCalibrationState> GetCalibrationAsync(string handle, CancellationToken token) => Task.FromResult(_calibration);
+        internal void CompleteCalibration()
+        { _calibration = _calibration with { Stage = "Completed", Revision = _calibration.Revision + 1 }; CalibrationChanged?.Invoke(_calibration); }
         public Task<UiCalibrationState> AdvanceCalibrationAsync(string handle, long revision, UiCalibrationInput input, CancellationToken token)
         { _calibration = _calibration with { Stage = "FitTesting", Revision = _calibration.Revision + 1 }; return Task.FromResult(_calibration); }
         public Task<UiCalibrationState> CancelCalibrationAsync(string handle, CancellationToken token)

@@ -39,10 +39,9 @@ unsafe class Program
         SdpConnectionChecks.RunAsync(serviceIds).GetAwaiter().GetResult();
         Reject<ArgumentException>(() => WindowsSdp.FindUniqueControlService(address, []));
         var bundled = new BundledResourceStore();
-        foreach (var source in Enum.GetValues<ResourceSource>())
         {
-            var transports = bundled.GetCatalog(source).Profiles.Values.Where(profile => profile.CanUseControlTransport).ToArray();
-            if (transports.Length == 0) throw new Exception($"Bundled catalog has no control transports: {source}");
+            var transports = bundled.GetCatalog().Profiles.Values.Where(profile => profile.CanUseControlTransport).ToArray();
+            if (transports.Length == 0) throw new Exception($"Bundled catalog has no control transports: HeyMelody");
             var catalogIds = new HashSet<Guid>();
             foreach (var profile in transports)
             {
@@ -50,8 +49,8 @@ unsafe class Program
                 Native.Validate(address, catalogId);
                 catalogIds.Add(catalogId);
             }
-            if (!catalogIds.SetEquals(serviceIds)) throw new Exception($"Bundled transport UUIDs changed: {source}");
-            Console.WriteLine($"PASS: {source} bundled transport validation ({transports.Length} profiles, {catalogIds.Count} UUIDs).");
+            if (!catalogIds.SetEquals(serviceIds)) throw new Exception($"Bundled transport UUIDs changed: HeyMelody");
+            Console.WriteLine($"PASS: HeyMelody bundled transport validation ({transports.Length} profiles, {catalogIds.Count} UUIDs).");
         }
         foreach (var serviceId in serviceIds)
         {

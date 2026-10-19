@@ -1,5 +1,7 @@
 # 游戏音效与 Hi-Res／空间音效重新研究
 
+> 当前客户端仅使用欢律配置与资源，见[当前单源规则](heymelody-only.md)。下文涉及已退出支持来源的覆盖、接口和操作要求仅用于历史研究复核，已由当前规则取代；原版本、路径、摘要和验证范围保留。
+
 2026-10-10 重新核对无线耳机 17.6.3（`com.oplus.melody`）、欢律 17.6.5（`com.heytap.headset`）的原 APK、原 DEX、中文资源，以及 Enco X4 v116 的原始固件字节。修复依据是：游戏音效开关使用 feature `27`，类型选择使用另一条命令；原厂资源的互斥字段不能直接变成 Windows 的禁止写入规则。
 
 完整对象、摘要、原稿、完整源码快照、原 DEX 指令、固件反汇编、配置矩阵及失败分支保存在本地 [完整研究档案](../../research/game-audio-spatial-20261010/README.md)，不随普通 Git clone 提供。维护工具为 [game_audio_spatial_audit.py](../../tools/research/game_audio_spatial_audit.py)，只做离线读取，默认另建 `research/` 输出目录。本轮没有重新下载云配置；云证据沿用 `20261008T051557.800877Z` 的历史原件。

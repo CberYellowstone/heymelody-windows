@@ -7,12 +7,11 @@ internal static class FeatureInteractionTests
 
     public static async Task RunAsync(Func<string, Func<Task>, Task> test)
     {
-        await test("both sources group game controls and place BassWave beside EQ for every model", async () =>
+        await test("game controls group and BassWave sits beside EQ for every model", async () =>
         {
-            foreach (string source in new[] { "HeyMelody", "WirelessEarphones" })
             foreach (string product in new[] { "06EC10", "067410", "068C10", "06C010", "future-model" })
             {
-                var service = new Service(); service.State.ResourceSource = source; service.State.ProductId = product;
+                var service = new Service(); service.State.ProductId = product;
                 var original = service.State.FeatureSections.Single().Controls;
                 service.State.FeatureSections = [new("audio", "声音", true,
                 [new("game", "游戏低延迟", "Switch", 0, CanWrite: true),

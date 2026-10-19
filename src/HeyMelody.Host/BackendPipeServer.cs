@@ -73,7 +73,7 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
 
     private async Task HandleAsync(Client client, BackendRequest request)
     {
-        if (request.SchemaVersion != 3)
+        if (request.SchemaVersion != 4)
         { client.Reply(request.Id, null, "versionMismatch", "前后端版本不一致，请重新解压完整客户端。"); return; }
         if (request.Operation.Length is 0 or > 32)
         { client.Reply(request.Id, null, "invalidRequest", "请求无效。"); return; }

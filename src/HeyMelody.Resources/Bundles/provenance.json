@@ -1,16 +1,8 @@
 [
   {
-    "source": 0,
     "package": "com.heytap.headset",
     "apkSha256": "eacb314e092cfb6c2f075eee834498412255cadf184978f3dc16400f6e1dd5d4",
     "catalogSha256": "0ef07d3361d4ae3e4bf1e5f6aea5a07ca010af57b6630588fc1f532ae13cc8b9",
     "contentVersion": 117006004
-  },
-  {
-    "source": 1,
-    "package": "com.oplus.melody",
-    "apkSha256": "c1149df9e24ed85bf84f7c81c712cee794299d2b95057c6e221fb547f2717059",
-    "catalogSha256": "926b248cfe5b157cd17d1a8f21e9483df30fd130dd0662b48d4836135da4d56b",
-    "contentVersion": 17006002
   }
 ]

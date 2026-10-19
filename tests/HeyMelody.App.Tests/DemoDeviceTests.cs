@@ -137,7 +137,7 @@ internal static class DemoDeviceTests
         CheckDynaudioPresentation(fixture.View, fixture.Vm);
         using var catalog = new DeviceVisualCatalog();
         catalog.Update(fixture.Vm.Devices, fixture.Vm.SelectedDevice, fixture.Vm.ProductId,
-            DemoDeviceData.Color, "HeyMelody", artwork: fixture.Service);
+            DemoDeviceData.Color, artwork: fixture.Service);
         Check(catalog.ProductFor(fixture.Vm.SelectedDevice) is EncoFree4DynaudioModelVisual,
             "The demo catalog uses the Dynaudio model without acquiring backend artwork.");
         Check(DeviceVisuals.DefaultTemplate.Build(new EncoFree4DynaudioModelVisual()) is EncoFree4DynaudioModelView,

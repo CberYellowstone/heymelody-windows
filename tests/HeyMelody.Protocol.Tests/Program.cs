@@ -57,11 +57,6 @@ Test("Reject inner length mismatch without truncation", () =>
 {
     var encoded = PacketEncoder.Encode(0x0103, 0, [0, 1, 2, 3]); encoded[7] = 3; Malformed(encoded);
 });
-Test("Reject invalid control and reserved fields", () =>
-{
-    var encoded = PacketEncoder.Encode(0x0103, 0, []); encoded[2] = 4; Malformed(encoded);
-    encoded = PacketEncoder.Encode(0x0103, 0, []); encoded[3] = 1; Malformed(encoded);
-});
 Test("Reject missing, duplicate, out of order and orphan FSN", () =>
 {
     var encoded = PacketEncoder.Encode(0x0105, 4, new byte[45], 20);
@@ -466,4 +461,5 @@ Test("setting synchronization commands are notification-only, spatial requests i
 });
 OppoAdvertisementTests.Run(Test);
 CalibrationCodecTests.Run(Test);
+PacketFramingCompatibilityTests.Run(Test);
 Console.WriteLine($"{passed} offline protocol tests passed.");

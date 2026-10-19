@@ -8,15 +8,14 @@ internal static class CatalogProfileTests
     internal static void AllBundledProfiles()
     {
         var bundles = new BundledResourceStore();
-        foreach (var source in Enum.GetValues<ResourceSource>())
         {
-            var catalog = bundles.GetCatalog(source);
-            Equal(source == ResourceSource.HeyMelody ? 85 : 141, catalog.Profiles.Count);
+            var catalog = bundles.GetCatalog();
+            Equal(85, catalog.Profiles.Count);
             foreach (var row in catalog.Profiles.Values)
             {
                 try
                 {
-                    var profile = DeviceProfile.FromResource(row.Raw, source.ToString(), catalog.Sha256);
+                    var profile = DeviceProfile.FromResource(row.Raw, catalog.Sha256);
                     Equal(row.ProductId, profile.ProductId);
                     Equal(row.SupportSpp, profile.SupportSpp);
                     Equal(row.Raw.GetRawText(), profile.RawSource.GetRawText());
@@ -26,19 +25,19 @@ internal static class CatalogProfileTests
                         caps.GameSound, caps.LegacyGameMode, caps.ModernGameMode })
                         Require(!feature.ProtocolWriteSupported, "Profile alone enabled a setter");
                     Require(profile.Uuid != Guid.Empty || !row.CanUseControlTransport, "Invalid UUID enabled transport");
-                    if (!row.SupportSpp || row.ExternalOnly)
-                        Require(!row.CanUseControlTransport, "SPP/external-only restriction was lost");
+                    if (!row.SupportSpp)
+                        Require(!row.CanUseControlTransport, "SPP restriction was lost");
                     var knownVersions = new DeviceVersionContext("999.999.0", 999999999);
                     foreach (var mode in profile.GetEffectiveEqualizerModes(knownVersions))
                     {
                         Require(mode.ProtocolIndex is >= 0 and <= byte.MaxValue, "EQ protocol ID cannot be encoded");
-                        Equal(VersionConditionStatus.Pass, mode.EvaluateConditions(knownVersions));
+                        Equal(VersionConditionStatus.Pass, mode.EvaluateConditionsForControl(knownVersions));
                     }
-                    Require(profile.GetEffectiveEqualizerModes().All(x => x.EvaluateConditions() == VersionConditionStatus.Pass),
-                        "Unknown version enabled a conditional mode");
+                    Require(profile.GetEffectiveEqualizerModes().All(x => x.EvaluateConditionsForControl() == VersionConditionStatus.Pass),
+                        "Unknown App version enabled a conditional mode");
                 }
                 catch (Exception error)
-                { throw new InvalidOperationException($"{source}/{row.ProductId} ({row.Name}): {error.Message}", error); }
+                { throw new InvalidOperationException($"HeyMelody/{row.ProductId} ({row.Name}): {error.Message}", error); }
             }
         }
     }
@@ -90,37 +89,37 @@ internal static class CatalogProfileTests
     internal static void CompatibilityEqualizers()
     {
         var bundles = new BundledResourceStore();
-        foreach (var source in Enum.GetValues<ResourceSource>())
         {
-            var catalog = bundles.GetCatalog(source);
+            var catalog = bundles.GetCatalog();
             foreach (var (id, protocol, type, minimum) in new[] { ("068C10", 7, 34, 118), ("063C10", 4, 16, 112), ("062014", 7, 19, 165) })
             {
-                var p = DeviceProfile.FromResource(catalog.Profiles[id].Raw, source.ToString());
+                var p = DeviceProfile.FromResource(catalog.Profiles[id].Raw);
                 var mode = p.EqualizerModeCompat.Single(); Equal(protocol, mode.ProtocolIndex); Equal(type, mode.ModeType);
                 Equal(VersionConditionStatus.Conditional, mode.EvaluateConditions());
                 Equal(VersionConditionStatus.Fail, mode.EvaluateConditions(new((minimum - 1).ToString())));
                 Equal(VersionConditionStatus.Pass, mode.EvaluateConditions(new(minimum.ToString())));
                 Equal(VersionConditionStatus.Pass, mode.EvaluateConditions(new($"{minimum}.{minimum + 1}.0")));
-                Require(!p.GetEffectiveEqualizerModes().Any(x => x.ProtocolIndex == protocol), "Unknown firmware enabled compatibility EQ");
-                Require(!p.GetEffectiveEqualizerModes(new((minimum - 1).ToString())).Any(x => x.ProtocolIndex == protocol), "Old firmware enabled compatibility EQ");
+                Require(p.GetEffectiveEqualizerModes().Any(x => x.ProtocolIndex == protocol), "Unknown firmware blocked compatibility EQ");
+                Require(p.GetEffectiveEqualizerModes(new((minimum - 1).ToString())).Any(x => x.ProtocolIndex == protocol), "Old firmware blocked compatibility EQ");
+                Equal(VersionConditionStatus.Conditional, mode.GetFirmwareIssues().Single().Status);
+                Equal(VersionConditionStatus.Fail, mode.GetFirmwareIssues(new((minimum - 1).ToString())).Single().Status);
                 Equal(type, p.GetEffectiveEqualizerModes(new(minimum.ToString())).Single(x => x.ProtocolIndex == protocol).ModeType);
                 Equal(p.EqualizerModes.Count + 1, p.GetEffectiveEqualizerModes(new(minimum.ToString())).Count);
             }
-            var free4Dynaudio = DeviceProfile.FromResource(catalog.Profiles["06C010"].Raw, source.ToString());
+            var free4Dynaudio = DeviceProfile.FromResource(catalog.Profiles["06C010"].Raw);
             Sequence(new[] { 0, 1, 2, 7, 3, 8 }, free4Dynaudio.GetEffectiveEqualizerModes(new("136.136.0", 15011000)).Select(x => x.ProtocolIndex));
-            Sequence(new[] { 0, 1, 2, 7, 3 }, free4Dynaudio.GetEffectiveEqualizerModes(new("135.136.0", 15011000)).Select(x => x.ProtocolIndex));
+            Sequence(new[] { 0, 1, 2, 7, 3, 8 }, free4Dynaudio.GetEffectiveEqualizerModes(new("135.136.0", 15011000)).Select(x => x.ProtocolIndex));
         }
     }
 
     internal static void VersionEqualizers()
     {
         var bundles = new BundledResourceStore();
-        foreach (var source in Enum.GetValues<ResourceSource>())
         {
-            var catalog = bundles.GetCatalog(source);
+            var catalog = bundles.GetCatalog();
             foreach (string id in new[] { "06E010", "06E410" })
             {
-                var p = DeviceProfile.FromResource(catalog.Profiles[id].Raw, source.ToString());
+                var p = DeviceProfile.FromResource(catalog.Profiles[id].Raw);
                 var extra = p.EqualizerModeByVersion.Single(); Equal(1, extra.ProtocolIndex); Equal(41, extra.ModeType);
                 foreach (var (firmware, app, expected) in new (string?, long?, VersionConditionStatus)[]
                 {
@@ -135,7 +134,7 @@ internal static class CatalogProfileTests
                 {
                     var context = new DeviceVersionContext(firmware, app);
                     Equal(expected, extra.EvaluateConditions(context));
-                    Equal(expected == VersionConditionStatus.Pass, p.GetEffectiveEqualizerModes(context).Any(x => x.ProtocolIndex == 1));
+                    Equal(app >= 16009000, p.GetEffectiveEqualizerModes(context).Any(x => x.ProtocolIndex == 1));
                     Sequence(p.EqualizerModes.Select(x => x.ProtocolIndex), p.GetEffectiveEqualizerModes(context).Where(x => x.ProtocolIndex != 1).Select(x => x.ProtocolIndex));
                 }
             }
@@ -179,7 +178,8 @@ internal static class CatalogProfileTests
         {
             var mode = Profile("{\"id\":\"ABCDEF\",\"function\":{\"equalizerModeCompat\":[{\"protocolIndex\":7,\"modeType\":34,\"minFirmVersion\":" + minimum + "}]}}");
             Equal(VersionConditionStatus.Conditional, mode.EqualizerModeCompat.Single().EvaluateConditions(new("999", 999999999)));
-            Equal(0, mode.GetEffectiveEqualizerModes(new("999", 999999999)).Count);
+            Equal(1, mode.GetEffectiveEqualizerModes(new("999", 999999999)).Count);
+            Equal(VersionConditionStatus.Conditional, mode.EqualizerModeCompat.Single().GetFirmwareIssues(new("999", 999999999)).Single().Status);
         }
         foreach (string minimum in new[] { "null", "\"16009000\"", "-1", "9223372036854775808", "{}" })
         {
@@ -199,7 +199,7 @@ internal static class CatalogProfileTests
     }
 
     private static DeviceProfile Profile(string json)
-    { using var document = JsonDocument.Parse(json); return DeviceProfile.FromResource(document.RootElement, "test"); }
+    { using var document = JsonDocument.Parse(json); return DeviceProfile.FromResource(document.RootElement); }
     private static void Sequence<T>(IEnumerable<T> expected, IEnumerable<T> actual)
     { Require(expected.SequenceEqual(actual), $"Expected [{string.Join(',', expected)}]; got [{string.Join(',', actual)}]"); }
 

@@ -17,7 +17,6 @@ internal sealed class WorkerRequest
     public RefreshScope Scope { get; set; }
     public UiAction? Action { get; set; }
     public string? CatalogGzip { get; set; }
-    public string Source { get; set; } = "HeyMelody";
     public long ResourceRevision { get; set; }
     public long AppMarker { get; set; } = 17006004;
     public string StableKey { get; set; } = "";
@@ -202,7 +201,7 @@ internal sealed partial class PeerWorker(Func<ProcessStartInfo>? startFactory = 
 
     public Task<UiSnapshot> InitializeAsync(ulong address, string identity, string name, CancellationToken token)
         => RequestAsync<UiSnapshot>(new() { Operation = "initialize", Address = address, Identity = identity, Name = name,
-            CatalogGzip = _catalogGzip, Source = _source, ResourceRevision = _resourceRevision, AppMarker = _appMarker, StableKey = _stableKey, Generation = _generation,
+            CatalogGzip = _catalogGzip, ResourceRevision = _resourceRevision, AppMarker = _appMarker, StableKey = _stableKey, Generation = _generation,
             ObservedProductId = _observedProductId, ObservedColor = _observedColor }, token);
     public Task<UiSnapshot> RefreshAsync(RefreshScope scope, CancellationToken token)
         => RequestAsync<UiSnapshot>(new() { Operation = "refresh", Scope = scope }, token);

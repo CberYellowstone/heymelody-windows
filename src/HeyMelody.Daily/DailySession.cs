@@ -4,13 +4,16 @@ using HeyMelodyWindows.Protocol;
 
 namespace HeyMelodyWindows.Daily;
 
+internal enum DailyReadFailureKind { None, ProtocolFormat, Timeout, Cancelled, TransportInterrupted, Other }
 internal sealed record DailyResponse(bool Submitted, bool Matched, byte? Status, byte[]? Payload,
-    bool ConnectionInterrupted = false, byte? Sequence = null, string? Failure = null);
+    bool ConnectionInterrupted = false, byte? Sequence = null, string? Failure = null,
+    DailyReadFailureKind FailureKind = DailyReadFailureKind.None, ushort? FailureCommand = null,
+    byte? FailureSequence = null, bool CodecReplyCompatibilityUsed = false, bool FailureRequestPending = false);
 internal sealed class DailySession : IAsyncDisposable
 {
     private readonly IControlTransport _transport;
     private readonly SequenceAllocator _sequences = new();
-    private readonly PacketDecoder _decoder = new();
+    private readonly PacketDecoder _decoder;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _pendingGate = new();
     private readonly Dictionary<ushort, byte> _filterSequences = [];
@@ -18,6 +21,12 @@ internal sealed class DailySession : IAsyncDisposable
     private RequestKey? _key;
     private TaskCompletionSource<Packet>? _reply;
     private Exception? _failure;
+    private DailyReadFailureKind _failureKind;
+    private bool _failureRequestPending, _replyDecoded;
+    private bool _codecReadRecoveryPending;
+    internal bool CodecReadRecoveryPending => Volatile.Read(ref _codecReadRecoveryPending);
+    private bool _allowCodecReplyCompatibility, _codecReplyCompatibilityUsed;
+    internal string? CodecQuerySuppressionWarning { get; private set; }
     private int _usable = 1, _disposed, _readerStarted;
     public event Action<Packet>? Notification;
     public event Action<Exception>? Ended;
@@ -26,6 +35,27 @@ internal sealed class DailySession : IAsyncDisposable
     public DailySession(IControlTransport transport)
     {
         _transport = transport;
+        _decoder = new PacketDecoder(AllowCodecReplyCompatibility, RecordDecodedReply);
+    }
+    internal void SetCodecReplyCompatibilityAllowed(bool allowed)
+    {
+        lock (_pendingGate) _allowCodecReplyCompatibility = allowed;
+    }
+    internal void SuppressCodecQuery(string warning) => CodecQuerySuppressionWarning = warning;
+    private void RecordDecodedReply(Packet packet)
+    {
+        lock (_pendingGate)
+            if (packet.Payload.Length > 0 && _key is RequestKey key && key.MatchesResponse(packet)) _replyDecoded = true;
+    }
+    private bool AllowCodecReplyCompatibility(byte sequence)
+    {
+        lock (_pendingGate)
+        {
+            if (!_allowCodecReplyCompatibility || _codecReplyCompatibilityUsed || _replyDecoded || !Usable || _reply is null
+                || _reply.Task.IsCompleted || _key is not { Command: 0x0114 } key || key.Sequence != sequence) return false;
+            _codecReplyCompatibilityUsed = true;
+            return true;
+        }
     }
     public void StartReader()
     {
@@ -43,6 +73,8 @@ internal sealed class DailySession : IAsyncDisposable
             if (_reply is not null) throw new InvalidOperationException("Requests must be serialized.");
             if (!Usable) throw new IOException("Daily session unavailable.");
             _key = new(command, seq); _reply = completion;
+            _codecReplyCompatibilityUsed = false;
+            _replyDecoded = false;
             // A hearing-filter request begins/retries the entire pair of filter loads.
             if (command == 0x0116) _filterSequences.Remove(0x011F);
             if (command is 0x0116 or 0x011F) _filterSequences[command] = seq;
@@ -57,21 +89,33 @@ internal sealed class DailySession : IAsyncDisposable
             sent = true;
             Packet packet = await completion.Task.WaitAsync(timeout.Token);
             byte? status = packet.Payload.Length == 0 ? null : packet.Payload[0];
-            if (status is null) Stop(new FormatException("Missing response status."));
+            if (status is null) Stop(new FormatException("Missing response status."),
+                DailyReadFailureKind.ProtocolFormat, matchedMissingStatus: true);
             return new(submitted, true, status, packet.Payload, Sequence: packet.Sequence,
-                Failure: status is null ? "回执缺少状态字节" : null);
+                Failure: status is null ? "回执缺少状态字节" : null,
+                FailureKind: status is null ? DailyReadFailureKind.ProtocolFormat : DailyReadFailureKind.None,
+                FailureCommand: status is null ? packet.Command : null,
+                FailureSequence: status is null ? packet.Sequence : null,
+                CodecReplyCompatibilityUsed: _codecReplyCompatibilityUsed, FailureRequestPending: status is null);
         }
         catch (OperationCanceledException) when (optionalTimeout is not null && sent && Usable
             && !token.IsCancellationRequested && !_lifetime.IsCancellationRequested)
         {
             // A late reply cannot match a later request key and is not a notification command.
-            return new(submitted, false, null, null);
+            return new(submitted, false, null, null, Sequence: seq, Failure: "等待回执超时",
+                FailureKind: DailyReadFailureKind.Timeout, FailureRequestPending: true);
         }
         catch (Exception failure)
         {
             Exception actual = _failure ?? failure;
-            Stop(actual);
-            return new(submitted, false, null, null, IsConnectionInterrupted(actual), Failure: DescribeFailure(actual));
+            var kind = _failure is not null ? _failureKind : failure is OperationCanceledException
+                && !timeout.IsCancellationRequested ? DailyReadFailureKind.Other : ClassifyFailure(actual, token);
+            Stop(actual, kind);
+            return new(submitted, false, null, null, IsConnectionInterrupted(actual), Sequence: seq,
+                Failure: DescribeFailure(actual), FailureKind: kind,
+                FailureCommand: actual.Data["HeyMelody.Protocol.ResponseCommand"] is ushort responseCommand ? responseCommand : null,
+                FailureSequence: actual.Data["HeyMelody.Protocol.ResponseSequence"] is byte responseSequence ? responseSequence : null,
+                FailureRequestPending: _failureRequestPending);
         }
         finally
         {
@@ -115,12 +159,30 @@ internal sealed class DailySession : IAsyncDisposable
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
         catch (Exception failure) { Stop(failure); }
     }
-    private void Stop(Exception failure)
+    private void Stop(Exception failure, DailyReadFailureKind? kind = null, bool matchedMissingStatus = false)
     {
         if (Interlocked.Exchange(ref _usable, 0) == 0) return;
-        lock (_pendingGate) { _failure = failure; _reply?.TrySetException(failure); }
-        _lifetime.Cancel();
-        Ended?.Invoke(failure);
+        TaskCompletionSource<Packet>? pendingReply;
+        lock (_pendingGate)
+        {
+            _failureRequestPending = _reply is not null && !_replyDecoded
+                && (!_reply.Task.IsCompleted || matchedMissingStatus);
+            // The reader has no per-query deadline. Its unsolicited cancellation must not
+            // be mistaken for a codec timeout and suppress a real connection failure.
+            _failureKind = kind ?? (failure is OperationCanceledException ? DailyReadFailureKind.Other
+                : ClassifyFailure(failure, CancellationToken.None));
+            bool codecRequest = _allowCodecReplyCompatibility && _failureRequestPending && _key is { Command: 0x0114 };
+            bool correlatedFormat = matchedMissingStatus || _key is { } key
+                && failure.Data["HeyMelody.Protocol.ResponseCommand"] is ushort command && command == 0x8114
+                && failure.Data["HeyMelody.Protocol.ResponseSequence"] is byte sequence && sequence == key.Sequence;
+            Volatile.Write(ref _codecReadRecoveryPending, codecRequest && (_failureKind == DailyReadFailureKind.Timeout
+                || _failureKind == DailyReadFailureKind.ProtocolFormat && correlatedFormat));
+            _failure = failure; pendingReply = _reply;
+        }
+        // Notify the owner before waking the failed request: otherwise its retry can
+        // detach this session before a genuine offline event reaches the Host.
+        try { Ended?.Invoke(failure); }
+        finally { pendingReply?.TrySetException(failure); _lifetime.Cancel(); }
     }
     private static bool IsConnectionInterrupted(Exception failure) => failure switch
     {
@@ -132,16 +194,38 @@ internal sealed class DailySession : IAsyncDisposable
             or 10057 or 10058 or 10064 or 10065,
         _ => false
     };
+    private static DailyReadFailureKind ClassifyFailure(Exception failure, CancellationToken token) => failure switch
+    {
+        OperationCanceledException => token.IsCancellationRequested ? DailyReadFailureKind.Cancelled : DailyReadFailureKind.Timeout,
+        FormatException or InvalidDataException => DailyReadFailureKind.ProtocolFormat,
+        _ => IsConnectionInterrupted(failure) ? DailyReadFailureKind.TransportInterrupted : DailyReadFailureKind.Other
+    };
     // Only fixed descriptions and numeric native error codes leave the transport.
     // Exception messages can contain peer addresses or received data.
     internal static string DescribeFailure(Exception failure) => failure switch
     {
         OperationCanceledException => "等待回执超时",
-        FormatException or InvalidDataException => "控制数据格式无效",
+        FormatException => DescribeFormatFailure(failure),
+        InvalidDataException => "控制数据格式无效",
         Win32Exception socket => $"Windows 蓝牙错误 {socket.NativeErrorCode}",
         IOException => "控制通道已中断",
         _ => "控制请求失败"
     };
+    private static string DescribeFormatFailure(Exception failure)
+    {
+        string? reason = failure.Data["HeyMelody.Protocol.FrameFailure"] switch
+        {
+            "frame-start" => "帧起始标记无效",
+            "frame-length" => "帧长度无效",
+            "fragment-layout" => "分片布局无效",
+            "fragment-order" => "分片顺序无效",
+            "fragment-sequence" => "分片序号无效",
+            "inner-length" => "消息长度不匹配",
+            "incomplete-message" => "消息未完整接收",
+            _ => null
+        };
+        return reason is null ? "控制数据格式无效" : $"控制数据格式无效（{reason}）";
+    }
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;

@@ -67,39 +67,21 @@ public sealed partial class MainViewModel
     private IReadOnlyList<FeatureSectionViewModel> _featureSections = [];
     private IReadOnlyList<FeatureControlViewModel> _equalizerFeatures = [];
     private string _featureContext = "";
-    private UiOption _selectedResourceSource = new(0, "欢律");
     private bool _useOnlineResources = true;
     private string _cloudKey = "", _resourceStatus = "";
-    private string _configuredResourceSource = "HeyMelody";
     private bool _configuredOnline = true, _redownloadingResources, _redownloadFailed;
     private string _redownloadMessage = "";
     private long _artworkRevision;
-    private readonly Dictionary<int, string> _sourceKeys = new() { [0] = "", [1] = "" };
     private bool _presentingResources, _resourcePreferencesDirty;
     private bool _savingResources, _hearingPending;
     private IReadOnlyList<UiHearingProfile> _hearingProfiles = [];
     private UiHearingProfile? _selectedHearingProfile;
-    public IReadOnlyList<UiOption> ResourceSourceOptions { get; } = [new(0, "欢律"), new(1, "无线耳机")];
-    public UiOption SelectedResourceSource
-    {
-        get => _selectedResourceSource;
-        set
-        {
-            if (!_presentingResources) _sourceKeys[_selectedResourceSource.Key] = _cloudKey;
-            if (SetProperty(ref _selectedResourceSource, value) && !_presentingResources) CloudKey = _sourceKeys.GetValueOrDefault(value.Key, "");
-            if (!_presentingResources) _resourcePreferencesDirty = true;
-        }
-    }
     public bool UseOnlineResources { get => _useOnlineResources; set { if (SetProperty(ref _useOnlineResources, value) && !_presentingResources) _resourcePreferencesDirty = true; } }
     public string CloudKey { get => _cloudKey; set { if (SetProperty(ref _cloudKey, value) && !_presentingResources) _resourcePreferencesDirty = true; } }
-    public string ResourceKeyFor(UiOption source) => source.Key == SelectedResourceSource.Key ? CloudKey : _sourceKeys.GetValueOrDefault(source.Key, "");
     public string ResourceStatus => _resourceStatus;
-    // Host-confirmed values only: a settings draft never redirects artwork requests.
-    public string ResourceSource => _snapshot?.ResourceSource ?? _configuredResourceSource;
     public long ResourceRevision => _snapshot?.ResourceRevision ?? 0;
     /// <summary>Changes when the backend instance or its published resource revision advances; never on a cleared snapshot.</summary>
     public string ArtworkEpoch => (_backendInstanceId ?? "local") + ":" + _artworkRevision.ToString(System.Globalization.CultureInfo.InvariantCulture);
-    public string ConfiguredResourceSourceName => _configuredResourceSource == "WirelessEarphones" ? "无线耳机" : "欢律";
     public bool CanRedownloadResources => _service is IResourceSettingsService && _configuredOnline && !_redownloadingResources
         && !_savingResources && !Closing;
     public bool IsRedownloadingResources => _redownloadingResources;
@@ -216,15 +198,13 @@ public sealed partial class MainViewModel
     private void ObserveArtworkRevision(long revision) { if (revision > _artworkRevision) _artworkRevision = revision; }
     private void PresentResourceSettings(UiResourceSettings settings, bool replaceDraft = false)
     {
-        _configuredResourceSource = settings.Source; _configuredOnline = settings.UseOnlineResources;
+        _configuredOnline = settings.UseOnlineResources;
         if (!_resourcePreferencesDirty || replaceDraft)
         {
             _presentingResources = true;
             try
             {
-                _sourceKeys[0] = settings.HeyMelodyKey ?? ""; _sourceKeys[1] = settings.WirelessEarphonesKey ?? "";
-                SelectedResourceSource = ResourceSourceOptions[settings.Source == "WirelessEarphones" ? 1 : 0];
-                UseOnlineResources = settings.UseOnlineResources; CloudKey = settings.CloudKey;
+                UseOnlineResources = settings.UseOnlineResources; CloudKey = settings.HeyMelodyKey;
                 _resourcePreferencesDirty = false;
             }
             finally { _presentingResources = false; }
@@ -235,23 +215,16 @@ public sealed partial class MainViewModel
     public async Task SaveResourcePreferencesAsync()
     {
         if (_savingResources || Closing || _service is not IResourceSettingsService resources) return;
-        string source = SelectedResourceSource.Key == 0 ? "HeyMelody" : "WirelessEarphones";
-        bool discardDraft = EqDirty && source != _configuredResourceSource;
-        if (discardDraft && !IsDemoSelected && !await ConfirmAsync("切换资源", "切换资源将丢弃未保存的均衡器调整。继续吗？", _lifetime.Token)) return;
         _savingResources = true;
-        if (source != _configuredResourceSource) ClearAncChoices();
         try
         {
-            _sourceKeys[SelectedResourceSource.Key] = CloudKey;
-            var settings = new UiResourceSettings(source, UseOnlineResources, CloudKey)
-            { HeyMelodyKey = _sourceKeys[0], WirelessEarphonesKey = _sourceKeys[1] };
+            var settings = new UiResourceSettings(UseOnlineResources: UseOnlineResources, HeyMelodyKey: CloudKey);
             PresentResourceSettings(await resources.SaveResourceSettingsAsync(settings, _lifetime.Token), replaceDraft: true);
-            if (discardDraft && EqDirty) LoadEntry(null);
         }
         catch { SetStatus("无法保存资源设置，请重试。", true); }
         finally { _savingResources = false; }
     }
-    /// <summary>Re-fetches the saved source's online resources; the result stays visible after the dialog closes.</summary>
+    /// <summary>Re-fetches online resources using saved preferences; the result stays visible after the dialog closes.</summary>
     public async Task RedownloadResourcesAsync()
     {
         if (!CanRedownloadResources || _service is not IResourceSettingsService resources) return;
