@@ -404,7 +404,7 @@ public sealed partial class ClientBridge : IHeadsetEventService, IDeviceManageme
         {
             string? dll = new[] { "Debug", "Release" }.Select(configuration => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
                 "../../../../HeyMelody.Host/bin", configuration, "net10.0-windows10.0.19041.0/HeyMelody.Host.dll"))).FirstOrDefault(File.Exists);
-            if (dll is null) throw new FileNotFoundException("蓝牙后台组件缺失，请重新解压完整客户端。");
+            if (dll is null) throw new FileNotFoundException("蓝牙后台组件缺失，请重启软件或重新安装。");
             start.FileName = "dotnet"; start.ArgumentList.Add(dll);
         }
         using var process = Process.Start(start) ?? throw new IOException("无法启动蓝牙后台。");

@@ -31,7 +31,7 @@ internal sealed class TrayApplication : Application
             _supervisor = new(); _server = new(_supervisor); _monitor = new(_supervisor);
             var menu = new NativeMenu();
             var open = new NativeMenuItem("打开主界面");
-            void OpenMain() { try { _server.ActivateMain(true); } catch { _supervisor.ReportHealth("无法打开主界面，请重新解压完整客户端。"); } }
+            void OpenMain() { try { _server.ActivateMain(true); } catch { _supervisor.ReportHealth("无法打开主界面，请重启软件或重新安装。"); } }
             open.Click += (_, _) => OpenMain();
             var exit = new NativeMenuItem("退出");
             exit.Click += async (_, _) => await _server.RequestExitAsync();

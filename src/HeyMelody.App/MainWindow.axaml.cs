@@ -72,7 +72,7 @@ public partial class MainWindow : FAAppWindow
             if (!_closing) await _viewModel.Dialogs.RunAsync(token => _confirmations.AlertAsync(
                 "无法连接蓝牙后台", error is InvalidDataException && error.Message.Contains("版本", StringComparison.Ordinal)
                     ? "蓝牙后台版本不一致，请完整更新客户端后重新启动后台。"
-                    : "蓝牙后台未能启动或连接。请确认已完整解压客户端，再重新打开主界面。", token), _managerLifetime.Token);
+                    : "蓝牙后台未能启动或连接。请尝试重启软件或重新安装。", token), _managerLifetime.Token);
             if (!_closing) Close();
         }
     }
@@ -280,12 +280,12 @@ internal sealed class WindowConfirmationService(TopLevel owner) : IConfirmationS
     public Task<FAContentDialogResult> RecoverDevicesAsync(CancellationToken token) => ShowDialogAsync(new FAContentDialog
     {
         Title = "无法读取设备列表",
-        Content = "无法检查蓝牙配对记录或设备选择。请确认蓝牙可用，并已完整解压客户端后重试。原来的设备选择不会被清空。",
+        Content = "无法检查蓝牙配对记录或设备选择。请确认蓝牙可用，并重启软件或重新安装。原来的设备选择不会被清空。",
         PrimaryButtonText = "重试", SecondaryButtonText = "重新选择设备", CloseButtonText = "退出", DefaultButton = FAContentDialogButton.Primary
     }, token);
 
     public Task<bool> RetryManagerAsync(CancellationToken token) => ShowConfirmationAsync("无法打开设备管理",
-        "设备管理组件缺失或未正常完成。请确认已完整解压客户端后重试。", "重试", token);
+        "设备管理组件缺失或未正常完成。请确认已完整安装客户端后重试。", "重试", token);
 
     public async Task AlertAsync(string title, string message, CancellationToken token) =>
         _ = await ShowDialogAsync(CreateAlert(title, message), token);
