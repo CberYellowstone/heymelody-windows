@@ -24,30 +24,38 @@ if (-not $RuntimeIdentifier) {
 }
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $lock = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'filament.lock.json') -Raw | ConvertFrom-Json
+# Filament vendors paths beyond MAX_PATH; keep this scoped to our Git commands.
+$gitPathArguments = @('-c', 'core.longpaths=true')
 if (-not $OutputRoot) { $OutputRoot = Join-Path $repo 'artifacts/filament' }
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
 New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
-if (-not $FilamentSource) {
+$managedSource = -not $FilamentSource
+if ($managedSource) {
     if (-not $FetchSource) { throw 'Provide -FilamentSource or -FetchSource. The local research directory is never an implicit build dependency.' }
     $FilamentSource = Join-Path $OutputRoot 'source'
     if (-not (Test-Path -LiteralPath (Join-Path $FilamentSource '.git'))) {
         New-Item -ItemType Directory -Path $FilamentSource -Force | Out-Null
-        & git -C $FilamentSource init --quiet
+        & git @gitPathArguments -C $FilamentSource init --quiet
         if ($LASTEXITCODE) { throw 'Could not initialize the source cache.' }
-        & git -C $FilamentSource remote add origin $lock.repository
+        & git @gitPathArguments -C $FilamentSource remote add origin $lock.repository
+        if ($LASTEXITCODE) { throw 'Could not configure the source-cache remote.' }
         $networkArguments = if ($Proxy) { @('-c', ('http.proxy=' + $Proxy)) } else { @() }
-        & git @networkArguments -C $FilamentSource fetch --depth 1 origin $lock.commit
+        & git @gitPathArguments @networkArguments -C $FilamentSource fetch --depth 1 origin $lock.commit
         if ($LASTEXITCODE) { throw 'Could not fetch the pinned Filament commit.' }
-        & git -C $FilamentSource checkout --detach FETCH_HEAD
+        & git @gitPathArguments -C $FilamentSource checkout --detach FETCH_HEAD
         if ($LASTEXITCODE) { throw 'Could not check out the pinned Filament commit.' }
     }
 }
 $FilamentSource = (Resolve-Path -LiteralPath $FilamentSource).Path
-$actual = (& git -c "safe.directory=$($FilamentSource.Replace('\','/'))" -C $FilamentSource rev-parse HEAD).Trim()
-if ($LASTEXITCODE -or $actual -ne $lock.commit) { throw "Filament checkout must be pinned to $($lock.commit)." }
-$sourceBefore = & git -c "safe.directory=$($FilamentSource.Replace('\','/'))" -C $FilamentSource status --porcelain --untracked-files=normal
+$actual = & git @gitPathArguments -c "safe.directory=$($FilamentSource.Replace('\','/'))" -C $FilamentSource rev-parse HEAD
+if ($LASTEXITCODE) { throw 'Could not resolve the Filament checkout commit.' }
+if (([string]$actual).Trim() -ne $lock.commit) { throw "Filament checkout must be pinned to $($lock.commit)." }
+$sourceBefore = & git @gitPathArguments -c "safe.directory=$($FilamentSource.Replace('\','/'))" -C $FilamentSource status --porcelain --untracked-files=normal
 if ($LASTEXITCODE) { throw 'Could not verify the Filament source working tree.' }
-if ($sourceBefore) { throw 'The provided Filament checkout must be clean; it is treated as a read-only input.' }
+if ($sourceBefore) {
+    if ($managedSource) { throw 'The managed Filament source cache is not clean, possibly after an incomplete checkout. Use a fresh -OutputRoot; the cache was not modified.' }
+    throw 'The provided Filament checkout must be clean; it is treated as a read-only input.'
+}
 
 if (($RuntimeIdentifier.StartsWith('win-') -and -not $isWindowsHost) -or
     ($RuntimeIdentifier.StartsWith('osx-') -and -not $isMacHost) -or
@@ -148,13 +156,17 @@ try {
         $viewCmake = [regex]::Replace($viewCmake, $toolsPattern, '$1if (NOT CMAKE_CROSSCOMPILING)' + "`n" + '$1    add_subdirectory(${TOOLS}/cmgen)$2' + "`n" + '$1endif()')
         [IO.File]::WriteAllText($viewCmakePath, $viewCmake, [Text.UTF8Encoding]::new($false))
     }
-    $gitDirectory = (& git -c "safe.directory=$($FilamentSource.Replace('\','/'))" -C $FilamentSource rev-parse --absolute-git-dir).Trim()
+    $gitDirectory = & git @gitPathArguments -c "safe.directory=$($FilamentSource.Replace('\','/'))" -C $FilamentSource rev-parse --absolute-git-dir
+    if ($LASTEXITCODE) { throw 'Could not resolve the read-only Filament Git directory.' }
+    $gitDirectory = ([string]$gitDirectory).Trim()
     Set-Content -LiteralPath (Join-Path $sourceView '.git') -Value ('gitdir: ' + $gitDirectory.Replace('\','/')) -Encoding utf8NoBOM
-    $env:GIT_CONFIG_COUNT = '2'
+    $env:GIT_CONFIG_COUNT = '3'
     $env:GIT_CONFIG_KEY_0 = 'safe.directory'
     $env:GIT_CONFIG_VALUE_0 = $FilamentSource.Replace('\','/')
     $env:GIT_CONFIG_KEY_1 = 'safe.directory'
     $env:GIT_CONFIG_VALUE_1 = $sourceView.Replace('\','/').TrimEnd('/')
+    $env:GIT_CONFIG_KEY_2 = 'core.longpaths'
+    $env:GIT_CONFIG_VALUE_2 = 'true'
 
     $runtime = Join-Path $OutputRoot "runtimes/$RuntimeIdentifier/native"
     New-Item -ItemType Directory -Path $runtime -Force | Out-Null
@@ -253,7 +265,7 @@ try {
         builtAtUtc = [DateTime]::UtcNow.ToString('o')
         files = @($files | Sort-Object | ForEach-Object { [ordered]@{ path = $_; sha256 = (Get-FileHash -LiteralPath (Join-Path $runtime $_) -Algorithm SHA256).Hash.ToLowerInvariant() } })
     }
-    $after = & git -c "safe.directory=$($FilamentSource.Replace('\','/'))" -C $FilamentSource status --porcelain --untracked-files=normal
+    $after = & git @gitPathArguments -c "safe.directory=$($FilamentSource.Replace('\','/'))" -C $FilamentSource status --porcelain --untracked-files=normal
     if ($LASTEXITCODE) { throw 'Could not verify the Filament source after the build.' }
     if ($after) { throw 'The read-only Filament input changed during the build.' }
     $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $runtime 'filament-runtime.json.tmp') -Encoding utf8NoBOM

@@ -79,6 +79,8 @@ else()
     set(FILAMENT_SUPPORTS_METAL OFF CACHE BOOL "" FORCE)
     set(FILAMENT_SUPPORTS_OPENGL ON CACHE BOOL "" FORCE)
     if(UNIX)
+        # Keep the parent bridge and Filament on Clang's default dynamic libstdc++.
+        set(USE_STATIC_LIBCXX OFF CACHE BOOL "Use the same C++ runtime as the native bridge" FORCE)
         set(FILAMENT_SUPPORTS_EGL_ON_LINUX ON CACHE BOOL "" FORCE)
         set(FILAMENT_SUPPORTS_XCB OFF CACHE BOOL "" FORCE)
         set(FILAMENT_SUPPORTS_XLIB OFF CACHE BOOL "" FORCE)

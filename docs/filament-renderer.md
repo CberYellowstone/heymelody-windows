@@ -40,7 +40,7 @@ Filament 的部分初始化失败发生在自己的驱动线程或 noexcept 路�
 
 ## 构建与产物
 
-需要 PowerShell 7、.NET 10 SDK、Git、CMake 3.22.1+ 和 C++20 工具链。Windows 使用 MSVC；ARM64 交叉构建需要 Hostx64→ARM64 工具。macOS 使用 Xcode / Apple Clang；Linux 使用 C++ 工具链、Python、Ninja 和 EGL 开发包。普通托管构建不要求 APK 或 research 目录。
+需要 PowerShell 7、.NET 10 SDK、Git、CMake 3.22.1+ 和 C++20 工具链。Windows 使用 MSVC；ARM64 交叉构建需要 Hostx64→ARM64 工具。macOS 使用 Xcode / Apple Clang；Linux 使用 Clang / clang++、Python、Ninja 和 EGL 开发包；固定 Filament 不支持默认 GCC 工具链。普通托管构建不要求 APK 或 research 目录。
 
 ```powershell
 pwsh -NoProfile -File tools/filament/Build-FilamentNative.ps1 -RuntimeIdentifier win-x64 -FilamentSource B:/github/heymelody-windows/research/filament -FetchBuildTools
@@ -48,7 +48,17 @@ pwsh -NoProfile -File tools/Verify-FilamentRuntime.ps1 -Directory artifacts/fila
 dotnet run --project src/HeyMelody.App -- --3d-demo
 ```
 
-源码目录可以替换为同版本独立 clone，也可显式指定 -FetchSource 下载固定 commit；受限网络支持 -Proxy http://127.0.0.1:59991。默认原生输出为 artifacts/filament-compat；App 和 Build-Client 支持显式 FilamentRuntimeRoot。
+源码目录可以替换为同版本独立 clone，也可显式指定 -FetchSource 下载固定 commit；受限网络支持 -Proxy http://127.0.0.1:59991。默认原生输出为 artifacts/filament-compat；App 和 Build-Client 支持显式 FilamentRuntimeRoot。Windows 手工获取源码时，对 Git clone / checkout 使用命令级 `git -c core.longpaths=true ...`，避免第三方依赖的深层路径超过限制；无需修改持久 Git 配置。
+
+Ubuntu 构建示例（ARM64 主机将 RID 改为 `linux-arm64`）：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y clang ninja-build libegl-dev libgl-dev libvulkan1
+CC=clang CXX=clang++ pwsh -NoProfile -File tools/filament/Build-FilamentNative.ps1 -RuntimeIdentifier linux-x64 -FetchSource -OutputRoot artifacts/filament-compat
+```
+
+Linux 桥接与 Filament 统一使用 Clang 默认的动态 libstdc++，运行时需要 `libstdc++6`、系统 EGL 及兼容图形驱动；Vulkan 后端另外使用系统 `libvulkan1`。
 
 Windows ARM64 使用 -RuntimeIdentifier win-arm64。它复用同版本 x64 主机工具，resgen 生成 C 数组交给 ARM64 编译器，BlueGL 使用上游已有的类型化 C++ 分发实现；原始 Filament clone 保持不变。macOS/Linux 使用对应 RID，构建工具验证实际 OS、CPU 和产物架构，不能只改 RID 重命名文件。
 

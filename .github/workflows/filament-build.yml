@@ -32,7 +32,7 @@ jobs:
           dotnet-version: 10.0.x
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ninja-build libegl-dev libgl-dev libvulkan1
+        run: sudo apt-get update && sudo apt-get install -y clang ninja-build libegl-dev libgl-dev libvulkan1
       - name: Determine host RID
         id: runtime
         shell: pwsh
@@ -42,7 +42,9 @@ jobs:
           "rid=$prefix-$architecture" >> $env:GITHUB_OUTPUT
       - name: Build native renderer
         shell: pwsh
-        run: ./tools/filament/Build-FilamentNative.ps1 -FilamentSource ./artifacts/filament-source -RuntimeIdentifier '${{ steps.runtime.outputs.rid }}' -OutputRoot ./artifacts/filament-compat -FetchBuildTools -SkipSmoke
+        run: |
+          if ($IsLinux) { $env:CC = 'clang'; $env:CXX = 'clang++' }
+          ./tools/filament/Build-FilamentNative.ps1 -FilamentSource ./artifacts/filament-source -RuntimeIdentifier '${{ steps.runtime.outputs.rid }}' -OutputRoot ./artifacts/filament-compat -FetchBuildTools -SkipSmoke
       - name: Verify native payload
         shell: pwsh
         run: ./tools/Verify-FilamentRuntime.ps1 -Directory './artifacts/filament-compat/runtimes/${{ steps.runtime.outputs.rid }}/native' -RuntimeIdentifier '${{ steps.runtime.outputs.rid }}' -RequireCurrent | ConvertTo-Json
