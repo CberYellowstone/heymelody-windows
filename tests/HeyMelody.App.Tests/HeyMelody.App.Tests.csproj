@@ -3,6 +3,11 @@
     <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../../src/HeyMelody.App/HeyMelody.App.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/HeyMelody.App/HeyMelody.App.csproj" />
+    <ProjectReference Include="../../src/HeyMelody.Rendering.Filament/HeyMelody.Rendering.Filament.csproj" />
+  </ItemGroup>
   <ItemGroup><Content Include="Fixtures/*.webp;Fixtures/*.png" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><Compile Include="../HeyMelody.Rendering.Filament.Tests/GlbSource.cs" Link="Rendering/GlbSource.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../HeyMelody.ModelPreview.Tests/NativeWindowCapture.cs" Link="Rendering/NativeWindowCapture.cs" /></ItemGroup>
 </Project>

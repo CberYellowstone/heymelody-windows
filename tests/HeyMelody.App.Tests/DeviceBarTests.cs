@@ -58,6 +58,21 @@ internal static class DeviceBarTests
             "The removed status footer is absent.");
     }
 
+    internal static bool HasEarbudIcon(Viewbox icon)
+    {
+        if (!icon.IsEffectivelyVisible || icon.Bounds.Width != 28 || icon.Bounds.Height != 28
+            || icon.Child is not FAIconSourceElement { Width: 24, Height: 24 } element)
+            return false;
+        return (element.IconSource, AppIcons.Source(AppIcon.Earbuds, 24)) switch
+        {
+            (FAFontIconSource actual, FAFontIconSource expected) => actual.Glyph == expected.Glyph
+                && Equals(actual.FontFamily, expected.FontFamily) && actual.FontSize == expected.FontSize,
+            (FASymbolIconSource actual, FASymbolIconSource expected) => actual.Symbol == expected.Symbol
+                && actual.FontSize == expected.FontSize,
+            _ => false
+        };
+    }
+
     private static async Task DeviceSelectionAsync()
     {
         var service = new DeviceService();
@@ -168,12 +183,11 @@ internal static class DeviceBarTests
                         Check(content.Bounds.Width < card.Bounds.Width - 32
                             && Math.Abs(origin.X + content.Bounds.Width / 2 - card.Bounds.Width / 2) <= 1
                             && Math.Abs(origin.Y + content.Bounds.Height / 2 - card.Bounds.Height / 2) <= 1,
-                            "The generic headphone icon, name and status form a centered group inside each device card.");
+                            "The earbud icon, name and status form a centered group inside each device card.");
                         var icon = content.GetVisualDescendants().OfType<Viewbox>().Single(control => control.Name == "DeviceIcon");
-                        Check(icon.IsEffectivelyVisible && icon.Bounds.Width == 28 && icon.Bounds.Height == 28
-                            && icon.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single().Data is not null
+                        Check(HasEarbudIcon(icon)
                             && !content.GetVisualDescendants().OfType<Image>().Any(),
-                            "Every device card uses a fixed vector headphone icon without a product image.");
+                            "Every device card uses the settings earbud glyph in its fixed icon slot without a product image.");
                     }
                     CheckBottomBar(view, window);
                 }
@@ -338,6 +352,9 @@ internal static class DeviceBarTests
                 theme.CustomAccentColor = Color.FromRgb(0, 120, 212);
                 Dispatcher.UIThread.RunJobs();
                 var picker = view.FindControl<ListBox>("DevicePicker")!;
+                Check(picker.GetVisualDescendants().OfType<Viewbox>()
+                    .Where(icon => icon.Name == "DeviceIcon").All(HasEarbudIcon),
+                    "Device cards retain the settings earbud glyph in both themes.");
                 var selected = BorderColor(Card(picker, 0));
                 var other = BorderColor(Card(picker, 1));
                 Check(selected != other, "The selected device has a distinct border in each theme.");

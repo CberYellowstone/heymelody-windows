@@ -4,12 +4,75 @@ import datetime
 import hashlib
 import json
 import pathlib
+import re
 from pathlib import Path
 import struct
 
 
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def verify_filament(directory, rid, require_current=False, check_managed=True):
+    def runtime_file(relative):
+        assert isinstance(relative, str) and relative and "\\" not in relative
+        assert not pathlib.PurePosixPath(relative).is_absolute()
+        assert not any(part in ("", ".", "..") for part in relative.split("/")), "Unsafe Filament path"
+        candidate = directory / relative
+        for item in (candidate, *candidate.parents):
+            if item == directory.parent:
+                break
+            assert not item.is_symlink() and not getattr(item.lstat(), "st_file_attributes", 0) & 0x400, "Filament runtime cannot use links"
+        return checked_file(directory, relative)
+
+    manifest_path = runtime_file("filament-runtime.json")
+    manifest = json.loads(manifest_path.read_text("utf-8-sig"))
+    current = manifest["schemaVersion"] == 2 and manifest["abiVersion"] == 2
+    legacy = manifest["schemaVersion"] == 1 and manifest["abiVersion"] == 1
+    assert (current or legacy) and (not require_current or current), "Unsupported Filament ABI/schema"
+    assert manifest["filamentCommit"] == "ea31afeaf66339e7414aa648aa76c7e61adbde28"
+    assert manifest["rid"] == rid
+    library, probe = "HeyMelody.Filament.Native.dll", "hm_filament_probe.exe"
+    if current:
+        assert manifest["supportedBackends"] == ["Vulkan", "OpenGL"]
+        assert manifest["defaultBackend"] == "Vulkan"
+        materials = manifest["materials"]
+        assert materials["path"] == "materials/gltfio.uberz"
+        assert materials["supportedBackends"] == manifest["supportedBackends"]
+        assert re.fullmatch("[a-f0-9]{64}", materials["sha256"])
+    else:
+        assert manifest["backend"] == "OpenGL"
+    files = manifest["files"]
+    paths = [entry["path"] for entry in files]
+    assert len(paths) == len(set(path.casefold() for path in paths)), "Duplicate Filament runtime files"
+    required = [library, probe, materials["path"]] if current else [library]
+    assert all(paths.count(path) == 1 for path in required)
+    assert any(path.startswith("licenses/") for path in paths)
+    if current:
+        for prefix in ("third_party/vkmemalloc/", "third_party/smol-v/", "third_party/spirv-headers/", "libs/bluevk/"):
+            assert any(path.startswith("licenses/Filament/" + prefix) for path in paths), "Missing Vulkan license"
+    for entry in files:
+        path = runtime_file(entry["path"])
+        assert path.stat().st_size > 0 and re.fullmatch("[a-f0-9]{64}", entry["sha256"])
+        assert sha(path) == entry["sha256"], "Filament runtime hash mismatch"
+    if current:
+        assert any(entry["path"] == materials["path"] and entry["sha256"] == materials["sha256"] for entry in files)
+    machines = {"win-x64": 0x8664, "win-arm64": 0xaa64}
+    assert rid in machines, "Unsupported Windows Filament runtime"
+    for name in ([library, probe] if current else [library]):
+        assert PE(runtime_file(name)).machine == machines[rid], "Filament PE architecture does not match its RID"
+    if check_managed:
+        checked_file(directory, "HeyMelody.Rendering.Filament.dll")
+    assert not (directory / "Ava3D.dll").exists()
+    result = dict(schemaVersion=manifest["schemaVersion"], abiVersion=manifest["abiVersion"],
+                  filamentCommit=manifest["filamentCommit"], library=library,
+                  sha256=sha(directory / library), manifestSha256=sha(manifest_path))
+    if current:
+        result.update(supportedBackends=manifest["supportedBackends"], defaultBackend=manifest["defaultBackend"],
+                      probe=probe, probeSha256=sha(directory / probe), materials=materials)
+    else:
+        result["backend"] = "OpenGL"
+    return result
 
 
 class PE:
@@ -200,7 +263,23 @@ def verify(root, package, evidence=None, architectures=("x64", "x86", "arm64")):
                              if key.split("/", 1)[0].casefold() == "ava3dcontrol"]
         assert len(renderer_packages) <= 1, "Ambiguous Ava3DControl dependency versions"
         renderer = None
-        if renderer_packages:
+        if manifest.get("modelRenderer") == "Filament" or (folder / "HeyMelody.Rendering.Filament.dll").exists():
+            assert manifest.get("modelRenderer") == "Filament", "Missing release renderer declaration"
+            assert not renderer_packages, "Ava3D dependency remains in Filament release"
+            renderer = verify_filament(folder, "win-" + arch)
+            declared_renderer = declared[arch]["modelRenderer"]
+            assert declared_renderer["success"] and declared_renderer["sha256"] == renderer["sha256"]
+            assert declared_renderer["manifestSha256"] == renderer["manifestSha256"]
+            for field in ("abiVersion", "filamentCommit", "library"):
+                assert declared_renderer[field] == renderer[field], "Release renderer metadata mismatch"
+            if renderer["abiVersion"] == 2:
+                for field in ("supportedBackends", "defaultBackend", "probe", "probeSha256", "materials"):
+                    assert declared_renderer[field] == renderer[field], "Release renderer capability mismatch"
+                nested = folder / "runtimes" / ("win-" + arch) / "native"
+                if any((nested / name).exists() for name in ("HeyMelody.Filament.Native.dll", "filament-runtime.json", "hm_filament_probe.exe")):
+                    nested_renderer = verify_filament(nested, "win-" + arch, require_current=True, check_managed=False)
+                    assert nested_renderer["manifestSha256"] == renderer["manifestSha256"], "Nested Filament runtime differs"
+        elif renderer_packages:
             renderer_path = checked_file(folder, "Ava3D.dll")
             renderer = dict(package=renderer_packages[0][0], declaredVersion=renderer_packages[0][1],
                             assembly=renderer_path.name, sha256=sha(renderer_path))

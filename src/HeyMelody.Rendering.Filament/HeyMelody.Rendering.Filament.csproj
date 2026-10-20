@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="HeyMelody.App.Tests" />
+    <InternalsVisibleTo Include="HeyMelody.ModelPreview.Tests" />
+    <InternalsVisibleTo Include="HeyMelody.Rendering.Filament.Tests" />
+  </ItemGroup>
+</Project>

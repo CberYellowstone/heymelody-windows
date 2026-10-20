@@ -103,9 +103,9 @@ internal static class MainLayoutTests
                         var cards = picker.GetVisualDescendants().OfType<Grid>().Where(grid => grid.Name == "DeviceCardContent").ToArray();
                         Check(cards.Length > 0 && cards.All(card => card.ColumnDefinitions.Count == 2
                                 && card.GetVisualDescendants().OfType<Viewbox>().Any(icon => icon.Name == "DeviceIcon"
-                                    && icon.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Any()))
+                                    && DeviceBarTests.HasEarbudIcon(icon)))
                             && !picker.GetVisualDescendants().OfType<Image>().Any(),
-                            "Real and demo cards share a generic vector headphone icon without product images.");
+                            "Real and demo cards share the settings earbud glyph without product images.");
                         Check(view.IsCompact == (size.Width < 1080), "The simplified hero respects the responsive breakpoint.");
 
                         using var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("Missing main-layout pixels.");
@@ -119,6 +119,39 @@ internal static class MainLayoutTests
                             battery = new { x = batteryOrigin.X, y = batteryOrigin.Y,
                                 width = batteryPanel.Bounds.Width, height = batteryPanel.Bounds.Height },
                             sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant() });
+
+                        // Keep UI review limited to the changed device card. These raster scales
+                        // exercise glyph scaling; they do not claim physical monitor DPI coverage.
+                        foreach (var scale in new[] { 1d, 1.5d, 2d })
+                        {
+                            var card = cards[0];
+                            var origin = card.TranslatePoint(default, window)
+                                ?? throw new InvalidOperationException("Device card is detached from the captured window.");
+                            using var fullWindow = new Avalonia.Media.Imaging.RenderTargetBitmap(
+                                new PixelSize((int)Math.Ceiling(window.Bounds.Width * scale),
+                                    (int)Math.Ceiling(window.Bounds.Height * scale)), new Vector(96 * scale, 96 * scale));
+                            fullWindow.Render(window);
+                            // Crop the composed window so the card keeps its real background,
+                            // inherited foreground and its translated position at each scale.
+                            var left = Math.Max(0, (int)Math.Floor(origin.X * scale));
+                            var top = Math.Max(0, (int)Math.Floor(origin.Y * scale));
+                            var right = Math.Min(fullWindow.PixelSize.Width, (int)Math.Ceiling((origin.X + card.Bounds.Width) * scale));
+                            var bottom = Math.Min(fullWindow.PixelSize.Height, (int)Math.Ceiling((origin.Y + card.Bounds.Height) * scale));
+                            var pixels = new PixelSize(right - left, bottom - top);
+                            using var crop = new Avalonia.Media.Imaging.WriteableBitmap(pixels, fullWindow.Dpi,
+                                fullWindow.Format, fullWindow.AlphaFormat);
+                            using (var buffer = crop.Lock())
+                                fullWindow.CopyPixels(new PixelRect(left, top, pixels.Width, pixels.Height),
+                                    buffer.Address, checked(buffer.RowBytes * pixels.Height), buffer.RowBytes);
+                            var cropName = $"device-card-{(demo ? "demo" : "real")}-{(dark ? "dark" : "light")}-{(int)size.Width}-{(int)(scale * 100)}pct.png";
+                            var cropPath = Path.Combine(output, cropName);
+                            using (var stream = new FileStream(cropPath, FileMode.CreateNew))
+                                crop.Save(stream, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+                            receipts.Add(new { scenario = "device-earbud-crop", demo, theme = dark ? "dark" : "light",
+                                rasterScale = scale, width = pixels.Width, height = pixels.Height, file = cropName,
+                                scope = "headless glyph raster scaling; no physical monitor DPI assertion",
+                                sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(cropPath))).ToLowerInvariant() });
+                        }
 
                         // Inspect the controls below the initial viewport without opening
                         // any panel. Center the adjacent fit-test and information cards
@@ -320,22 +353,30 @@ internal static class MainLayoutTests
             Check(geometry.Bounds.Width > 0 && geometry.Bounds.Height > 0
                 && geometry.Bounds.Left >= 0 && geometry.Bounds.Top >= 0
                 && geometry.Bounds.Right <= 14 && geometry.Bounds.Bottom <= 14,
-                "The complete device shape fits inside its original, uniformly scaled viewport.");
+                "The complete battery icon fits inside its historical fourteen-pixel viewport.");
             return geometry;
         }
         var left = GeometryFor("LeftBatteryDeviceIcon");
         var right = GeometryFor("RightBatteryDeviceIcon");
         var box = GeometryFor("CaseBatteryDeviceIcon");
-        Point InIcon(double x, double y) => new(x * 14 / 19, y * 14 / 19 + 21d / 19);
-        Check(left.FillContains(InIcon(7, 12)) && !right.FillContains(InIcon(7, 12))
-            && right.FillContains(InIcon(10.5, 12)) && !left.FillContains(InIcon(10.5, 12))
-            && box.FillContains(InIcon(3, 8)) && !left.FillContains(InIcon(3, 8)) && !right.FillContains(InIcon(3, 8)),
-            "Left and right cells show their respective earbud stems, and the case cell shows its wider case body.");
-        Check(!left.FillContains(InIcon(11.3, 6.4)) && !right.FillContains(InIcon(6.5, 6.4))
-            && !box.FillContains(InIcon(9.5, 9.525)) && box.FillContains(InIcon(9.5, 12)),
-            "The imported even-odd earbud and case holes remain open instead of being filled.");
-        Check(box.FillContains(InIcon(17.49, 8)) && !box.FillContains(InIcon(17.51, 8)),
-            "The case retains the source clip at x=17.5, including its small overflowing right edge.");
+        foreach (var circle in new[] { left, right })
+        {
+            Check(circle.Bounds == new Rect(0, 0, 14, 14) && circle.Bounds.Center == new Point(7, 7)
+                && circle.FillContains(new Point(7, .5)) && circle.FillContains(new Point(.5, 7))
+                && circle.FillContains(new Point(13.5, 7)) && circle.FillContains(new Point(7, 13.5))
+                && !circle.FillContains(new Point(1, 1)),
+                "Left and right badges retain matching fourteen-pixel circles centered at seven pixels.");
+        }
+        Check(!left.FillContains(new Point(5, 5)) && !left.FillContains(new Point(8, 10.4))
+            && left.FillContains(new Point(7, 7)) && !right.FillContains(new Point(7, 7)),
+            "The L cutout keeps its vertical and bottom strokes and remains distinct from R.");
+        Check(!right.FillContains(new Point(4.8, 5)) && right.FillContains(new Point(7, 5.4)),
+            "The R cutout keeps its vertical stroke and filled inner counter under even-odd filling.");
+        Check(box.Bounds.Width > box.Bounds.Height && box.Bounds.Top > 0 && box.Bounds.Bottom < 14
+            && box.FillContains(new Point(7, 2.3)) && box.FillContains(new Point(7, 10.5))
+            && !box.FillContains(new Point(7, 5.4)) && !box.FillContains(new Point(7, 8.32))
+            && left.FillContains(new Point(7, 5.4)) && right.FillContains(new Point(7, 5.4)),
+            "The matching case keeps its lid, body, open seam and indicator hole, distinct from both letter badges.");
     }
 
     private static string Expected(MainViewModel vm) => $"设备名称：{vm.Title}{Environment.NewLine}产品编号：{vm.ProductId ?? "—"}{Environment.NewLine}固件版本：{vm.Firmware ?? "—"}";

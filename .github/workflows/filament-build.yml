@@ -1,0 +1,63 @@
+name: Filament portability
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: filament-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  renderer:
+    name: Native renderer and portable checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: google/filament
+          ref: ea31afeaf66339e7414aa648aa76c7e61adbde28
+          path: artifacts/filament-source
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libegl-dev libgl-dev libvulkan1
+      - name: Determine host RID
+        id: runtime
+        shell: pwsh
+        run: |
+          $prefix = if ($IsWindows) { 'win' } elseif ($IsMacOS) { 'osx' } else { 'linux' }
+          $architecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant()
+          "rid=$prefix-$architecture" >> $env:GITHUB_OUTPUT
+      - name: Build native renderer
+        shell: pwsh
+        run: ./tools/filament/Build-FilamentNative.ps1 -FilamentSource ./artifacts/filament-source -RuntimeIdentifier '${{ steps.runtime.outputs.rid }}' -OutputRoot ./artifacts/filament-compat -FetchBuildTools -SkipSmoke
+      - name: Verify native payload
+        shell: pwsh
+        run: ./tools/Verify-FilamentRuntime.ps1 -Directory './artifacts/filament-compat/runtimes/${{ steps.runtime.outputs.rid }}/native' -RuntimeIdentifier '${{ steps.runtime.outputs.rid }}' -RequireCurrent | ConvertTo-Json
+      - name: Run portable renderer checks
+        shell: pwsh
+        run: |
+          dotnet run --project tests/HeyMelody.Rendering.Filament.Tests -c Release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet run --project tests/HeyMelody.ModelPreview.Tests -c Release -- --output-dir artifacts/portable-model-checks
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: filament-${{ steps.runtime.outputs.rid }}
+          path: |
+            artifacts/filament-compat/runtimes/${{ steps.runtime.outputs.rid }}/native/
+            artifacts/portable-model-checks/*.json
+          if-no-files-found: error
+          retention-days: 2

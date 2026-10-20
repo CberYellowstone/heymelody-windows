@@ -24,16 +24,26 @@
       </fa:FASettingsExpanderItem.Footer>
     </fa:FASettingsExpanderItem>
 
-    <fa:FASettingsExpanderItem Content="三维模型 GPU 加速" Description="默认开启 GPU 加速，关闭后使用软件渲染；保存后立即生效">
+    <fa:FASettingsExpanderItem x:Name="ModelCompatibilityCard" Content="3D模型渲染API"
+                               Description="若存在渲染问题，请尝试切换到 OpenGL">
       <fa:FASettingsExpanderItem.IconSource><fa:FASymbolIconSource Symbol="Sync" /></fa:FASettingsExpanderItem.IconSource>
       <fa:FASettingsExpanderItem.Footer>
-        <ToggleSwitch x:Name="ModelGpuSwitch" OnContent="开" OffContent="关" AutomationProperties.Name="三维模型 GPU 加速" />
+        <ComboBox x:Name="ModelBackendChoice" MinWidth="150" AutomationProperties.Name="3D模型渲染API" />
       </fa:FASettingsExpanderItem.Footer>
     </fa:FASettingsExpanderItem>
-    <fa:FASettingsExpanderItem Content="三维模型帧率" Description="跟随显示器最流畅；60 或 30 帧可降低 GPU 占用与耗电">
+    <fa:FASettingsExpanderItem x:Name="ModelFrameRateCard" Content="3D模型渲染帧率">
       <fa:FASettingsExpanderItem.IconSource><fa:FASymbolIconSource Symbol="Rotate" /></fa:FASettingsExpanderItem.IconSource>
       <fa:FASettingsExpanderItem.Footer>
-        <ComboBox x:Name="ModelFrameRateChoice" MinWidth="150" AutomationProperties.Name="三维模型帧率" />
+        <Grid x:Name="ModelFrameRateEditor" Width="216" RowDefinitions="Auto,20">
+          <Slider x:Name="ModelFrameRateSlider" Margin="28,0" Minimum="0" Maximum="2" Value="2"
+                  TickFrequency="1" Ticks="0,1,2" TickPlacement="BottomRight" IsSnapToTickEnabled="True"
+                  SmallChange="1" LargeChange="1" AutomationProperties.Name="3D模型渲染帧率" />
+          <Canvas x:Name="ModelFrameRateLabels" Grid.Row="1" Height="20" IsHitTestVisible="False">
+            <TextBlock x:Name="ModelFrameRate30Label" Text="30帧" FontSize="12" />
+            <TextBlock x:Name="ModelFrameRate60Label" Text="60帧" FontSize="12" />
+            <TextBlock x:Name="ModelFrameRateUnlimitedLabel" Text="无限制" FontSize="12" />
+          </Canvas>
+        </Grid>
       </fa:FASettingsExpanderItem.Footer>
     </fa:FASettingsExpanderItem>
 

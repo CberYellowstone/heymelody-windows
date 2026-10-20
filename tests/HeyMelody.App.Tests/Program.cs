@@ -9,27 +9,54 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using FluentAvalonia.Styling;
+using HeyMelody.Rendering.Filament;
 using HeyMelodyWindows.App;
 
 if (ProcessLifetimeTests.TryRunHelper(args, out var helperExit)) return helperExit;
 
 if (args is ["--native-smoke"]) return NativeSmoke.Run();
 if (args is ["--native-settings-smoke"]) return NativeSmoke.Run(openSettings: true);
+if (args is ["--native-model-settings-smoke"]) return NativeModelSettingsSmoke.Run();
+if (args is ["--native-model-settings-smoke", "--output-dir", var nativeSettingsOutput])
+    return NativeModelSettingsSmoke.Run(Path.GetFullPath(nativeSettingsOutput));
+if (args.FirstOrDefault() == "--native-model-settings-smoke")
+{ Console.Error.WriteLine("Usage: --native-model-settings-smoke [--output-dir path]"); return 2; }
 if (args is ["--native-startup-smoke"]) return NativeStartupSmoke.Run();
 if (args is ["--native-backend-smoke"]) return NativeBackendSmoke.Run();
-if (args is ["--native-demo-smoke"]) return NativeDemoSmoke.Run();
-if (args is ["--native-demo-smoke", "--output-dir", var nativeDemoOutput]) return NativeDemoSmoke.Run(Path.GetFullPath(nativeDemoOutput));
+if (args.FirstOrDefault() == "--native-demo-smoke")
+{
+    FilamentBackend backend = FilamentBackend.Vulkan;
+    string? nativeDemoOutput = null;
+    for (int index = 1; index < args.Length; index++)
+    {
+        if (args[index] == "--backend" && ++index < args.Length && args[index] is "vulkan" or "opengl")
+            backend = args[index] == "opengl" ? FilamentBackend.OpenGL : FilamentBackend.Vulkan;
+        else if (args[index] == "--output-dir" && ++index < args.Length) nativeDemoOutput = Path.GetFullPath(args[index]);
+        else { Console.Error.WriteLine("Usage: --native-demo-smoke [--backend vulkan|opengl] [--output-dir path]"); return 2; }
+    }
+    return NativeDemoSmoke.Run(nativeDemoOutput, backend);
+}
 
 string output = args.Length == 2 && args[0] == "--output-dir" ? Path.GetFullPath(args[1])
+    : args is ["--model-tests", "--output-dir", var modelOutput] ? Path.GetFullPath(modelOutput)
     : args is ["--anc-feature-tests", "--output-dir", var ancOutput] ? Path.GetFullPath(ancOutput)
     : Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "avalonia-ui-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8]);
 Directory.CreateDirectory(output);
 var receipts = new List<object>();
 int passed = 0;
+// Portable UI checks exercise composition with an explicit fake, never by loading a host native DLL.
+DeviceModelView.DefaultFactoryOverride = new RecordingFilamentRendererFactory();
 // Keep the runner outside the UI dispatch thread; synchronous disposal must never wait on itself.
 using var session = HeadlessUnitTestSession.StartNew(typeof(PreviewBootstrap));
 try
 {
+    if (args is ["--model-tests"] or ["--model-tests", "--output-dir", _])
+    {
+        int count = CompatibilityRenderingTests.Run(session, output) + FrameLoopTests.Run(session, output);
+        session.Dispatch<bool>(async () => { await DynaudioModelTests.VerifyAsync(); return true; }, CancellationToken.None).GetAwaiter().GetResult();
+        Console.WriteLine(JsonSerializer.Serialize(new { passed = count + 1, success = true, nativeBluetoothCalls = 0, output }));
+        return 0;
+    }
     if (args is ["--anc-feature-tests"] or ["--anc-feature-tests", "--output-dir", _])
     {
         var checks = AncFeatureTests.Run(session, output);
@@ -137,7 +164,7 @@ try
     passed += DeviceBarTests.Run(session);
     passed += DeviceVisualTests.Run(session);
     passed += ArtworkPersistenceTests.Run(session, output, receipts);
-    var renderingChecks = GpuRenderingTests.Run(session, output);
+    var renderingChecks = CompatibilityRenderingTests.Run(session, output);
     passed += renderingChecks;
     var animationChecks = AnimatedWebpTests.Run(session, output, receipts);
     passed += animationChecks;

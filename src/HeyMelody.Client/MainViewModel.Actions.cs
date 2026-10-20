@@ -167,7 +167,7 @@ public sealed partial class MainViewModel
             if (matches.Length > 1 || matches.Length == 0 && beforeRetry.EqualizerEntries.Any(x => x.Name == draft.Name))
             {
                 await FailAndRefreshAsync(intent, new() { BackendReceiptReceived = true, ConnectionState = ConnectionState.Connected,
-                    FailureKind = ApplyFailure.Validation, Message = "EQ 条目无法唯一确认或名称已存在，未再次创建。" }, second: true); return;
+                    FailureKind = ApplyFailure.Validation, Message = "均衡器条目无法唯一确认或名称已存在，未再次创建。" }, second: true); return;
             }
             if (matches.Length == 1)
             {
@@ -185,7 +185,7 @@ public sealed partial class MainViewModel
         if (FinishIfConfirmed(intent, second)) return;
         await FailAndRefreshAsync(intent, second, second: true,
             second.ReadbackMatches == true && second.After is { } after && !GoalMatches(intent, intent.Action, after)
-                ? "耳机条目在核对后发生了变化，回读内容与本次保存的 EQ 不一致。" : null);
+                ? "耳机条目在核对后发生了变化，回读内容与本次保存的均衡器不一致。" : null);
     }
 
     private async Task<UiApplyResult> SubmitAsync(PendingAction intent, UiAction action)

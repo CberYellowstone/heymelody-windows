@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <FilamentRuntimeRoot Condition="'$(FilamentRuntimeRoot)' == ''">$(MSBuildThisFileDirectory)../../artifacts/filament-compat</FilamentRuntimeRoot>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -18,21 +19,22 @@
     <PackageReference Include="Avalonia.Headless" Version="12.1.4" />
     <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
     <PackageReference Include="FluentAvaloniaUI" Version="3.1.0" />
-    <PackageReference Include="Ava3DControl" Version="12.1.0-preview.16" />
     <PackageReference Include="SkiaSharp.Skottie" Version="3.119.4" />
     <ProjectReference Include="../HeyMelody.Client/HeyMelody.Client.csproj" />
     <ProjectReference Include="../HeyMelody.Artwork/HeyMelody.Artwork.csproj" />
     <ProjectReference Include="../HeyMelody.Resources/HeyMelody.Resources.csproj" />
+    <ProjectReference Include="../HeyMelody.Rendering.Filament/HeyMelody.Rendering.Filament.csproj" />
     <AvaloniaResource Include="Assets/**" />
     <InternalsVisibleTo Include="HeyMelody.App.Tests" />
     <InternalsVisibleTo Include="HeyMelody.ModelPreview.Tests" />
   </ItemGroup>
+  <PropertyGroup>
+    <FilamentRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</FilamentRuntimeIdentifier>
+    <FilamentRuntimeIdentifier Condition="'$(FilamentRuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</FilamentRuntimeIdentifier>
+  </PropertyGroup>
   <ItemGroup>
-    <Content Include="../../docs/licenses/Ava3DControl/LICENSE.md"
-             Link="licenses/Ava3DControl/LICENSE.md"
-             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="../../docs/licenses/Ava3DControl/THIRD-PARTY-NOTICES.md"
-             Link="licenses/Ava3DControl/THIRD-PARTY-NOTICES.md"
+    <Content Include="$(FilamentRuntimeRoot)/runtimes/$(FilamentRuntimeIdentifier)/native/**/*"
+             Link="runtimes/$(FilamentRuntimeIdentifier)/native/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

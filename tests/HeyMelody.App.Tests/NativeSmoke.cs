@@ -160,12 +160,11 @@ internal static class NativeSmoke
                 var card = selectedCard.GetVisualDescendants().OfType<Grid>().Single(control => control.Name == "DeviceCardContent");
                 Check(card.ColumnDefinitions.Count == 2
                     && card.GetVisualDescendants().OfType<Viewbox>().Any(control => control.Name == "DeviceIcon"
-                        && control.IsEffectivelyVisible && control.Bounds.Width == 28 && control.Bounds.Height == 28
-                        && control.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Any())
+                        && DeviceBarTests.HasEarbudIcon(control))
                     && !card.GetVisualDescendants().OfType<Image>().Any()
                     && selectedCard.GetVisualDescendants().OfType<TextBlock>().Any(control => control.Name == "DeviceNameText"
                         && control.Text == vm.SelectedDevice!.Name),
-                    "The native device card shows its generic vector headphone icon, name and status without a product image.");
+                    "The native device card shows the settings earbud glyph, name and status without a product image.");
                 var selectedOrigin = selectedCard.TranslatePoint(default, scroll)
                     ?? throw new InvalidOperationException("Selected native device card is detached.");
                 var selectedCenter = selectedOrigin.X + selectedCard.Bounds.Width / 2;
@@ -177,6 +176,7 @@ internal static class NativeSmoke
                 {
                     theme = dark ? "dark" : "light", requestedWidth = size.Width, requestedHeight = size.Height,
                     clientWidth = window.ClientSize.Width, clientHeight = window.ClientSize.Height,
+                    renderScaling = window.RenderScaling,
                     contentWidth = page.Bounds.Width, contentHeight = page.Bounds.Height,
                     titleBarHeight = titleBar!.Bounds.Height, compact = page.IsCompact,
                     deviceCount = picker.ItemCount, deviceViewportWidth = scroll.Viewport.Width,

@@ -10,9 +10,13 @@ license does not relicense those materials; no open-source asset license is
 claimed here. The two X4 PNGs were separately supplied for this project.
 
 Current left-ear, right-ear and charging-case interface pictograms are adapted
-from battery-row vectors verified in HeyMelody 17.6.5. Their original resource
-paths and hashes are recorded in docs/research/battery-device-icons.md. These
-interface geometries are separate from the ResourceBundles device artwork.
+from the 14x14 melody_ui_battery_device_left, melody_ui_battery_device_right
+and melody_ui_battery_device_box vectors verified in HeyMelody 17.6.5. These
+restore the historical circular L/R and matching case shapes while using
+HeyMelody provenance. Their original resource paths and hashes, including
+preserved earlier 19x16 research, are recorded in
+docs/research/battery-device-icons.md. These interface geometries are separate
+from the ResourceBundles device artwork.
 
 Earlier releases embedded monochrome outlines copied from Wireless Earphones
 17.6.3 (com.oplus.melody). That component's exclusive configuration and artwork

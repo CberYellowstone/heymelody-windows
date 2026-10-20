@@ -1,4 +1,4 @@
-using Ava3D;
+using HeyMelody.Rendering.Filament;
 
 namespace HeyMelodyWindows.App;
 
@@ -9,5 +9,5 @@ public sealed class EncoFree4DynaudioModelView : DeviceModelView
     private static readonly DeviceModelVisual Bundled = new(new ArtworkFile(
         new Uri("avares://HeyMelody/Assets/Devices/EncoFree4Dynaudio/model.glb"), "", ModelSha256), DeviceVisuals.GenericProduct);
     public EncoFree4DynaudioModelView() : base(Bundled) { }
-    public static Task<GltfModel> LoadModelAsync() => DeviceModelView.LoadModelAsync(Bundled);
+    public static Task<FilamentModelData> LoadModelAsync() => DeviceModelView.LoadModelAsync(Bundled);
 }

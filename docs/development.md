@@ -2,6 +2,10 @@
 
 本文描述 0.9.2 的源码入口和现行脚本。本轮在 Windows 本地构建，尚未发布到 GitHub。用户操作见根目录 [README](../README.md)，协作规则与文档导航见 [AGENTS.md](../AGENTS.md)，过去版本的结果见[版本记录](history/release-notes.md)。所有命令均从仓库根目录运行。
 
+## Filament 实验分支
+
+本分支支持 Windows x64、ARM64 打包，默认 Vulkan，在“3D模型渲染API”下拉框选择 OpenGL 可切换后端。“3D模型渲染帧率”提供 30帧、60帧、无限制三档吸附滑块，默认无限制。原生窗口验收使用 Windows x64；ARM64 为交叉构建与静态校验，硬件运行尚未验证。三维层的 macOS Metal、Linux Vulkan／EGLHeadless、ABI 2 和探测程序见 [Filament 构建与接口](filament-renderer.md)。托管构建不要求 APK 或固定 research 路径，真实三维需对应 RID 的完整原生产物；Vulkan 失败使用静态外观并提示手动选择 OpenGL。
+
 ## 环境与模块
 
 日常客户端使用 Windows 与 .NET SDK 10，通过仓库 `NuGet.Config` 中的官方 NuGet 源恢复依赖。GUI 使用 Avalonia、FluentAvalonia；Windows 平台层目标为 `net10.0-windows`。发布包是自包含应用，终端用户无需安装 SDK。
@@ -52,7 +56,7 @@ App 也能自动启动后台；源码运行时，若输出目录没有 Host 可�
 
 三个 GUI 入口与 Host 托盘在 AppBuilder 阶段调用 `src/HeyMelody.App/RenderingSetup.cs` 与 `Typography.cs`（以源码链接编入各程序集，不新增 DLL）：固定 Win32 的 AngleEgl 与 WinUI／DirectComposition 合成（Mica 依赖前者），Skia GPU 资源上限 256 MiB、字形缓存 64 MiB；界面区域性固定为 zh-CN，默认字体为系统 Microsoft YaHei UI，汉字回退先于按区域打分固定到简体中文字体，550–699 字重使用真实粗体字面。没有雅黑的系统使用随附的 Noto Sans SC（`fonts/`，OFL-1.1）；Linux 无头预览与测试把该目录登记到 fontconfig，以路径方式打开字体，避免 Avalonia 12.1 从流加载字体时随窗口累积原生内存。共享样式与间距令牌在 `src/HeyMelody.App/Styles/HeyMelodyTheme.axaml`，代码构建的界面使用 `UiMetrics.cs` 中的同名数值。
 
-设 `HEYMELODY_RENDER_DIAGNOSTICS=1` 或在窗口中按 Ctrl+Shift+F12 显示 Avalonia 的帧率、渲染与布局耗时叠加层，三维模型另显示 Ava3D 帧统计。验收 120 Hz 时在 120 Hz 显示器上展开／折叠设置项、拖动模型，并关注叠加层而不是空闲窗口的数值。
+设 `HEYMELODY_RENDER_DIAGNOSTICS=1` 或在窗口中按 Ctrl+Shift+F12 显示 Avalonia 的帧率、渲染与布局耗时叠加层，三维模型另显示 Filament 帧统计。验收 120 Hz 时在 120 Hz 显示器上展开／折叠设置项、拖动模型，并关注叠加层而不是空闲窗口的数值。
 
 ## 按改动选择验证
 
@@ -69,7 +73,7 @@ dotnet run --project tests/HeyMelody.App.Tests/HeyMelody.App.Tests.csproj -c Rel
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -TestsOnly
 ```
 
-`Build-Client.ps1` 当前编排十三个默认 runner，包含资源、校准、GUI 和 `Windows.OfflineChecks`。默认检查通过模拟、资源与静态断言验证实现；应按改动选取验证，完整发布不是每次编辑的默认步骤。`HeyMelody.ModelPreview.Tests` 是独立模型检查；App、DeviceManager 和模型相关的 Windows 原生窗口检查也需单独运行。具体命令和适用条件见[三维模型渲染](model-rendering.md)及[研究文档索引](research/README.md)。
+`Build-Client.ps1` 保留原十三个默认 runner，并加入独立 Filament 便携检查，包含资源、校准、GUI 和 `Windows.OfflineChecks`。默认检查通过模拟、资源与静态断言验证实现；应按改动选取验证，完整发布不是每次编辑的默认步骤。`HeyMelody.ModelPreview.Tests` 是独立模型检查；App、DeviceManager 和模型相关的 Windows 原生窗口检查也需单独运行。具体命令和适用条件见[三维模型渲染](model-rendering.md)及[研究文档索引](research/README.md)。
 
 欢律单源改造的 UI 检查限于资源设置区、变更的电量／标题图标和校准步骤，其他默认 runner 照常执行。测试生成的完整 PNG 保留本地，不向会话载入整套截图；局部原生窗口检查可使用 App.Tests 的 `--native-smoke`，该模式不连接耳机或打开系统设置。
 
@@ -84,31 +88,31 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Test
 
 ## 发布与包校验
 
-仅在任务涉及构建发布包时执行。脚本默认版本为 0.9.2，`-Version` 同时选择程序集与包版本，默认生成自包含 Windows x64、x86、ARM64 目录和合并 ZIP；本地生成产物不等于向 GitHub 发布：
+仅在任务涉及构建发布包时执行。脚本默认版本为 0.9.2，`-Version` 同时选择程序集与包版本，本 Filament 试验默认生成自包含 Windows x64 目录和 ZIP；本地生成产物不等于向 GitHub 发布：
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Version 0.9.2
+pwsh -NoProfile -File .\Build-Client.ps1 -Version 0.9.2
 ```
 
 GitHub Actions 的 x64、ARM64 构建产物保留 2 天，到期自动删除；工作流运行记录和日志继续按既有策略保留。
 
-自 0.9.0 起所有 `dotnet publish` 统一启用 ReadyToRun（`-p:PublishReadyToRun=true`），预编译只含 IL 的界面库，避免首次展开设置、拖动模型或打开向导时的 JIT 停顿；发布包因此变大，x64 机器可交叉编译 ARM64。`-Architectures x64` 可选择单架构；`-SkipTests` 跳过默认 runner。普通构建拒绝已有目标目录或 ZIP；`-FinalizeOnly` 要求对应目录已存在且 ZIP 尚不存在，并跳过默认测试与 `dotnet publish`，封装已有输出。调整参数前先阅读脚本入口与条件，避免把跳过测试的产物称为完整验证。
+自 0.9.0 起所有 `dotnet publish` 统一启用 ReadyToRun（`-p:PublishReadyToRun=true`），预编译只含 IL 的界面库，避免首次展开设置、拖动模型或打开向导时的 JIT 停顿；发布包因此变大，x64 机器可交叉编译 ARM64。`-Architectures x64` 或 `-Architectures arm64` 可选择单架构；`-SkipTests` 跳过默认 runner。普通构建拒绝已有目标目录或 ZIP；可用 `-OutputRoot release/arm64` 将另一架构构建放在独立目录，校验时传入同一参数。`-FinalizeOnly` 要求对应目录已存在且 ZIP 尚不存在，并跳过默认测试与 `dotnet publish`，封装已有输出。调整参数前先阅读脚本入口与条件，避免把跳过测试的产物称为完整验证。
 
-App、DeviceManager、FitTest、HearingSetup 共用每个 GUI 目录的运行时与依赖，Host 位于 `backend`。GUI 和后台分别携带资源及第三方声明；提取资源、Ava3D 和 Skottie 的声明必须随包保留。脚本从 `packaging/README.md` 复制用户说明，从 `packaging/SOURCE-NOTES.md` 复制来源与验证说明，两者是发布素材，更新时需核对发布消费关系。
+App、DeviceManager、FitTest、HearingSetup 共用每个 GUI 目录的运行时与依赖，Host 位于 `backend`。GUI 和后台分别携带资源及第三方声明；提取资源、Filament 和 Skottie 的声明必须随包保留。脚本从 `packaging/README.md` 复制用户说明，从 `packaging/SOURCE-NOTES.md` 复制来源与验证说明，两者是发布素材，更新时需核对发布消费关系。
 
-PowerShell 7 的 `tools/Verify-Release.ps1` 固定检查三架构目录和 `_AllArchitectures.zip`，收据固定写入 `release/HeyMelody_Windows_<版本>_STATIC-VALIDATION.json`，会覆盖同名文件。仅在收据尚不存在时使用下面的入口；已有收据时改用 Python 并指定新的输出文件：
+PowerShell 7 的 `tools/Verify-Release.ps1` 默认检查三架构目录和 `_AllArchitectures.zip`，本分支须加 `-Architectures x64` 或 `-Architectures arm64` 选择对应包。收据默认写入输出根目录的 `HeyMelody_Windows_<版本>_STATIC-VALIDATION.json`；已有收据会被拒绝，可用 `-OutputPath` 另存新文件：
 
 ```powershell
 $staticReceiptPath = 'release/HeyMelody_Windows_0.9.2_STATIC-VALIDATION.json'
 if (Test-Path -LiteralPath $staticReceiptPath) { throw '已有收据，请使用 Python 校验器另存新文件。' }
-pwsh -NoProfile -File .\tools\Verify-Release.ps1 -Version 0.9.2
+pwsh -NoProfile -File .\tools\Verify-Release.ps1 -Version 0.9.2 -Architectures x64
 ```
 
 可选 Python 3 校验器通过 `--package` 选择发布目录，通过 `--output` 选择新收据文件；已有输出文件会被拒绝。它检查目录中的程序集、运行时、资源与许可，不读取 ZIP；压缩包与目录的一致性须另外核对。例如：
 
 ```powershell
 New-Item -ItemType Directory -Path artifacts -Force | Out-Null
-python tools/verify_release.py --package release/HeyMelody_Windows_0.9.2 --output artifacts/release-0.9.2-static-new.json | Out-Null
+python tools/verify_release.py --package release/HeyMelody_Windows_0.9.2 --architectures x64 --output artifacts/release-0.9.2-static-new.json | Out-Null
 ```
 
 Python 默认检查三架构；上述目录由单架构构建生成时，添加对应的 `--architectures x64` 参数。输出文件名按本次验证另选；上例将正文输出留在收据中。两套校验均不执行应用，需保留准确的版本、架构与摘要。真实执行收据、原生窗口收据和历史只读蓝牙证据是额外证据，不能由静态检查替代。
