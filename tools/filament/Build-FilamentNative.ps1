@@ -5,6 +5,7 @@ param(
     [string]$RuntimeIdentifier,
     [string]$OutputRoot,
     [string]$PythonExecutable,
+    [string]$ExpectedToolchainIdentityFile,
     [switch]$FetchSource,
     [switch]$FetchBuildTools,
     [string]$Proxy,
@@ -69,16 +70,20 @@ if ($RuntimeIdentifier.StartsWith('linux-') -and -not $RuntimeIdentifier.EndsWit
 $mapping = $null
 $mappingCreated = $false
 $buildRoot = $OutputRoot
+$toolchain = $null
 try {
     if ($isWindowsHost) {
-        $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-        if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio C++ Build Tools are required.' }
-        $vs = (& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.VC.CMake.Project -property installationPath).Trim()
-        if (-not $vs) { throw 'Install Visual Studio C++ and CMake components.' }
-        Import-Module (Join-Path $vs 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
-        $env:PATH = (Split-Path -Parent $vswhere) + [IO.Path]::PathSeparator + $env:PATH
-        Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
-        $cmake = Join-Path $vs 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
+        . (Join-Path $PSScriptRoot 'FilamentToolchain.ps1')
+        $toolchain = Get-FilamentWindowsToolchain -RuntimeIdentifier $RuntimeIdentifier -OutputRoot $OutputRoot -PythonExecutable $PythonExecutable
+        if ($ExpectedToolchainIdentityFile) {
+            $expectedIdentity = Get-Content -LiteralPath $ExpectedToolchainIdentityFile -Raw | ConvertFrom-Json
+            if (-not (Test-FilamentToolchainIdentity -Actual $toolchain.Identity -Expected $expectedIdentity)) {
+                throw 'The selected native toolchain changed after the artifact cache fingerprint was computed.'
+            }
+        }
+        Enter-FilamentWindowsDevShell -Toolchain $toolchain -Architecture x64
+        $cmake = $toolchain.CMakeExecutable
+        $PythonExecutable = $toolchain.PythonExecutable
         # MSVC object paths can exceed MAX_PATH under worktrees. This temporary alias maps only artifacts.
         foreach ($letter in @('Z','Y','X','W','V','U','T')) {
             if (-not (Test-Path -LiteralPath ($letter + ':\'))) { $mapping = $letter + ':'; break }
@@ -89,18 +94,10 @@ try {
         $mappingCreated = $true
         $buildRoot = $mapping + '\'
         if (-not $PythonExecutable) {
-            $PythonExecutable = Join-Path $OutputRoot 'tools/python-3.12.10/python.exe'
-            if (-not (Test-Path -LiteralPath $PythonExecutable)) {
-                foreach ($command in @('python3', 'python')) {
-                    $installedPython = Get-Command $command -ErrorAction SilentlyContinue
-                    if (-not $installedPython -or $installedPython.CommandType -ne 'Application' -or $installedPython.Source -like '*WindowsApps*') { continue }
-                    $version = & $installedPython.Source --version 2>&1
-                    if ($LASTEXITCODE -eq 0 -and [string]$version -match '^Python 3\.') { $PythonExecutable = $installedPython.Source; break }
-                }
-            }
+            $PythonExecutable = Join-Path $OutputRoot "tools/python-$($lock.windowsPython.version)/python.exe"
             if (-not (Test-Path -LiteralPath $PythonExecutable)) {
                 if (-not $FetchBuildTools) { throw 'Provide -PythonExecutable or -FetchBuildTools for the pinned official Python build tool.' }
-                $archive = Join-Path $OutputRoot 'tools/python-3.12.10-embed-amd64.zip'
+                $archive = Join-Path $OutputRoot "tools/python-$($lock.windowsPython.version)-embed-amd64.zip"
                 New-Item -ItemType Directory -Path (Split-Path -Parent $archive) -Force | Out-Null
                 if (-not (Test-Path -LiteralPath $archive)) {
                     $request = @{ Uri = $lock.windowsPython.url; OutFile = $archive; TimeoutSec = 120 }
@@ -113,7 +110,14 @@ try {
                 Expand-Archive -LiteralPath $archive -DestinationPath (Split-Path -Parent $PythonExecutable) -Force
             }
         }
+        # A downloaded interpreter must identify exactly as the pre-download pinned tool.
+        $resolvedToolchain = Get-FilamentWindowsToolchain -RuntimeIdentifier $RuntimeIdentifier -OutputRoot $OutputRoot -PythonExecutable $PythonExecutable
+        if (-not (Test-FilamentToolchainIdentity -Actual $resolvedToolchain.Identity -Expected $toolchain.Identity)) {
+            throw 'The actual native build tools differ from the artifact cache toolchain identity.'
+        }
+        $toolchain = $resolvedToolchain
     } else {
+        if ($ExpectedToolchainIdentityFile) { throw '-ExpectedToolchainIdentityFile is supported for Windows native builds only.' }
         $cmake = (Get-Command cmake -ErrorAction Stop).Source
         if (-not $PythonExecutable) { $PythonExecutable = (Get-Command python3 -ErrorAction Stop).Source }
     }
@@ -176,23 +180,27 @@ try {
         $hostArguments = @('-S',(Join-Path $repo 'native/HeyMelody.Filament.Native'),'-B',$hostBuild,'-G','Ninja',
             '-DCMAKE_BUILD_TYPE=Release','-DCMAKE_OBJECT_PATH_MAX=250',"-DHM_FILAMENT_SOURCE=$sourceView",
             "-DHM_RUNTIME_OUTPUT_DIRECTORY=$(Join-Path $OutputRoot 'runtimes/win-x64/native')",
-            "-DPython3_EXECUTABLE=$PythonExecutable",'-DHM_RUNTIME_IDENTIFIER=win-x64')
+            "-DPython3_EXECUTABLE=$PythonExecutable",'-DHM_RUNTIME_IDENTIFIER=win-x64',
+            "-DCMAKE_MAKE_PROGRAM=$($toolchain.NinjaExecutable)","-DCMAKE_C_COMPILER=$($toolchain.HostCompiler)","-DCMAKE_CXX_COMPILER=$($toolchain.HostCompiler)")
         & $cmake @hostArguments
         if ($LASTEXITCODE) { throw 'Filament x64 host-tool CMake configure failed.' }
         & $cmake --build $hostBuild --target matc cmgen filamesh mipgen resgen uberz glslminifier --parallel $Parallel
         if ($LASTEXITCODE) { throw 'Filament x64 host-tool compilation failed.' }
-        Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=arm64 -host_arch=x64' | Out-Null
-        $compiler = (Get-Command cl.exe -ErrorAction Stop).Source
+        Enter-FilamentWindowsDevShell -Toolchain $toolchain -Architecture arm64
+        $compiler = $toolchain.TargetCompiler
         if ($compiler -notmatch '[\\/]Hostx64[\\/]arm64[\\/]cl\.exe$') { throw 'The ARM64 cross compiler was not selected.' }
     }
     $build = Join-Path $buildRoot $(if ($RuntimeIdentifier -eq 'win-arm64') { 'b-arm64' } elseif ($isWindowsHost) { 'b' } else { 'b/' + $RuntimeIdentifier })
     $arguments = @('-S',(Join-Path $repo 'native/HeyMelody.Filament.Native'),'-B',$build,'-G','Ninja',
         '-DCMAKE_BUILD_TYPE=Release','-DCMAKE_OBJECT_PATH_MAX=250',"-DHM_FILAMENT_SOURCE=$sourceView",
         "-DHM_RUNTIME_OUTPUT_DIRECTORY=$runtime","-DPython3_EXECUTABLE=$PythonExecutable","-DHM_RUNTIME_IDENTIFIER=$RuntimeIdentifier")
+    if ($isWindowsHost) {
+        $arguments += @("-DCMAKE_MAKE_PROGRAM=$($toolchain.NinjaExecutable)","-DCMAKE_C_COMPILER=$($toolchain.TargetCompiler)","-DCMAKE_CXX_COMPILER=$($toolchain.TargetCompiler)")
+    }
     if ($isMacHost) { $arguments += '-DCMAKE_OSX_ARCHITECTURES=' + $(if ($RuntimeIdentifier.EndsWith('arm64')) { 'arm64' } else { 'x86_64' }) }
     if ($RuntimeIdentifier -eq 'win-arm64') {
         $arguments += @('-DCMAKE_SYSTEM_NAME=Windows','-DCMAKE_SYSTEM_PROCESSOR=ARM64','-DDIST_ARCH=arm64',
-            "-DCMAKE_C_COMPILER=$compiler","-DCMAKE_CXX_COMPILER=$compiler")
+            "-DCMAKE_SYSTEM_VERSION=$($toolchain.WindowsSdkVersion)")
     }
     & $cmake @arguments
     if ($LASTEXITCODE) { throw 'Filament native CMake configure failed.' }
@@ -270,13 +278,14 @@ try {
     if ($after) { throw 'The read-only Filament input changed during the build.' }
     $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $runtime 'filament-runtime.json.tmp') -Encoding utf8NoBOM
     Move-Item -LiteralPath (Join-Path $runtime 'filament-runtime.json.tmp') -Destination (Join-Path $runtime 'filament-runtime.json') -Force
-    [ordered]@{ schemaVersion=1; filamentCommit=$lock.commit; source=$FilamentSource; build=$build; runtime=$runtime; rid=$RuntimeIdentifier } |
-        ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputRoot "build-receipt-$RuntimeIdentifier.json") -Encoding utf8NoBOM
+    [ordered]@{ schemaVersion=1; filamentCommit=$lock.commit; source=$FilamentSource; build=$build; runtime=$runtime; rid=$RuntimeIdentifier
+        toolchainIdentity = $(if ($toolchain) { $toolchain.Identity } else { $null }) } |
+        ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot "build-receipt-$RuntimeIdentifier.json") -Encoding utf8NoBOM
     Write-Output "Filament native runtime ready: $runtime"
 } finally {
     if ($mappingCreated) { & subst.exe $mapping /d }
     foreach ($key in @([Environment]::GetEnvironmentVariables().Keys)) {
-        if (-not $environmentBefore.Contains($key)) { [Environment]::SetEnvironmentVariable([string]$key, $null, 'Process') }
+        if (-not $environmentBefore.Contains($key)) { [Environment]::SetEnvironmentVariable([string]$key, [NullString]::Value, 'Process') }
     }
     foreach ($key in $environmentBefore.Keys) { [Environment]::SetEnvironmentVariable([string]$key, [string]$environmentBefore[$key], 'Process') }
 }

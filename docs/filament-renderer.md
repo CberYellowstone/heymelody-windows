@@ -74,6 +74,28 @@ pwsh -NoProfile -File Build-Client.ps1 -Architectures arm64 -OutputRoot release/
 pwsh -NoProfile -File tools/Verify-Release.ps1 -Version 0.9.2 -Architectures x64 -OutputRoot release/filament-compat/x64 -OutputPath artifacts/filament-compat/release-x64-static.json
 ```
 
+## GitHub Actions 原生缓存
+
+Windows 应用构建与 portability 的 Windows job 共用原生运行时准备入口。缓存单位是完整的 `runtimes/<rid>/native/`，包含库、探测程序、材质、清单和许可证，并附独立的缓存身份回执。x64、ARM64 分开保存；源码、CMake 工作目录及宿主工具不进入缓存。macOS/Linux 的构建路径暂时维持原有方式。
+
+缓存键包含固定 Filament lock、原生桥接源码、原生构建脚本、目标 RID、后端与 Release 配置，以及实际选择的 MSVC、Windows SDK、CMake、Ninja、Python 工具链身份。工具链选择由缓存探测和实际构建共用，绝对目录、普通 C#／界面／文档和项目提交 SHA 不参与缓存键。修改 Filament、桥接代码或相关构建输入会自动重建；仅修改托管客户端时可继续复用。
+
+工作流以 `actions: read` 查询指定工作流的历史 artifact，只接纳本仓库可信 push／手动运行生成的匹配缓存。PR 可以读取这些缓存，但不会发布到可信缓存池。缓存可在原生校验完成后使用，不要求整个 portability 工作流成功，因此其他平台失败或后续客户端检查失败不会使已验证的 Windows 运行时失效。
+
+恢复时先下载到独立目录，核对完整身份、文件路径、ABI、commit、RID、后端、材质及 SHA256，校验通过后才交给 `Build-Client -FilamentRuntimeRoot`。最多尝试最近三个合法候选，整个恢复阶段最多三分钟；未命中、过期、权限不足、网络／解压失败或文件损坏均记录原因，并在当前 job 的新目录下载固定源码、编译和重新校验。缓存服务故障不会单独阻断构建；真实原生编译或校验失败仍会中断任务。
+
+原生缓存 artifact 保留 30 天。可信运行在命中后也重新上传已验证的运行时，使活跃构建滚动续存；仅下载旧 artifact 不会延长其有效期。长期没有构建而导致缓存过期时，下次自动重建。缓存上传失败只警告，当前有效运行时继续用于客户端构建。手动运行的 `force_native_rebuild` 默认关闭，开启后跳过历史缓存并重建。每次 job 的 summary 记录缓存状态、来源、回退原因、构建指纹及保留规则。
+
+应用包与原生缓存分别存储：实际 `refs/heads/main` 的 push／手动构建应用包保留 7 天，其他分支和 tag 保留 1 天；PR 编译与验包但不上传应用包，检查回执保留 1 天。应用包上传失败仍视为任务失败。本流程不使用 Telegram secret。
+
+缓存与路由的离线检查不连接 GitHub 或 GPU：
+
+```powershell
+pwsh -NoProfile -File tools/filament/tests/Test-FilamentArtifactCache.ps1 -OutputPath artifacts/filament-cache-checks/local.json
+```
+
+实际 Actions 验证须分别记录 x64／ARM64 的冷构建、热命中、应用包验包和 artifact 到期时间；ARM64 交叉构建仍不能证明 ARM64 真机运行。
+
 ## 验证范围
 
 可移植渲染检查、默认模型运动检查及原十三个默认 runner 保持各自入口。后端选择、偏好迁移、取消、错误分类和静态回退测试使用隔离设置与替代 renderer，不依赖 GPU。

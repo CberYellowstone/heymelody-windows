@@ -1,0 +1,68 @@
+name: Prepare Windows Filament runtime
+description: Restore a verified native artifact or build the pinned runtime in this job.
+inputs:
+  runtime-identifier:
+    description: Windows target RID (win-x64 or win-arm64).
+    required: true
+  force-rebuild:
+    description: Bypass artifact restoration and compile the native runtime.
+    default: "false"
+outputs:
+  runtime-root:
+    description: Verified FilamentRuntimeRoot for Build-Client.
+    value: ${{ steps.prepare.outputs.runtime-root }}
+  cache-key:
+    description: Complete native build fingerprint and artifact name.
+    value: ${{ steps.prepare.outputs.cache-key }}
+  cache-status:
+    description: Whether the runtime was restored or rebuilt.
+    value: ${{ steps.prepare.outputs.cache-status }}
+  cache-directory:
+    description: Verified runtime and cache identity receipt for upload.
+    value: ${{ steps.prepare.outputs.cache-directory }}
+  cache-publish-eligible:
+    description: Whether this event may publish a trusted native cache.
+    value: ${{ steps.prepare.outputs.cache-publish-eligible }}
+  package-publish-eligible:
+    description: Whether this event publishes application packages.
+    value: ${{ steps.prepare.outputs.package-publish-eligible }}
+  package-retention-days:
+    description: Application artifact retention for this ref.
+    value: ${{ steps.prepare.outputs.package-retention-days }}
+  receipt-retention-days:
+    description: Check receipt artifact retention.
+    value: ${{ steps.prepare.outputs.receipt-retention-days }}
+runs:
+  using: composite
+  steps:
+    - name: Restore or build the native runtime
+      id: prepare
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        HM_FILAMENT_RID: ${{ inputs.runtime-identifier }}
+        HM_FILAMENT_FORCE_REBUILD: ${{ inputs.force-rebuild }}
+      run: |
+        $arguments = @{
+          RuntimeIdentifier = $env:HM_FILAMENT_RID
+          OutputRoot = Join-Path $env:GITHUB_WORKSPACE "artifacts/filament-ci/$env:HM_FILAMENT_RID"
+          ForceRebuild = $env:HM_FILAMENT_FORCE_REBUILD -eq 'true'
+        }
+        & "$env:GITHUB_WORKSPACE/tools/filament/Prepare-FilamentRuntime.ps1" @arguments
+    - name: Save or renew the native cache (30 days)
+      id: publish
+      if: steps.prepare.outputs.cache-publish-eligible == 'true'
+      continue-on-error: true
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.prepare.outputs.cache-key }}
+        path: ${{ steps.prepare.outputs.cache-directory }}/
+        if-no-files-found: error
+        retention-days: 30
+        overwrite: true
+    - name: Report cache storage failure
+      if: steps.publish.outcome == 'failure'
+      shell: pwsh
+      run: |
+        Write-Warning 'Native cache renewal failed; the verified runtime remains available to this job.'
+        'Native cache renewal failed. This job continues with its verified runtime; a future cache miss builds it again.' >> $env:GITHUB_STEP_SUMMARY

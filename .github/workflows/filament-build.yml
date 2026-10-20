@@ -4,9 +4,16 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      force_native_rebuild:
+        description: Rebuild Windows native runtimes instead of restoring an artifact.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: filament-${{ github.ref }}
@@ -23,6 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
+        if: runner.os != 'Windows'
         with:
           repository: google/filament
           ref: ea31afeaf66339e7414aa648aa76c7e61adbde28
@@ -40,14 +48,30 @@ jobs:
           $prefix = if ($IsWindows) { 'win' } elseif ($IsMacOS) { 'osx' } else { 'linux' }
           $architecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant()
           "rid=$prefix-$architecture" >> $env:GITHUB_OUTPUT
-      - name: Build native renderer
+      - name: Check native cache and artifact policies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tools/filament/tests/Test-FilamentArtifactCache.ps1 -OutputPath artifacts/filament-cache-checks/summary.json
+      - name: Prepare Windows native renderer
+        id: filament
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/filament-runtime
+        with:
+          runtime-identifier: ${{ steps.runtime.outputs.rid }}
+          force-rebuild: ${{ inputs.force_native_rebuild || false }}
+      - name: Build native renderer on other platforms
+        if: runner.os != 'Windows'
         shell: pwsh
         run: |
           if ($IsLinux) { $env:CC = 'clang'; $env:CXX = 'clang++' }
           ./tools/filament/Build-FilamentNative.ps1 -FilamentSource ./artifacts/filament-source -RuntimeIdentifier '${{ steps.runtime.outputs.rid }}' -OutputRoot ./artifacts/filament-compat -FetchBuildTools -SkipSmoke
       - name: Verify native payload
         shell: pwsh
-        run: ./tools/Verify-FilamentRuntime.ps1 -Directory './artifacts/filament-compat/runtimes/${{ steps.runtime.outputs.rid }}/native' -RuntimeIdentifier '${{ steps.runtime.outputs.rid }}' -RequireCurrent | ConvertTo-Json
+        env:
+          WINDOWS_FILAMENT_ROOT: ${{ steps.filament.outputs.runtime-root }}
+        run: |
+          $runtimeRoot = if ($IsWindows) { $env:WINDOWS_FILAMENT_ROOT } else { './artifacts/filament-compat' }
+          ./tools/Verify-FilamentRuntime.ps1 -Directory "$runtimeRoot/runtimes/${{ steps.runtime.outputs.rid }}/native" -RuntimeIdentifier '${{ steps.runtime.outputs.rid }}' -RequireCurrent | ConvertTo-Json
       - name: Run portable renderer checks
         shell: pwsh
         run: |
@@ -56,6 +80,7 @@ jobs:
           dotnet run --project tests/HeyMelody.ModelPreview.Tests -c Release -- --output-dir artifacts/portable-model-checks
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
+        if: runner.os != 'Windows'
         with:
           name: filament-${{ steps.runtime.outputs.rid }}
           path: |
@@ -63,3 +88,14 @@ jobs:
             artifacts/portable-model-checks/*.json
           if-no-files-found: error
           retention-days: 2
+      - name: Upload Windows check receipts
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: filament-checks-${{ steps.runtime.outputs.rid }}
+          path: |
+            artifacts/portable-model-checks/*.json
+            artifacts/filament-cache-checks/summary.json
+          if-no-files-found: error
+          retention-days: ${{ steps.filament.outputs.receipt-retention-days }}
+          overwrite: true

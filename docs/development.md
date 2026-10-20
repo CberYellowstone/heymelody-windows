@@ -94,7 +94,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Test
 pwsh -NoProfile -File .\Build-Client.ps1 -Version 0.9.2
 ```
 
-GitHub Actions 的 x64、ARM64 构建产物保留 2 天，到期自动删除；工作流运行记录和日志继续按既有策略保留。
+GitHub Actions 的 Windows x64、ARM64 应用包由 push 和手动运行发布：实际分支为 `refs/heads/main` 时保留 7 天，其他分支或 tag 保留 1 天。PR 仍编译并验包，但不重复发布应用包；校验回执保留 1 天。PR 的目标分支是 main 不会改变这个规则，工作流运行记录和日志继续按既有策略保留。
+
+Windows 原生 Filament 运行时另存为 30 天 artifact 缓存，应用构建和 portability 的 Windows job 共用恢复入口。命中后校验并跳过原生编译，缓存不可用时在当前 job 重建；可信 push／手动运行会重新上传已验证运行时，滚动续存 30 天。手动运行可勾选 `force_native_rebuild` 强制重建。缓存依据、错误回退和离线检查见[Filament 构建说明](filament-renderer.md#github-actions-原生缓存)。
 
 自 0.9.0 起所有 `dotnet publish` 统一启用 ReadyToRun（`-p:PublishReadyToRun=true`），预编译只含 IL 的界面库，避免首次展开设置、拖动模型或打开向导时的 JIT 停顿；发布包因此变大，x64 机器可交叉编译 ARM64。`-Architectures x64` 或 `-Architectures arm64` 可选择单架构；`-SkipTests` 跳过默认 runner。普通构建拒绝已有目标目录或 ZIP；可用 `-OutputRoot release/arm64` 将另一架构构建放在独立目录，校验时传入同一参数。`-FinalizeOnly` 要求对应目录已存在且 ZIP 尚不存在，并跳过默认测试与 `dotnet publish`，封装已有输出。调整参数前先阅读脚本入口与条件，避免把跳过测试的产物称为完整验证。
 
