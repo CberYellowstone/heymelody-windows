@@ -1,4 +1,4 @@
-name: Windows build
+name: Windows packages
 
 on:
   push:
@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Package version (x.y.z). Empty uses the Build-Client.ps1 default.
+        description: Package version (x.y.z); leave blank to use the project default.
         required: false
         type: string
       force_native_rebuild:
-        description: Rebuild Windows native runtimes instead of restoring an artifact.
+        description: Rebuild Filament instead of reusing the Windows native cache.
         required: false
         type: boolean
         default: false
@@ -30,7 +30,7 @@ env:
 
 jobs:
   package:
-    name: Package ${{ matrix.architecture }}
+    name: Package (${{ matrix.architecture }})
     runs-on: windows-latest
     timeout-minutes: 60
     strategy:
@@ -38,19 +38,24 @@ jobs:
       matrix:
         architecture: [x64, arm64]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - uses: actions/cache@v4
+      # NuGet dependencies and the native Filament runtime use separate caches.
+      - name: Restore NuGet cache
+        uses: actions/cache@v4
         with:
           path: artifacts/nuget-cache
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.targets', 'NuGet.Config') }}
           restore-keys: nuget-${{ runner.os }}-
-      - name: Check native cache and artifact policies
+      - name: Test cache and retention rules
         shell: pwsh
         run: ./tools/filament/tests/Test-FilamentArtifactCache.ps1 -OutputPath 'artifacts/filament-cache-checks/${{ matrix.architecture }}.json'
-      - name: Prepare native renderer
+      # Reuse a verified runtime when available; otherwise compile it in this job.
+      - name: Prepare Filament runtime
         id: filament
         uses: ./.github/actions/filament-runtime
         with:
@@ -72,15 +77,16 @@ jobs:
           "value=$version" >> $env:GITHUB_OUTPUT
           "commit=$($env:GITHUB_SHA.Substring(0, 7))" >> $env:GITHUB_OUTPUT
       # ARM64 is cross-compiled on the x64 runner; native hardware execution is not implied.
-      - name: Publish ${{ matrix.architecture }}
+      - name: Build application package
         shell: pwsh
         env:
           FILAMENT_RUNTIME_ROOT: ${{ steps.filament.outputs.runtime-root }}
         run: ./Build-Client.ps1 -Version '${{ steps.version.outputs.value }}' -Architectures '${{ matrix.architecture }}' -FilamentRuntimeRoot $env:FILAMENT_RUNTIME_ROOT -SkipTests
-      - name: Verify packaged runtime and archive
+      - name: Verify package contents
         shell: pwsh
         run: ./tools/Verify-Release.ps1 -Version '${{ steps.version.outputs.value }}' -Architectures '${{ matrix.architecture }}' -OutputPath 'artifacts/filament-cache-checks/release-${{ matrix.architecture }}-static.json'
-      - name: Upload package
+      # Push/manual runs publish packages: main keeps 7 days, other refs keep 1 day.
+      - name: Upload application package
         if: steps.filament.outputs.package-publish-eligible == 'true'
         uses: actions/upload-artifact@v4
         with:
@@ -89,7 +95,8 @@ jobs:
           if-no-files-found: error
           retention-days: ${{ steps.filament.outputs.package-retention-days }}
           overwrite: true
-      - name: Upload check receipts
+      # PRs still build and verify; check results from every event are kept for 1 day.
+      - name: Upload verification results
         uses: actions/upload-artifact@v4
         with:
           name: windows-checks-${{ matrix.architecture }}-${{ steps.version.outputs.commit }}
@@ -99,7 +106,7 @@ jobs:
           if-no-files-found: error
           retention-days: ${{ steps.filament.outputs.receipt-retention-days }}
           overwrite: true
-      - name: Summarize package delivery
+      - name: Write package summary
         shell: pwsh
         env:
           HM_PUBLISH_PACKAGE: ${{ steps.filament.outputs.package-publish-eligible }}

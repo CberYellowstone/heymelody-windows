@@ -1,41 +1,42 @@
-name: Prepare Windows Filament runtime
-description: Restore a verified native artifact or build the pinned runtime in this job.
+name: Prepare Filament for Windows
+description: Reuse a verified native cache or build Filament, then renew trusted caches for 30 days.
 inputs:
   runtime-identifier:
-    description: Windows target RID (win-x64 or win-arm64).
+    description: Target Windows architecture as a RID (win-x64 or win-arm64).
     required: true
   force-rebuild:
-    description: Bypass artifact restoration and compile the native runtime.
+    description: Ignore the native cache and compile Filament in this job.
     default: "false"
 outputs:
   runtime-root:
-    description: Verified FilamentRuntimeRoot for Build-Client.
+    description: Verified runtime root passed to Build-Client.ps1.
     value: ${{ steps.prepare.outputs.runtime-root }}
   cache-key:
-    description: Complete native build fingerprint and artifact name.
+    description: Artifact name derived from the native sources, target, configuration, and toolchain.
     value: ${{ steps.prepare.outputs.cache-key }}
   cache-status:
-    description: Whether the runtime was restored or rebuilt.
+    description: Whether this job reused a cache or compiled Filament.
     value: ${{ steps.prepare.outputs.cache-status }}
   cache-directory:
-    description: Verified runtime and cache identity receipt for upload.
+    description: Directory containing only the verified runtime and its cache receipts, ready to upload.
     value: ${{ steps.prepare.outputs.cache-directory }}
   cache-publish-eligible:
-    description: Whether this event may publish a trusted native cache.
+    description: Whether this is a trusted push/manual run allowed to save the native cache.
     value: ${{ steps.prepare.outputs.cache-publish-eligible }}
   package-publish-eligible:
-    description: Whether this event publishes application packages.
+    description: Whether this push/manual run may upload application packages; false for PRs.
     value: ${{ steps.prepare.outputs.package-publish-eligible }}
   package-retention-days:
-    description: Application artifact retention for this ref.
+    description: Application package retention in days (main 7, other refs 1).
     value: ${{ steps.prepare.outputs.package-retention-days }}
   receipt-retention-days:
-    description: Check receipt artifact retention.
+    description: Verification result retention in days (1).
     value: ${{ steps.prepare.outputs.receipt-retention-days }}
 runs:
   using: composite
   steps:
-    - name: Restore or build the native runtime
+    # Restore failures fall back to a local build; genuine build errors still fail.
+    - name: Restore or build Filament
       id: prepare
       shell: pwsh
       env:
@@ -49,7 +50,8 @@ runs:
           ForceRebuild = $env:HM_FILAMENT_FORCE_REBUILD -eq 'true'
         }
         & "$env:GITHUB_WORKSPACE/tools/filament/Prepare-FilamentRuntime.ps1" @arguments
-    - name: Save or renew the native cache (30 days)
+    # Upload on trusted runs, including cache hits, to renew the 30-day lifetime.
+    - name: Save native cache (30 days)
       id: publish
       if: steps.prepare.outputs.cache-publish-eligible == 'true'
       continue-on-error: true
@@ -60,7 +62,8 @@ runs:
         if-no-files-found: error
         retention-days: 30
         overwrite: true
-    - name: Report cache storage failure
+    # A cache upload failure must not discard a successfully prepared runtime.
+    - name: Warn if cache upload failed
       if: steps.publish.outcome == 'failure'
       shell: pwsh
       run: |
