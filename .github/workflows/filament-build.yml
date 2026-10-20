@@ -43,7 +43,7 @@ jobs:
           dotnet-version: 10.0.x
       - name: Install Linux build and graphics dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y clang ninja-build libegl-dev libgl-dev libvulkan1
+        run: sudo apt-get update && sudo apt-get install -y clang ninja-build libegl-dev libgl-dev libgles-dev libvulkan1
       - name: Determine runtime ID
         id: runtime
         shell: pwsh
@@ -67,7 +67,7 @@ jobs:
         shell: pwsh
         run: |
           if ($IsLinux) { $env:CC = 'clang'; $env:CXX = 'clang++' }
-          ./tools/filament/Build-FilamentNative.ps1 -FilamentSource ./artifacts/filament-source -RuntimeIdentifier '${{ steps.runtime.outputs.rid }}' -OutputRoot ./artifacts/filament-compat -FetchBuildTools -SkipSmoke
+          ./tools/filament/Build-FilamentNative.ps1 -FilamentSource ./artifacts/filament-source -RuntimeIdentifier '${{ steps.runtime.outputs.rid }}' -OutputRoot ./artifacts/filament-compat -FetchBuildTools -SkipSmoke:$IsMacOS
       - name: Verify runtime files and ABI
         shell: pwsh
         env:

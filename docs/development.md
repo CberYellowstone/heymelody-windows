@@ -60,7 +60,7 @@ App 也能自动启动后台；源码运行时，若输出目录没有 Host 可�
 
 ## 按改动选择验证
 
-`tests/` 下的检查是可执行项目，使用 `dotnet run`，不是 `dotnet test`。Linux 上可以运行无头的 App、DeviceManager、Calibration.UI、Client、Calibration、Protocol、Resources、Devices、Control 与 Daily 检查；ModelPreview 的运动检查需加 `-r linux-x64` 构建。`--native*` 模式、Host／Probe／Audio 检查与 `Windows.OfflineChecks` 只在 Windows 运行。可用内存较少时，构建加 `-nodeReuse:false -p:UseSharedCompilation=false` 并在测试前执行 `dotnet build-server shutdown`，以免常驻编译进程挤占测试内存。先选择能覆盖改动的检查，例如协议或界面：
+`tests/` 下的检查是可执行项目，使用 `dotnet run`，不是 `dotnet test`。Linux 上可以运行无头的 App、DeviceManager、Calibration.UI、Client、Calibration、Protocol、Resources、Devices、Control 与 Daily 检查；ModelPreview 的默认运动检查已在 Linux x64 使用 `dotnet run --project tests/HeyMelody.ModelPreview.Tests -c Release` 通过，无需指定 RID。`--native*` 模式、Host／Probe／Audio 检查与 `Windows.OfflineChecks` 只在 Windows 运行。可用内存较少时，构建加 `-nodeReuse:false -p:UseSharedCompilation=false` 并在测试前执行 `dotnet build-server shutdown`，以免常驻编译进程挤占测试内存。先选择能覆盖改动的检查，例如协议或界面：
 
 ```powershell
 dotnet run --project tests/HeyMelody.Protocol.Tests/HeyMelody.Protocol.Tests.csproj -c Release
