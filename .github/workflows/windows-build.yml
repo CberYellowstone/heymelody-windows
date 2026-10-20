@@ -56,10 +56,13 @@ jobs:
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid version: $version" }
           "value=$version" >> $env:GITHUB_OUTPUT
           "commit=$($env:GITHUB_SHA.Substring(0, 7))" >> $env:GITHUB_OUTPUT
-      # Tests are skipped in CI. Self-contained cross-publish; ARM64 is built on the x64 runner and is not executed here.
+      # ARM64 is cross-compiled on the x64 runner; native hardware execution is not implied.
       - name: Publish ${{ matrix.architecture }}
         shell: pwsh
         run: ./Build-Client.ps1 -Version '${{ steps.version.outputs.value }}' -Architectures '${{ matrix.architecture }}' -SkipTests
+      - name: Verify packaged runtime and archive
+        shell: pwsh
+        run: ./tools/Verify-Release.ps1 -Version '${{ steps.version.outputs.value }}' -Architectures '${{ matrix.architecture }}' -OutputPath 'artifacts/filament-compat/release-${{ matrix.architecture }}-static.json'
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:

@@ -5,11 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>HeyMelody.ModelPreview.Tests</AssemblyName>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <CopyDebugSymbolFilesFromPackages>false</CopyDebugSymbolFilesFromPackages>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/HeyMelody.App/HeyMelody.App.csproj" />
+    <ProjectReference Include="../../src/HeyMelody.Rendering.Filament/HeyMelody.Rendering.Filament.csproj" />
+    <Compile Include="../HeyMelody.Rendering.Filament.Tests/GlbSource.cs" Link="Rendering/GlbSource.cs" />
   </ItemGroup>
 </Project>

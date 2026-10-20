@@ -1,5 +1,19 @@
 # 三维耳机模型渲染设置
 
+## 当前 Filament 实验分支
+
+本分支将耳机三维渲染迁移至 Google Filament，界面继续使用 Avalonia 12.1.4 和 FluentAvalonia。两份本地官方样本（欢律 17.6.5、ColorOS 无线耳机 17.6.3）都通过 OPLUS VFX ModelViewer 1.3.8 的 Android 封装调用 Filament/gltfio；1.3.8 是封装版本，不是已确认的 Filament 上游版本。本项目使用固定上游源码自行构建 Windows 原生桥，不分发 Android SDK 或 JNI 二进制。
+
+三维模型默认使用 Vulkan，在应用设置的“3D模型渲染API”下拉框选择 OpenGL；说明为“若存在渲染问题，请尝试切换到 OpenGL”。两种模式均保留原始模型、完整 PBR 贴图、拖动、惯性、自转和隐藏／最小化暂停，按控件实际尺寸与系统 DPI 渲染。“3D模型渲染帧率”使用 30帧、60帧、无限制三档吸附滑块，默认无限制；保存后立即应用，取消不改变设置。旧跟随显示器和试验版 120 帧设置对应无限制，原有 30、60 帧选择保留。30、60 帧限帧按真实时间累计并保留余量；无限制档不设额外上限，每个 Avalonia 动画回调最多请求一帧，停顿后不追赶补帧。实际帧率还受窗口回调频率和渲染耗时限制。切换后端保留已验证字节与相机运动状态，单独改变帧率不重建 Engine。
+
+Vulkan 不可用时显示静态 detail 外观并提示手动选择 OpenGL，不自动选择 OpenGL 或修改偏好；OpenGL 不可用时显示普通不可用提示。没有同款图片的内置演示使用通用耳机图标。损坏资源和缺失组件单独归类，不提示无效的后端切换。
+
+当前运行验收范围为 Windows x64 的 Vulkan、OpenGL；ARM64 为交叉构建和静态校验。macOS Metal、Linux Vulkan／EGLHeadless 的构建准备、ABI 2、探测程序及验证边界见 [Filament 构建与接口](filament-renderer.md)。完整截图留在本地，只检查本轮变更的模型和设置区域。
+
+## Ava3D 历史实现与验证
+
+下文保留迁移前版本及原始验证范围，不描述当前 Filament 行为；尤其软件三维回退和 Ava3D 的照明参数仅适用于当时实现。
+
 0.9.0 取消三维模型的固定帧率。0.8.x 用 1/30 s 的 `DispatcherTimer` 驱动旋转，并把 Ava3D 的 `MaxFrameRate` 设为空闲 30、拖动 60；Win32 计时器约 15.6 ms 的粒度还会让帧间隔不均匀。现在改用 `TopLevel.RequestAnimationFrame` 的逐帧回调，与显示器的合成节拍对齐，`MaxFrameRate` 为 0（不设上限），`RenderTrigger` 仍为 `OnDemand`：每个显示帧推进一次已按时间积分的 `ModelOrbitMotion`，只有姿态变化时才 `InvalidateCamera`，高回报率鼠标的多次移动在下一帧合并应用。隐藏、最小化或卸载时循环停止，`AnimationActive` 表示循环是否在运行。
 
 应用设置新增“三维模型帧率”：跟随显示器（默认）、60 帧或 30 帧，保存在 `preferences.json` 的 `modelFrameRate`（`display`／`60`／`30`，缺失或未知值按跟随显示器）。GPU 后端按所选间隔均匀跳帧；CPU 后端仍保持 0.8.x 的空闲 30 帧，拖动时至多 60 帧，并在单帧渲染耗时较长时按 1.3 倍渲染时间继续放慢，因为 CPU 渲染发生在整窗的帧内，过快会拖慢其他动画。4×MSAA、阴影贴图与光照参数不变。

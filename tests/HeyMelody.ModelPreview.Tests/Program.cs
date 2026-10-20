@@ -1,32 +1,31 @@
+using System.Security.Cryptography;
 using System.Text.Json;
+using HeyMelody.Rendering.Filament;
 
-var native = false;
-var occlusionOnly = false;
-var software = false;
-string? requestedOutput = null;
-string? requestedModelFile = null;
-for (var index = 0; index < args.Length; index++)
+bool native = false, occlusionOnly = false;
+FilamentBackend backend = FilamentBackend.Vulkan;
+string? requestedOutput = null, requestedModel = null;
+for (int index = 0; index < args.Length; index++)
 {
+    if (args[index] == "--native-software-smoke")
+    {
+        Console.Error.WriteLine("Unsupported: both renderer modes use the GPU. Static failure fallback is covered by portable App tests.");
+        return 2;
+    }
     if (args[index] == "--native-smoke") native = true;
-    else if (args[index] == "--native-software-smoke") { native = true; software = true; }
     else if (args[index] == "--native-occlusion") { native = true; occlusionOnly = true; }
     else if (args[index] == "--output-dir" && ++index < args.Length) requestedOutput = args[index];
-    else if (args[index] == "--model-file" && ++index < args.Length) requestedModelFile = args[index];
-    else { Console.Error.WriteLine("Usage: [--native-smoke | --native-occlusion | --native-software-smoke] [--model-file <audited original GLB; requires --native-occlusion>] [--output-dir <repository/artifacts/path>]"); return 2; }
+    else if (args[index] == "--model-file" && ++index < args.Length) requestedModel = args[index];
+    else if (args[index] == "--backend" && ++index < args.Length && args[index] is "vulkan" or "opengl")
+        backend = args[index] == "opengl" ? FilamentBackend.OpenGL : FilamentBackend.Vulkan;
+    else { Console.Error.WriteLine("Usage: [--native-smoke | --native-occlusion] [--backend vulkan|opengl] [--model-file <audited GLB>] [--output-dir <artifacts/path>]"); return 2; }
 }
-if (requestedModelFile is not null && (!occlusionOnly || software))
-{
-    Console.Error.WriteLine("--model-file requires --native-occlusion and cannot use --native-software-smoke.");
-    return 2;
-}
-var workspace = new DirectoryInfo(AppContext.BaseDirectory);
-while (workspace is not null && !File.Exists(Path.Combine(workspace.FullName, "src", "HeyMelody.App", "HeyMelody.App.csproj")))
-    workspace = workspace.Parent;
-if (workspace is null) throw new InvalidOperationException("Repository root unavailable.");
-var artifactRoot = Path.GetFullPath(Path.Combine(workspace.FullName, "artifacts"));
+if (requestedModel is not null && !occlusionOnly) { Console.Error.WriteLine("--model-file requires --native-occlusion."); return 2; }
+var workspace = HeyMelody.Rendering.Tests.GlbSource.RepositoryRoot();
+var artifactRoot = Path.Combine(workspace, "artifacts");
 var output = requestedOutput is null ? Path.Combine(artifactRoot,
     "model-preview-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8])
-    : Path.GetFullPath(requestedOutput, workspace.FullName);
+    : Path.GetFullPath(requestedOutput, workspace);
 if (!output.StartsWith(artifactRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
     throw new InvalidOperationException("Test output must remain below this repository's artifacts directory.");
 if (Directory.Exists(output)) throw new InvalidOperationException("Use a new test output directory.");
@@ -42,34 +41,21 @@ void Check(bool condition, string description)
 try
 {
     if (!occlusionOnly) MotionChecks.Run(Check);
-    if (native) nativeResult = requestedModelFile is not null
-        ? NativeExternalModelOcclusionChecks.Run(Path.GetFullPath(requestedModelFile, workspace.FullName), output, Check)
-        : software ? NativeSoftwareSmoke.Run(output, Check) : NativeModelSmoke.Run(output, Check, occlusionOnly);
+    if (native) nativeResult = NativeModelSmoke.Run(output, Check, backend, occlusionOnly,
+        requestedModel is null ? null : Path.GetFullPath(requestedModel, workspace));
 }
 catch (Exception error) { failure = error.ToString(); }
 var result = new
 {
-    schemaVersion = 1,
-    success = failure is null,
-    passed = checks.Count,
-    checks,
-    nativeRequested = native,
-    nativeOcclusionOnly = occlusionOnly,
-    nativeSoftware = software,
-    externalModelRequested = requestedModelFile is not null,
-    nativeBluetoothCalls = 0,
-    appAssemblySha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
-        File.ReadAllBytes(typeof(HeyMelodyWindows.App.ModelOrbitMotion).Assembly.Location))).ToLowerInvariant(),
-    rendererAssemblySha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
-        File.ReadAllBytes(typeof(Ava3D.Ava3DView).Assembly.Location))).ToLowerInvariant(),
-    cameraFitParameters = typeof(Ava3D.Camera).GetMethod("Fit", [typeof(Ava3D.BoundingBox), typeof(float)])!.GetParameters()
-        .Select(parameter => new { parameter.Name, type = parameter.ParameterType.FullName,
-            parameter.HasDefaultValue, defaultValue = parameter.HasDefaultValue ? parameter.DefaultValue : null }).ToArray(),
+    schemaVersion = 2, success = failure is null, passed = checks.Count, checks,
+    nativeRequested = native, requestedBackend = backend.ToString(), nativeOcclusionOnly = occlusionOnly, nativeSoftware = false,
+    externalModelRequested = requestedModel is not null, nativeBluetoothCalls = 0,
+    appAssemblySha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(typeof(HeyMelodyWindows.App.ModelOrbitMotion).Assembly.Location))).ToLowerInvariant(),
+    rendererAssemblySha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(typeof(FilamentModelData).Assembly.Location))).ToLowerInvariant(),
     nativeResult,
-    scope = "Source validation. Deterministic motion checks; optional real Win32 compositor and Ava3D frame capture. No Bluetooth service, model network fetch or user settings writes.",
+    scope = "Portable deterministic motion; optional real Windows x64 Filament offscreen rendering. No Host, Bluetooth, network or user preferences. Model PNGs only.",
     failure
 };
-var report = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
-File.WriteAllText(Path.Combine(output, "report.json"), report);
-Console.WriteLine(report);
+File.WriteAllText(Path.Combine(output, "report.json"), JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+Console.WriteLine(JsonSerializer.Serialize(new { result.success, result.passed, result.nativeRequested, result.nativeBluetoothCalls, output, failure }));
 return failure is null ? 0 : 1;
