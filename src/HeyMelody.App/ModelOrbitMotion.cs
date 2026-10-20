@@ -32,6 +32,19 @@ public sealed class ModelOrbitMotion
 
     public ModelOrbitMotion() => Pitch = InitialPitch;
 
+    internal readonly record struct SavedMotion(double Yaw, double Pitch, double YawVelocity, double PitchVelocity,
+        double IdleWaitRemaining, ModelOrbitPhase Phase);
+    internal SavedMotion CaptureMotion() => new(Yaw, Pitch, YawVelocity, PitchVelocity, _idleWaitRemaining, Phase);
+    internal void RestoreMotion(SavedMotion state)
+    {
+        if (!IsActive) return;
+        (Yaw, Pitch, YawVelocity, PitchVelocity, _idleWaitRemaining) =
+            (state.Yaw, state.Pitch, state.YawVelocity, state.PitchVelocity, state.IdleWaitRemaining);
+        // Pointer capture cannot span an engine replacement, but completed inertia can.
+        Phase = state.Phase is ModelOrbitPhase.Dragging or ModelOrbitPhase.Paused ? ModelOrbitPhase.Idle : state.Phase;
+        _discardNextStep = true;
+    }
+
     public void BeginDrag(double x, double y, double timeSeconds)
     {
         RequireFinite(x, nameof(x));

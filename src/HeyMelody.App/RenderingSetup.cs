@@ -19,16 +19,17 @@ internal static class RenderingSetup
     internal static AppBuilder UseHeyMelodyRendering(this AppBuilder builder)
     {
         SKGraphics.SetFontCacheLimit(FontCacheLimitBytes);
-        return builder
-            .With(new Win32PlatformOptions
+        builder = builder.With(new SkiaOptions { MaxGpuResourceSizeBytes = GpuResourceLimitBytes });
+        if (OperatingSystem.IsWindows())
+            builder = builder.With(new Win32PlatformOptions
             {
                 // These are Avalonia's defaults, pinned on purpose: Mica needs WinUI composition (a low-latency
                 // swap chain would drop it), and both composition modes pace frames at the display refresh rate.
                 RenderingMode = [Win32RenderingMode.AngleEgl, Win32RenderingMode.Software],
                 CompositionMode = [Win32CompositionMode.WinUIComposition, Win32CompositionMode.DirectComposition,
                     Win32CompositionMode.RedirectionSurface]
-            })
-            .With(new SkiaOptions { MaxGpuResourceSizeBytes = GpuResourceLimitBytes });
+            });
+        return builder;
     }
 }
 

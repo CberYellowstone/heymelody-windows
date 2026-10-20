@@ -103,9 +103,9 @@ internal static class MainLayoutTests
                         var cards = picker.GetVisualDescendants().OfType<Grid>().Where(grid => grid.Name == "DeviceCardContent").ToArray();
                         Check(cards.Length > 0 && cards.All(card => card.ColumnDefinitions.Count == 2
                                 && card.GetVisualDescendants().OfType<Viewbox>().Any(icon => icon.Name == "DeviceIcon"
-                                    && icon.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Any()))
+                                    && DeviceBarTests.HasEarbudIcon(icon)))
                             && !picker.GetVisualDescendants().OfType<Image>().Any(),
-                            "Real and demo cards share a generic vector headphone icon without product images.");
+                            "Real and demo cards share the settings earbud glyph without product images.");
                         Check(view.IsCompact == (size.Width < 1080), "The simplified hero respects the responsive breakpoint.");
 
                         using var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("Missing main-layout pixels.");
@@ -119,6 +119,39 @@ internal static class MainLayoutTests
                             battery = new { x = batteryOrigin.X, y = batteryOrigin.Y,
                                 width = batteryPanel.Bounds.Width, height = batteryPanel.Bounds.Height },
                             sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant() });
+
+                        // Keep UI review limited to the changed device card. These raster scales
+                        // exercise glyph scaling; they do not claim physical monitor DPI coverage.
+                        foreach (var scale in new[] { 1d, 1.5d, 2d })
+                        {
+                            var card = cards[0];
+                            var origin = card.TranslatePoint(default, window)
+                                ?? throw new InvalidOperationException("Device card is detached from the captured window.");
+                            using var fullWindow = new Avalonia.Media.Imaging.RenderTargetBitmap(
+                                new PixelSize((int)Math.Ceiling(window.Bounds.Width * scale),
+                                    (int)Math.Ceiling(window.Bounds.Height * scale)), new Vector(96 * scale, 96 * scale));
+                            fullWindow.Render(window);
+                            // Crop the composed window so the card keeps its real background,
+                            // inherited foreground and its translated position at each scale.
+                            var left = Math.Max(0, (int)Math.Floor(origin.X * scale));
+                            var top = Math.Max(0, (int)Math.Floor(origin.Y * scale));
+                            var right = Math.Min(fullWindow.PixelSize.Width, (int)Math.Ceiling((origin.X + card.Bounds.Width) * scale));
+                            var bottom = Math.Min(fullWindow.PixelSize.Height, (int)Math.Ceiling((origin.Y + card.Bounds.Height) * scale));
+                            var pixels = new PixelSize(right - left, bottom - top);
+                            using var crop = new Avalonia.Media.Imaging.WriteableBitmap(pixels, fullWindow.Dpi,
+                                fullWindow.Format, fullWindow.AlphaFormat);
+                            using (var buffer = crop.Lock())
+                                fullWindow.CopyPixels(new PixelRect(left, top, pixels.Width, pixels.Height),
+                                    buffer.Address, checked(buffer.RowBytes * pixels.Height), buffer.RowBytes);
+                            var cropName = $"device-card-{(demo ? "demo" : "real")}-{(dark ? "dark" : "light")}-{(int)size.Width}-{(int)(scale * 100)}pct.png";
+                            var cropPath = Path.Combine(output, cropName);
+                            using (var stream = new FileStream(cropPath, FileMode.CreateNew))
+                                crop.Save(stream, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+                            receipts.Add(new { scenario = "device-earbud-crop", demo, theme = dark ? "dark" : "light",
+                                rasterScale = scale, width = pixels.Width, height = pixels.Height, file = cropName,
+                                scope = "headless glyph raster scaling; no physical monitor DPI assertion",
+                                sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(cropPath))).ToLowerInvariant() });
+                        }
 
                         // Inspect the controls below the initial viewport without opening
                         // any panel. Center the adjacent fit-test and information cards

@@ -1,6 +1,9 @@
 using System.ComponentModel;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.VisualTree;
 using FluentAvalonia.UI.Controls;
 
 namespace HeyMelodyWindows.App;
@@ -14,9 +17,17 @@ public partial class AppSettingsPanel : UserControl
     private readonly MainViewModel? _viewModel;
     private bool _redownloadObserved;
     private readonly bool _canManageDevices;
-    private static readonly ModelFrameRate[] FrameRates = [ModelFrameRate.Display, ModelFrameRate.Fps60, ModelFrameRate.Fps30];
 
-    public AppSettingsPanel() => InitializeComponent();
+    public AppSettingsPanel()
+    {
+        InitializeComponent();
+        ModelCompatibilityCard.IsVisible = !OperatingSystem.IsMacOS();
+        ModelBackendChoice.ItemsSource = new[] { "Vulkan", "OpenGL" };
+        ModelBackendChoice.SelectedIndex = 0;
+        ModelFrameRateSlider.LayoutUpdated += (_, _) => AlignFrameRateLabels();
+        ModelFrameRateSlider.ValueChanged += (_, _) => PresentFrameRateLabel();
+        PresentFrameRateLabel();
+    }
 
     internal AppSettingsPanel(MainViewModel viewModel, string theme, bool canManageDevices, Action manageDevices) : this()
     {
@@ -25,11 +36,15 @@ public partial class AppSettingsPanel : UserControl
         ThemeChoice.SelectedIndex = theme switch { "light" => 1, "dark" => 2, _ => 0 };
         // The theme previews at once; the owner restores the saved theme when the dialog is cancelled.
         ThemeChoice.SelectionChanged += (_, _) => ThemePreviewChanged?.Invoke(SelectedTheme);
-        ModelFrameRateChoice.ItemsSource = new[] { "跟随显示器", "60 帧", "30 帧" };
-        ModelFrameRateChoice.SelectedIndex = Math.Max(0, Array.IndexOf(FrameRates, ModelRenderingPreferences.FrameRate));
+        ModelFrameRateSlider.Value = ModelRenderingPreferences.FrameRate switch
+        {
+            ModelFrameRate.Fps30 => 0,
+            ModelFrameRate.Fps60 => 1,
+            _ => 2
+        };
         KeyBox.Text = viewModel.CloudKey;
         OnlineSwitch.IsChecked = viewModel.UseOnlineResources;
-        ModelGpuSwitch.IsChecked = ModelRenderingPreferences.UseGpuAcceleration;
+        ModelBackendChoice.SelectedIndex = ModelRenderingPreferences.CompatibilityMode ? 1 : 0;
         _canManageDevices = canManageDevices;
         ManageDevicesButton.Click += (_, _) => manageDevices();
         RedownloadButton.Click += async (_, _) => { _redownloadObserved = true; await viewModel.RedownloadResourcesAsync(); };
@@ -40,12 +55,42 @@ public partial class AppSettingsPanel : UserControl
 
     internal string SelectedTheme => ThemeChoice.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" };
     internal bool UseOnlineResources => OnlineSwitch.IsChecked == true;
-    internal bool UseModelGpuAcceleration => ModelGpuSwitch.IsChecked == true;
-    internal ModelFrameRate ModelFrameRate => FrameRates[Math.Clamp(ModelFrameRateChoice.SelectedIndex, 0, FrameRates.Length - 1)];
+    internal bool ModelCompatibilityMode => ModelBackendChoice.SelectedIndex == 1;
+    internal ModelFrameRate ModelFrameRate => Math.Round(ModelFrameRateSlider.Value) switch
+    {
+        0 => ModelFrameRate.Fps30,
+        1 => ModelFrameRate.Fps60,
+        _ => ModelFrameRate.Unlimited
+    };
     internal string CloudKey => KeyBox.Text ?? "";
     /// <summary>Resource rows accept edits only while no connection or device switch is in progress.</summary>
     internal bool ResourcesEditable => _viewModel?.CanManageDevices == true;
     internal event Action<string>? ThemePreviewChanged;
+
+    private void PresentFrameRateLabel()
+    {
+        var label = ModelFrameRate switch
+        {
+            ModelFrameRate.Fps30 => "30帧",
+            ModelFrameRate.Fps60 => "60帧",
+            _ => "无限制"
+        };
+        ToolTip.SetTip(ModelFrameRateSlider, label);
+        AutomationProperties.SetHelpText(ModelFrameRateSlider, label);
+    }
+
+    private void AlignFrameRateLabels()
+    {
+        // Reuse the theme's slider template and align text to its actual thumb travel, including DPI/theme changes.
+        var track = ModelFrameRateSlider.GetVisualDescendants().OfType<Track>().FirstOrDefault();
+        if (track?.Thumb is not { } thumb || track.Bounds.Width <= 0
+            || track.TranslatePoint(default, ModelFrameRateLabels) is not { } origin) return;
+        var halfThumb = thumb.Bounds.Width / 2;
+        var travel = Math.Max(0, track.Bounds.Width - thumb.Bounds.Width);
+        TextBlock[] labels = [ModelFrameRate30Label, ModelFrameRate60Label, ModelFrameRateUnlimitedLabel];
+        for (var i = 0; i < labels.Length; i++)
+            Canvas.SetLeft(labels[i], origin.X + halfThumb + travel * i / 2 - labels[i].Bounds.Width / 2);
+    }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {

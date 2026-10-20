@@ -1,5 +1,7 @@
 # HeyMelody Windows 使用说明
 
+本 Filament 试验提供 Windows x64、ARM64 单架构包，请选择与系统对应的版本；ARM64 为交叉构建，尚未完成 ARM64 硬件运行验证。三维模型默认使用 Vulkan，可在应用设置的“3D模型渲染API”下拉框选择 OpenGL，保存后立即生效。无法使用 Vulkan 时显示静态外观并提示手动选择 OpenGL，不自动切换；没有同款图片的演示显示通用耳机图标。帧率滑块提供 30帧、60帧、无限制，默认无限制；旧跟随显示器和试验版 120 帧设置对应无限制。请保留原生库、`hm_filament_probe.exe`、`filament-runtime.json`、`materials` 和 `licenses`。
+
 这是采用 Avalonia 和 FluentAvalonia 的社区 Windows 耳机客户端。资源目录使用欢律的 85 个耳机产品 ID；配置、协议与实际设备能力共同决定可用功能，未知控制不会开放。OPPO、OnePlus、realme 耳机目录已纳入，音箱排除。
 
 完整解压后双击 **`Start-HeyMelody.cmd`**，启动器选择 x64、x86 或 ARM64 目录中的程序。发布包自带 .NET 运行时，无须安装 SDK；单架构包仅包含所选架构。先在 Windows 中配对并连接耳机，随后通过设备管理器保存名单。管理器、贴合度测试和黄金听感向导分别为 `HeyMelody.DeviceManager.exe`、`HeyMelody.FitTest.exe`、`HeyMelody.HearingSetup.exe`，从主界面打开，共享托盘后台。

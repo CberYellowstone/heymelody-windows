@@ -13,14 +13,21 @@ param(
     [Parameter(Mandatory)]
     [ValidatePattern('\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\z')]
     [string]$Version,
-    [switch]$VerifyDeviceArtwork
+    [switch]$VerifyDeviceArtwork,
+    [ValidateNotNullOrEmpty()][ValidateSet('x64', 'x86', 'arm64')][string[]]$Architectures = @('x64', 'x86', 'arm64'),
+    [string]$OutputPath,
+    [string]$OutputRoot
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $taskRoot = Split-Path -Parent $PSScriptRoot
-$taskStage = Join-Path $taskRoot ('release/HeyMelody_Windows_' + $Version)
-$taskArchive = Join-Path $taskRoot ('release/HeyMelody_Windows_' + $Version + '_AllArchitectures.zip')
-$taskReceipt = Join-Path $taskRoot ('release/HeyMelody_Windows_' + $Version + '_STATIC-VALIDATION.json')
+$taskOutputRoot = if ($OutputRoot) { [IO.Path]::GetFullPath($OutputRoot) } else { Join-Path $taskRoot 'release' }
+$taskStage = Join-Path $taskOutputRoot ('HeyMelody_Windows_' + $Version)
+$targetArchitectures = @($Architectures | Select-Object -Unique)
+$architectureSuffix = if ($targetArchitectures.Count -eq 3) { 'AllArchitectures' } else { $targetArchitectures -join '-' }
+$taskArchive = Join-Path $taskOutputRoot ('HeyMelody_Windows_' + $Version + '_' + $architectureSuffix + '.zip')
+$taskReceipt = if ($OutputPath) { [IO.Path]::GetFullPath($OutputPath) } else { Join-Path $taskOutputRoot ('HeyMelody_Windows_' + $Version + '_STATIC-VALIDATION.json') }
+if (Test-Path -LiteralPath $taskReceipt) { throw 'The static receipt already exists; use a new OutputPath.' }
 
 function Require([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
@@ -138,7 +145,7 @@ Require (Test-Path -LiteralPath $taskStage -PathType Container) ('The release st
 Require (Test-Path -LiteralPath $taskArchive -PathType Leaf) ('The release ZIP has not been built yet: ' + $taskArchive)
 $manifest = Read-Json (Join-Path $taskStage 'manifest.json')
 Require ($manifest.schemaVersion -eq 2 -and $manifest.version -eq $Version) 'The release manifest has the wrong schema/version.'
-Require (@($manifest.builds).Count -eq 3) 'The release must include exactly three builds.'
+Require (@($manifest.builds).Count -eq $targetArchitectures.Count -and @(Compare-Object @($manifest.builds.architecture | Sort-Object) @($targetArchitectures | Sort-Object)).Count -eq 0) 'The release manifest does not match the requested architectures.'
 Require (-not $manifest.nativeArm64ExecutionVerified) 'A static receipt cannot assert ARM64 hardware execution.'
 $expectedMachines = @{ x86 = 0x14C; x64 = 0x8664; arm64 = 0xAA64 }
 $criticalPaths = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
@@ -188,7 +195,7 @@ namespace HeyMelody.ReleaseVerification
     }
 }
 
-foreach ($architecture in @('x64', 'x86', 'arm64')) {
+foreach ($architecture in $targetArchitectures) {
     $appDirectory = Join-Path $taskStage $architecture
     $hostDirectory = Join-Path $appDirectory 'backend'
     $build = @($manifest.builds | Where-Object { $_.architecture -eq $architecture })
@@ -342,16 +349,44 @@ foreach ($architecture in @('x64', 'x86', 'arm64')) {
     foreach ($packageFile in @('PACKAGE-NOTICES.json', 'HeyMelody.runtimeconfig.json', 'HeyMelody.DeviceManager.runtimeconfig.json', 'HeyMelody.deps.json', 'HeyMelody.DeviceManager.deps.json')) {
         [void](Checked-File $appDirectory $packageFile)
     }
+    $modelRenderer = $null
+    if ($manifest.modelRenderer -eq 'Filament' -or (Test-Path -LiteralPath (Join-Path $appDirectory 'HeyMelody.Rendering.Filament.dll'))) {
+        Require ($manifest.modelRenderer -eq 'Filament') 'Filament renderer declaration is absent from the release manifest.'
+        Add-CriticalFile (Checked-File $appDirectory 'HeyMelody.Rendering.Filament.dll')
+        $modelRenderer = & (Join-Path $PSScriptRoot 'Verify-FilamentRuntime.ps1') -Directory $appDirectory -RuntimeIdentifier ('win-' + $architecture)
+        Require ($build[0].modelRenderer.success -and $build[0].modelRenderer.sha256 -eq $modelRenderer.sha256 -and $build[0].modelRenderer.manifestSha256 -eq $modelRenderer.manifestSha256) 'Filament runtime does not match the release manifest.'
+        Require ($build[0].modelRenderer.abiVersion -eq $modelRenderer.abiVersion -and $build[0].modelRenderer.filamentCommit -eq $modelRenderer.filamentCommit -and $build[0].modelRenderer.library -eq $modelRenderer.library) 'Filament release metadata does not match its native runtime.'
+        if ($modelRenderer.abiVersion -eq 2) {
+            $declaredRenderer = $build[0].modelRenderer
+            Require ((@($declaredRenderer.supportedBackends) -join ',') -ceq (@($modelRenderer.supportedBackends) -join ',') -and $declaredRenderer.defaultBackend -ceq $modelRenderer.defaultBackend) 'Filament release backend capabilities do not match its runtime.'
+            Require ($declaredRenderer.probe -ceq $modelRenderer.probe -and $declaredRenderer.probeSha256 -ceq $modelRenderer.probeSha256) 'Filament release probe does not match its runtime.'
+            Require ($declaredRenderer.materials.path -ceq $modelRenderer.materials.path -and $declaredRenderer.materials.sha256 -ceq $modelRenderer.materials.sha256 -and (@($declaredRenderer.materials.supportedBackends) -join ',') -ceq (@($modelRenderer.materials.supportedBackends) -join ',')) 'Filament release material archive does not match its runtime.'
+        }
+        Add-CriticalFile (Checked-File $appDirectory 'filament-runtime.json')
+        $nativeManifest = Read-Json (Join-Path $appDirectory 'filament-runtime.json')
+        foreach ($nativeFile in $nativeManifest.files) { Add-CriticalFile (Checked-File $appDirectory $nativeFile.path) }
+        if ($modelRenderer.abiVersion -eq 2) {
+            $nestedNative = Join-Path $appDirectory ('runtimes/win-' + $architecture + '/native')
+            if ((Test-Path -LiteralPath (Join-Path $nestedNative 'HeyMelody.Filament.Native.dll')) -or (Test-Path -LiteralPath (Join-Path $nestedNative 'filament-runtime.json')) -or (Test-Path -LiteralPath (Join-Path $nestedNative 'hm_filament_probe.exe'))) {
+                $nestedVerification = & (Join-Path $PSScriptRoot 'Verify-FilamentRuntime.ps1') -Directory $nestedNative -RuntimeIdentifier ('win-' + $architecture) -RequireCurrent
+                Require ($nestedVerification.manifestSha256 -ceq $modelRenderer.manifestSha256) 'Nested Filament runtime does not match the flat runtime.'
+                Add-CriticalFile (Checked-File $nestedNative 'filament-runtime.json')
+                foreach ($nativeFile in $nativeManifest.files) { Add-CriticalFile (Checked-File $nestedNative $nativeFile.path) }
+            }
+        }
+        Require (-not (Test-Path -LiteralPath (Join-Path $appDirectory 'Ava3D.dll'))) 'Ava3D must not be distributed with the Filament experiment.'
+    }
     $buildChecks += [ordered]@{
         architecture = $architecture; runtimeVersion = $runtimeVersions[0]
         executables = $executableChecks; managedAssemblies = $managedChecks
         managerSharedPackages = @($managerPackages | Sort-Object); nativeLibraries = $nativeChecks
         noticesVerified = $true; runtimeLicensesVerified = $true; hardwareExecutionVerified = $false
+        modelRenderer = $modelRenderer
     }
     Write-Output ('PASS ' + $architecture + ': executable/managed/native architecture, versions, shared runtime/dependencies and licenses')
 }
 if ($VerifyDeviceArtwork) {
-    Require ($artworkChecks.Count -eq ($sourceArtwork.Count * 3)) 'Expected all source artwork bytes in every published GUI architecture.'
+    Require ($artworkChecks.Count -eq ($sourceArtwork.Count * $targetArchitectures.Count)) 'Expected all source artwork bytes in every published GUI architecture.'
     Write-Output ('PASS device artwork: ' + $artworkChecks.Count + ' complete source artwork matches in published GUI assemblies')
 }
 

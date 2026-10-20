@@ -48,6 +48,8 @@ dotnet build src/HeyMelody.App/HeyMelody.App.csproj -c Release
 
 普通构建使用仓库自带的资源包，不需要原始 APK 或本地研究档案。模块、运行、测试和打包步骤见[开发指南](docs/development.md)。
 
+本独立试验分支使用 Filament 渲染三维模型，默认 Vulkan；在应用设置的“3D模型渲染API”下拉框选择 OpenGL。不可用时显示静态外观，并在 Vulkan 失败时提示手动选择 OpenGL。模型帧率可选 30帧、60帧、无限制三档，默认无限制。提供 Windows x64、ARM64 构建，实际运行验收使用 x64；macOS、Linux 提供渲染层构建准备，见 [Filament 构建说明](docs/filament-renderer.md)。
+
 欢迎通过 [Issues](https://github.com/CberYellowstone/heymelody-windows/issues) 提交问题、设备兼容性反馈和功能建议，也欢迎提交 Pull Request。反馈时请注明应用版本、Windows 版本、耳机型号与固件、配置内容版本和复现步骤；分享日志前移除蓝牙地址、密钥等个人数据。开始修改项目时，请阅读[协作规则与文档导航](AGENTS.md)。
 
 ## 许可与来源

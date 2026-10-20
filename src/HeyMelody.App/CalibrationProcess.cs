@@ -14,7 +14,7 @@ internal sealed class CalibrationProcess
         {
             var directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../", component, "bin"));
             var dll = new[] { "Release", "Debug" }.Select(configuration => Path.Combine(directory, configuration, "net10.0", component + ".dll")).FirstOrDefault(File.Exists);
-            if (dll is null) throw new FileNotFoundException("测试组件缺失，请重新解压完整客户端。");
+            if (dll is null) throw new FileNotFoundException("无法打开测试窗口，请重启软件或重新安装。");
             start.FileName = "dotnet"; start.ArgumentList.Add(dll);
         }
         start.ArgumentList.Add("--handle"); start.ArgumentList.Add(handle);

@@ -1,0 +1,71 @@
+name: Prepare Filament for Windows
+description: Reuse a verified native cache or build Filament, then renew trusted caches for 30 days.
+inputs:
+  runtime-identifier:
+    description: Target Windows architecture as a RID (win-x64 or win-arm64).
+    required: true
+  force-rebuild:
+    description: Ignore the native cache and compile Filament in this job.
+    default: "false"
+outputs:
+  runtime-root:
+    description: Verified runtime root passed to Build-Client.ps1.
+    value: ${{ steps.prepare.outputs.runtime-root }}
+  cache-key:
+    description: Artifact name derived from the native sources, target, configuration, and toolchain.
+    value: ${{ steps.prepare.outputs.cache-key }}
+  cache-status:
+    description: Whether this job reused a cache or compiled Filament.
+    value: ${{ steps.prepare.outputs.cache-status }}
+  cache-directory:
+    description: Directory containing only the verified runtime and its cache receipts, ready to upload.
+    value: ${{ steps.prepare.outputs.cache-directory }}
+  cache-publish-eligible:
+    description: Whether this is a trusted push/manual run allowed to save the native cache.
+    value: ${{ steps.prepare.outputs.cache-publish-eligible }}
+  package-publish-eligible:
+    description: Whether this push/manual run may upload application packages; false for PRs.
+    value: ${{ steps.prepare.outputs.package-publish-eligible }}
+  package-retention-days:
+    description: Application package retention in days (main 7, other refs 1).
+    value: ${{ steps.prepare.outputs.package-retention-days }}
+  receipt-retention-days:
+    description: Verification result retention in days (1).
+    value: ${{ steps.prepare.outputs.receipt-retention-days }}
+runs:
+  using: composite
+  steps:
+    # Restore failures fall back to a local build; genuine build errors still fail.
+    - name: Restore or build Filament
+      id: prepare
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        HM_FILAMENT_RID: ${{ inputs.runtime-identifier }}
+        HM_FILAMENT_FORCE_REBUILD: ${{ inputs.force-rebuild }}
+      run: |
+        $arguments = @{
+          RuntimeIdentifier = $env:HM_FILAMENT_RID
+          OutputRoot = Join-Path $env:GITHUB_WORKSPACE "artifacts/filament-ci/$env:HM_FILAMENT_RID"
+          ForceRebuild = $env:HM_FILAMENT_FORCE_REBUILD -eq 'true'
+        }
+        & "$env:GITHUB_WORKSPACE/tools/filament/Prepare-FilamentRuntime.ps1" @arguments
+    # Upload on trusted runs, including cache hits, to renew the 30-day lifetime.
+    - name: Save native cache (30 days)
+      id: publish
+      if: steps.prepare.outputs.cache-publish-eligible == 'true'
+      continue-on-error: true
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.prepare.outputs.cache-key }}
+        path: ${{ steps.prepare.outputs.cache-directory }}/
+        if-no-files-found: error
+        retention-days: 30
+        overwrite: true
+    # A cache upload failure must not discard a successfully prepared runtime.
+    - name: Warn if cache upload failed
+      if: steps.publish.outcome == 'failure'
+      shell: pwsh
+      run: |
+        Write-Warning 'Native cache renewal failed; the verified runtime remains available to this job.'
+        'Native cache renewal failed. This job continues with its verified runtime; a future cache miss builds it again.' >> $env:GITHUB_STEP_SUMMARY

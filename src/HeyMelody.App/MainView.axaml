@@ -368,11 +368,7 @@
                           HorizontalAlignment="Center" VerticalAlignment="Center">
                       <Viewbox x:Name="DeviceIcon" Width="28" Height="28" Stretch="Uniform" IsHitTestVisible="False"
                                HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <Canvas Width="24" Height="24">
-                          <Path Data="M4,14 L4,11 A8,8 0 0 1 20,11 L20,14 M4,13 L7,13 L7,21 L4,21 Q2,21 2,19 L2,15 Q2,13 4,13 M20,13 L17,13 L17,21 L20,21 Q22,21 22,19 L22,15 Q22,13 20,13"
-                                Stroke="{DynamicResource TextFillColorPrimaryBrush}" StrokeThickness="1.5"
-                                StrokeLineCap="Round" StrokeJoin="Round" />
-                        </Canvas>
+                        <fa:FAIconSourceElement IconSource="{local:AppIcon Earbuds, Size=24}" Width="24" Height="24" />
                       </Viewbox>
                       <StackPanel x:Name="DeviceText" Grid.Column="1" Spacing="4" MaxWidth="220">
                         <TextBlock x:Name="DeviceNameText" Text="{Binding Name}" FontWeight="SemiBold"
@@ -390,7 +386,7 @@
                     Background="{DynamicResource ControlSolidFillColorDefaultBrush}">
               <Button x:Name="AddDeviceButton" Width="64" Height="64" Click="AddDevice_Click"
                       IsEnabled="{Binding !Closing}" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                      ToolTip.Tip="添加设备；长按 2 秒添加演示设备" AutomationProperties.Name="添加设备">
+                      ToolTip.Tip="添加设备；长按 2 秒显示 Demo 设备" AutomationProperties.Name="添加设备">
                 <fa:FASymbolIcon Symbol="Add" FontSize="24" />
               </Button>
             </Border>

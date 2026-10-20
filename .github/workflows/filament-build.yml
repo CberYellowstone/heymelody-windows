@@ -1,0 +1,105 @@
+name: Filament runtime
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      force_native_rebuild:
+        description: Bypass the cache and rebuild the Windows native runtime.
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: filament-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  renderer:
+    name: Native runtime (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-24.04]
+    steps:
+      - name: Check out project
+        uses: actions/checkout@v4
+      - name: Check out pinned Filament source
+        uses: actions/checkout@v4
+        if: runner.os != 'Windows'
+        with:
+          repository: google/filament
+          ref: ea31afeaf66339e7414aa648aa76c7e61adbde28
+          path: artifacts/filament-source
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Install Linux build and graphics dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang ninja-build libegl-dev libgl-dev libvulkan1
+      - name: Determine runtime ID
+        id: runtime
+        shell: pwsh
+        run: |
+          $prefix = if ($IsWindows) { 'win' } elseif ($IsMacOS) { 'osx' } else { 'linux' }
+          $architecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant()
+          "rid=$prefix-$architecture" >> $env:GITHUB_OUTPUT
+      - name: Check cache restore and retention rules
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tools/filament/tests/Test-FilamentArtifactCache.ps1 -OutputPath artifacts/filament-cache-checks/summary.json
+      - name: Restore or build Windows runtime
+        id: filament
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/filament-runtime
+        with:
+          runtime-identifier: ${{ steps.runtime.outputs.rid }}
+          force-rebuild: ${{ inputs.force_native_rebuild || false }}
+      - name: Build macOS or Linux runtime
+        if: runner.os != 'Windows'
+        shell: pwsh
+        run: |
+          if ($IsLinux) { $env:CC = 'clang'; $env:CXX = 'clang++' }
+          ./tools/filament/Build-FilamentNative.ps1 -FilamentSource ./artifacts/filament-source -RuntimeIdentifier '${{ steps.runtime.outputs.rid }}' -OutputRoot ./artifacts/filament-compat -FetchBuildTools -SkipSmoke
+      - name: Verify runtime files and ABI
+        shell: pwsh
+        env:
+          WINDOWS_FILAMENT_ROOT: ${{ steps.filament.outputs.runtime-root }}
+        run: |
+          $runtimeRoot = if ($IsWindows) { $env:WINDOWS_FILAMENT_ROOT } else { './artifacts/filament-compat' }
+          ./tools/Verify-FilamentRuntime.ps1 -Directory "$runtimeRoot/runtimes/${{ steps.runtime.outputs.rid }}/native" -RuntimeIdentifier '${{ steps.runtime.outputs.rid }}' -RequireCurrent | ConvertTo-Json
+      - name: Check renderer and model motion
+        shell: pwsh
+        run: |
+          dotnet run --project tests/HeyMelody.Rendering.Filament.Tests -c Release
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet run --project tests/HeyMelody.ModelPreview.Tests -c Release -- --output-dir artifacts/portable-model-checks
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Upload native runtime and check results
+        uses: actions/upload-artifact@v4
+        if: runner.os != 'Windows'
+        with:
+          name: filament-${{ steps.runtime.outputs.rid }}
+          path: |
+            artifacts/filament-compat/runtimes/${{ steps.runtime.outputs.rid }}/native/
+            artifacts/portable-model-checks/*.json
+          if-no-files-found: error
+          retention-days: 2
+      - name: Upload Windows check results
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: filament-checks-${{ steps.runtime.outputs.rid }}
+          path: |
+            artifacts/portable-model-checks/*.json
+            artifacts/filament-cache-checks/summary.json
+          if-no-files-found: error
+          retention-days: ${{ steps.filament.outputs.receipt-retention-days }}
+          overwrite: true

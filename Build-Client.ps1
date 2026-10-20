@@ -1,17 +1,23 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.9.2',
-    [ValidateNotNullOrEmpty()][ValidateSet('x64', 'x86', 'arm64')][string[]]$Architectures = @('x64', 'x86', 'arm64'),
+    [ValidateNotNullOrEmpty()][ValidateSet('x64', 'x86', 'arm64')][string[]]$Architectures = @('x64'),
     [switch]$SkipTests,
     [switch]$TestsOnly,
     [switch]$FinalizeOnly,
-    [string]$ValidationPath
+    [string]$ValidationPath,
+    [string]$FilamentSource,
+    [string]$FilamentRuntimeRoot,
+    [string]$OutputRoot
 )
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-$releaseRoot = Join-Path $root 'release'
+$releaseRoot = if ($OutputRoot) { [IO.Path]::GetFullPath($OutputRoot) } else { Join-Path $root 'release' }
 $stage = Join-Path $releaseRoot ('HeyMelody_Windows_' + $Version)
 $targetArchitectures = @($Architectures | Select-Object -Unique)
+if (-not $TestsOnly -and $targetArchitectures -contains 'x86') { throw 'The Filament native module supports Windows x64 and ARM64; a Windows x86 native module is not available.' }
+if (-not $FilamentRuntimeRoot) { $FilamentRuntimeRoot = Join-Path $root 'artifacts/filament-compat' }
+$FilamentRuntimeRoot = [IO.Path]::GetFullPath($FilamentRuntimeRoot)
 $architectureSuffix = if ($targetArchitectures.Count -eq 3) { 'AllArchitectures' } else { $targetArchitectures -join '-' }
 $archive = Join-Path $releaseRoot ('HeyMelody_Windows_' + $Version + '_' + $architectureSuffix + '.zip')
 if ($ValidationPath) {
@@ -32,7 +38,7 @@ if (Test-Path -LiteralPath $existingPackageCache -PathType Container) {
 if (-not $SkipTests -and -not $FinalizeOnly) {
     & dotnet run --project (Join-Path $root 'src/HeyMelody.Windows/OfflineChecks/HeyMelody.Windows.OfflineChecks.csproj') -c Release '-p:CopyDebugSymbolFilesFromPackages=false' @restoreProperties
     if ($LASTEXITCODE -ne 0) { throw 'Tests failed: HeyMelody.Windows.OfflineChecks' }
-    foreach ($project in @('HeyMelody.Protocol.Tests', 'HeyMelody.Resources.Tests', 'HeyMelody.Calibration.Tests', 'HeyMelody.Calibration.UI.Tests', 'HeyMelody.Devices.Tests', 'HeyMelody.Control.Tests', 'HeyMelody.Daily.Tests', 'HeyMelody.Probe.Tests', 'HeyMelody.Host.Tests', 'HeyMelody.Client.Tests', 'HeyMelody.App.Tests', 'HeyMelody.DeviceManager.Tests')) {
+    foreach ($project in @('HeyMelody.Protocol.Tests', 'HeyMelody.Resources.Tests', 'HeyMelody.Calibration.Tests', 'HeyMelody.Calibration.UI.Tests', 'HeyMelody.Devices.Tests', 'HeyMelody.Control.Tests', 'HeyMelody.Daily.Tests', 'HeyMelody.Probe.Tests', 'HeyMelody.Host.Tests', 'HeyMelody.Client.Tests', 'HeyMelody.App.Tests', 'HeyMelody.DeviceManager.Tests', 'HeyMelody.Rendering.Filament.Tests')) {
         & dotnet run --project (Join-Path $root ('tests/' + $project + '/' + $project + '.csproj')) -c Release '-p:CopyDebugSymbolFilesFromPackages=false' @restoreProperties
         if ($LASTEXITCODE -ne 0) { throw ('Tests failed: ' + $project) }
     }
@@ -40,6 +46,20 @@ if (-not $SkipTests -and -not $FinalizeOnly) {
 if ($TestsOnly) {
     Write-Host 'All default test runners passed.'
     return
+}
+if (-not $FinalizeOnly) {
+    foreach ($architecture in $targetArchitectures) {
+        $rid = 'win-' + $architecture
+        $nativeDirectory = Join-Path $FilamentRuntimeRoot ('runtimes/' + $rid + '/native')
+        if (-not (Test-Path -LiteralPath (Join-Path $nativeDirectory 'filament-runtime.json'))) {
+            $nativeArguments = @{ RuntimeIdentifier = $rid; OutputRoot = $FilamentRuntimeRoot; FetchBuildTools = $true; SkipSmoke = $true }
+            if ($FilamentSource) { $nativeArguments.FilamentSource = $FilamentSource }
+            else { $nativeArguments.FetchSource = $true }
+            & (Join-Path $root 'tools/filament/Build-FilamentNative.ps1') @nativeArguments
+            if ($LASTEXITCODE -ne 0) { throw ('Filament native build failed: ' + $rid) }
+        }
+        $nativeVerification = & (Join-Path $root 'tools/Verify-FilamentRuntime.ps1') -Directory $nativeDirectory -RuntimeIdentifier $rid -RequireCurrent
+    }
 }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 $scratch = Join-Path $releaseRoot ('build-' + [Guid]::NewGuid().ToString('N'))
@@ -52,11 +72,12 @@ $packageCache = $Matches[1]
 # for JIT; tiered compilation still promotes hot methods. Package size is not a constraint for these builds.
 $publishProperties = @('-p:CopyDebugSymbolFilesFromPackages=false',
     '-p:PublishReadyToRun=true',
-    '-p:CreateHardLinksForCopyLocalIfPossible=true',
-    '-p:CreateHardLinksForCopyFilesToOutputDirectoryIfPossible=true',
-    '-p:CreateHardLinksForPublishFilesIfPossible=true',
-    '-p:CreateHardLinksForAdditionalFilesIfPossible=true')
+    '-p:CreateHardLinksForCopyLocalIfPossible=false',
+    '-p:CreateHardLinksForCopyFilesToOutputDirectoryIfPossible=false',
+    '-p:CreateHardLinksForPublishFilesIfPossible=false',
+    '-p:CreateHardLinksForAdditionalFilesIfPossible=false')
 $publishProperties += $restoreProperties
+$publishProperties += '-p:FilamentRuntimeRoot=' + $FilamentRuntimeRoot
 
 function Resolve-PackageDirectory([object]$Assets, [string]$PackagePath) {
     # A package may have been resolved from either the repository cache or a fallback.
@@ -126,20 +147,32 @@ function Export-PackageNotices([string]$AssetsPath, [string]$Destination) {
 
 foreach ($architecture in $targetArchitectures) {
     $rid = 'win-' + $architecture
+    $filamentNativeDirectory = Join-Path $FilamentRuntimeRoot ('runtimes/' + $rid + '/native')
+    # Existing packages can share hard-linked R2R files with the ordinary obj directory.
+    # Each publication writes its own intermediate images so a running earlier package
+    # cannot lock new outputs, and publishing cannot mutate that package through a link.
+    $r2rRoot = Join-Path $scratch ('r2r/' + $rid)
     $app = Join-Path $stage $architecture
     $hostOutput = Join-Path $app 'backend'
     if (-not $FinalizeOnly) {
         Write-Host ('Publishing ' + $rid)
-        & dotnet publish (Join-Path $root 'src/HeyMelody.App/HeyMelody.App.csproj') -c Release -r $rid --self-contained true -o $app '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) @publishProperties --nologo
+        & dotnet publish (Join-Path $root 'src/HeyMelody.App/HeyMelody.App.csproj') -c Release -r $rid --self-contained true -o $app '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) ('-p:_ReadyToRunOutputPath=' + (Join-Path $r2rRoot 'App')) @publishProperties --nologo
         if ($LASTEXITCODE -ne 0) { throw ('GUI publish failed: ' + $rid) }
-        & dotnet publish (Join-Path $root 'src/HeyMelody.DeviceManager/HeyMelody.DeviceManager.csproj') -c Release -r $rid --self-contained true -o $app '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) @publishProperties --nologo
+        & dotnet publish (Join-Path $root 'src/HeyMelody.DeviceManager/HeyMelody.DeviceManager.csproj') -c Release -r $rid --self-contained true -o $app '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) ('-p:_ReadyToRunOutputPath=' + (Join-Path $r2rRoot 'DeviceManager')) @publishProperties --nologo
         if ($LASTEXITCODE -ne 0) { throw ('Device manager publish failed: ' + $rid) }
         foreach ($component in @('HeyMelody.FitTest', 'HeyMelody.HearingSetup')) {
-            & dotnet publish (Join-Path $root ('src/' + $component + '/' + $component + '.csproj')) -c Release -r $rid --self-contained true -o $app '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) @publishProperties --nologo
+            & dotnet publish (Join-Path $root ('src/' + $component + '/' + $component + '.csproj')) -c Release -r $rid --self-contained true -o $app '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) ('-p:_ReadyToRunOutputPath=' + (Join-Path $r2rRoot $component)) @publishProperties --nologo
             if ($LASTEXITCODE -ne 0) { throw ('Calibration component publish failed: ' + $component + '/' + $rid) }
         }
-        & dotnet publish (Join-Path $root 'src/HeyMelody.Host/HeyMelody.Host.csproj') -c Release -r $rid --self-contained true -o $hostOutput '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) @publishProperties --nologo
+        & dotnet publish (Join-Path $root 'src/HeyMelody.Host/HeyMelody.Host.csproj') -c Release -r $rid --self-contained true -o $hostOutput '-p:PublishSingleFile=false' '-p:PublishTrimmed=false' ('-p:Version=' + $Version) ('-p:_ReadyToRunOutputPath=' + (Join-Path $r2rRoot 'Host')) @publishProperties --nologo
         if ($LASTEXITCODE -ne 0) { throw ('Host publish failed: ' + $rid) }
+        Copy-Item -Path (Join-Path $filamentNativeDirectory '*') -Destination $app -Recurse -Force
+    }
+    $nativeVerification = & (Join-Path $root 'tools/Verify-FilamentRuntime.ps1') -Directory $app -RuntimeIdentifier $rid -RequireCurrent
+    $nestedNative = Join-Path $app ('runtimes/' + $rid + '/native')
+    if ((Test-Path -LiteralPath (Join-Path $nestedNative 'HeyMelody.Filament.Native.dll')) -or (Test-Path -LiteralPath (Join-Path $nestedNative 'filament-runtime.json')) -or (Test-Path -LiteralPath (Join-Path $nestedNative 'hm_filament_probe.exe'))) {
+        $nestedVerification = & (Join-Path $root 'tools/Verify-FilamentRuntime.ps1') -Directory $nestedNative -RuntimeIdentifier $rid -RequireCurrent
+        if ($nestedVerification.manifestSha256 -cne $nativeVerification.manifestSha256) { throw ('Published runtime copies differ: ' + $rid) }
     }
     # Native NuGet runtime assets can include PDBs despite the managed-symbol option.
     # They are unnecessary for execution and need not inflate the portable package.
@@ -202,6 +235,7 @@ foreach ($architecture in $targetArchitectures) {
         resourceIndexSha256 = (Get-FileHash -LiteralPath (Join-Path $app 'ResourceBundles/artwork.json') -Algorithm SHA256).Hash.ToLowerInvariant()
         hostSha256 = (Get-FileHash -LiteralPath (Join-Path $hostOutput 'HeyMelody.Host.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
         hardwareExecutionVerified = $false; validationScope = 'build-only; see VALIDATION.json for actual execution evidence'
+        modelRenderer = $nativeVerification
     }
 }
 Copy-Item -LiteralPath (Join-Path $root 'packaging/Start-HeyMelody.ps1') -Destination (Join-Path $stage 'Start-HeyMelody.ps1')
@@ -217,7 +251,7 @@ if ($ValidationPath) {
     }
     Copy-Item -LiteralPath $ValidationPath -Destination (Join-Path $stage 'VALIDATION.json')
 }
-$manifest = [ordered]@{ schemaVersion = 2; version = $Version; builtAtUtc = [DateTime]::UtcNow.ToString('o'); builds = $builds; nativeArm64ExecutionVerified = $false; validationScope = 'build-only unless an exact-version execution receipt is supplied' }
+$manifest = [ordered]@{ schemaVersion = 2; version = $Version; builtAtUtc = [DateTime]::UtcNow.ToString('o'); builds = $builds; modelRenderer = 'Filament'; nativeArm64ExecutionVerified = $false; validationScope = 'build-only unless an exact-version execution receipt is supplied' }
 $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $stage 'manifest.json') -Encoding UTF8
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::CreateFromDirectory($stage, $archive, [System.IO.Compression.CompressionLevel]::Optimal, $false)
