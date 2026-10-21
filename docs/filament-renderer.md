@@ -40,7 +40,7 @@ Filament 的部分初始化失败发生在自己的驱动线程或 noexcept 路�
 
 ## 构建与产物
 
-需要 PowerShell 7、.NET 10 SDK、Git、CMake 3.22.1+ 和 C++20 工具链。Windows 使用 MSVC；ARM64 交叉构建需要 Hostx64→ARM64 工具。macOS 使用 Xcode / Apple Clang；Linux 使用 Clang / clang++、Python、Ninja 和 EGL 开发包；固定 Filament 不支持默认 GCC 工具链。普通托管构建不要求 APK 或 research 目录。
+需要 PowerShell 7、.NET 10 SDK、Git、CMake 3.22.1+ 和 C++20 工具链。Windows 使用 MSVC；ARM64 交叉构建需要 Hostx64→ARM64 工具。macOS 使用 Xcode / Apple Clang；Linux 使用 Clang / clang++、Python、Ninja，以及 EGL / OpenGL / GLES 开发包；固定 Filament 不支持默认 GCC 工具链。普通托管构建不要求 APK 或 research 目录。
 
 ```powershell
 pwsh -NoProfile -File tools/filament/Build-FilamentNative.ps1 -RuntimeIdentifier win-x64 -FilamentSource B:/github/heymelody-windows/research/filament -FetchBuildTools
@@ -54,11 +54,17 @@ Ubuntu 构建示例（ARM64 主机将 RID 改为 `linux-arm64`）：
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y clang ninja-build libegl-dev libgl-dev libvulkan1
+sudo apt-get install -y clang ninja-build libegl-dev libgl-dev libgles-dev libvulkan1
 CC=clang CXX=clang++ pwsh -NoProfile -File tools/filament/Build-FilamentNative.ps1 -RuntimeIdentifier linux-x64 -FetchSource -OutputRoot artifacts/filament-compat
 ```
 
-Linux 桥接与 Filament 统一使用 Clang 默认的动态 libstdc++，运行时需要 `libstdc++6`、系统 EGL 及兼容图形驱动；Vulkan 后端另外使用系统 `libvulkan1`。
+Linux 桥接与 Filament 统一使用 Clang 默认的动态 libstdc++，运行时需要 `libstdc++6`、系统 EGL、`libgles2`（`libGLESv2.so.2`）及兼容图形驱动；Vulkan 后端另外使用系统 `libvulkan1`。
+
+Linux Clang 配置时通过 `<cstddef>` 的 `__GLIBCXX__` 探测实际标准库，每次重新配置先清理检测缓存。使用 libstdc++ 时，在加入上游 Filament 目录前为 C++ 编译追加 `-U_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS`，覆盖上游的 libc++ 专用注解开关，避免 `Platform.h` 对未带 capability 的锁类型报错。`-Werror` 与 `-Wthread-safety` 保持启用，实际使用 libc++ 的构建继续保留注解。
+
+GLES 头文件与链接库是另外两项构建要求。Ubuntu 24.04 的 `GLES3/gl31.h` 由 [`libgles-dev`](https://packages.ubuntu.com/noble/amd64/libgles-dev/filelist) 提供，缺失时在 `gl_headers.h` 编译阶段报错。固定版本的 Linux EGL backend 只公开链接 EGL，其直接 GLES 头文件路径绕过 BlueGL remap，还需要显式声明 GLESv2 链接依赖。项目仅在 Linux 查找 `GLESv2`，并把它挂到静态 `backend` 的链接依赖，使 GLESv2 位于 archive 之后，避免 `--as-needed` 下 probe / smoke 链接时出现 `gl*` 未解析符号。
+
+Linux 默认构建与 CI 执行现有 `hm_filament_smoke` 无参数入口，检查实际动态加载、C ABI 2 结构体布局和非法后端拒绝；该入口无需 GPU 或窗口。按 baseline / fixed 隔离项目和产物、保留完整日志与真实退出码的复现流程见 [Linux Filament 构建复现工具](../tools/research/filament-linux-build/README.md)。
 
 Windows ARM64 使用 -RuntimeIdentifier win-arm64。它复用同版本 x64 主机工具，resgen 生成 C 数组交给 ARM64 编译器，BlueGL 使用上游已有的类型化 C++ 分发实现；原始 Filament clone 保持不变。macOS/Linux 使用对应 RID，构建工具验证实际 OS、CPU 和产物架构，不能只改 RID 重命名文件。
 
@@ -99,6 +105,8 @@ pwsh -NoProfile -File tools/filament/tests/Test-FilamentArtifactCache.ps1 -Outpu
 ## 验证范围
 
 可移植渲染检查、默认模型运动检查及原十三个默认 runner 保持各自入口。后端选择、偏好迁移、取消、错误分类和静态回退测试使用隔离设置与替代 renderer，不依赖 GPU。
+
+2026-10-21 在 Ubuntu 26.04.1 WSL 中的 Ubuntu 24.04.5 bwrap 用户空间完成固定 Filament commit 的 `linux-x64` 本地复现，工具链为 Clang 18.1.3、CMake 3.28.3、Ninja 1.11.1、PowerShell 7.6.6 与 .NET SDK 10.0.402。baseline 重现与 GitHub Actions 相同的 `Platform.h:658` 线程 capability 错误；依次处理注解兼容、缺少 GLES 头文件和 GLESv2 链接声明后，完整原生构建、无 `LD_LIBRARY_PATH` 的无参数 ABI smoke、`-RequireCurrent` 静态验包、便携渲染 87 项、模型运动 180 项检查及报告归档全部通过。模型运动检查使用普通 `dotnet run`，未指定 RID。完整本机记录见 [Linux 构建复现档案](../research/filament-linux-build-2026-10-21/run-20261020T172244Z/README.md)；该结果覆盖本地编译、动态加载、ABI 与离线检查，Linux GPU 和完整客户端验证另行记录。
 
 Windows x64 的实际模型及窗口测试分别选择 Vulkan、OpenGL，记录请求/实际后端与精确 DLL / 材质摘要；检查几何、材质、颜色/方向/alpha、DPI、交互、隐藏恢复、切换和释放。原生探测失败、超时、取消和无 Vulkan 时的 OpenGL 路径另行验证。
 

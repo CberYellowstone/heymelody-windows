@@ -4,6 +4,7 @@
 
 | 入口 | 用途 |
 | --- | --- |
+| [filament-linux-build/](filament-linux-build/README.md) | Ubuntu 24.04 隔离构建、Linux Filament 失败复现与修复验收证据 |
 | [ui-text-audit/](ui-text-audit/README.md) | C#/AXAML/配置文本候选、源码追踪、场景截图关联与人工审计 Excel；保留意见并记录覆盖缺口 |
 | [earbud-artwork/scripts/](earbud-artwork/scripts/) | APK美术、Android资源、来源探测、图册与验证 |
 | [online-whitelist/scripts/](online-whitelist/scripts/) | 配置认证、解密、版本分析及离线验证 |

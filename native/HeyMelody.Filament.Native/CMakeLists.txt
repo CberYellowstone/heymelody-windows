@@ -102,6 +102,20 @@ endif()
 if(DEFINED HM_RUNTIME_OUTPUT_DIRECTORY)
     set_target_properties(hm_filament_probe PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${HM_RUNTIME_OUTPUT_DIRECTORY}")
 endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    include(CheckCXXSymbolExists)
+    # Recheck the actual standard library when compiler flags change on reconfigure.
+    unset(HM_FILAMENT_USES_LIBSTDCXX CACHE)
+    check_cxx_symbol_exists(__GLIBCXX__ "cstddef" HM_FILAMENT_USES_LIBSTDCXX)
+    if(HM_FILAMENT_USES_LIBSTDCXX)
+        # Upstream defines libc++ thread annotations even when using libstdc++.
+        # Directory options follow its CMAKE_CXX_FLAGS -D, so this -U takes effect.
+        # Keep annotations enabled for builds that actually use libc++.
+        add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-U_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS>")
+    endif()
+endif()
+
 add_subdirectory("${HM_FILAMENT_SOURCE}" filament EXCLUDE_FROM_ALL)
 if(HM_RUNTIME_IDENTIFIER STREQUAL "win-arm64")
     # Upstream selects x64 MASM for every 64-bit Windows target. Its existing typed
@@ -119,6 +133,12 @@ target_include_directories(HeyMelody.Filament.Native PUBLIC include PRIVATE
     "${HM_FILAMENT_SOURCE}/third_party/cgltf"
     "${CMAKE_CURRENT_BINARY_DIR}/filament/libs/gltfio")
 target_link_libraries(HeyMelody.Filament.Native PRIVATE filament gltfio_core uberarchive ktxreader image)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # The EGL backend calls GLES directly. Attach its dependency to the static
+    # archive so consumers link GLES after it, including with --as-needed.
+    find_library(HM_GLESV2_LIBRARY NAMES GLESv2 REQUIRED)
+    target_link_libraries(backend PRIVATE "${HM_GLESV2_LIBRARY}")
+endif()
 set_target_properties(HeyMelody.Filament.Native PROPERTIES
     CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN YES
     WINDOWS_EXPORT_ALL_SYMBOLS OFF)
