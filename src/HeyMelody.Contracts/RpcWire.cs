@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace HeyMelodyWindows.Host;
 
@@ -31,7 +32,9 @@ public static class RpcWire
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = false,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        // Set here: options lock on first use. The reflection resolver stays as the fallback for unlisted types.
+        TypeInfoResolver = JsonTypeInfoResolver.Combine(RpcJsonContext.Default, new DefaultJsonTypeInfoResolver())
     };
 
     // Limit before deserialization; a read deadline is enforced by the parent process.

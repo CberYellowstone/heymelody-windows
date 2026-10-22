@@ -10,6 +10,10 @@
 
 2026-10-19（样式复原）：上述三枚标识进一步恢复为历史 `8b2576d6b` 的圆形 L／R 字母镂空与配套充电盒，替换上一轮 19×16 带柄耳塞方案。重新从欢律 17.6.5 核实三份 14×14 `battery_device` 资源，编译 XML、反编译原件与历史 pathData 一致。继续继承主题前景与透明度，其它系统／Fluent 图标、电量行为和布局不变；版本保持 0.9.2，未发布。旧方案来源记录保留在上述专题中。
 
+2026-10-21（后端内存）：针对 Windows 上 Host 托盘常驻内存偏高的反馈，在 review/0.9.9 分支完成一轮后端内存优化。Host 的 runtimeconfig 设置 gen0 预算与 ConserveMemory 并关闭 TieredPGO；托盘改用 Win32 软件渲染，worker 入口不再加载 Avalonia；美术包的校验、下载与解压改为流式并在安装后压缩回收；快照复制改用 `Clone()`，IPC JSON 改用源生成（保留反射回退）；BLE 改为按 OPPO、OnePlus 公司 ID 过滤的两个 Active watcher；试听 WAV 单拷贝并复用缓冲；目录载荷按目录缓存。产品版本仍为 0.9.2，尚未发布；公共 IPC 仍为 schema 4，线格式经兼容检查逐字节对照，设备能力门控、固件仅提醒和 SET 规则不变。
+
+验证边界：Linux 上 Resources、Daily、Devices、Control、Protocol、Calibration、Client、DeviceManager、Calibration.UI 与 App 十个检查全部通过（Resources 26→34、Client 163→173 为新增检查，其余数量不变）；Host 以 `-p:EnableWindowsTargeting=true` 编译无警告和错误，Host.Tests 的 Linux 子集保留改动前的 42 项并新增 6 项（试听 WAV 解析与 worker 线格式），共 48 项通过，并在同一处需要 COM 的试听测试停止。IPC 源生成与 gen0 预算有 Linux 合成探针的测量。**Windows 内存没有测量**，托盘菜单软件渲染外观、BLE 过滤的真机广播、试听播放、美术下载与完整 Host.Tests 均待 Windows 验证。依据、数字与未验证清单见[后台内存审计](../research/backend-memory-audit.md)，测量脚本为 `tools/Measure-HostMemory.ps1`，本轮未实施的其他方向见[优化待办](../optimization-backlog.md)。
+
 ## 历史版本
 
 以下原段整理自 2026-10-11 文档重整前的根目录 `README.md` 与 `REPOSITORY.md`，保留原版本、日期、设备、平台及验证范围，仅调整链接位置。原段中的 “current”、默认行为与检查数量属于对应历史版本，不作为后续版本的保证。两个来源有重叠时分别列出；原文未给验证日期的条目不补写日期。

@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Buffers.Binary;
 using System.Net;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -34,6 +35,14 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Packages from an older extractor are re-downloaded once and served until then", ExtractorUpgrade),
     ("Re-download validates replacements, keeps files on failure and requires online use", Redownload),
     ("Startup removes interrupted downloads and superseded packages", StartupSweep),
+    ("Streaming SHA-256 matches whole-file hashing at every buffer boundary", StreamingHash),
+    ("Oversized bodies without Content-Length fail early, throttle and leave no scratch directory or new slot", OversizedDownload),
+    ("Digest mismatch, unsafe archives and cancellation leave no scratch file, extraction directory or new slot", FailedDownloadResidue),
+    ("A one-byte tamper drops the lease to the fallback and a forced check re-downloads", TamperedLease),
+    ("Damaged GLB, vfxms and WebP members are skipped without failing the package", DamagedMembers),
+    ("A vfxms slice is copied byte for byte to model.glb", VfxmsSlice),
+    ("An older response still repairs a damaged cache from the retained bytes", OlderResponseRepair),
+    ("The bundled catalog is shared and only online snapshots retain their bytes", SharedBundledCatalog),
 };
 if (args is ["--verify-x4-artwork", var controlPackage, var modelPackage])
     tests = [.. tests, ("Real X4 packages resolve animated product art and static fallback from HeyMelody", () => RealX4Artwork(controlPackage, modelPackage))];
@@ -424,6 +433,218 @@ static async Task StartupSweep()
     using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
     Check(!Directory.Exists(interrupted) && !Directory.Exists(superseded) && Directory.Exists(root), "Startup sweep removed the wrong directories");
 }
+static string HashFile(string path, out long length)
+{
+    var method = typeof(ResourceCatalog).Assembly.GetType("HeyMelodyWindows.Resources.ResourceFiles")!.GetMethod("Sha256File", BindingFlags.NonPublic | BindingFlags.Static)!;
+    var arguments = new object?[] { path, 0L };
+    string hash = (string)method.Invoke(null, arguments)!; length = (long)arguments[1]!; return hash;
+}
+static byte[]? OriginalBytes(ResourceCatalog catalog) => typeof(ResourceCatalog).GetProperty("OriginalBytes", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(catalog) as byte[];
+static string[] Residue(Fixture fixture)
+{
+    string root = Path.Combine(fixture.Path, "online/heymelody/artwork");
+    return Directory.Exists(root) ? Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories).ToArray() : [];
+}
+static string Slot(Fixture fixture, string productId, int color, bool model = false) => Path.Combine(fixture.Path, "online/heymelody/artwork", productId + "_" + color + "_" + (model ? "14" : "control"));
+static async Task StreamingHash()
+{
+    string directory = Path.Combine(System.IO.Path.GetFullPath("artifacts/resource-tests"), "hash-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(directory);
+    try
+    {
+        foreach (int size in new[] { 0, 1, 4095, 65535, 65536, 65537, 131072, 200001 })
+        {
+            byte[] bytes = new byte[size]; new Random(size).NextBytes(bytes);
+            string path = Path.Combine(directory, size + ".bin"); await File.WriteAllBytesAsync(path, bytes);
+            Eq(Convert.ToHexStringLower(SHA256.HashData(bytes)), HashFile(path, out long length)); Eq((long)size, length);
+        }
+        // A concurrent reader is allowed (as for ReadAllBytes); a missing file keeps its IOException category.
+        string shared = Path.Combine(directory, "200001.bin");
+        using (File.Open(shared, FileMode.Open, FileAccess.Read, FileShare.Read)) Eq(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(shared))), HashFile(shared, out _));
+        try { HashFile(Path.Combine(directory, "missing.bin"), out _); throw new InvalidOperationException("Missing file was hashed"); }
+        catch (TargetInvocationException error) when (error.InnerException is IOException) { }
+    }
+    finally { Directory.Delete(directory, true); }
+}
+static async Task OversizedDownload()
+{
+    using var fixture = new Fixture(); using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
+    string slot = Slot(fixture, "06EC10", 0);
+    // The cache must stay in the process-wide limit even when the server never declares a length.
+    foreach (long length in new[] { ResourceLimits.ArchiveBytes + 1L, 3L * ResourceLimits.ArchiveBytes })
+    {
+        fixture.Handler.StreamedArtwork = length; fixture.Handler.Served = 0;
+        Check(!await coordinator.RefreshArtworkAsync("06EC10", 0, force: true), "Oversized body was accepted");
+        Check(fixture.Handler.Served <= ResourceLimits.ArchiveBytes + 65536L, "Oversized body was read past the limit: " + fixture.Handler.Served);
+        Check(coordinator.LastError is not null && !Directory.Exists(slot) && Residue(fixture).Length == 0, "Oversized body left residue: " + string.Join(", ", Residue(fixture)));
+        int requests = fixture.Handler.Requests;
+        Check(!await coordinator.RefreshArtworkAsync("06EC10", 0) && fixture.Handler.Requests == requests, "Oversized body was not throttled like other failures");
+    }
+    // A declared length is rejected before any byte is written.
+    fixture.Handler.StreamedArtwork = 0; fixture.Handler.DeclaredArtworkLength = ResourceLimits.ArchiveBytes + 1L; fixture.Handler.Served = 0;
+    Check(!await coordinator.RefreshArtworkAsync("06EC10", 0, force: true) && fixture.Handler.Served == 0 && !Directory.Exists(slot), "Declared oversize was not rejected up front");
+    fixture.Handler.StreamedArtwork = null; fixture.Handler.DeclaredArtworkLength = null; fixture.Handler.Artwork = ArtZip(1);
+    Check(await coordinator.RefreshArtworkAsync("06EC10", 0, force: true), "Valid art failed after oversized responses");
+}
+static async Task FailedDownloadResidue()
+{
+    using var fixture = new Fixture(); using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
+    string slot = Slot(fixture, "06EC10", 0);
+    fixture.Handler.Artwork = ArtZip(1); fixture.Handler.WrongHash = true;
+    Check(!await coordinator.RefreshArtworkAsync("06EC10", 0, force: true), "Wrong digest was accepted");
+    Check(!Directory.Exists(slot) && Residue(fixture).Length == 0, "Digest mismatch left residue: " + string.Join(", ", Residue(fixture)));
+    fixture.Handler.WrongHash = false; fixture.Handler.Artwork = ArtZip(2, "../escaped.png");
+    Check(!await coordinator.RefreshArtworkAsync("06EC10", 0, force: true), "Traversal archive was accepted");
+    Check(Residue(fixture).All(entry => !entry.Contains(".download-", StringComparison.Ordinal)), "Rejected archive left a scratch or extraction directory: " + string.Join(", ", Residue(fixture)));
+    // A failed replacement leaves exactly the published package and its pointer.
+    fixture.Handler.Artwork = ArtZip(3); Check(await coordinator.RefreshArtworkAsync("06EC10", 0, force: true), "Valid art failed");
+    string[] published = Directory.EnumerateFileSystemEntries(slot).Order().ToArray(); Eq(2, published.Length);
+    fixture.Handler.Artwork = ArtZip(4); fixture.Handler.WrongHash = true;
+    Check(!await coordinator.RefreshArtworkAsync("06EC10", 0, force: true), "Wrong digest replaced art");
+    Check(Directory.EnumerateFileSystemEntries(slot).Order().SequenceEqual(published), "Failed replacement changed the slot: " + string.Join(", ", Directory.EnumerateFileSystemEntries(slot)));
+    // Cancellation in the middle of a body.
+    fixture.Handler.WrongHash = false;
+    using var fresh = new Fixture(); using var other = fresh.Coordinator(); await other.InitializeAsync();
+    fresh.Handler.StreamedArtwork = 8L << 20; fresh.Handler.StallAfter = 200_000; fresh.Handler.Stalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    using var cancel = new CancellationTokenSource();
+    var running = other.RefreshArtworkAsync("06EC10", 0, force: true, token: cancel.Token);
+    await fresh.Handler.Stalled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    Check(Residue(fresh).Any(entry => entry.EndsWith("archive.zip", StringComparison.Ordinal)), "The archive was not streamed to a scratch file");
+    cancel.Cancel();
+    try { await running; throw new InvalidOperationException("Cancelled refresh completed"); } catch (OperationCanceledException) { }
+    Check(!Directory.Exists(Slot(fresh, "06EC10", 0)) && Residue(fresh).Length == 0, "Cancellation left residue: " + string.Join(", ", Residue(fresh)));
+    fresh.Handler.StreamedArtwork = null; fresh.Handler.StallAfter = -1; fresh.Handler.Artwork = ArtZip(1);
+    Check(await other.RefreshArtworkAsync("06EC10", 0), "Cancellation throttled the next check");
+}
+static async Task TamperedLease()
+{
+    using var fixture = new Fixture(); using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
+    fixture.Handler.Artwork = ArtZip(1); Check(await coordinator.RefreshArtworkAsync("06EC10", 0, force: true), "Initial art failed");
+    Check(Residue(fixture).All(entry => !entry.Contains(".download-", StringComparison.Ordinal) && !entry.EndsWith("archive.zip", StringComparison.Ordinal)), "Published art kept scratch files: " + string.Join(", ", Residue(fixture)));
+    string path, online = Path.Combine("online", "heymelody");
+    using (var first = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail")) { Check(first is not null && first.FullPath.Contains(online, StringComparison.Ordinal), "Online art was not served"); path = first!.FullPath; }
+    byte[] original = File.ReadAllBytes(path), tampered = (byte[])original.Clone(); tampered[^1] ^= 1; File.WriteAllBytes(path, tampered);
+    using (var fallback = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail")) Check(fallback is not null && !fallback.FullPath.Contains(online, StringComparison.Ordinal), "A tampered file was leased");
+    int requests = fixture.Handler.Requests;
+    Check(await coordinator.RefreshArtworkAsync("06EC10", 0, force: true) && fixture.Handler.Requests > requests, "A forced check did not re-download the tampered package");
+    using var repaired = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail");
+    Check(repaired is not null && repaired.FullPath.Contains(online, StringComparison.Ordinal) && File.ReadAllBytes(repaired.FullPath).SequenceEqual(original), "Re-download did not restore the original bytes");
+    Eq(Convert.ToHexStringLower(SHA256.HashData(original)), repaired!.Sha256); Eq(original.LongLength, repaired.Length);
+}
+static async Task DamagedMembers()
+{
+    byte[] png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6yAAAAABJRU5ErkJggg==");
+    byte[] animation = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "two-frame.webp"));
+    byte[] truncatedWebp = animation[..^5]; BinaryPrimitives.WriteUInt32LittleEndian(truncatedWebp.AsSpan(4, 4), (uint)truncatedWebp.Length - 8); // RIFF size agrees; the last chunk overruns it.
+    byte[] valid = GlbBytes();
+    var bad = new (string Name, string Member, byte[] Bytes)[]
+    {
+        ("GLB length differs from its header", "m.glb", GlbBytes(total: valid.Length + 4)),
+        ("GLB JSON chunk overruns the file", "m.glb", GlbBytes(chunk: 5000)),
+        ("GLB JSON chunk length is absurd", "m.glb", GlbBytes(chunk: int.MinValue)),
+        ("GLB shorter than its header", "m.glb", valid[..19]),
+        ("GLB without JSON", "m.glb", GlbBytes(json: "")),
+        ("GLB with a wrong magic", "m.glb", [.. "gltf"u8.ToArray(), .. valid[4..]]),
+        ("WebP shorter than a RIFF header", "m.webp", animation[..11]),
+        ("WebP chunk overruns the file", "m.webp", truncatedWebp),
+        ("vfxms shorter than its header", "m.vfxms", new byte[39]),
+        ("vfxms slice leaves the file", "m.vfxms", Vfxms(valid, trail: 0)[..^1]),
+        ("vfxms slice is not a GLB", "m.vfxms", Vfxms(GlbBytes(total: valid.Length + 4))),
+    };
+    using var fixture = new Fixture(); using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
+    foreach (var (name, member, bytes) in bad)
+    {
+        string key = member[(member.IndexOf('.') + 1)..];
+        string config = "{\"detailImageRes\":{\"path\":\"res/image/detail.png\"},\"" + (key == "webp" ? "modelWebp" : "model3D") + "\":{\"path\":\"res/raw/" + member + "\"}}";
+        fixture.Handler.Artwork = PackageZip(config, ("res/image/detail.png", png), ("res/raw/" + member, bytes));
+        Check(await coordinator.RefreshArtworkAsync("06EC10", 0, force: true), name + " failed the whole package");
+        using var lease = await coordinator.ResolveArtworkAsync("06EC10", 0, "detail");
+        var roles = JsonSerializer.Deserialize<ResourceArtwork[]>(File.ReadAllBytes(Path.Combine(lease!.PackageRoot, "artwork.json")), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!.Select(entry => entry.Role).ToArray();
+        Check(roles.SequenceEqual(["detail"]), name + " was indexed: " + string.Join(",", roles));
+    }
+    // A right GLB with trailing binary data is indexed; nothing usable still fails the refresh and keeps the previous package.
+    fixture.Handler.Artwork = PackageZip("{\"model3D\":{\"path\":\"res/raw/m.glb\"}}", ("res/raw/m.glb", GlbBytes(extra: 70000)));
+    Check(await coordinator.RefreshArtworkAsync("06EC10", 0, model: true, force: true), "A valid GLB was rejected");
+    using var model = await coordinator.ResolveArtworkAsync("06EC10", 0, "hero"); Check(model is { Kind: "model" }, "A valid GLB was not indexed");
+    fixture.Handler.Artwork = PackageZip("{\"model3D\":{\"path\":\"res/raw/m.glb\"}}", ("res/raw/m.glb", GlbBytes(chunk: 5000)));
+    Check(!await coordinator.RefreshArtworkAsync("06EC10", 0, model: true, force: true), "A package without usable art replaced the previous one");
+    Check(File.Exists(model!.FullPath), "A rejected package removed the previous one");
+}
+static async Task VfxmsSlice()
+{
+    using var fixture = new Fixture(); using var coordinator = fixture.Coordinator(); await coordinator.InitializeAsync();
+    var verified = coordinator.Bundled.FindAsset("068C10", 1, "model")!; byte[] glb = File.ReadAllBytes(coordinator.Bundled.FullPath(verified));
+    foreach (var (lead, trail) in new[] { (0, 0), (5, 17), (65536, 3) })
+    {
+        fixture.Handler.Artwork = PackageZip("{\"model3D\":{\"path\":\"res/raw/model.vfxms\"}}", ("res/raw/model.vfxms", Vfxms(glb, lead, trail)));
+        Check(await coordinator.RefreshArtworkAsync("068C10", 1, model: true, force: true), "A valid vfxms container was rejected");
+        using var lease = await coordinator.ResolveArtworkAsync("068C10", 1, "model");
+        Check(lease is { Kind: "model" } && Path.GetFileName(lease.FullPath) == "model.glb", "The vfxms model was not published as model.glb");
+        Check(File.ReadAllBytes(lease!.FullPath).SequenceEqual(glb), "The vfxms slice differs from the embedded GLB (lead " + lead + ", trail " + trail + ")");
+        Eq(verified.Sha256, lease.Sha256); Eq(glb.LongLength, lease.Length);
+    }
+}
+static async Task OlderResponseRepair()
+{
+    using var fixture = new Fixture();
+    byte[] current = Config(117006010);
+    async Task Damage(ResourceCoordinator coordinator)
+    {
+        string path = Path.Combine(fixture.Path, "online/heymelody/config", coordinator.Catalog.Sha256, "config.cache");
+        byte[] broken = await File.ReadAllBytesAsync(path); broken[^1] ^= 1; await File.WriteAllBytesAsync(path, broken);
+        fixture.Handler.Configuration = Config(117006006); fixture.Handler.FileVersion = "older-" + Guid.NewGuid().ToString("N");
+        long revision = coordinator.Revision; Check(!await coordinator.RefreshAsync(true), "An older response was adopted"); Eq(revision, coordinator.Revision); Eq(117006010, coordinator.Catalog.ContentVersion);
+        Check(ResourceCacheCodec.Decrypt(await File.ReadAllBytesAsync(path), Convert.FromBase64String(coordinator.Preferences.CacheEncryptionKey)).SequenceEqual(current), "The damaged cache was not repaired with the current snapshot");
+        Check(coordinator.LastError is null, "Repair was reported as a failure");
+    }
+    using (var coordinator = fixture.Coordinator())
+    {
+        await coordinator.InitializeAsync(); fixture.Handler.Configuration = current; Check(await coordinator.RefreshAsync(true), "Initial update failed");
+        await Damage(coordinator);
+    }
+    // After a restart the retained bytes come from the decrypted cache.
+    using var restarted = fixture.Coordinator(); await restarted.InitializeAsync(); Eq(117006010, restarted.Catalog.ContentVersion);
+    await Damage(restarted);
+}
+static async Task SharedBundledCatalog()
+{
+    var store = new BundledResourceStore(); var bundled = store.GetCatalog();
+    Check(ReferenceEquals(bundled, store.GetCatalog()), "The bundled catalog was parsed again");
+    Check(OriginalBytes(bundled) is null, "The bundled snapshot retained its bytes");
+    byte[] config = Config(5);
+    Check(OriginalBytes(ResourceCatalog.Parse(config, false)) is null, "An offline parse retained its bytes");
+    Check(OriginalBytes(ResourceCatalog.Parse(config, true))!.SequenceEqual(config), "An online parse lost its bytes");
+    using var fixture = new Fixture(); using var coordinator = fixture.Coordinator();
+    Check(ReferenceEquals(coordinator.Catalog, coordinator.Bundled.GetCatalog()), "The coordinator did not start from the shared bundled catalog");
+    await coordinator.InitializeAsync(); fixture.Handler.Configuration = Config(117006010); Check(await coordinator.RefreshAsync(true), "Online update failed");
+    Check(OriginalBytes(coordinator.Catalog)!.SequenceEqual(fixture.Handler.Configuration), "The online snapshot did not retain its bytes");
+    using var restarted = fixture.Coordinator(); await restarted.InitializeAsync();
+    Check(restarted.Catalog.IsOnline && OriginalBytes(restarted.Catalog)!.SequenceEqual(fixture.Handler.Configuration), "A cached online snapshot did not retain its bytes");
+}
+static byte[] GlbBytes(string json = "{\"asset\":{\"version\":\"2.0\"}} ", int? total = null, int? chunk = null, int extra = 0)
+{
+    byte[] body = Encoding.UTF8.GetBytes(json), glb = new byte[20 + body.Length + extra];
+    "glTF"u8.CopyTo(glb); BinaryPrimitives.WriteUInt32LittleEndian(glb.AsSpan(4, 4), 2);
+    BinaryPrimitives.WriteUInt32LittleEndian(glb.AsSpan(8, 4), (uint)(total ?? glb.Length)); BinaryPrimitives.WriteUInt32LittleEndian(glb.AsSpan(12, 4), (uint)(chunk ?? body.Length));
+    "JSON"u8.CopyTo(glb.AsSpan(16)); body.CopyTo(glb, 20); for (int index = 20 + body.Length; index < glb.Length; index++) glb[index] = (byte)(index * 31);
+    return glb;
+}
+static byte[] Vfxms(byte[] glb, int lead = 5, int trail = 17)
+{
+    byte[] container = new byte[40 + lead + glb.Length + trail];
+    BinaryPrimitives.WriteInt32BigEndian(container.AsSpan(8, 4), 40 + lead); BinaryPrimitives.WriteInt32BigEndian(container.AsSpan(12, 4), glb.Length);
+    glb.CopyTo(container, 40 + lead); container.AsSpan(40 + lead + glb.Length).Fill(0xAB);
+    return container;
+}
+static byte[] PackageZip(string config, params (string Name, byte[] Bytes)[] members)
+{
+    using var memory = new MemoryStream();
+    using (var archive = new ZipArchive(memory, ZipArchiveMode.Create, true))
+    {
+        using (var writer = new StreamWriter(archive.CreateEntry("config.json").Open())) writer.Write(config);
+        foreach (var (name, bytes) in members) using (var stream = archive.CreateEntry(name).Open()) stream.Write(bytes);
+    }
+    return memory.ToArray();
+}
 static byte[] LottieZip()
 {
     byte[] png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6yAAAAABJRU5ErkJggg==");
@@ -500,6 +721,14 @@ sealed class FakeVendorHandler : HttpMessageHandler
     public string? LastVerifiedKey { get; private set; }
     public TaskCompletionSource? Gate { get; set; }
     public Exception? Failure { get; set; }
+    /// <summary>Serves artwork as a lazy stream of this many bytes with no Content-Length.</summary>
+    public long? StreamedArtwork { get; set; }
+    public long? DeclaredArtworkLength { get; set; }
+    public long StallAfter { get; set; } = -1;
+    public TaskCompletionSource? Stalled { get; set; }
+    public long Served { get => Interlocked.Read(ref _served); set => Interlocked.Exchange(ref _served, value); }
+    private long _served;
+    public void Add(int count) => Interlocked.Add(ref _served, count);
     public int Pending => _pending;
     private int _pending;
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
@@ -527,8 +756,36 @@ sealed class FakeVendorHandler : HttpMessageHandler
             }
         }
         else bytes = request.RequestUri!.AbsolutePath == "/config" ? Configuration : request.RequestUri.AbsolutePath == "/model-art" ? ModelArtwork ?? Artwork : Artwork;
+        if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath != "/config" && (StreamedArtwork is not null || DeclaredArtworkLength is not null))
+        {
+            var content = new StreamContent(new PatternStream(StreamedArtwork ?? 0, StallAfter, Stalled, this));
+            if (DeclaredArtworkLength is long declared) content.Headers.ContentLength = declared;
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = content, RequestMessage = request };
+        }
         return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes), RequestMessage = request };
     }
     private static void CheckHeader(HttpRequestMessage request, string name, string value)
     { if (request.Headers.GetValues(name).Single() != value) throw new InvalidOperationException("Wrong vendor header"); }
+}
+sealed class PatternStream(long length, long stallAfter, TaskCompletionSource? stalled, FakeVendorHandler served) : Stream
+{
+    private long _position;
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => _position; set => throw new NotSupportedException(); }
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
+    {
+        if (stallAfter >= 0 && _position >= stallAfter) { stalled?.TrySetResult(); await Task.Delay(Timeout.Infinite, token); }
+        int count = (int)Math.Min(buffer.Length, length - _position);
+        if (stallAfter >= 0 && _position < stallAfter) count = (int)Math.Min(count, stallAfter - _position);
+        buffer.Span[..count].Fill(0x5A); _position += count; served.Add(count);
+        return count;
+    }
+    public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }

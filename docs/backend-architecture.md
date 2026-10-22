@@ -2,7 +2,7 @@
 
 本文说明当前客户端沿用的共享后台设计，保留 0.7.0 起的架构演进信息。用户操作见[使用说明](usage.md)，开发与验证入口见[开发指南](development.md)，协作规则见[AGENTS.md](../AGENTS.md)。
 
-`HeyMelody.Host.exe` 默认运行 Avalonia 托盘应用，不创建主窗口。当前用户、当前 Windows 登录会话只保留一份后台和主界面。右键菜单使用 Avalonia 的 NativeMenu，只有“打开主界面”和“退出”。正常启动 `HeyMelody.exe` 会确保后台可用并显示界面；重复启动请求激活已有界面。直接启动 Host 只显示托盘。本版本不注册登录自启。
+`HeyMelody.Host.exe` 默认运行 Avalonia 托盘应用，不创建主窗口。当前用户、当前 Windows 登录会话只保留一份后台和主界面。右键菜单使用 Avalonia 的 NativeMenu，只有“打开主界面”和“退出”。托盘进程只绘制这一个小菜单，使用 Avalonia 的 Win32 软件渲染与 RedirectionSurface，不初始化 GPU 与合成器；菜单外观和 Microsoft YaHei UI 字体不变。正常启动 `HeyMelody.exe` 会确保后台可用并显示界面；重复启动请求激活已有界面。直接启动 Host 只显示托盘。本版本不注册登录自启。
 
 ## 进程与通信
 
@@ -22,7 +22,7 @@ Windows DeviceWatcher 提供已配对设备的连接和解除配对事件，Radi
 
 普通界面状态不再每八秒读取。初始化、重新连接、手动刷新、设置前后确认仍执行 GET；只包含部分信息的通知可以合并为对应 scope 的补充读取。设置推送不会触发绑定控件提交 SET，未提交选项和 EQ 草稿继续按编辑版本保护。
 
-BLE 使用单个 Active AdvertisementWatcher，接收 OPPO/OnePlus 的 manufacturer record 和 scan response。广播须完整通过字段长度、公司 ID、产品 ID 和可证实的地址关联检查。仅随机地址且无已证实关联的广播不归到某副同名耳机。广播不会授予 ControlReady、能力或设置权限。
+BLE 使用两个 Active AdvertisementWatcher，各带一个字节模式过滤器（厂商数据段 0xFF、偏移 0、小端公司 ID），分别只接收含 OPPO 0x079A、OnePlus 0x072F manufacturer record 的广播包和 scan response；过滤只减少无关广播进入托盘，处理代码仍自行核对公司 ID，单包语义不变，尚待真机验证。广播须完整通过字段长度、公司 ID、产品 ID 和可证实的地址关联检查。仅随机地址且无已证实关联的广播不归到某副同名耳机。广播不会授予 ControlReady、能力或设置权限。
 
 SPP 与 BLE 各自保留观测时间，按耳机部件融合电量、充电盒盖及佩戴状态；同一时间优先采用已核验 SPP。其他设置读取不会刷新旧盒盖时间。BLE 字段在 30 秒后失去新鲜性，未观测到的状态保持 Unknown。开盖去重独立于显示过期：首次观测到盒盖状态时即为打开，标为 FirstObservation；重复开盖不重复触发，只有较新的明确合盖能重新允许下一次开盖。暂停、无广播和休眠不等同于合盖。
 
@@ -37,6 +37,14 @@ SPP 与 BLE 各自保留观测时间，按耳机部件融合电量、充电盒�
 每次 apply 携带明确设备 Identity、后台实例和连接代次，并重新核对 ControlReady 及能力。用户界面断开时，尚未开始的该客户端写入取消；已经开始的 setter 在其后台设备生命周期仍有效时继续 ACK 和回读；显式暂停、OS 断连或休眠会结束该生命周期。客户端 EOF、超时或后台重启后不自动重发 SET，缺失回执显示设置可能已生效。
 
 关闭主界面先完成既有 EQ 草稿确认，再结束主界面进程；后台继续监听。托盘退出执行 requestExit → exitVote → stopping，两阶段询问现有主界面；否决或投票超时发送 exitCancelled，恢复界面操作。批准后停止新设置，等待已经开始的设置收尾（共享等待上限 125 秒），再清理 worker、watcher 和托盘。
+
+## 资源占用
+
+托盘与所有 worker 共用同一份 runtimeconfig：`System.GC.Gen0MaxBudget=4194304`、`System.GC.ConserveMemory=5`，并关闭 TieredPGO。未配置时工作站 GC 的 gen0 预算由 L3 缓存大小推得（32 MB L3 约 16 MiB，大缓存 CPU 更高），每个进程各占一份；Linux 探针测得每次 gen0 约 3.97 MiB，默认为 15.93 MiB。用环境变量覆盖须写 `DOTNET_GCGen0MaxBudget`（十六进制值），拼写区分大小写。`--worker` 与 `--catalog-worker` 的入口不加载 Avalonia，只有托盘进程加载。
+
+美术包的校验与下载经 64 KiB 池化缓冲流式处理：下载写入磁盘 scratch（`.download-*`），解压读取已校验的文件，不再把整包读进内存；美术安装后约 5 秒执行一次压缩 GC。worker 的目录载荷（gzip 加 base64）按目录只计算一次。IPC 的 JSON 使用源生成并保留反射回退；Linux 探针中 GUI 首次往返快 33%，RssAnon 在 GUI 场景少 1.7 MiB、在 host 场景少 5.2 MiB，已保留。
+
+这些数字来自 Linux 合成探针，Windows 内存没有测量；Windows 待验证项、测量脚本 [Measure-HostMemory.ps1](../tools/Measure-HostMemory.ps1) 的用途和完整依据见[后台内存审计](research/backend-memory-audit.md)，其他方向的待办见[优化待办](optimization-backlog.md)。
 
 ## 验证边界
 

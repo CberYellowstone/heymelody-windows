@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
@@ -63,11 +64,43 @@ public sealed class VendorResourceClient : IDisposable
 
     public async Task<byte[]> DownloadAsync(string url, int limit, CancellationToken token)
     {
-        Uri uri = ValidateDownloadUri(url);
-        using var response = await _client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        if (response.RequestMessage?.RequestUri != uri) throw new InvalidDataException("Unexpected resource redirect.");
+        using var response = await OpenDownloadAsync(url, token).ConfigureAwait(false);
         return await BoundedReadAsync(response, limit, token).ConfigureAwait(false);
+    }
+
+    /// <summary>Streams a bounded body into <paramref name="destination"/> and returns the lowercase SHA-256 of exactly the bytes written. An oversized body fails before its excess chunk is written.</summary>
+    internal async Task<string> DownloadToAsync(string url, Stream destination, int limit, CancellationToken token)
+    {
+        using var response = await OpenDownloadAsync(url, token).ConfigureAwait(false);
+        if (response.Content.Headers.ContentLength > limit) throw new InvalidDataException("Resource exceeds size limit.");
+        using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(65536); long total = 0; int read;
+        try
+        {
+            while ((read = await stream.ReadAsync(buffer.AsMemory(0, 65536), token).ConfigureAwait(false)) > 0)
+            {
+                if (total + read > limit) throw new InvalidDataException("Resource exceeds size limit.");
+                hash.AppendData(buffer, 0, read);
+                await destination.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
+                total += read;
+            }
+            return Convert.ToHexStringLower(hash.GetHashAndReset());
+        }
+        finally { ArrayPool<byte>.Shared.Return(buffer); }
+    }
+
+    private async Task<HttpResponseMessage> OpenDownloadAsync(string url, CancellationToken token)
+    {
+        Uri uri = ValidateDownloadUri(url);
+        var response = await _client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+        try
+        {
+            response.EnsureSuccessStatusCode();
+            if (response.RequestMessage?.RequestUri != uri) throw new InvalidDataException("Unexpected resource redirect.");
+            return response;
+        }
+        catch { response.Dispose(); throw; }
     }
 
     public static Uri ValidateDownloadUri(string url)

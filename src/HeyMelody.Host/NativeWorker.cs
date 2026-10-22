@@ -66,7 +66,7 @@ internal static class NativeWorker
         service.CalibrationSpectrumChanged += spectrum => spectra.Writer.TryWrite(spectrum);
         async Task WriteAsync(WorkerMessage message)
         {
-            var line = JsonSerializer.Serialize(message, RpcWire.Json);
+            var line = JsonSerializer.Serialize(message, HostWire.Json);
             if (line.Length > RpcWire.MaximumLineCharacters) throw new InvalidDataException();
             await outputGate.WaitAsync(lifetime.Token);
             try { await Console.Out.WriteLineAsync(line); await Console.Out.FlushAsync(); }
@@ -99,7 +99,7 @@ internal static class NativeWorker
             bool initialized = false;
             while (await RpcWire.ReadLineAsync(Console.In, lifetime.Token) is { } line)
             {
-                var request = JsonSerializer.Deserialize<WorkerRequest>(line, RpcWire.Json) ?? throw new InvalidDataException();
+                var request = JsonSerializer.Deserialize<WorkerRequest>(line, HostWire.Json) ?? throw new InvalidDataException();
                 if (request.Id <= lastId) throw new InvalidDataException();
                 lastId = request.Id;
                 var response = new WorkerMessage { Id = request.Id };
@@ -131,7 +131,7 @@ internal static class NativeWorker
                         "shutdown" => await ShutdownAsync(),
                         _ => throw new InvalidDataException()
                     };
-                    response.Success = true; response.Data = JsonSerializer.SerializeToElement(data, RpcWire.Json);
+                    response.Success = true; response.Data = JsonSerializer.SerializeToElement(data, HostWire.Json);
                 }
                 catch (Exception error) { response.Success = false; response.Error = error is InvalidOperationException or ArgumentException ? error.Message : "设备未能完成操作，请检查连接后重试。"; }
                 await WriteAsync(response);
@@ -149,7 +149,7 @@ internal static class NativeWorker
         try
         {
             Console.OutputEncoding = new UTF8Encoding(false);
-            var line = JsonSerializer.Serialize(WindowsBluetooth.EnumeratePaired(), RpcWire.Json);
+            var line = JsonSerializer.Serialize(WindowsBluetooth.EnumeratePaired(), HostWire.Json);
             if (line.Length > RpcWire.MaximumLineCharacters) return 1;
             await Console.Out.WriteLineAsync(line); await Console.Out.FlushAsync(); return 0;
         }
@@ -229,7 +229,7 @@ internal sealed partial class PeerWorker(Func<ProcessStartInfo>? startFactory = 
             await _writes.WaitAsync(deadline.Token);
             try
             {
-                var line = JsonSerializer.Serialize(request, RpcWire.Json);
+                var line = JsonSerializer.Serialize(request, HostWire.Json);
                 if (line.Length > RpcWire.MaximumLineCharacters) throw new InvalidDataException();
                 submitted = true;
                 await _process.StandardInput.WriteLineAsync(line.AsMemory(), deadline.Token);
@@ -239,7 +239,7 @@ internal sealed partial class PeerWorker(Func<ProcessStartInfo>? startFactory = 
             var response = await completion.Task.WaitAsync(deadline.Token);
             if (!response.Success) throw new InvalidOperationException(response.Error ?? "设备未能完成操作。");
             if (response.Data is null) throw new InvalidDataException();
-            return response.Data.Value.Deserialize<T>(RpcWire.Json) ?? throw new InvalidDataException();
+            return response.Data.Value.Deserialize<T>(HostWire.Json) ?? throw new InvalidDataException();
         }
         catch (InvalidOperationException) { throw; }
         catch (Exception)
@@ -262,7 +262,7 @@ internal sealed partial class PeerWorker(Func<ProcessStartInfo>? startFactory = 
         {
             while (await RpcWire.ReadLineAsync(reader, _lifetime.Token) is { } line)
             {
-                var message = JsonSerializer.Deserialize<WorkerMessage>(line, RpcWire.Json) ?? throw new InvalidDataException();
+                var message = JsonSerializer.Deserialize<WorkerMessage>(line, HostWire.Json) ?? throw new InvalidDataException();
                 if (message.Kind == "snapshot" && message.Snapshot is { } snapshot) SnapshotChanged?.Invoke(snapshot);
                 else if (message.Kind == "calibration" && message.Calibration is { } calibration) CalibrationChanged?.Invoke(calibration);
                 else if (message.Kind == "calibrationSpectrum" && message.CalibrationSpectrum is { } spectrum) CalibrationSpectrumChanged?.Invoke(spectrum);
@@ -307,7 +307,7 @@ internal sealed partial class PeerWorker(Func<ProcessStartInfo>? startFactory = 
         try
         {
             var line = await RpcWire.ReadLineAsync(process.StandardOutput, budget.Token) ?? throw new IOException();
-            var result = JsonSerializer.Deserialize<List<BluetoothCandidate>>(line, RpcWire.Json) ?? throw new InvalidDataException();
+            var result = JsonSerializer.Deserialize<List<BluetoothCandidate>>(line, HostWire.Json) ?? throw new InvalidDataException();
             await process.WaitForExitAsync(budget.Token);
             if (process.ExitCode != 0 || result.Count > 4096) throw new IOException();
             return result;

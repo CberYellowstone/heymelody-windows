@@ -101,6 +101,20 @@ public sealed class UiSnapshot
     public string? Firmware { get; set; }
     public DateTimeOffset SampleTime { get; set; }
     public IReadOnlyList<string> Warnings { get; set; } = Array.Empty<string>();
+
+    // Shallow copy for the Host's publish path: nested lists and records are never mutated in place, so they are shared.
+    // A JSON round trip drops null members and the initializers refill them; the ??= lines reproduce that, and
+    // UiSnapshot tests compare Clone() with the round trip byte for byte so a new reference property cannot be missed.
+    public UiSnapshot Clone()
+    {
+        var copy = (UiSnapshot)MemberwiseClone();
+        copy.BackendInstanceId ??= ""; copy.Identity ??= ""; copy.DeviceName ??= "";
+        copy.EqualizerFrequencies ??= []; copy.AncModes ??= []; copy.FeatureSections ??= []; copy.HearingProfiles ??= [];
+        copy.AncOptions ??= Array.Empty<UiOption>(); copy.EqualizerOptions ??= Array.Empty<UiOption>();
+        copy.SpatialOptions ??= Array.Empty<UiOption>(); copy.EqualizerEntries ??= Array.Empty<UiEqEntry>();
+        copy.Warnings ??= Array.Empty<string>();
+        return copy;
+    }
 }
 
 // Kind: AncMode | Anc | Equalizer | CustomEqualizer | CustomSelect | DualConnection | GameMode | Spatial | HiRes.

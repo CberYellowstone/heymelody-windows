@@ -15,10 +15,10 @@ public sealed partial class ClientBridge
         await RequestAsync<List<UiHearingProfile>>(new() { Operation = "hearingProfiles", Identity = identity, DeviceGeneration = generation }, TimeSpan.FromSeconds(30), token);
     public Task<UiApplyResult> SelectHearingProfileAsync(string identity, long generation, int? uid, CancellationToken token) =>
         RequestAsync<UiApplyResult>(new() { Operation = "selectHearing", Identity = identity, DeviceGeneration = generation,
-            Action = JsonSerializer.SerializeToElement(new { uid }, RpcWire.Json) }, TimeSpan.FromSeconds(60), token);
+            Action = JsonSerializer.SerializeToElement(new HearingSelectionArgs(uid), RpcWire.Json) }, TimeSpan.FromSeconds(60), token);
     public Task<UiCalibrationState> CreateCalibrationAsync(string identity, long generation, string kind, CancellationToken token) =>
         RequestAsync<UiCalibrationState>(new() { Operation = "createCalibration", Identity = identity, DeviceGeneration = generation,
-            Action = JsonSerializer.SerializeToElement(new { kind }, RpcWire.Json) }, TimeSpan.FromSeconds(30), token);
+            Action = JsonSerializer.SerializeToElement(new CalibrationCreateArgs(kind), RpcWire.Json) }, TimeSpan.FromSeconds(30), token);
     public Task<UiCalibrationState> GetCalibrationAsync(string handle, CancellationToken token) =>
         RequestAsync<UiCalibrationState>(new() { Operation = "getCalibration", CalibrationHandle = handle }, TimeSpan.FromSeconds(15), token);
     public Task<UiCalibrationState> AdvanceCalibrationAsync(string handle, long revision, UiCalibrationInput input, CancellationToken token) =>
@@ -31,17 +31,16 @@ public sealed partial class ClientBridge
     public async Task<UiArtwork?> AcquireArtworkAsync(string productId, int? color, string role, CancellationToken token)
     {
         // The Host leases the package even if this caller stops waiting, so a late reply is still released.
-        var request = RequestAsync<ArtworkResponse>(new() { Operation = "acquireArtwork",
-            Action = JsonSerializer.SerializeToElement(new { productId, color, role }, RpcWire.Json) }, TimeSpan.FromSeconds(90), CancellationToken.None);
+        var request = RequestAsync<ArtworkLeaseReply>(new() { Operation = "acquireArtwork",
+            Action = JsonSerializer.SerializeToElement(new ArtworkAcquireArgs(productId, color, role), RpcWire.Json) }, TimeSpan.FromSeconds(90), CancellationToken.None);
         try { return (await request.WaitAsync(token)).Artwork; }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { _ = ReleaseLateAsync(request); throw; }
     }
-    private async Task ReleaseLateAsync(Task<ArtworkResponse> request)
+    private async Task ReleaseLateAsync(Task<ArtworkLeaseReply> request)
     {
         try { if ((await request).Artwork is { } late) await ReleaseArtworkAsync(late.LeaseId, CancellationToken.None); }
         catch (Exception) { /* The Host also releases a disconnected client's leases. */ }
     }
     public async Task ReleaseArtworkAsync(string leaseId, CancellationToken token) =>
-        _ = await RequestAsync<bool>(new() { Operation = "releaseArtwork", Action = JsonSerializer.SerializeToElement(new { leaseId }, RpcWire.Json) }, TimeSpan.FromSeconds(15), token);
-    private sealed record ArtworkResponse(UiArtwork? Artwork);
+        _ = await RequestAsync<bool>(new() { Operation = "releaseArtwork", Action = JsonSerializer.SerializeToElement(new ArtworkReleaseArgs(leaseId), RpcWire.Json) }, TimeSpan.FromSeconds(15), token);
 }

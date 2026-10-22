@@ -18,11 +18,10 @@ public interface IArtworkService
     Task<UiArtwork?> AcquireArtworkAsync(string productId, int? color, string role, CancellationToken token);
     Task ReleaseArtworkAsync(string leaseId, CancellationToken token);
 }
-public sealed record UiAncMode(int Key, string Name, string IconKey, IReadOnlyList<UiOption> Options)
-{
-    public string Description { get; init; } = "";
-    public UiAncToggle? Toggle { get; init; }
-}
+// Description/Toggle are positional with defaults: the source-generated reader fills absent init-only members with default,
+// which would turn an older payload's Description into null; ctor parameter defaults keep it "". Object initializers still work.
+public sealed record UiAncMode(int Key, string Name, string IconKey, IReadOnlyList<UiOption> Options,
+    string Description = "", UiAncToggle? Toggle = null);
 public sealed record UiAncToggle(int OffKey, int OnKey, string Title, string Description);
 public sealed record UiFeatureControl(string Id, string Label, string Kind, int? Value = null,
     string? Text = null, IReadOnlyList<UiOption>? Options = null, int Minimum = 0, int Maximum = 1,

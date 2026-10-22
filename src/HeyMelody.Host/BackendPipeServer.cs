@@ -129,7 +129,7 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
                         request.Action.Deserialize<UiCalibrationInput>(RpcWire.Json) ?? throw new InvalidDataException(), client.Lifetime.Token); break;
                 case "cancelCalibration": data = await supervisor.CancelCalibrationAsync(client.Key, Handle()); break;
                 case "acquireArtwork":
-                    data = new { artwork = await supervisor.AcquireArtworkAsync(client.Key, StringArg("productId"), NullableInt("color"), StringArg("role"), client.Lifetime.Token) }; break;
+                    data = new ArtworkLeaseReply(await supervisor.AcquireArtworkAsync(client.Key, StringArg("productId"), NullableInt("color"), StringArg("role"), client.Lifetime.Token)); break;
                 case "releaseArtwork": data = supervisor.ReleaseArtwork(client.Key, StringArg("leaseId")); break;
                 case "exitVote":
                     lock (_voteSync)

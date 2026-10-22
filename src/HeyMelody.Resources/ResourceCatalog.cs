@@ -27,10 +27,11 @@ public sealed class ResourceCatalog
     public string Sha256 { get; }
     public JsonElement Raw { get; }
     public IReadOnlyDictionary<string, ResourceDeviceProfile> Profiles { get; }
-    internal byte[] OriginalBytes { get; }
+    /// <summary>Exact response bytes, kept only for online snapshots so a damaged cache can be rewritten without a download. Bundled and worker-parsed catalogs hold null.</summary>
+    internal byte[]? OriginalBytes { get; }
 
     private ResourceCatalog(int version, bool online, string hash, JsonElement raw,
-        Dictionary<string, ResourceDeviceProfile> profiles, byte[] originalBytes)
+        Dictionary<string, ResourceDeviceProfile> profiles, byte[]? originalBytes)
     { ContentVersion = version; IsOnline = online; Sha256 = hash; Raw = raw; Profiles = new ReadOnlyDictionary<string, ResourceDeviceProfile>(profiles); OriginalBytes = originalBytes; }
 
     public ResourceDeviceProfile? Find(string? productId) => productId is not null && Profiles.TryGetValue(productId, out var value) ? value : null;
@@ -71,7 +72,7 @@ public sealed class ResourceCatalog
             }
         }
         return new(version, online, Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(utf8)),
-            JsonSerializer.SerializeToElement(content), profiles, utf8.ToArray());
+            JsonSerializer.SerializeToElement(content), profiles, online ? utf8.ToArray() : null);
 
         void Add(JsonObject row)
         {

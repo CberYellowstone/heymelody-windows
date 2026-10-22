@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Avalonia;
 using HeyMelodyWindows.Ui;
 
@@ -17,9 +18,20 @@ public static class Program
         try { owner = singleton.WaitOne(0); }
         catch (AbandonedMutexException) { owner = true; }
         if (!owner) return 0;
-        try { return AppBuilder.Configure<TrayApplication>().UsePlatformDetect().UseHeyMelodyRendering()
-            .UseHeyMelodyTypography(bundledFallback: false).LogToTrace().StartWithClassicDesktopLifetime(args); }
+        try { return RunTray(args); }
         catch (Exception) { return 1; }
         finally { singleton.ReleaseMutex(); }
     }
+
+    // Kept out of Main so the JIT never loads Avalonia for the worker entry points.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int RunTray(string[] args) => AppBuilder.Configure<TrayApplication>().UsePlatformDetect()
+        // The tray draws one small menu: software rendering avoids ANGLE/D3D and its driver memory. Skia keeps its
+        // default caches because nothing here scrolls or animates.
+        .With(new Win32PlatformOptions
+        {
+            RenderingMode = [Win32RenderingMode.Software],
+            CompositionMode = [Win32CompositionMode.RedirectionSurface]
+        })
+        .UseHeyMelodyTypography(bundledFallback: false).LogToTrace().StartWithClassicDesktopLifetime(args);
 }

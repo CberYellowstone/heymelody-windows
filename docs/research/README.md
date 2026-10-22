@@ -18,6 +18,7 @@
 | [蓝牙音频编码可行性审计](bluetooth-audio-codec.md) | 参考工具采集方式、普通权限边界与遗留实现撤回；研究结论，功能未纳入 0.9.2 |
 | [降噪区域的通透人声与模式名称核查](anc-transparency-controls.md) | X2／X3 强化人声开关、四型号独立聆听、分层模式名称与原 App 控件证据；本轮局部验证边界 |
 | [界面审计与渲染性能（0.9.0）](ui-performance-0.9.0.md) | 四个界面的重排、120 Hz 预算与逐项优化、简体中文字体与嵌入字体内存问题、Linux 验证范围与 Windows 验收方法 |
+| [后台内存审计](backend-memory-audit.md) | 2026-10-21 后端内存方向的问题、发现、已实施与暂缓项、Linux 测量结果和未验证内容；Windows 内存未测量，其他方向的待办见[优化待办](../optimization-backlog.md) |
 | [上下文读取风险排查](context-read-risk-2026-10-11.md) | 文档、源码、研究产物的字符与长行风险，subagent 预览规则和后续处理顺序；503 成因尚未确认 |
 | [黄金听感预览与声音设置](hearing-preview-settings.md) | 0.8.13 结果雷达、两种试听的动态左右耳曲线、原厂音乐频谱、游戏分组、BassWave 和完整固件显示 |
 | [游戏音效与 Hi-Res／空间音效重新研究](game-audio-spatial.md) | 两 APK 原 DEX、X4 原始固件、游戏开关／类型命令纠正、包名与互斥方向、Hi-Res旧版／V2手机分支 |
@@ -43,6 +44,7 @@
 
 | 本地目录 | 内容 |
 | --- | --- |
+| [research/backend-memory-20261021/](../../research/backend-memory-20261021/README.md) | 后端内存审计的完整发现、基线与逐步结果、IPC 源生成与 GC 预算探针（含原始数据） |
 | [research/ui-perf-0.9.0-20261011/](../../research/ui-perf-0.9.0-20261011/README.md) | 0.9.0 审计与设计记录、上游 API 核对、字体内存实验程序与日志、基线和最终测试日志、改动前文档原稿与 SHA256 |
 | [research/ui-fixes-0.9.1-20261011/](../../research/ui-fixes-0.9.1-20261011/README.md) | 0.9.1 四项主窗口修复的根因证据（截图像素统计、FluentAvalonia ComboBox 主题出处、Host 暂停语义）、修改前文档原稿与 SHA256、测试日志与截图 |
 | [research/context-read-audit-2026-10-11/](../../research/context-read-audit-2026-10-11/README.md) | 读取风险的完整测量脚本、元数据／字符／摘要清单、subagent 预览和校验结果；大清单按路径查询 |

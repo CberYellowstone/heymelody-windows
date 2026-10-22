@@ -5,6 +5,8 @@ namespace HeyMelodyWindows.App;
 // Public messages contain opaque device identities, never Bluetooth addresses.
 public sealed class BackendRequest
 {
+    // Shared detached `null` element: building one per request through reflection SerializeToElement was the costly path.
+    private static readonly JsonElement NullAction = JsonDocument.Parse("null").RootElement.Clone();
     public int SchemaVersion { get; set; } = 4;
     public long Id { get; set; }
     public string Operation { get; set; } = "";
@@ -13,7 +15,7 @@ public sealed class BackendRequest
     public long? DeviceGeneration { get; set; }
     public string[]? DeviceIdentities { get; set; }
     public RefreshScope? RefreshScope { get; set; }
-    public JsonElement Action { get; set; } = JsonSerializer.SerializeToElement<object?>(null);
+    public JsonElement Action { get; set; } = NullAction;
     public string? Role { get; set; }
     public string? ExitRequestId { get; set; }
     public bool? Approved { get; set; }
@@ -57,6 +59,13 @@ public sealed class BackendSubscription
     public IReadOnlyList<UiDevice> Devices { get; set; } = [];
     public IReadOnlyList<UiSnapshot> Snapshots { get; set; } = [];
 }
+
+// Typed Action/Data payloads; property names and order match the anonymous objects they replaced.
+public sealed record HearingSelectionArgs(int? Uid);
+public sealed record CalibrationCreateArgs(string Kind);
+public sealed record ArtworkAcquireArgs(string ProductId, int? Color, string Role);
+public sealed record ArtworkReleaseArgs(string LeaseId);
+public sealed record ArtworkLeaseReply(UiArtwork? Artwork);
 
 /// <summary>Shared backend access; selection does not own a Bluetooth connection.</summary>
 public interface IHeadsetEventService : IHeadsetService

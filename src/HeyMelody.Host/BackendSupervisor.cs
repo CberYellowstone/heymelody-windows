@@ -634,7 +634,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
         if (peer.Present && peer.Allowed) PublishCatalogLocked();
     }
     private void EmitLocked(BackendEvent value) { value.BackendInstanceId = InstanceId; EventPublished?.Invoke(value); }
-    private static UiSnapshot Copy(UiSnapshot s) => JsonSerializer.Deserialize<UiSnapshot>(JsonSerializer.Serialize(s, RpcWire.Json), RpcWire.Json)!;
+    private static UiSnapshot Copy(UiSnapshot s) => s.Clone();
 
     public async ValueTask DisposeAsync()
     {

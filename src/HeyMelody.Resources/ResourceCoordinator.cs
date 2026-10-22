@@ -128,7 +128,7 @@ public sealed class ResourceCoordinator : IDisposable
                     {
                         // Repair or rewrite the persisted current snapshot without adopting an equal/older response.
                         var retained = _catalog;
-                        await SaveCatalogAsync(retained, retained.OriginalBytes, linked.Token).ConfigureAwait(false);
+                        await SaveCatalogAsync(retained, retained.OriginalBytes ?? throw new IOException("Cached configuration bytes are unavailable."), linked.Token).ConfigureAwait(false);
                         CleanupCatalogs(retained.Sha256);
                     }
                     _fileVersion = metadata.FileVersion;
@@ -272,13 +272,10 @@ public sealed class ResourceCoordinator : IDisposable
                     var current = ReadArtworkPointer(slot);
                     if (redownload || current is null || PackageDigest(current) != metadata.Sha256 || !ValidArtworkPackage(Path.Combine(slot, current)))
                     {
-                        byte[] archive = await _vendor.DownloadAsync(metadata.DownloadUrl, ResourceLimits.ArchiveBytes, linked.Token).ConfigureAwait(false);
-                        if (Convert.ToHexStringLower(SHA256.HashData(archive)) != metadata.Sha256) throw new InvalidDataException("Resource digest mismatch.");
                         string temporary = Path.Combine(slot, ".download-" + Guid.NewGuid().ToString("N"));
-                        Directory.CreateDirectory(temporary);
                         try
                         {
-                            var entries = ArtworkPackageExtractor.Extract(archive, temporary, productId, color);
+                            var entries = await DownloadAndExtractAsync(slot, temporary, metadata, productId, color, linked.Token).ConfigureAwait(false);
                             if (entries.Length == 0) throw new InvalidDataException("Resource package has no usable artwork.");
                             await ResourceFiles.AtomicWriteAsync(Path.Combine(temporary, "artwork.json"), JsonSerializer.SerializeToUtf8Bytes(entries, ResourceJson.Options), linked.Token).ConfigureAwait(false);
                             await ResourceFiles.AtomicWriteAsync(Path.Combine(temporary, ArtworkPackageExtractor.MarkerFile),
@@ -313,6 +310,38 @@ public sealed class ResourceCoordinator : IDisposable
         finally { _gate.Release(); }
         if (outcome == RefreshOutcome.Updated && Volatile.Read(ref _batchedChanges) == 0) Changed?.Invoke(this, new(Revision, false, true));
         return outcome;
+    }
+
+    /// <summary>
+    /// Streams the archive to a disk-backed scratch file, verifies its digest and extracts exactly those bytes.
+    /// The scratch lives in a ".download-" directory of its own (not the extraction directory) and is gone before
+    /// this returns: publication retires every other directory in the slot. A slot created by this attempt
+    /// is removed again when the download fails before extraction begins.
+    /// </summary>
+    private async Task<ResourceArtwork[]> DownloadAndExtractAsync(string slot, string temporary, ArtworkMetadata metadata, string productId, int color, CancellationToken token)
+    {
+        bool createdSlot = !Directory.Exists(slot), extracting = false;
+        string scratch = Path.Combine(slot, ".download-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(scratch);
+            using var archive = new FileStream(Path.Combine(scratch, "archive.zip"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 4096, FileOptions.Asynchronous | FileOptions.DeleteOnClose);
+            if (await _vendor.DownloadToAsync(metadata.DownloadUrl, archive, ResourceLimits.ArchiveBytes, token).ConfigureAwait(false) != metadata.Sha256) throw new InvalidDataException("Resource digest mismatch.");
+            archive.Seek(0, SeekOrigin.Begin);
+            extracting = true;
+            Directory.CreateDirectory(temporary);
+            return ArtworkPackageExtractor.Extract(archive, temporary, productId, color);
+        }
+        finally
+        {
+            // The archive handle is already closed here; a leftover is swept by the publication loop or the next start.
+            try
+            {
+                if (Directory.Exists(scratch)) ResourcePaths.DeleteOwnedDirectory(_online, scratch);
+                if (createdSlot && !extracting && Directory.Exists(slot)) ResourcePaths.DeleteOwnedDirectory(_online, slot);
+            }
+            catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException) { }
+        }
     }
 
     /// <summary>
@@ -394,7 +423,7 @@ public sealed class ResourceCoordinator : IDisposable
                 var entry = SelectPackageEntry(candidates, role);
                 if (entry is null) return null;
                 string path = ResourcePaths.Resolve(package, entry.Path);
-                if (!File.Exists(path) || new FileInfo(path).Length != entry.Length || Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path))) != entry.Sha256) return null;
+                if (!File.Exists(path) || new FileInfo(path).Length != entry.Length || ResourceFiles.Sha256File(path, out _) != entry.Sha256) return null;
                 _leases[package] = _leases.GetValueOrDefault(package) + 1;
                 return new(path, entry.Kind, package, entry.Sha256, entry.Length, Revision, () => Release(package));
             }
@@ -505,7 +534,7 @@ public sealed class ResourceCoordinator : IDisposable
             return entries.All(entry =>
             {
                 string path = ResourcePaths.Resolve(package, entry.Path);
-                return File.Exists(path) && new FileInfo(path).Length == entry.Length && Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path))) == entry.Sha256;
+                return File.Exists(path) && new FileInfo(path).Length == entry.Length && ResourceFiles.Sha256File(path, out _) == entry.Sha256;
             });
         }
         catch (Exception error) when (error is IOException or InvalidDataException or JsonException or ArgumentException) { return false; }

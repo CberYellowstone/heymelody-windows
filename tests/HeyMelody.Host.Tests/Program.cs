@@ -169,6 +169,7 @@ try
         await Throws<OperationCanceledException>(() => service.SaveWhitelistAsync(["token"], cancellation.Token));
         Check(store.Load().Count == 0);
     });
+    await HostWireTests.RunAsync(Test);
     await BackendTests.RunAsync(Test, scratch);
     await SupervisorDiagnosticsTests.RunAsync(Test, scratch);
     await CalibrationBackendTests.RunAsync(Test, scratch);

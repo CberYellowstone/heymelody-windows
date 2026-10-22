@@ -42,35 +42,56 @@ internal sealed class AuditionWave
     private AuditionWave(short[] samples) => Samples = samples;
     internal static AuditionWave Read(Stream stream)
     {
-        using var memory = new MemoryStream(); stream.CopyTo(memory);
-        byte[] bytes = memory.ToArray();
-        if (bytes.Length is < 44 or > 32_000_000 || !bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8)
-            || !bytes.AsSpan(8, 4).SequenceEqual("WAVE"u8) || BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4)) != bytes.Length - 8)
-            throw new InvalidDataException("试听音频不可用。");
-        bool format = false; byte[]? pcm = null;
-        int offset = 12;
-        for (; offset + 8 <= bytes.Length;)
+        if (stream.CanSeek) return Read(stream, Math.Max(0, stream.Length - stream.Position));
+        // Chunk lengths are validated against the total size, so a stream that cannot report it is buffered first.
+        using var memory = new MemoryStream(); stream.CopyTo(memory); memory.Position = 0;
+        return Read(memory, memory.Length);
+    }
+    // Validation order and messages follow the chunk walk of a fully buffered file; only the PCM payload is allocated.
+    private static AuditionWave Read(Stream source, long total)
+    {
+        try
         {
-            uint length = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(offset + 4));
-            int available = bytes.Length - offset - 8;
-            if (length > available || ((length & 1) != 0 && length == available)) throw new InvalidDataException("试听音频不可用。");
-            var chunk = bytes.AsSpan(offset + 8, (int)length);
-            if (bytes.AsSpan(offset, 4).SequenceEqual("fmt "u8))
+            Span<byte> head = stackalloc byte[12], chunk = stackalloc byte[16];
+            if (total is < 44 or > 32_000_000) throw new InvalidDataException("试听音频不可用。");
+            source.ReadExactly(head);
+            if (!head[..4].SequenceEqual("RIFF"u8) || !head[8..].SequenceEqual("WAVE"u8) || BinaryPrimitives.ReadUInt32LittleEndian(head[4..]) != total - 8)
+                throw new InvalidDataException("试听音频不可用。");
+            bool format = false; short[]? samples = null;
+            long offset = 12;
+            for (; offset + 8 <= total;)
             {
-                if (format || length < 16 || BinaryPrimitives.ReadUInt16LittleEndian(chunk) != 1
-                    || BinaryPrimitives.ReadUInt16LittleEndian(chunk[2..]) != 2 || BinaryPrimitives.ReadUInt32LittleEndian(chunk[4..]) != 48000
-                    || BinaryPrimitives.ReadUInt32LittleEndian(chunk[8..]) != 192000 || BinaryPrimitives.ReadUInt16LittleEndian(chunk[12..]) != 4
-                    || BinaryPrimitives.ReadUInt16LittleEndian(chunk[14..]) != 16) throw new InvalidDataException("试听音频格式不可用。");
-                format = true;
+                source.ReadExactly(head[..8]);
+                uint length = BinaryPrimitives.ReadUInt32LittleEndian(head[4..]);
+                long available = total - offset - 8;
+                if (length > available || ((length & 1) != 0 && length == available)) throw new InvalidDataException("试听音频不可用。");
+                long skip = length + (length & 1);
+                if (head[..4].SequenceEqual("fmt "u8))
+                {
+                    if (format || length < 16) throw new InvalidDataException("试听音频格式不可用。");
+                    source.ReadExactly(chunk);
+                    if (BinaryPrimitives.ReadUInt16LittleEndian(chunk) != 1
+                        || BinaryPrimitives.ReadUInt16LittleEndian(chunk[2..]) != 2 || BinaryPrimitives.ReadUInt32LittleEndian(chunk[4..]) != 48000
+                        || BinaryPrimitives.ReadUInt32LittleEndian(chunk[8..]) != 192000 || BinaryPrimitives.ReadUInt16LittleEndian(chunk[12..]) != 4
+                        || BinaryPrimitives.ReadUInt16LittleEndian(chunk[14..]) != 16) throw new InvalidDataException("试听音频格式不可用。");
+                    format = true; skip -= 16;
+                }
+                else if (head[..4].SequenceEqual("data"u8))
+                {
+                    if (samples is not null || length == 0 || length % 4 != 0) throw new InvalidDataException("试听音频不可用。");
+                    samples = new short[length / 2];
+                    source.ReadExactly(MemoryMarshal.AsBytes(samples.AsSpan()));
+                    if (!BitConverter.IsLittleEndian)
+                        for (int i = 0; i < samples.Length; i++) samples[i] = BinaryPrimitives.ReverseEndianness(samples[i]);
+                    skip = 0;
+                }
+                if (skip != 0) source.Seek(skip, SeekOrigin.Current);
+                offset += 8 + length + (length & 1);
             }
-            else if (bytes.AsSpan(offset, 4).SequenceEqual("data"u8))
-            { if (pcm is not null || length == 0 || length % 4 != 0) throw new InvalidDataException("试听音频不可用。"); pcm = chunk.ToArray(); }
-            offset = checked(offset + 8 + (int)length + ((int)length & 1));
+            if (offset != total || !format || samples is null) throw new InvalidDataException("试听音频不可用。");
+            return new(samples);
         }
-        if (offset != bytes.Length || !format || pcm is null) throw new InvalidDataException("试听音频不可用。");
-        short[] samples = new short[pcm.Length / 2];
-        for (int i = 0; i < samples.Length; i++) samples[i] = BinaryPrimitives.ReadInt16LittleEndian(pcm.AsSpan(i * 2));
-        return new(samples);
+        catch (EndOfStreamException) { throw new InvalidDataException("试听音频不可用。"); }
     }
 }
 
@@ -91,10 +112,12 @@ internal sealed class WasapiCalibrationAuditionPlayer : ICalibrationAuditionPlay
     private IRenderClient? _render;
     private AuditionWave? _wave;
     private uint _capacity;
+    private short[]? _fill;
     private int _cursor;
     private bool _playing;
     private long _lastSpectrum;
     private readonly HearingSpectrumAnalyzer _analyzer = new();
+    private readonly float[] _mono = new float[HearingSpectrumAnalyzer.FrameLength];
     public event Action<IReadOnlyList<double>>? Spectrum;
     public event Action? Failed;
     internal WasapiCalibrationAuditionPlayer(Func<int>? initializeCom = null, Action? uninitializeCom = null)
@@ -203,13 +226,17 @@ internal sealed class WasapiCalibrationAuditionPlayer : ICalibrationAuditionPlay
         Check(_render!.GetBuffer(count, out IntPtr buffer));
         try
         {
-            var output = new short[checked((int)count * 2)];
+            // Sized for the whole endpoint buffer once: the pump runs every 5 ms while playing, so a fresh array per
+            // pass was steady gen0 churn for the lifetime of the preview.
+            int length = checked((int)count * 2);
+            if (_fill is null || _fill.Length < length) _fill = new short[checked((int)_capacity * 2)];
+            var output = _fill;
             for (int i = 0; i < count; i++)
             {
                 output[i * 2] = _wave!.Samples[_cursor * 2]; output[i * 2 + 1] = _wave.Samples[_cursor * 2 + 1];
                 _cursor = (_cursor + 1) % _wave.Frames;
             }
-            Marshal.Copy(output, 0, buffer, output.Length);
+            Marshal.Copy(output, 0, buffer, length);
         }
         finally { Check(_render.ReleaseBuffer(count, 0)); }
     }
@@ -225,7 +252,8 @@ internal sealed class WasapiCalibrationAuditionPlayer : ICalibrationAuditionPlay
     {
         Check(_client!.GetCurrentPadding(out uint padding));
         int start = (_cursor - (int)padding % _wave!.Frames + _wave.Frames) % _wave.Frames;
-        float[] mono = new float[1024];
+        // Analyze takes a span and returns a fresh result, so it cannot keep the frame and one buffer serves every call.
+        float[] mono = _mono;
         for (int i = 0; i < mono.Length; i++)
         {
             int sample = ((start + i) % _wave.Frames) * 2;
@@ -240,7 +268,7 @@ internal sealed class WasapiCalibrationAuditionPlayer : ICalibrationAuditionPlay
         foreach (object? value in new object?[] { _renderObject, _clientObject, _endpoint, _enumerator })
             try { Release(value); } catch { }
         _renderObject = _clientObject = null; _render = null; _client = null; _endpoint = null; _enumerator = null;
-        _wave = null; _cursor = 0;
+        _wave = null; _fill = null; _cursor = 0;
     }
     public async ValueTask DisposeAsync()
     {

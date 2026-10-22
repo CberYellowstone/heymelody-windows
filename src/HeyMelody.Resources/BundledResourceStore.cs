@@ -27,6 +27,8 @@ public sealed record ResourceArtwork
 public sealed class BundledResourceStore
 {
     private readonly string _directory;
+    // The bundled snapshot is immutable; parsing it per call allocated megabytes for every lookup.
+    private readonly Lazy<ResourceCatalog> _catalog = new(() => ResourceCatalog.Parse(ReadEmbedded("heymelody.json"), false, 117006004));
     public IReadOnlyList<ResourceArtwork> Artwork { get; }
     public BundledResourceStore(string? directory = null)
     {
@@ -34,7 +36,7 @@ public sealed class BundledResourceStore
         Artwork = JsonSerializer.Deserialize<ResourceArtwork[]>(ReadEmbedded("artwork.json"), ResourceJson.Options) ?? [];
     }
 
-    public ResourceCatalog GetCatalog() => ResourceCatalog.Parse(ReadEmbedded("heymelody.json"), false, 117006004);
+    public ResourceCatalog GetCatalog() => _catalog.Value;
 
     public string GetDefaultKey()
     {

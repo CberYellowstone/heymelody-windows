@@ -9,15 +9,22 @@
     <AssemblyName>HeyMelody.Host</AssemblyName>
     <Version>0.9.2</Version>
     <ApplicationIcon>../HeyMelody.App/Assets/HeyMelody.ico</ApplicationIcon>
+    <!-- The tray and its headset workers are idle most of the time: dynamic PGO only adds instrumentation memory. -->
+    <TieredPGO>false</TieredPGO>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The GC derives the gen0 budget from the L3 cache size (about 16 MiB on a large cache), once per process,
+         and the tray plus every worker would each pay it. IPC lines and small buffers do not need that much. -->
+    <RuntimeHostConfigurationOption Include="System.GC.Gen0MaxBudget" Value="4194304" />
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+  </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="HeyMelody.Host.Tests" />
     <EmbeddedResource Include="Assets/hearing_enhancement_audition.wav" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageReference Include="FluentAvaloniaUI" Version="3.1.0" />
     <AvaloniaResource Include="../HeyMelody.App/Assets/HeyMelody.ico" Link="Assets/HeyMelody.ico" />
-    <!-- The tray menu is drawn by Avalonia, so it shares the UI rendering and typography setup. -->
-    <Compile Include="../HeyMelody.App/RenderingSetup.cs" Link="Shared/RenderingSetup.cs" />
+    <!-- The tray menu is drawn by Avalonia and shares the UI typography; rendering is set up in Program.RunTray (software only). -->
     <Compile Include="../HeyMelody.App/Typography.cs" Link="Shared/Typography.cs" />
     <ProjectReference Include="../HeyMelody.Windows/HeyMelody.Windows.csproj" />
     <ProjectReference Include="../HeyMelody.Daily/HeyMelody.Daily.csproj" />

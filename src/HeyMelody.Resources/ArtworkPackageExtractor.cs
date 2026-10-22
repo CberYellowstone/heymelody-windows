@@ -1,6 +1,6 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Compression;
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -22,7 +22,14 @@ internal static class ArtworkPackageExtractor
 
     internal static ResourceArtwork[] Extract(byte[] bytes, string root, string productId, int color)
     {
-        ExtractArchive(bytes, root);
+        using var memory = new MemoryStream(bytes, false);
+        return Extract(memory, root, productId, color);
+    }
+
+    /// <summary>The stream must be seekable and positioned at the archive start; it stays open for the caller.</summary>
+    internal static ResourceArtwork[] Extract(Stream archive, string root, string productId, int color)
+    {
+        ExtractArchive(archive, root);
         string configPath = Path.Combine(root, "config.json");
         if (!File.Exists(configPath)) throw new InvalidDataException("Resource package lacks config.json.");
         using var json = JsonDocument.Parse(File.ReadAllBytes(configPath), new JsonDocumentOptions { MaxDepth = 64 });
@@ -49,15 +56,19 @@ internal static class ArtworkPackageExtractor
         _ => null
     };
 
-    internal static void ValidateGlb(byte[] bytes)
+    /// <summary>Validates the GLB at stream[offset..offset+length). Every read is bounds-checked first: a short read must stay an invalid GLB, not an IOException.</summary>
+    internal static void ValidateGlb(Stream stream, long offset, long length)
     {
-        if (bytes.Length < 20 || !bytes.AsSpan(0, 4).SequenceEqual("glTF"u8)
-            || BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(4, 4)) != 2
-            || BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(8, 4)) != bytes.Length
-            || !bytes.AsSpan(16, 4).SequenceEqual("JSON"u8)) throw new InvalidDataException("Invalid GLB structure.");
-        uint length = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(12, 4));
-        if (length > ResourceLimits.ConfigBytes || 20L + length > bytes.Length) throw new InvalidDataException("Invalid GLB JSON segment.");
-        using var json = JsonDocument.Parse(bytes.AsMemory(20, checked((int)length)), new JsonDocumentOptions { MaxDepth = 96 });
+        Span<byte> head = stackalloc byte[20];
+        if (length < 20 || !TryRead(stream, offset, head) || !head[..4].SequenceEqual("glTF"u8)
+            || BinaryPrimitives.ReadUInt32LittleEndian(head.Slice(4, 4)) != 2
+            || BinaryPrimitives.ReadUInt32LittleEndian(head.Slice(8, 4)) != length
+            || !head.Slice(16, 4).SequenceEqual("JSON"u8)) throw new InvalidDataException("Invalid GLB structure.");
+        uint chunk = BinaryPrimitives.ReadUInt32LittleEndian(head.Slice(12, 4));
+        if (chunk > ResourceLimits.ConfigBytes || 20L + chunk > length) throw new InvalidDataException("Invalid GLB JSON segment.");
+        byte[] bytes = new byte[chunk];
+        if (!TryRead(stream, offset + 20, bytes)) throw new InvalidDataException("Invalid GLB JSON segment.");
+        using var json = JsonDocument.Parse(bytes.AsMemory(), new JsonDocumentOptions { MaxDepth = 96 });
         ResourceJson.ValidateUniqueProperties(json.RootElement);
         if (json.RootElement.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Invalid GLB JSON structure.");
         // The existing desktop GLB loader consumes self-contained models only.
@@ -74,21 +85,34 @@ internal static class ArtworkPackageExtractor
             }
     }
 
-    private static void ExtractArchive(byte[] bytes, string root)
+    private static bool TryRead(Stream stream, long offset, Span<byte> buffer)
     {
-        using var memory = new MemoryStream(bytes); using var zip = new ZipArchive(memory, ZipArchiveMode.Read);
+        if (offset < 0 || offset + buffer.Length > stream.Length) return false;
+        stream.Position = offset;
+        stream.ReadExactly(buffer);
+        return true;
+    }
+
+    private static void ExtractArchive(Stream archive, string root)
+    {
+        using var zip = new ZipArchive(archive, ZipArchiveMode.Read, leaveOpen: true);
         if (zip.Entries.Count > ResourceLimits.Members || zip.Entries.Sum(e => e.Length) > ResourceLimits.ExpandedBytes) throw new InvalidDataException("Resource archive exceeds limit.");
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var entry in zip.Entries)
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(65536);
+        try
         {
-            if (entry.FullName.EndsWith('/')) continue;
-            if (!names.Add(entry.FullName) || entry.Length > ResourceLimits.MemberBytes || ((entry.ExternalAttributes >> 16) & 0xf000) == 0xa000) throw new InvalidDataException("Invalid resource archive member.");
-            string path = ResourcePaths.Resolve(root, entry.FullName); Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            using var input = entry.Open(); using var output = File.Create(path);
-            byte[] buffer = new byte[81920]; int read; long total = 0;
-            while ((read = input.Read(buffer)) > 0) { total += read; if (total > ResourceLimits.MemberBytes || total > entry.Length) throw new InvalidDataException("Archive member exceeds declared length."); output.Write(buffer, 0, read); }
-            if (total != entry.Length) throw new InvalidDataException("Truncated archive member.");
+            foreach (var entry in zip.Entries)
+            {
+                if (entry.FullName.EndsWith('/')) continue;
+                if (!names.Add(entry.FullName) || entry.Length > ResourceLimits.MemberBytes || ((entry.ExternalAttributes >> 16) & 0xf000) == 0xa000) throw new InvalidDataException("Invalid resource archive member.");
+                string path = ResourcePaths.Resolve(root, entry.FullName); Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                using var input = entry.Open(); using var output = File.Create(path);
+                int read; long total = 0;
+                while ((read = input.Read(buffer, 0, 65536)) > 0) { total += read; if (total > ResourceLimits.MemberBytes || total > entry.Length) throw new InvalidDataException("Archive member exceeds declared length."); output.Write(buffer, 0, read); }
+                if (total != entry.Length) throw new InvalidDataException("Truncated archive member.");
+            }
         }
+        finally { ArrayPool<byte>.Shared.Return(buffer); }
     }
 
     private static void AddResources(Package package, JsonElement node, string role, int depth)
@@ -114,20 +138,15 @@ internal static class ArtworkPackageExtractor
         switch (Path.GetExtension(path).ToLowerInvariant())
         {
             case ".vfxms":
-                byte[] container = File.ReadAllBytes(path);
-                if (container.Length < 40) return;
-                int start = BinaryPrimitives.ReadInt32BigEndian(container.AsSpan(8, 4)), length = BinaryPrimitives.ReadInt32BigEndian(container.AsSpan(12, 4));
-                if (start < 40 || length < 12 || (long)start + length > container.Length || !container.AsSpan(start, 4).SequenceEqual("glTF"u8)) return;
-                byte[] glb = container.AsSpan(start, length).ToArray();
-                try { ValidateGlb(glb); } catch (Exception error) when (error is InvalidDataException or JsonException) { return; }
-                path = UniquePath(package.Root, "model", ".glb"); File.WriteAllBytes(path, glb); kind = "model";
+                if (ExtractVfxmsModel(package.Root, path) is not { } extracted) return;
+                path = extracted; kind = "model";
                 break;
             case ".glb":
-                try { ValidateGlb(File.ReadAllBytes(path)); } catch (Exception error) when (error is InvalidDataException or JsonException) { return; }
+                try { using var glb = OpenRead(path); ValidateGlb(glb, 0, glb.Length); } catch (Exception error) when (error is InvalidDataException or JsonException) { return; }
                 kind = "model";
                 break;
             case ".webp":
-                kind = WebpKind(File.ReadAllBytes(path));
+                using (var webp = OpenRead(path)) kind = WebpKind(webp);
                 if (kind is null) return;
                 break;
             case ".png" or ".jpg" or ".jpeg": kind = "bitmap"; break;
@@ -136,27 +155,62 @@ internal static class ArtworkPackageExtractor
         package.Add(new() { Kind = kind, Role = role }, path);
     }
 
-    // WebP is a RIFF container: treating an ANIM/ANMF file as a bitmap freezes it on frame zero.
-    // Check container boundaries here; the renderer validates and decodes the frame payloads.
-    private static string? WebpKind(ReadOnlySpan<byte> bytes)
+    private static FileStream OpenRead(string path) => new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+    /// <summary>Copies the validated GLB slice of a vfxms container to a new model file; null skips a container that is short, misaddressed or not a valid GLB.</summary>
+    private static string? ExtractVfxmsModel(string root, string container)
     {
-        if (bytes.Length < 12 || !bytes[..4].SequenceEqual("RIFF"u8) || !bytes.Slice(8, 4).SequenceEqual("WEBP"u8)
-            || BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(4, 4)) + 8L != bytes.Length) return null;
-        bool animated = false, header = false, frames = false, image = false;
-        int offset = 12;
-        while (offset < bytes.Length)
+        long start, length;
+        using (var source = OpenRead(container))
         {
-            if (bytes.Length - offset < 8) return null;
-            var tag = bytes.Slice(offset, 4);
-            uint length = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 4, 4));
+            Span<byte> head = stackalloc byte[16];
+            if (source.Length < 40 || !TryRead(source, 0, head)) return null;
+            start = BinaryPrimitives.ReadInt32BigEndian(head.Slice(8, 4)); length = BinaryPrimitives.ReadInt32BigEndian(head.Slice(12, 4));
+            Span<byte> magic = stackalloc byte[4];
+            if (start < 40 || length < 12 || start + length > source.Length || !TryRead(source, start, magic) || !magic.SequenceEqual("glTF"u8)) return null;
+            try { ValidateGlb(source, start, length); } catch (Exception error) when (error is InvalidDataException or JsonException) { return null; }
+            string path = UniquePath(root, "model", ".glb");
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(65536);
+            try
+            {
+                source.Position = start;
+                using var output = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+                for (long remaining = length; remaining > 0;)
+                {
+                    int read = source.Read(buffer, 0, (int)Math.Min(remaining, 65536));
+                    if (read <= 0) throw new InvalidDataException("Truncated model container.");
+                    output.Write(buffer, 0, read); remaining -= read;
+                }
+            }
+            finally { ArrayPool<byte>.Shared.Return(buffer); }
+            return path;
+        }
+    }
+
+    // WebP is a RIFF container: treating an ANIM/ANMF file as a bitmap freezes it on frame zero.
+    // Check container boundaries here; the renderer validates and decodes the frame payloads. Only
+    // chunk headers are read, each after a bounds check.
+    private static string? WebpKind(Stream stream)
+    {
+        long size = stream.Length;
+        Span<byte> head = stackalloc byte[12], chunk = stackalloc byte[8], flags = stackalloc byte[1];
+        if (size < 12 || !TryRead(stream, 0, head) || !head[..4].SequenceEqual("RIFF"u8) || !head.Slice(8, 4).SequenceEqual("WEBP"u8)
+            || BinaryPrimitives.ReadUInt32LittleEndian(head.Slice(4, 4)) + 8L != size) return null;
+        bool animated = false, header = false, frames = false, image = false;
+        long offset = 12;
+        while (offset < size)
+        {
+            if (size - offset < 8 || !TryRead(stream, offset, chunk)) return null;
+            var tag = chunk[..4];
+            uint length = BinaryPrimitives.ReadUInt32LittleEndian(chunk.Slice(4, 4));
             long end = offset + 8L + length + (length & 1);
-            if (end > bytes.Length) return null;
+            if (end > size) return null;
             if (tag.SequenceEqual("VP8X"u8))
-            { if (length != 10) return null; animated = (bytes[offset + 8] & 2) != 0; }
+            { if (length != 10 || !TryRead(stream, offset + 8, flags)) return null; animated = (flags[0] & 2) != 0; }
             else if (tag.SequenceEqual("ANIM"u8)) { if (length != 6) return null; header = true; }
             else if (tag.SequenceEqual("ANMF"u8)) { if (length <= 16) return null; frames = true; }
             else if (tag.SequenceEqual("VP8 "u8) || tag.SequenceEqual("VP8L"u8)) image = true;
-            offset = (int)end;
+            offset = end;
         }
         return animated && header && frames ? "animated-webp" : !animated && !header && !frames && image ? "bitmap" : null;
     }
@@ -324,13 +378,12 @@ internal static class ArtworkPackageExtractor
         public void Add(ResourceArtwork entry, string path, string? original = null)
         {
             string file = entry.Path.Length != 0 ? entry.Path : path;
-            byte[] raw = File.ReadAllBytes(file);
+            string sha256 = ResourceFiles.Sha256File(file, out long length);
             Entries.Add(entry with
             {
-                ProductIds = [productId], Color = color, Path = Relative(file), Length = raw.Length,
-                Sha256 = Convert.ToHexStringLower(SHA256.HashData(raw)),
+                ProductIds = [productId], Color = color, Path = Relative(file), Length = length, Sha256 = sha256,
                 OriginalPath = original is null ? null : Relative(original),
-                OriginalSha256 = original is null ? null : Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(original)))
+                OriginalSha256 = original is null ? null : ResourceFiles.Sha256File(original, out _)
             });
         }
         private string Relative(string path) => Path.GetRelativePath(Root, path).Replace('\\', '/');

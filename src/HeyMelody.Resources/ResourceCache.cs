@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.IO.Compression;
 using System.Security.Cryptography;
 
@@ -46,5 +47,20 @@ internal static class ResourceFiles
             File.Move(temporary, path, true);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+
+    /// <summary>Streams the file through SHA-256 without holding it in memory. 64 KiB stays below the large-object threshold, unlike a pooled 80 KiB request.</summary>
+    internal static string Sha256File(string path, out long length)
+    {
+        length = 0;
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1, FileOptions.SequentialScan);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(65536); int read;
+        try
+        {
+            while ((read = stream.Read(buffer, 0, 65536)) > 0) { hash.AppendData(buffer, 0, read); length += read; }
+            return Convert.ToHexStringLower(hash.GetHashAndReset());
+        }
+        finally { ArrayPool<byte>.Shared.Return(buffer); }
     }
 }

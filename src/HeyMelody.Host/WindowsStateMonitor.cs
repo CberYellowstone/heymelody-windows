@@ -7,6 +7,7 @@ using global::Windows.Devices.Bluetooth;
 using global::Windows.Devices.Bluetooth.Advertisement;
 using global::Windows.Devices.Enumeration;
 using global::Windows.Devices.Radios;
+using global::Windows.Foundation;
 using global::Windows.Storage.Streams;
 
 namespace HeyMelodyWindows.Host;
@@ -20,7 +21,7 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
     private readonly object _refreshSync = new();
     private readonly object _observerSync = new();
     private DeviceWatcher? _devices;
-    private BluetoothLEAdvertisementWatcher? _advertisements;
+    private List<Scan>? _advertisements;
     private PowerMessageWindow? _power;
     private CancellationTokenSource? _advertisementRetry;
     private CancellationTokenSource? _deviceRetry;
@@ -162,6 +163,11 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
             }
         }
     }
+    // A watcher with its registered delegates, so that releasing it can detach them.
+    private sealed record Scan(BluetoothLEAdvertisementWatcher Watcher,
+        TypedEventHandler<BluetoothLEAdvertisementWatcher, BluetoothLEAdvertisementReceivedEventArgs> Received,
+        TypedEventHandler<BluetoothLEAdvertisementWatcher, BluetoothLEAdvertisementWatcherStoppedEventArgs> Stopped);
+    private static readonly ushort[] CompanyIds = [0x079A, 0x072F];
     private void StartAdvertisements()
     {
         lock (_observerSync)
@@ -169,12 +175,31 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
             if (_disposed || _suspended || _radioAvailable == false || _advertisements is not null || _advertisementRetry is not null) return;
             long generation = Interlocked.Increment(ref _scanGeneration);
             var startedAt = DateTimeOffset.UtcNow;
+            var scans = _advertisements = new List<Scan>(CompanyIds.Length);
             try
             {
-                var watcher = new BluetoothLEAdvertisementWatcher { ScanningMode = BluetoothLEScanningMode.Active };
-                watcher.Received += (_, args) => Advertisement(generation, startedAt, args);
-                watcher.Stopped += (_, _) => AdvertisementFailed(generation);
-                _advertisements = watcher; watcher.Start();
+                // One watcher per company ID: the documentation does not say whether several patterns in one filter match
+                // any or all of them, so each watcher carries a single pattern. A byte pattern has documented semantics
+                // (these bytes at this offset of a section of this type), unlike an empty manufacturer payload: the
+                // manufacturer-specific section starts with the little-endian company ID, so the OS drops every other
+                // packet before delivery. Advertisement() still checks the company ID itself.
+                foreach (var company in CompanyIds)
+                {
+                    var watcher = new BluetoothLEAdvertisementWatcher { ScanningMode = BluetoothLEScanningMode.Active };
+                    using (var writer = new DataWriter { ByteOrder = ByteOrder.LittleEndian })
+                    {
+                        writer.WriteUInt16(company);
+                        watcher.AdvertisementFilter.BytePatterns.Add(new BluetoothLEAdvertisementBytePattern
+                        { DataType = BluetoothLEAdvertisementDataTypes.ManufacturerSpecificData, Offset = 0, Data = writer.DetachBuffer() });
+                    }
+                    TypedEventHandler<BluetoothLEAdvertisementWatcher, BluetoothLEAdvertisementReceivedEventArgs> received =
+                        (_, args) => Advertisement(generation, startedAt, args);
+                    TypedEventHandler<BluetoothLEAdvertisementWatcher, BluetoothLEAdvertisementWatcherStoppedEventArgs> stopped =
+                        (_, _) => AdvertisementFailed(generation);
+                    watcher.Received += received; watcher.Stopped += stopped;
+                    scans.Add(new(watcher, received, stopped));
+                }
+                foreach (var scan in scans) scan.Watcher.Start();
             }
             catch (Exception) { AdvertisementFailed(generation); }
         }
@@ -184,7 +209,9 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
         lock (_observerSync)
         {
             if (_disposed || _suspended || _radioAvailable == false || generation != _scanGeneration) return;
-            _advertisements = null;
+            // A new generation makes the sibling watcher's Stopped (and late Received) callbacks no-ops.
+            Interlocked.Increment(ref _scanGeneration);
+            ReleaseAdvertisementsLocked();
             supervisor.ReportHealth("耳机广播监听暂不可用；已连接耳机的状态监听继续运行。");
             if (_advertisementRetry is not null || ++_advertisementFailures > 3) return;
             var delay = TimeSpan.FromSeconds(_advertisementFailures switch { 1 => 1, 2 => 2, _ => 5 });
@@ -204,6 +231,16 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
                 catch (OperationCanceledException) { }
                 finally { retry.Dispose(); }
             }
+        }
+    }
+    private void ReleaseAdvertisementsLocked()
+    {
+        var scans = _advertisements; _advertisements = null;
+        if (scans is null) return;
+        foreach (var (watcher, received, stopped) in scans)
+        {
+            try { watcher.Received -= received; watcher.Stopped -= stopped; } catch { }
+            try { watcher.Stop(); } catch { }
         }
     }
     internal static bool IsCurrentAdvertisement(DateTimeOffset timestamp, DateTimeOffset startedAt, short rssi)
@@ -242,8 +279,7 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
         {
             Interlocked.Increment(ref _scanGeneration);
             _advertisementRetry?.Cancel(); _advertisementRetry?.Dispose(); _advertisementRetry = null;
-            var watcher = _advertisements; _advertisements = null;
-            try { watcher?.Stop(); } catch { }
+            ReleaseAdvertisementsLocked();
         }
     }
     private void OnSuspend(bool suspended)

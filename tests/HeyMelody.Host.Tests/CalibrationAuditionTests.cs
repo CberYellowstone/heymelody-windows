@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Text;
 using HeyMelodyWindows.App;
 using HeyMelodyWindows.Calibration;
 using HeyMelodyWindows.Host;
@@ -44,6 +45,81 @@ internal static class CalibrationAuditionTests
             byte[] oversized = (byte[])valid.Clone(); BinaryPrimitives.WriteUInt32LittleEndian(oversized.AsSpan(40), uint.MaxValue); invalid.Add(oversized);
             byte[] trailing = [..valid, 0]; BinaryPrimitives.WriteUInt32LittleEndian(trailing.AsSpan(4), (uint)trailing.Length - 8); invalid.Add(trailing);
             foreach (byte[] bytes in invalid) Throws<InvalidDataException>(() => AuditionWave.Read(new MemoryStream(bytes)));
+            return Task.CompletedTask;
+        });
+        await test("audition WAV reader decodes valid layouts from seekable, offset, file and non-seekable streams", () =>
+        {
+            short[] pcm = [0, 1, -1, 123, -321, short.MinValue, short.MaxValue, 0x1234, -0x1234, 255, -256, 0x7F80], big = new short[40_000];
+            uint seed = 12345; for (int i = 0; i < big.Length; i++) { seed = seed * 1664525 + 1013904223; big[i] = (short)(seed >> 16); }
+            Accepts("canonical", Riff(Fmt(), Pcm(pcm)), pcm);
+            Accepts("data before fmt", Riff(Pcm(pcm), Fmt()), pcm);
+            Accepts("LIST before fmt and data", Riff(Chunk("LIST", new byte[10]), Fmt(), Chunk("LIST", new byte[6]), Pcm(pcm)), pcm);
+            Accepts("empty unknown chunk", Riff(Chunk("zero", []), Fmt(), Pcm(pcm)), pcm);
+            Accepts("odd unknown chunk with pad byte", Riff(Chunk("odd ", new byte[3]), Fmt(), Pcm(pcm)), pcm);
+            Accepts("odd unknown chunk with pad byte at the end", Riff(Fmt(), Pcm(pcm), Chunk("odd ", new byte[5])), pcm);
+            Accepts("18-byte fmt with cbSize", Riff(Fmt(extra: 2), Pcm(pcm)), pcm);
+            Accepts("odd fmt with pad byte", Riff(Fmt(extra: 3), Pcm(pcm)), pcm);
+            Accepts("trailing empty chunk", Riff(Fmt(), Pcm(pcm), new byte[8]), pcm);
+            Accepts("minimal file", Riff(Fmt(), Pcm(-5, 7)), [-5, 7]);
+            Accepts("40000 samples after a skipped chunk", Riff(Chunk("LIST", new byte[1001]), Fmt(extra: 2), Pcm(big), Chunk("tail", new byte[3])), big);
+            string path = Path.Combine(scratch, "audition-reader.wav");
+            byte[] onDisk = [..Prefix, ..Riff(Chunk("LIST", new byte[13]), Fmt(extra: 2), Pcm(pcm), Chunk("odd ", new byte[3]))];
+            File.WriteAllBytes(path, onDisk);
+            using (var file = File.OpenRead(path))
+            {
+                file.Position = Prefix.Length; var wave = AuditionWave.Read(file);
+                Check(wave.Frames == 6 && wave.Samples.AsSpan().SequenceEqual(pcm), "File stream decoded different samples");
+            }
+            return Task.CompletedTask;
+        });
+        await test("audition WAV reader rejects malformed envelopes with the exact exception type and message", () =>
+        {
+            const string unavailable = "试听音频不可用。", badFormat = "试听音频格式不可用。";
+            byte[] valid = Riff(Fmt(), Pcm(1, -2, 3, -4));
+            uint size = (uint)valid.Length - 8;
+            foreach (var (label, bytes) in new (string, byte[])[]
+            {
+                ("empty", []), ("header only", Riff()), ("43 bytes", Riff(Fmt(), new byte[7])), ("44 bytes of empty chunks", Riff(new byte[32])),
+                ("RIFF size one too large", With(valid, 4, size + 1)), ("RIFF size one too small", With(valid, 4, size - 1)), ("RIFF size zero", With(valid, 4, 0)),
+                ("RIFF size counts a prefix", With(valid, 4, size + (uint)Prefix.Length)),
+                ("bad RIFF magic", Poke(valid, 0, 'X')), ("RIFX", Poke(valid, 3, 'X')), ("bad WAVE magic", Poke(valid, 8, 'X')), ("WAVX", Poke(valid, 11, 'X')),
+                ("data declared longer than present", Riff(Fmt(), Chunk("data", new byte[4], length: 8))),
+                ("data declared 4 GB", Riff(Fmt(), Chunk("data", new byte[4], length: uint.MaxValue))),
+                ("data of odd length without pad byte", Riff(Fmt(), Chunk("data", new byte[5], pad: false))),
+                ("fmt declared longer than present", Riff(Pcm(1, 2), Chunk("fmt ", new byte[16], length: 24))),
+                ("unknown odd chunk without pad byte at the end", Riff(Fmt(), Pcm(1, 2), Chunk("odd ", new byte[3], pad: false))),
+                ("unknown chunk declared longer than present", Riff(Fmt(), Pcm(1, 2), Chunk("LIST", new byte[8], length: 9))),
+                ("duplicate data", Riff(Fmt(), Pcm(1, 2), Pcm(3, 4))), ("zero-length data", Riff(Fmt(), Chunk("data", []))),
+                ("data of 1 byte", Riff(Fmt(), Chunk("data", new byte[1]))), ("data of 2 bytes", Riff(Fmt(), Chunk("data", new byte[2]))),
+                ("data of 5 bytes with pad", Riff(Fmt(), Chunk("data", new byte[5]))), ("data of 6 bytes", Riff(Fmt(), Chunk("data", new byte[6]))),
+                ("missing fmt", Riff(Pcm(1, 2, 3, 4, 5, 6), Chunk("LIST", new byte[8]))), ("missing data", Riff(Fmt(), Chunk("LIST", new byte[8]))),
+                ("bad data before bad fmt", Riff(Chunk("data", []), Fmt(tag: 3))),
+                // Structure is checked before the fmt fields, so a wrong or short fmt without its pad byte reports the generic message.
+                ("odd wrong fmt without pad byte at the end", Riff(Pcm(1, 2), Fmt(rate: 44100, extra: 1)[..^1])),
+                ("odd short fmt without pad byte at the end", Riff(Pcm(1, 2, 3, 4, 5, 6), Chunk("fmt ", new byte[15], pad: false)))
+            }) Rejects(label, bytes, unavailable);
+            for (int junk = 1; junk < 8; junk++) Rejects($"{junk} trailing junk bytes", Riff(Fmt(), Pcm(1, 2), new byte[junk]), unavailable);
+            foreach (var (label, bytes) in new (string, byte[])[]
+            {
+                ("float tag", Riff(Fmt(tag: 3), Pcm(1, 2))), ("extensible tag", Riff(Fmt(tag: 0xFFFE), Pcm(1, 2))), ("mono", Riff(Fmt(channels: 1), Pcm(1, 2))),
+                ("six channels", Riff(Fmt(channels: 6), Pcm(1, 2))), ("44.1 kHz", Riff(Fmt(rate: 44100), Pcm(1, 2))), ("96 kHz", Riff(Fmt(rate: 96000), Pcm(1, 2))),
+                ("byte rate 176400", Riff(Fmt(bytesPerSecond: 176400), Pcm(1, 2))), ("byte rate zero", Riff(Fmt(bytesPerSecond: 0), Pcm(1, 2))),
+                ("block 2", Riff(Fmt(block: 2), Pcm(1, 2))), ("block 8", Riff(Fmt(block: 8), Pcm(1, 2))), ("8-bit", Riff(Fmt(bits: 8), Pcm(1, 2))), ("24-bit", Riff(Fmt(bits: 24), Pcm(1, 2))),
+                ("fmt of 14 bytes", Riff(Chunk("fmt ", new byte[14]), Pcm(1, 2))),
+                ("fmt of 14 valid bytes completed by the next chunk header", Riff(Chunk("fmt ", Fmt().AsSpan(8, 14).ToArray()), Chunk("\u0010\0ab", new byte[4]), Pcm(1, 2))),
+                ("fmt of 15 bytes with pad", Riff(Chunk("fmt ", new byte[15]), Pcm(1, 2))),
+                ("empty fmt", Riff(Chunk("fmt ", []), Pcm(1, 2), Chunk("LIST", new byte[16]))),
+                ("duplicate fmt", Riff(Fmt(), Fmt(), Pcm(1, 2))), ("duplicate fmt with wrong fields", Riff(Fmt(), Fmt(bits: 8), Pcm(1, 2))),
+                ("wrong fmt before duplicate data", Riff(Fmt(rate: 44100), Pcm(1, 2), Pcm(3, 4))), ("wrong fmt after data", Riff(Pcm(1, 2), Fmt(channels: 1)))
+            }) Rejects(label, bytes, badFormat);
+            using (var oversized = new LyingStream([], 32_000_001))
+            {
+                RejectsStream("over 32,000,000 bytes", oversized, unavailable);
+                Check(oversized.Reads == 0, "Oversized input was read before it was rejected");
+            }
+            byte[] whole = Riff(Chunk("LIST", new byte[100]), Fmt(), Pcm(1, 2, 3, 4));
+            foreach (int cut in new[] { 0, 5, 11, 12, 15, 40, 112, 130, whole.Length - 10, whole.Length - 1 })
+                RejectsStream("stream ends early at " + cut, new LyingStream(whole[..cut], whole.Length), unavailable);
             return Task.CompletedTask;
         });
         await test("fatal audition render initialization drains commands and rejects future work without hanging", async () =>
@@ -235,12 +311,98 @@ internal static class CalibrationAuditionTests
         "data"u8.CopyTo(bytes.AsSpan(36)); BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(40), 4);
         BinaryPrimitives.WriteInt16LittleEndian(bytes.AsSpan(44), 123); BinaryPrimitives.WriteInt16LittleEndian(bytes.AsSpan(46), -321); return bytes;
     }
+    private static readonly byte[] Prefix = Enumerable.Repeat((byte)0xEE, 13).ToArray();
+    private static byte[] Chunk(string id, byte[] body, bool pad = true, uint? length = null)
+    {
+        byte[] bytes = new byte[8 + body.Length + (pad && body.Length % 2 == 1 ? 1 : 0)];
+        Encoding.ASCII.GetBytes(id, bytes); BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), length ?? (uint)body.Length); body.CopyTo(bytes, 8); return bytes;
+    }
+    private static byte[] Fmt(ushort tag = 1, ushort channels = 2, uint rate = 48000, uint bytesPerSecond = 192000, ushort block = 4, ushort bits = 16, int extra = 0)
+    {
+        byte[] body = new byte[16 + extra];
+        BinaryPrimitives.WriteUInt16LittleEndian(body, tag); BinaryPrimitives.WriteUInt16LittleEndian(body.AsSpan(2), channels);
+        BinaryPrimitives.WriteUInt32LittleEndian(body.AsSpan(4), rate); BinaryPrimitives.WriteUInt32LittleEndian(body.AsSpan(8), bytesPerSecond);
+        BinaryPrimitives.WriteUInt16LittleEndian(body.AsSpan(12), block); BinaryPrimitives.WriteUInt16LittleEndian(body.AsSpan(14), bits); return Chunk("fmt ", body);
+    }
+    private static byte[] Pcm(params short[] samples)
+    {
+        byte[] body = new byte[samples.Length * 2];
+        for (int i = 0; i < samples.Length; i++) BinaryPrimitives.WriteInt16LittleEndian(body.AsSpan(i * 2), samples[i]);
+        return Chunk("data", body);
+    }
+    // Parts are concatenated verbatim (junk included) behind a RIFF header whose size field is correct.
+    private static byte[] Riff(params byte[][] parts)
+    {
+        byte[] body = parts.SelectMany(part => part).ToArray(), bytes = new byte[12 + body.Length];
+        "RIFF"u8.CopyTo(bytes); BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4), (uint)bytes.Length - 8); "WAVE"u8.CopyTo(bytes.AsSpan(8)); body.CopyTo(bytes, 12); return bytes;
+    }
+    private static byte[] With(byte[] bytes, int offset, uint value) { byte[] copy = (byte[])bytes.Clone(); BinaryPrimitives.WriteUInt32LittleEndian(copy.AsSpan(offset), value); return copy; }
+    private static byte[] Poke(byte[] bytes, int index, char value) { byte[] copy = (byte[])bytes.Clone(); copy[index] = (byte)value; return copy; }
+    // The same bytes through a seekable stream, a seekable stream already positioned past a prefix, and a stream that returns 3 bytes at a time and cannot seek.
+    private static IEnumerable<(string Shape, Func<Stream> Open)> Shapes(byte[] bytes)
+    {
+        yield return ("memory", () => new MemoryStream(bytes));
+        yield return ("offset", () => new MemoryStream([..Prefix, ..bytes]) { Position = Prefix.Length });
+        yield return ("non-seekable", () => new NonSeekableStream(new MemoryStream(bytes), 3));
+    }
+    private static void Accepts(string label, byte[] bytes, short[] expected)
+    {
+        foreach (var (shape, open) in Shapes(bytes))
+        {
+            using var stream = open(); AuditionWave wave;
+            try { wave = AuditionWave.Read(stream); }
+            catch (InvalidDataException error) { throw new InvalidOperationException($"{label}/{shape} was rejected: {error.Message}"); }
+            Check(wave.Frames == expected.Length / 2 && wave.Samples.AsSpan().SequenceEqual(expected), $"{label}/{shape} decoded different samples");
+        }
+    }
+    private static void Rejects(string label, byte[] bytes, string message)
+    {
+        foreach (var (shape, open) in Shapes(bytes)) RejectsStream($"{label}/{shape}", open(), message);
+    }
+    private static void RejectsStream(string label, Stream stream, string message)
+    {
+        using (stream)
+        {
+            try { AuditionWave.Read(stream); }
+            catch (Exception error) { Check(error.GetType() == typeof(InvalidDataException) && error.Message == message, $"{label}: {error.GetType().Name} '{error.Message}'"); return; }
+        }
+        throw new InvalidOperationException(label + " was accepted");
+    }
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static void Check(bool value, string error) { if (!value) throw new InvalidOperationException(error); }
     private static void Throws<T>(Action action) where T : Exception { try { action(); } catch (T) { return; } throw new InvalidOperationException("Expected " + typeof(T).Name); }
     private static async Task ThrowsAsync<T>(Func<Task> action) where T : Exception { try { await action(); } catch (T) { return; } throw new InvalidOperationException("Expected " + typeof(T).Name); }
     private static async Task Until(Func<bool> condition) { using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(2)); while (!condition()) await Task.Delay(5, budget.Token); }
     private static FieldInfo Field(Type type, string name) => type.GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+    private sealed class NonSeekableStream(Stream inner, int maxRead) : Stream
+    {
+        public override bool CanRead => true; public override bool CanSeek => false; public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, Math.Min(count, maxRead));
+        public override int Read(Span<byte> buffer) => inner.Read(buffer[..Math.Min(buffer.Length, maxRead)]);
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    // Seekable stream that reports a longer Length than it can deliver, so reads past the real end hit EndOfStream.
+    private sealed class LyingStream(byte[] actual, long length) : Stream
+    {
+        private readonly MemoryStream _inner = new(actual);
+        internal int Reads { get; private set; }
+        public override bool CanRead => true; public override bool CanSeek => true; public override bool CanWrite => false;
+        public override long Length => length;
+        public override long Position { get => _inner.Position; set => _inner.Position = value; }
+        public override int Read(byte[] buffer, int offset, int count) { Reads++; return _inner.Read(buffer, offset, count); }
+        public override int Read(Span<byte> buffer) { Reads++; return _inner.Read(buffer); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => _inner.Seek(offset, origin);
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
 
     private sealed class Fixture : IAsyncDisposable
     {

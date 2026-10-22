@@ -34,7 +34,40 @@ internal sealed partial class BackendSupervisor
         catch (OperationCanceledException) { }
         catch (Exception) { ReportHealth("在线资源暂时不可用，继续使用已有资源。"); }
     }
-    private void ResourcesChanged(object? sender, ResourceChangedEventArgs args) => _ = AdoptResourcesSafelyAsync(args.CatalogChanged);
+    private void ResourcesChanged(object? sender, ResourceChangedEventArgs args)
+    {
+        _ = AdoptResourcesSafelyAsync(args.CatalogChanged);
+        if (args.ArtworkChanged) ScheduleCompaction();
+    }
+    // An idle tray almost never reaches a gen2 collection, so the large-object-heap garbage of an artwork install or
+    // redownload would stay committed indefinitely. One compacting collection after the burst settles gives it back.
+    private CancellationTokenSource? _compaction;
+    private void ScheduleCompaction()
+    {
+        CancellationTokenSource next; CancellationTokenSource? previous; CancellationToken token;
+        lock (_sync)
+        {
+            if (_stopping) return;
+            previous = _compaction; next = _compaction = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token); token = next.Token;
+        }
+        if (previous is not null) { previous.Cancel(); previous.Dispose(); }
+        _ = CompactAfterQuietAsync(next, token);
+    }
+    private async Task CompactAfterQuietAsync(CancellationTokenSource source, CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), _time, token);
+            lock (_sync)
+            {
+                if (_stopping || !ReferenceEquals(_compaction, source)) return;
+                _compaction = null;
+            }
+            GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            source.Dispose();
+        }
+        catch (OperationCanceledException) { }
+    }
     private async Task AdoptResourcesSafelyAsync(bool catalogChanged)
     {
         try
@@ -121,13 +154,26 @@ internal sealed partial class BackendSupervisor
     }
     private bool KnownProduct(string pid) => _activeCatalog is null ? pid.Equals("06EC10", StringComparison.OrdinalIgnoreCase)
         : _activeCatalog.Find(pid) is not null;
+    // The gzip+base64 form of the active catalog is identical for every worker; compressing it at SmallestSize for each
+    // start would repeat the same large allocations. The key is the catalog instance, which changes with every adoption.
+    private (ResourceCatalog Catalog, string Payload)? _workerCatalogPayload;
     private void ConfigureWorkerResources(IPeerWorker worker, Peer peer)
     {
         if (worker is not IResourcePeerWorker target || _activeCatalog is null) return;
-        using var bytes = new MemoryStream();
-        using (var gzip = new GZipStream(bytes, CompressionLevel.SmallestSize, true))
-            gzip.Write(Encoding.UTF8.GetBytes(_activeCatalog.Raw.GetRawText()));
-        target.ConfigureResources(Convert.ToBase64String(bytes.ToArray()),
+        string payload;
+        lock (_sync)
+        {
+            if (_workerCatalogPayload is { } cached && ReferenceEquals(cached.Catalog, _activeCatalog)) payload = cached.Payload;
+            else
+            {
+                using var bytes = new MemoryStream();
+                using (var gzip = new GZipStream(bytes, CompressionLevel.SmallestSize, true))
+                    gzip.Write(Encoding.UTF8.GetBytes(_activeCatalog.Raw.GetRawText()));
+                payload = Convert.ToBase64String(bytes.ToArray());
+                _workerCatalogPayload = (_activeCatalog, payload);
+            }
+        }
+        target.ConfigureResources(payload,
             _activeResourceRevision, VendorResourceClient.RequestCompatVersion(),
             DeviceWhitelistStore.KeyFor(peer.Candidate.Address), peer.Generation, peer.Broadcast?.ProductId, peer.Broadcast?.Color);
     }
@@ -203,7 +249,7 @@ internal sealed partial class BackendSupervisor
     }
     private void DisposeResources()
     {
-        lock (_sync) { foreach (var item in _artworkLeases.Values) item.Lease.Dispose(); _artworkLeases.Clear(); }
+        lock (_sync) { foreach (var item in _artworkLeases.Values) item.Lease.Dispose(); _artworkLeases.Clear(); _workerCatalogPayload = null; _compaction?.Dispose(); _compaction = null; }
         if (_resources is not null) { _resources.Changed -= ResourcesChanged; _resources.Dispose(); }
     }
 }

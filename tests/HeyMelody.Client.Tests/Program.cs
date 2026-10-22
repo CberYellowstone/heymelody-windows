@@ -145,6 +145,8 @@ try
     await ResourceVmTests.RunArtworkAsync(Test);
     await AncVmTests.RunAsync(Test);
     await DemoVmTests.RunAsync(Test);
+    await SnapshotCloneTests.RunAsync(Test);
+    await WireCompatTests.RunAsync(Test);
     Console.WriteLine(JsonSerializer.Serialize(new { passed, success = true, architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(), nativeBluetoothCalls = 0 }, RpcWire.Json));
     return 0;
 }

@@ -54,13 +54,13 @@ App 也能自动启动后台；源码运行时，若输出目录没有 Host 可�
 
 ## 界面渲染与字体
 
-三个 GUI 入口与 Host 托盘在 AppBuilder 阶段调用 `src/HeyMelody.App/RenderingSetup.cs` 与 `Typography.cs`（以源码链接编入各程序集，不新增 DLL）：固定 Win32 的 AngleEgl 与 WinUI／DirectComposition 合成（Mica 依赖前者），Skia GPU 资源上限 256 MiB、字形缓存 64 MiB；界面区域性固定为 zh-CN，默认字体为系统 Microsoft YaHei UI，汉字回退先于按区域打分固定到简体中文字体，550–699 字重使用真实粗体字面。没有雅黑的系统使用随附的 Noto Sans SC（`fonts/`，OFL-1.1）；Linux 无头预览与测试把该目录登记到 fontconfig，以路径方式打开字体，避免 Avalonia 12.1 从流加载字体时随窗口累积原生内存。共享样式与间距令牌在 `src/HeyMelody.App/Styles/HeyMelodyTheme.axaml`，代码构建的界面使用 `UiMetrics.cs` 中的同名数值。
+三个 GUI 入口在 AppBuilder 阶段调用 `src/HeyMelody.App/RenderingSetup.cs` 与 `Typography.cs`（以源码链接编入各程序集，不新增 DLL）：`RenderingSetup` 固定 Win32 的 AngleEgl 与 WinUI／DirectComposition 合成（Mica 依赖前者），Skia GPU 资源上限 256 MiB、字形缓存 64 MiB。Host 托盘只链接 `Typography.cs`，使用 Win32 软件渲染与 RedirectionSurface，不初始化 GPU 与合成器，也不设置 Skia 缓存上限（见[后台架构](backend-architecture.md#资源占用)）。字体部分（`Typography.cs`）GUI 与托盘相同：界面区域性固定为 zh-CN，默认字体为系统 Microsoft YaHei UI，汉字回退先于按区域打分固定到简体中文字体，550–699 字重使用真实粗体字面。没有雅黑的系统使用随附的 Noto Sans SC（`fonts/`，OFL-1.1）；Linux 无头预览与测试把该目录登记到 fontconfig，以路径方式打开字体，避免 Avalonia 12.1 从流加载字体时随窗口累积原生内存。共享样式与间距令牌在 `src/HeyMelody.App/Styles/HeyMelodyTheme.axaml`，代码构建的界面使用 `UiMetrics.cs` 中的同名数值。
 
 设 `HEYMELODY_RENDER_DIAGNOSTICS=1` 或在窗口中按 Ctrl+Shift+F12 显示 Avalonia 的帧率、渲染与布局耗时叠加层，三维模型另显示 Filament 帧统计。验收 120 Hz 时在 120 Hz 显示器上展开／折叠设置项、拖动模型，并关注叠加层而不是空闲窗口的数值。
 
 ## 按改动选择验证
 
-`tests/` 下的检查是可执行项目，使用 `dotnet run`，不是 `dotnet test`。Linux 上可以运行无头的 App、DeviceManager、Calibration.UI、Client、Calibration、Protocol、Resources、Devices、Control 与 Daily 检查；ModelPreview 的默认运动检查已在 Linux x64 使用 `dotnet run --project tests/HeyMelody.ModelPreview.Tests -c Release` 通过，无需指定 RID。`--native*` 模式、Host／Probe／Audio 检查与 `Windows.OfflineChecks` 只在 Windows 运行。可用内存较少时，构建加 `-nodeReuse:false -p:UseSharedCompilation=false` 并在测试前执行 `dotnet build-server shutdown`，以免常驻编译进程挤占测试内存。先选择能覆盖改动的检查，例如协议或界面：
+`tests/` 下的检查是可执行项目，使用 `dotnet run`，不是 `dotnet test`。Linux 上可以运行无头的 App、DeviceManager、Calibration.UI、Client、Calibration、Protocol、Resources、Devices、Control 与 Daily 检查；ModelPreview 的默认运动检查已在 Linux x64 使用 `dotnet run --project tests/HeyMelody.ModelPreview.Tests -c Release` 通过，无需指定 RID。`--native*` 模式、Host／Probe／Audio 检查与 `Windows.OfflineChecks` 只在 Windows 运行。Linux 可用 `-p:EnableWindowsTargeting=true` 编译 Host 做静态检查，Host.Tests 仅在 Windows 完整运行（Linux 上运行到需要 COM 的试听测试处即停止）。可用内存较少时，构建加 `-nodeReuse:false -p:UseSharedCompilation=false` 并在测试前执行 `dotnet build-server shutdown`，以免常驻编译进程挤占测试内存。先选择能覆盖改动的检查，例如协议或界面：
 
 ```powershell
 dotnet run --project tests/HeyMelody.Protocol.Tests/HeyMelody.Protocol.Tests.csproj -c Release
@@ -83,6 +83,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Test
 - Windows 原生窗口检查证明所用架构、驱动和渲染后端下的结果。
 - 静态发布校验检查包结构、版本、运行时、资源及许可材料，不连接蓝牙。
 - 真机记录须注明型号、固件、应用版本、命令范围与环境；旧 X4 记录不能证明所有目录型号、后续版本或 ARM64 实机行为。
+
+后台内存的 Windows 测量使用只读脚本 `tools/Measure-HostMemory.ps1`（Windows PowerShell 5.1 或 PowerShell 7，加 `-NoProfile`）：按命令行模式区分托盘、`--worker`、`--catalog-worker` 与 `HeyMelody.exe`，列出各进程的私有工作集、工作集、私有字节、线程和句柄数；可用 `-Samples`、`-IntervalSeconds` 采样，用 `-OutputPath` 另存新的 JSON（拒绝覆盖已有文件，只含系统、CPU 与 Host 版本和计数，不含命令行或蓝牙地址）。脚本不做任何设备操作。改前改后须在同一台机器、同一连接状态下比较；Linux 探针数字不能代替它，范围与未验证项见[后台内存审计](research/backend-memory-audit.md)，其他方向的待办见[优化待办](optimization-backlog.md)。
 
 内置资源仅包含欢律的 85 个耳机产品 ID。这是目录覆盖数量；未知 codec、缺少 SPP 或仅外部控制路由的功能会被禁用，目录条目本身不是硬件验证结论。跨窗口并发、校准流程、手机同时操作、休眠恢复及特定硬件的渲染仍需相应范围的实测证据。
 
