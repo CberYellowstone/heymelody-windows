@@ -249,7 +249,10 @@
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:EqBandViewModel">
                         <StackPanel HorizontalAlignment="Center" Spacing="4">
-                          <TextBlock Text="{Binding GainLabel}" Classes="band-label" />
+                          <!-- "+12 dB" is wider than a cell with many bands and the TextBlock clips overflow; shrink to fit instead. -->
+                          <Viewbox StretchDirection="DownOnly" HorizontalAlignment="Center">
+                            <TextBlock Text="{Binding GainLabel}" Classes="band-label" />
+                          </Viewbox>
                           <Slider Orientation="Vertical" Height="124" Width="32" Minimum="{Binding Minimum}"
                                   Maximum="{Binding Maximum}" Value="{Binding Gain, Mode=TwoWay}"
                                   TickFrequency="1" IsSnapToTickEnabled="True"

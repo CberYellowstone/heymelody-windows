@@ -12,7 +12,9 @@
       <sys:Double x:Key="HmSpacingLarge">16</sys:Double>
       <sys:Double x:Key="HmSpacingXLarge">24</sys:Double>
       <Thickness x:Key="HmCardPadding">16,14</Thickness>
-      <Thickness x:Key="HmExpanderContentPadding">20,16</Thickness>
+      <!-- Horizontal inset matches FluentAvalonia's SettingsExpanderPadding and SettingsExpanderItemPadding (16), so fixed
+           panels line up with the header and with native item rows (UiMetrics.ExpanderContentInset mirrors it). -->
+      <Thickness x:Key="HmExpanderContentPadding">16</Thickness>
       <sys:Double x:Key="HmFooterHeight">72</sys:Double>
       <sys:Double x:Key="HmActivityBarHeight">3</sys:Double>
       <sys:Double x:Key="HmEditorWidth">200</sys:Double>

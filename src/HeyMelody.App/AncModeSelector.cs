@@ -10,6 +10,7 @@ using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
 using Avalonia.Styling;
 using FluentAvalonia.UI.Controls;
+using HeyMelodyWindows.Ui;
 
 namespace HeyMelodyWindows.App;
 
@@ -49,9 +50,11 @@ public sealed class AncModeSelector : UserControl
                 && pair.First.Options.SequenceEqual(pair.Second.Options)))
         { RefreshSelection(model); return; }
         _builtModel = model; _builtModes = model.AncModes.ToArray(); _radios.Clear();
-        var panel = new StackPanel { Spacing = 16, Margin = new Thickness(20, 16) };
-        // Modes wrap instead of clipping when a resource defines more or longer names; arrow keys move between them.
-        var modes = new WrapPanel { Orientation = Orientation.Horizontal, ItemSpacing = 16, LineSpacing = 12,
+        var panel = new StackPanel { Spacing = 16, Margin = new Thickness(UiMetrics.ExpanderContentInset, 16) };
+        // Equal-width cells sized to the widest mode keep any count (2, 3, 4…) centred as a compact group; a WrapPanel
+        // centred its row off by the trailing item spacing. More than four modes split into balanced rows.
+        int count = Math.Max(1, model.AncModes.Count);
+        var modes = new UniformGrid { Columns = count <= 4 ? count : (count + 1) / 2, ColumnSpacing = 16, RowSpacing = 12,
             HorizontalAlignment = HorizontalAlignment.Center };
         Avalonia.Input.XYFocus.SetNavigationModes(modes, Avalonia.Input.XYFocusNavigationModes.Keyboard);
         foreach (var mode in model.AncModes)
@@ -65,7 +68,8 @@ public sealed class AncModeSelector : UserControl
             circle.Bind(Border.BackgroundProperty, new DynamicResourceExtension(mode.Key == model.SelectedAncMode?.Key
                 ? "AccentFillColorDefaultBrush" : "ControlFillColorSecondaryBrush"));
             var radio = new RadioButton { GroupName = "anc-" + GetHashCode(), IsChecked = mode.Key == model.SelectedAncMode?.Key,
-                IsEnabled = model.CanChooseAncMode, Content = new StackPanel { Spacing = 7, HorizontalAlignment = HorizontalAlignment.Center,
+                IsEnabled = model.CanChooseAncMode, HorizontalAlignment = HorizontalAlignment.Center,
+                Content = new StackPanel { Spacing = 7, HorizontalAlignment = HorizontalAlignment.Center,
                     Children = { circle, new TextBlock { Text = mode.Name, HorizontalAlignment = HorizontalAlignment.Center,
                         TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 88 } } } };
             radio.Theme = CircleTheme;
@@ -117,7 +121,7 @@ public sealed class AncModeSelector : UserControl
         Grid.SetColumn(editor, 1);
         // Footer adapts below the header at narrow widths; keep the action in the content's right column.
         var row = new FASettingsExpanderItem { Name = "AncFeatureRow", HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            Content = content };
+            Padding = new Thickness(0, 4), Content = content }; // the panel margin already insets it like other expander content
         panel.Children.Add(row);
         _toggle = toggle; _toggleRow = row; _toggleState = state;
         _toggleTitle = title; _toggleDescription = description;

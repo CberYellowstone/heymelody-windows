@@ -63,7 +63,7 @@
 
 使用 FluentAvalonia 的 `FAAppWindow`、`FASettingsExpander`、`FASettingsExpanderItem`、`FAInfoBar` 和 `FAContentDialog`，以及主题提供的按钮、下拉框、开关、文本框和滑块。系统、浅色、深色主题可在应用设置中切换，偏好保存到 `%LOCALAPPDATA%/HeyMelody/preferences.json`。无效偏好会回退到系统主题。项目图标沿用原创的 `Assets/HeyMelody.ico`。
 
-保留配对设备枚举、手动连接和断开、左右耳及充电盒电量与充电状态、降噪、五种声音预设、十段自定义 EQ、双设备连接、游戏模式、空间音频及 Hi-Res。显示状态来自后台 GET、RFCOMM 通知和经关联的 BLE 观测；可写能力仍需 RFCOMM 型号和能力核验。无法读取的电量显示 `—`，未知开关显示“未确认”并禁用写入，部分读取失败有单独提示。十段 EQ 的竖直滑块在 `MainView.axaml` 内把模板的左右内容边距由 14 改为 7（14+18+14=46 px 放进 32 px 槽时拇指偏右 7 px，悬停放大后越出右缘；7+18+7=32 使其居中），`EqSliderGeometryTests` 以无头布局断言拇指及其 1.167 倍悬停圆不越出滑块与祖先。
+保留配对设备枚举、手动连接和断开、左右耳及充电盒电量与充电状态、降噪、五种声音预设、十段自定义 EQ、双设备连接、游戏模式、空间音频及 Hi-Res。显示状态来自后台 GET、RFCOMM 通知和经关联的 BLE 观测；可写能力仍需 RFCOMM 型号和能力核验。无法读取的电量显示 `—`，未知开关显示“未确认”并禁用写入，部分读取失败有单独提示。十段 EQ 的竖直滑块在 `MainView.axaml` 内把模板的左右内容边距由 14 改为 7（14+18+14=46 px 放进 32 px 槽时拇指偏右 7 px，悬停放大后越出右缘；7+18+7=32 使其居中），`EqSliderGeometryTests` 以无头布局断言拇指及其 1.167 倍悬停圆不越出滑块与祖先。2026-10-22 Windows x64 包复查后修正三处：频段增益标签放进 `Viewbox`（只缩小），最右一列的“dB”不再被裁；降噪模式改为居中的等宽 `UniformGrid`（四个以内单行，更多时分成均衡的两行，间距沿用 16／12），任意数量的模式整组水平居中；固定面板的展开内容边距 `HmExpanderContentPadding` 由 20 改为 16，与 FluentAvalonia 的 `SettingsExpanderPadding`、`SettingsExpanderItemPadding` 左右 16 一致，降噪面板同步使用 `UiMetrics.ExpanderContentInset`，其开关行不再叠加子项内边距。均为静态修改，未在本地运行检查。
 
 ## 交互约束
 

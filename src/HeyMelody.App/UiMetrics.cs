@@ -10,6 +10,8 @@ internal static class UiMetrics
     internal const double CompactPageMargin = 16;
     internal const double FooterHeight = 72;
     internal const double ActivityBarHeight = 3;
+    /// <summary>Horizontal inset of expander content; equals FluentAvalonia's SettingsExpanderPadding and item padding (16).</summary>
+    internal const double ExpanderContentInset = 16;
     /// <summary>Width of a slider, text box or combo box in a settings row's footer.</summary>
     internal const double EditorWidth = 200;
 
