@@ -202,8 +202,8 @@ internal static class BackendTests
             await using var server = new BackendPipeServer(backend, pipeName); server.Start();
             using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
             await pipe.ConnectAsync(3000);
-            using var reader = new StreamReader(pipe, new UTF8Encoding(false), false, 4096, true);
             using var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, true) { AutoFlush = true };
+            var lines = new RpcLineReader(pipe);
             await writer.WriteLineAsync(JsonSerializer.Serialize(new BackendRequest { Id = 1, Operation = "subscribe", Role = "main" }, RpcWire.Json));
             var baseline = await Read(); Check(baseline.Kind == "response" && baseline.Success);
             var initial = baseline.Data!.Value.Deserialize<BackendSubscription>(RpcWire.Json)!;
@@ -224,7 +224,7 @@ internal static class BackendTests
             await writer.WriteLineAsync(JsonSerializer.Serialize(new BackendRequest { Id = 4, Operation = "exitVote", ExitRequestId = requestExit.Event!.ExitRequestId, Approved = true }, RpcWire.Json));
             Check((await Read()).Id == 4); Check((await Read()).Event?.Kind == "stopping"); await exiting;
             async Task<BackendMessage> Read() => JsonSerializer.Deserialize<BackendMessage>(
-                await RpcWire.ReadLineAsync(reader, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(3)) ?? throw new IOException(), RpcWire.Json)!;
+                await lines.ReadLineAsync(CancellationToken.None).AsTask().WaitAsync(TimeSpan.FromSeconds(3)) ?? throw new IOException(), RpcWire.Json)!;
             async Task<BackendMessage> ReadUntil(Func<BackendMessage, bool> match)
             { for (int i = 0; i < 20; i++) { var message = await Read(); if (match(message)) return message; } throw new InvalidOperationException(); }
         });
@@ -277,20 +277,23 @@ internal static class BackendTests
         public ValueTask DisposeAsync() { Unavailable?.Invoke(); return ValueTask.CompletedTask; }
     }
 
-    private sealed class TestTime : TimeProvider
+    internal sealed class TestTime : TimeProvider
     {
         private DateTimeOffset _now = DateTimeOffset.UtcNow;
         private readonly List<TestTimer> _timers = [];
         public override DateTimeOffset GetUtcNow() => _now;
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         { var timer = new TestTimer(this, callback, state); _timers.Add(timer); timer.Change(dueTime, period); return timer; }
+        internal int Created => _timers.Count;
+        internal int Armed => _timers.Count(timer => !timer.Disposed && timer.Due != DateTimeOffset.MaxValue);
+        // Timers are one-shot like the real ones with an infinite period: firing disarms, Change re-arms, Infinite never fires.
         internal void Advance(TimeSpan duration)
-        { _now += duration; foreach (var timer in _timers.ToArray()) if (!timer.Disposed && timer.Due <= _now) { timer.Disposed = true; timer.Callback(timer.State); } }
+        { _now += duration; foreach (var timer in _timers.ToArray()) if (!timer.Disposed && timer.Due <= _now) { timer.Due = DateTimeOffset.MaxValue; timer.Callback(timer.State); } }
         private sealed class TestTimer(TestTime owner, TimerCallback callback, object? state) : ITimer
         {
             internal DateTimeOffset Due; internal bool Disposed;
             internal TimerCallback Callback = callback; internal object? State = state;
-            public bool Change(TimeSpan dueTime, TimeSpan period) { Due = owner._now + dueTime; return true; }
+            public bool Change(TimeSpan dueTime, TimeSpan period) { Due = dueTime == Timeout.InfiniteTimeSpan ? DateTimeOffset.MaxValue : owner._now + dueTime; return true; }
             public void Dispose() => Disposed = true;
             public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
         }

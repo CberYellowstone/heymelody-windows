@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="HeyMelody.Resources.Tests" />
     <EmbeddedResource Include="Bundles/*.json" />
     <Content Include="Bundles/artwork.json;Bundles/provenance.json;Bundles/supplemental.json" Link="ResourceBundles/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Bundles/data/**/*" Link="ResourceBundles/data/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

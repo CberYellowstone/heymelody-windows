@@ -270,7 +270,7 @@ public sealed partial class ClientBridge : IHeadsetEventService, IDeviceManageme
         {
             while (!_lifetime.IsCancellationRequested)
             {
-                string? record = await RpcWire.ReadLineAsync(connection.Reader, _lifetime.Token);
+                string? record = await connection.Reader.ReadLineAsync(_lifetime.Token);
                 if (record is null) break;
                 var message = JsonSerializer.Deserialize<BackendMessage>(record, RpcWire.Json) ?? throw new InvalidDataException();
                 if (message.SchemaVersion != 4)
@@ -421,7 +421,8 @@ public sealed partial class ClientBridge : IHeadsetEventService, IDeviceManageme
 
     private sealed class Connection(NamedPipeClientStream pipe)
     {
-        public StreamReader Reader { get; } = new(pipe, new UTF8Encoding(false, true), false, 4096, leaveOpen: true);
+        // The reader owns every read from the pipe.
+        public RpcLineReader Reader { get; } = new(pipe, strictUtf8: true);
         public StreamWriter Writer { get; } = new(pipe, new UTF8Encoding(false), 4096, leaveOpen: true);
         public SemaphoreSlim WriteGate { get; } = new(1, 1);
         public ConcurrentDictionary<long, TaskCompletionSource<BackendMessage>> Pending { get; } = new();

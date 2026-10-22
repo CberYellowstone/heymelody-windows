@@ -43,7 +43,9 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
         internal string? AppearanceProductId;
         internal byte? AppearanceColor;
         internal bool AppearanceColorFromSpp;
-        internal CancellationTokenSource? BroadcastExpiry;
+        // One timer per peer, re-armed through Change; Due is the deadline it stands for (null when disarmed).
+        internal ITimer? BroadcastTimer;
+        internal DateTimeOffset? BroadcastDue;
         internal CancellationTokenSource Lifetime = new();
         internal readonly SemaphoreSlim Commands = new(1);
     }
@@ -62,9 +64,11 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
     private readonly TimeProvider _time;
     private HashSet<string> _allowed = new(StringComparer.Ordinal);
     private string? _catalogWarning;
-    private bool _radioAvailable = true, _suspended, _stopping, _disposed;
+    private bool _radioAvailable = true, _suspended, _stopping, _disposed, _scanDemand;
     public string InstanceId { get; } = Guid.NewGuid().ToString("N");
     public event Action<BackendEvent>? EventPublished;
+    /// <summary>Raised on the thread pool when <see cref="HasScanDemand"/> may have changed; handlers re-read it (latest wins).</summary>
+    public event Action? ScanDemandChanged;
 
     internal BackendSupervisor(DeviceWhitelistStore? whitelist = null,
         Func<CancellationToken, Task<IReadOnlyList<BluetoothCandidate>>>? enumerate = null,
@@ -439,38 +443,38 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
 
     private void ScheduleBroadcastExpiryLocked(Peer peer)
     {
-        CancelBroadcastExpiryLocked(peer);
-        if (peer.Broadcast is not { } observation) return;
+        if (peer.Broadcast is not { } observation) { CancelBroadcastExpiryLocked(peer); return; }
         var now = _time.GetUtcNow();
         var timestamps = new[] { observation.CaseTime, observation.LeftTime, observation.RightTime,
             observation.LeftBatteryTime, observation.RightBatteryTime, observation.CaseBatteryTime, observation.ColorTime };
         var next = timestamps.Where(t => t is { } value && value + TimeSpan.FromSeconds(30) > now)
             .Select(t => t!.Value + TimeSpan.FromSeconds(30)).DefaultIfEmpty(now).Min();
-        if (next <= now) { peer.Broadcast = null; return; }
-        var expiry = peer.BroadcastExpiry = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-        _ = ExpireAsync();
-        async Task ExpireAsync()
+        if (next <= now) { peer.Broadcast = null; CancelBroadcastExpiryLocked(peer); return; }
+        peer.BroadcastDue = next;
+        // A packet stream re-arms this timer instead of allocating a source, a task and a timer per observation.
+        (peer.BroadcastTimer ??= _time.CreateTimer(OnBroadcastExpiry, peer, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan))
+            .Change(next - now, Timeout.InfiniteTimeSpan);
+    }
+
+    private void OnBroadcastExpiry(object? state)
+    {
+        var peer = (Peer)state!;
+        lock (_sync)
         {
-            try
-            {
-                await Task.Delay(next - now, _time, expiry.Token);
-                lock (_sync)
-                {
-                    if (!ReferenceEquals(peer.BroadcastExpiry, expiry)) return;
-                    peer.BroadcastExpiry = null;
-                    PublishLocked(peer, suppressEquivalentObservation: true);
-                    ScheduleBroadcastExpiryLocked(peer);
-                }
-            }
-            catch (OperationCanceledException) { }
-            finally { expiry.Dispose(); }
+            if (_disposed || peer.BroadcastDue is not { } due) return;
+            var now = _time.GetUtcNow();
+            // A firing that predates a later re-arm (or the clock's rounding) arrives early: wait for the real deadline.
+            if (now < due) { peer.BroadcastTimer?.Change(due - now, Timeout.InfiniteTimeSpan); return; }
+            peer.BroadcastDue = null;
+            PublishLocked(peer, suppressEquivalentObservation: true);
+            ScheduleBroadcastExpiryLocked(peer);
         }
     }
 
     private static void CancelBroadcastExpiryLocked(Peer peer)
     {
-        var expiry = peer.BroadcastExpiry; peer.BroadcastExpiry = null;
-        if (expiry is not null) { expiry.Cancel(); expiry.Dispose(); }
+        peer.BroadcastDue = null;
+        peer.BroadcastTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     public void ObservePairing(ulong address, bool paired)
@@ -488,7 +492,12 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
     { lock (_sync) EmitLocked(new() { Kind = "health", Message = message }); }
 
     public void SetRadioAvailable(bool available) => SetEnvironment(available, null);
-    public void SetSuspended(bool suspended) => SetEnvironment(null, suspended);
+    public void SetSuspended(bool suspended)
+    {
+        SetEnvironment(null, suspended);
+        // The resource check waits on one long timer that may not count the time asleep; let it look at the wall clock again.
+        if (!suspended) _resources?.Reschedule();
+    }
     private void SetEnvironment(bool? radio, bool? suspended)
     {
         List<Peer> start = [];
@@ -511,6 +520,8 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
 
     private void PublishLocked(Peer peer, bool suppressEquivalentObservation = false)
     {
+        // Presence and whitelist membership only change right before a publish, so the scan demand is settled here (also on the early return below).
+        UpdateScanDemandLocked();
         bool verifiedSpp = peer.Spp is { ControlReady: true, SupportedModel: true, Failure: null, PresentationCached: false };
         var snapshot = verifiedSpp ? Copy(peer.Spp!)
             : _deviceState.Find(DeviceWhitelistStore.KeyFor(peer.Candidate.Address))?.ToSnapshot()
@@ -590,7 +601,23 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
         && left.LeftBattery == right.LeftBattery && left.RightBattery == right.RightBattery && left.CaseBattery == right.CaseBattery
         && left.LeftCharging == right.LeftCharging && left.RightCharging == right.RightCharging && left.CaseCharging == right.CaseCharging
         && left.ObservationFresh == right.ObservationFresh && left.ObservationSource == right.ObservationSource;
-    private void PublishCatalogLocked() => EmitLocked(new() { Kind = "catalog", Catalog = CatalogLocked(), Devices = DevicesLocked() });
+    private void PublishCatalogLocked()
+    {
+        UpdateScanDemandLocked();
+        EmitLocked(new() { Kind = "catalog", Catalog = CatalogLocked(), Devices = DevicesLocked() });
+    }
+
+    /// <summary>True while a present, allowed headset exists: BLE scanning serves it even when it is only paired, not connected.</summary>
+    public bool HasScanDemand() { lock (_sync) return _scanDemand; }
+    private void UpdateScanDemandLocked()
+    {
+        bool demand = _peers.Values.Any(p => p.Present && p.Allowed);
+        if (demand == _scanDemand) return;
+        _scanDemand = demand;
+        // Never call out under _sync: the monitor's handler takes its own lock, which Advertisement holds while it waits for _sync.
+        if (ScanDemandChanged is { } handler)
+            ThreadPool.UnsafeQueueUserWorkItem(static h => { try { h(); } catch { } }, handler, preferLocal: false);
+    }
 
     private void RetireOtherCachedProductsLocked(Peer peer, string? productId)
     {
@@ -644,7 +671,8 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
             if (_disposed) return;
             _disposed = true; _stopping = true;
             workers = _peers.Values.Where(p => p.Worker is not null).Select(p => p.Worker!).ToList();
-            foreach (var peer in _peers.Values) { peer.Lifetime.Cancel(); CancelBroadcastExpiryLocked(peer); }
+            foreach (var peer in _peers.Values)
+            { peer.Lifetime.Cancel(); CancelBroadcastExpiryLocked(peer); peer.BroadcastTimer?.Dispose(); peer.BroadcastTimer = null; }
             _lifetime.Cancel();
         }
         try { foreach (var worker in workers) await worker.DisposeAsync(); }

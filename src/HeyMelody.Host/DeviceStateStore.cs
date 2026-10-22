@@ -84,8 +84,12 @@ internal sealed class DeviceStateStore
     private readonly string _path;
     private readonly object _gate = new();
     private readonly Dictionary<string, Entry> _entries = [];
+    // What each key last queued for writing: its content without the sample time, and that sample time.
+    private readonly Dictionary<string, (byte[] Content, DateTimeOffset Sample)> _queued = [];
     private string? _preferredKey;
     private long _version, _savedVersion;
+    // True while _entries holds a newer sample than any queued write (only the sample time differs).
+    private bool _unsaved;
     private bool _writing;
     private Task _writer = Task.CompletedTask;
 
@@ -114,11 +118,17 @@ internal sealed class DeviceStateStore
     {
         presentation = NormalizeAncToggles(presentation);
         if (!ValidKey(key) || !ValidPresentation(presentation)) return;
+        // A re-read that changes nothing but the time would rewrite the whole file for a timestamp.
+        var content = JsonSerializer.SerializeToUtf8Bytes(presentation with { SampleTime = default }, Json);
         lock (_gate)
         {
             _entries[key] = new(key, presentation);
+            if (_queued.TryGetValue(key, out var queued) && queued.Content.AsSpan().SequenceEqual(content)
+                && presentation.SampleTime >= queued.Sample && presentation.SampleTime - queued.Sample < TimeSpan.FromSeconds(60))
+            { _unsaved = true; return; }
+            _queued[key] = (content, presentation.SampleTime);
             foreach (var old in _entries.Values.OrderBy(e => e.Presentation.SampleTime)
-                .Take(Math.Max(0, _entries.Count - MaximumEntries)).ToArray()) _entries.Remove(old.Key);
+                .Take(Math.Max(0, _entries.Count - MaximumEntries)).ToArray()) { _entries.Remove(old.Key); _queued.Remove(old.Key); }
             ChangedLocked();
         }
     }
@@ -129,13 +139,14 @@ internal sealed class DeviceStateStore
         lock (_gate)
         {
             var obsolete = _entries.Values.Where(e => e.Key == key && e.Presentation.ProductId != productId).ToArray();
-            foreach (var old in obsolete) _entries.Remove(old.Key);
+            foreach (var old in obsolete) { _entries.Remove(old.Key); _queued.Remove(old.Key); }
             if (obsolete.Length != 0) ChangedLocked();
         }
     }
 
+    // Any write serializes every entry, so it also carries the samples skipped by Remember.
     private void ChangedLocked()
-    { _version++; StartWriterLocked(); }
+    { _version++; _unsaved = false; StartWriterLocked(); }
     private void StartWriterLocked()
     { if (!_writing) { _writing = true; _writer = Task.Run(WriteLoopAsync); } }
 
@@ -167,7 +178,12 @@ internal sealed class DeviceStateStore
     internal async Task FlushAsync()
     {
         Task writer;
-        lock (_gate) { if (_savedVersion != _version) StartWriterLocked(); writer = _writer; }
+        lock (_gate)
+        {
+            if (_unsaved) ChangedLocked();
+            else if (_savedVersion != _version) StartWriterLocked();
+            writer = _writer;
+        }
         await writer;
     }
 

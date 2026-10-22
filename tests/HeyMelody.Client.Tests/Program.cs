@@ -13,11 +13,11 @@ Directory.CreateDirectory(scratch);
 try
 {
     await Test("RPC rejects an incomplete EOF record", async () =>
-        await Throws<InvalidDataException>(() => RpcWire.ReadLineAsync(new StringReader("{}"), default)));
+        await Throws<InvalidDataException>(() => new RpcLineReader(new MemoryStream("{}"u8.ToArray())).ReadLineAsync(default).AsTask()));
     await Test("RPC bounds records before deserialization", async () =>
-        await Throws<InvalidDataException>(() => RpcWire.ReadLineAsync(new StringReader(new string('a', RpcWire.MaximumLineCharacters + 1) + "\n"), default)));
+        await Throws<InvalidDataException>(() => new RpcLineReader(new MemoryStream(Encoding.UTF8.GetBytes(new string('a', RpcWire.MaximumLineCharacters + 1) + "\n"))).ReadLineAsync(default).AsTask()));
     await Test("RPC accepts its exact maximum", async () =>
-        Check((await RpcWire.ReadLineAsync(new StringReader(new string('a', RpcWire.MaximumLineCharacters) + "\n"), default))?.Length == RpcWire.MaximumLineCharacters));
+        Check((await new RpcLineReader(new MemoryStream(Encoding.UTF8.GetBytes(new string('a', RpcWire.MaximumLineCharacters) + "\n"))).ReadLineAsync(default))?.Length == RpcWire.MaximumLineCharacters));
     await Test("isolated worker enumerates and reads without applying", async () =>
     {
         string counter = Counter("read");
@@ -147,6 +147,7 @@ try
     await DemoVmTests.RunAsync(Test);
     await SnapshotCloneTests.RunAsync(Test);
     await WireCompatTests.RunAsync(Test);
+    await RpcLineReaderTests.RunAsync(Test);
     Console.WriteLine(JsonSerializer.Serialize(new { passed, success = true, architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(), nativeBluetoothCalls = 0 }, RpcWire.Json));
     return 0;
 }

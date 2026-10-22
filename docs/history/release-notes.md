@@ -14,6 +14,12 @@
 
 验证边界：Linux 上 Resources、Daily、Devices、Control、Protocol、Calibration、Client、DeviceManager、Calibration.UI 与 App 十个检查全部通过（Resources 26→34、Client 163→173 为新增检查，其余数量不变）；Host 以 `-p:EnableWindowsTargeting=true` 编译无警告和错误，Host.Tests 的 Linux 子集保留改动前的 42 项并新增 6 项（试听 WAV 解析与 worker 线格式），共 48 项通过，并在同一处需要 COM 的试听测试停止。IPC 源生成与 gen0 预算有 Linux 合成探针的测量。**Windows 内存没有测量**，托盘菜单软件渲染外观、BLE 过滤的真机广播、试听播放、美术下载与完整 Host.Tests 均待 Windows 验证。依据、数字与未验证清单见[后台内存审计](../research/backend-memory-audit.md)，测量脚本为 `tools/Measure-HostMemory.ps1`，本轮未实施的其他方向见[优化待办](../optimization-backlog.md)。
 
+2026-10-22（后端内存轮的后续验证）：上一轮提交 `53a436a` 的 CI 全部成功，包括 Windows x64 与 arm64 应用包（含 Verify-Release）以及 Windows、Ubuntu、macOS 的 Filament 运行时构建。用户随后在 Windows x64 真机上用该 CI 构建试用了大部分功能，结论为“功能上没问题”。这一结论只覆盖该范围，不是逐项功能验证，也不是内存测量；Windows 上的内存对比仍未进行。
+
+2026-10-22（后端能耗）：在 review/0.9.9 分支完成一轮后端能耗与 CPU 优化。没有界面连接时（启动后 15 秒宽限，最后一个界面断开后再等 10 秒），托盘与全部 `--worker`、`--catalog-worker` 子进程进入 EcoQoS 加 IDLE 优先级，即任务管理器的“效率模式”；任何界面连接立即恢复默认。托盘打开主窗口前先恢复默认并保持 30 秒，新窗口设为 Normal 优先级；试听的 WASAPI 线程始终豁免；节流失败只记录到 Trace。BLE 的两个 Active watcher 改为只在存在已配对且在白名单的耳机时运行，扫描参数与后台开盖检测不变。空闲唤醒减少：试听泵线程不播放时阻塞，资源协调器睡到下一次检查到期，BLE 广播过期改为每个 peer 一个可复用计时器。设备状态内容未变且样本前进不足 60 秒时不写盘（崩溃后保存时间最多晚 60 秒）。IPC 改用带缓冲的 `RpcLineReader`，每个管道事件只序列化一次。`tools/Measure-HostMemory.ps1` 增加 CPU、上下文切换、优先级与电源节流字段。产品版本仍为 0.9.2，尚未发布；公共 IPC 仍为 schema 4，线格式字节不变。
+
+验证边界：Linux 上 Resources 34→40、Client 173→181 为新增检查（含审查修复新增的 `RpcLineReader` 字节读取、真实管道与休眠后重新调度检查），Daily 177、Devices 21、Control 19、Protocol 77、Calibration 55、DeviceManager 8、Calibration.UI 13、App 129 改后全量重跑数量不变、全部通过；Host 以 `-p:EnableWindowsTargeting=true` 编译 0 警告 0 错误，Host.Tests 现在可在 Linux 完整运行，日志有 110 个 PASS 行，其中 2 项 Windows 专用检查（真实 WASAPI 播放器的致命初始化；试听线程空闲释放）在 Linux 上提前返回、先打印 SKIP 再计为 PASS，实际执行 108 项；此前为 48 项通过后在 COM 处停止。以上为静态分析与模拟或离线测试，没有 Linux 能耗测量。**Windows 行为均未验证**：任务管理器的效率模式显示、IDLE 下的响应、BLE 按需启停、试听豁免和测量脚本新增字段。依据、清单与顺带发现见[后台能耗](../research/backend-energy.md)和[优化待办](../optimization-backlog.md)。
+
 ## 历史版本
 
 以下原段整理自 2026-10-11 文档重整前的根目录 `README.md` 与 `REPOSITORY.md`，保留原版本、日期、设备、平台及验证范围，仅调整链接位置。原段中的 “current”、默认行为与检查数量属于对应历史版本，不作为后续版本的保证。两个来源有重叠时分别列出；原文未给验证日期的条目不补写日期。

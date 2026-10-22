@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -14,6 +15,10 @@ internal sealed class TrayApplication : Application
     private BackendSupervisor? _supervisor;
     private BackendPipeServer? _server;
     private WindowsStateMonitor? _monitor;
+    private EnergyPolicy? _energyPolicy;
+    private EnergyController? _energy;
+    private Process? _self;
+    private IDisposable? _selfEnergy;
     private TrayIcon? _tray;
     private bool _exiting;
 
@@ -28,7 +33,10 @@ internal sealed class TrayApplication : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            _supervisor = new(); _server = new(_supervisor); _monitor = new(_supervisor);
+            // Eco applies when no window is connected: this process and its workers drop to EcoQoS and idle priority.
+            _energyPolicy = new(TimeProvider.System); _energy = new(_energyPolicy, new WindowsProcessEnergy());
+            HostEnergy.Controller = _energy; _selfEnergy = _energy.Attach(_self = Process.GetCurrentProcess());
+            _supervisor = new(); _server = new(_supervisor, energy: _energyPolicy); _monitor = new(_supervisor);
             var menu = new NativeMenu();
             var open = new NativeMenuItem("打开主界面");
             void OpenMain() { try { _server.ActivateMain(true); } catch { _supervisor.ReportHealth("无法打开主界面，请重启软件或重新安装。"); } }
@@ -55,7 +63,11 @@ internal sealed class TrayApplication : Application
                 if (_exiting) return;
                 args.Cancel = true; _ = _server.RequestExitAsync();
             };
-            desktop.Exit += (_, _) => { _monitor.Dispose(); _tray.Dispose(); };
+            desktop.Exit += (_, _) =>
+            {
+                _monitor.Dispose(); _tray.Dispose();
+                HostEnergy.Controller = null; _selfEnergy?.Dispose(); _energy?.Dispose(); _energyPolicy?.Dispose(); _self?.Dispose();
+            };
             _server.Start();
             _ = StartAsync();
         }

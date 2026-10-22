@@ -22,13 +22,13 @@ Windows DeviceWatcher 提供已配对设备的连接和解除配对事件，Radi
 
 普通界面状态不再每八秒读取。初始化、重新连接、手动刷新、设置前后确认仍执行 GET；只包含部分信息的通知可以合并为对应 scope 的补充读取。设置推送不会触发绑定控件提交 SET，未提交选项和 EQ 草稿继续按编辑版本保护。
 
-BLE 使用两个 Active AdvertisementWatcher，各带一个字节模式过滤器（厂商数据段 0xFF、偏移 0、小端公司 ID），分别只接收含 OPPO 0x079A、OnePlus 0x072F manufacturer record 的广播包和 scan response；过滤只减少无关广播进入托盘，处理代码仍自行核对公司 ID，单包语义不变，尚待真机验证。广播须完整通过字段长度、公司 ID、产品 ID 和可证实的地址关联检查。仅随机地址且无已证实关联的广播不归到某副同名耳机。广播不会授予 ControlReady、能力或设置权限。
+BLE 使用两个 Active AdvertisementWatcher，各带一个字节模式过滤器（厂商数据段 0xFF、偏移 0、小端公司 ID），分别只接收含 OPPO 0x079A、OnePlus 0x072F manufacturer record 的广播包和 scan response；过滤只减少无关广播进入托盘，处理代码仍自行核对公司 ID，单包语义不变，尚待真机验证。两个 watcher 只在至少存在一副已配对（Present）且在白名单（Allowed）的耳机时运行，没有时停止；Present 指耳机仍在 Windows 已配对音频设备列表中，与是否连接无关，扫描参数（Active 模式、字节模式过滤器、默认间隔）不变，见[资源占用](#资源占用)。广播须完整通过字段长度、公司 ID、产品 ID 和可证实的地址关联检查。仅随机地址且无已证实关联的广播不归到某副同名耳机。广播不会授予 ControlReady、能力或设置权限。
 
 SPP 与 BLE 各自保留观测时间，按耳机部件融合电量、充电盒盖及佩戴状态；同一时间优先采用已核验 SPP。其他设置读取不会刷新旧盒盖时间。BLE 字段在 30 秒后失去新鲜性，未观测到的状态保持 Unknown。开盖去重独立于显示过期：首次观测到盒盖状态时即为打开，标为 FirstObservation；重复开盖不重复触发，只有较新的明确合盖能重新允许下一次开盖。暂停、无广播和休眠不等同于合盖。
 
-系统挂起停止 watcher 和控制会话；恢复重建 watcher，并丢弃旧 watcher 代次或早于本次扫描的回调。Modern Standby 使用注册式 suspend/resume 通知。广播或监听 API 不可用时会发布诊断，现有可用 RFCOMM 仍可工作；确证蓝牙关闭时才停控制会话。
+系统挂起停止 watcher 和控制会话；恢复后仅在仍有扫描需求时重建 watcher，并丢弃旧 watcher 代次或早于本次扫描的回调。Modern Standby 使用注册式 suspend/resume 通知。广播或监听 API 不可用时会发布诊断，现有可用 RFCOMM 仍可工作；确证蓝牙关闭时才停控制会话。
 
-详细 APK 依据和广播编码见 [bluetooth-events.md](research/bluetooth-events.md)。当前按欢律配置、App 条件、已实现的协议和设备能力开放设置；固件条件只产生提醒，适配范围见[设备支持说明](research/oppo-device-support.md)。客户端没有改变 Windows 音频驱动或 LE Audio 管线；后台提供 caseOpen 事件，尚未实现独立开盖弹窗。
+详细 APK 依据和广播编码见 [bluetooth-events.md](research/bluetooth-events.md)。当前按欢律配置、App 条件、已实现的协议和设备能力开放设置；固件条件只产生提醒，适配范围见[设备支持说明](research/oppo-device-support.md)。客户端没有改变 Windows 音频驱动或 LE Audio 管线；后台提供 caseOpen 事件，尚未实现独立开盖弹窗；后台开盖检测保持运行，与将来弹窗的兼容安排见[资源占用](#资源占用)。
 
 ## 暂停、写入与退出
 
@@ -44,8 +44,36 @@ SPP 与 BLE 各自保留观测时间，按耳机部件融合电量、充电盒�
 
 美术包的校验与下载经 64 KiB 池化缓冲流式处理：下载写入磁盘 scratch（`.download-*`），解压读取已校验的文件，不再把整包读进内存；美术安装后约 5 秒执行一次压缩 GC。worker 的目录载荷（gzip 加 base64）按目录只计算一次。IPC 的 JSON 使用源生成并保留反射回退；Linux 探针中 GUI 首次往返快 33%，RssAnon 在 GUI 场景少 1.7 MiB、在 host 场景少 5.2 MiB，已保留。
 
-这些数字来自 Linux 合成探针，Windows 内存没有测量；Windows 待验证项、测量脚本 [Measure-HostMemory.ps1](../tools/Measure-HostMemory.ps1) 的用途和完整依据见[后台内存审计](research/backend-memory-audit.md)，其他方向的待办见[优化待办](optimization-backlog.md)。
+这些内存数字来自 Linux 合成探针，Windows 内存没有测量；Windows 待验证项、测量脚本 [Measure-HostMemory.ps1](../tools/Measure-HostMemory.ps1) 的用途和完整依据见[后台内存审计](research/backend-memory-audit.md)，其他方向的待办见[优化待办](optimization-backlog.md)。
+
+### 效率模式（能耗）
+
+没有任何界面连接时，托盘进程与全部 `--worker`、`--catalog-worker` 子进程进入 Windows 任务管理器所称的“效率模式”：进程级 EcoQoS（`SetProcessInformation` 的 ProcessPowerThrottling，EXECUTION_SPEED；Windows 11 22000 及以上另加 IGNORE_TIMER_RESOLUTION，被拒绝时回退为只设 EXECUTION_SPEED）加 IDLE 优先级类。`EnergyPolicy` 管理状态与计时，`EnergyController` 在线程池上对托盘和已挂接的子进程应用，不占用界面线程或后台锁，`WindowsProcessEnergy` 执行 Win32 调用。
+
+- 计入“界面”的订阅角色为 main、manager、calibration，preview 同样接受，observer 不计；已连接但尚未订阅（角色未知）的客户端按界面计，使启动中的窗口不会遇到被限速的后台。
+- 进入：没有界面连接，且已过启动后 15 秒宽限，并在最后一个界面断开后再等 10 秒；延迟期内有界面重连则不进入。任何界面连接立即恢复默认：Normal 优先级，节流状态交还系统。
+- 启动窗口：托盘打开主窗口前先恢复默认并保持 30 秒，再把新窗口进程设为 Normal 优先级；子进程会继承托盘的 IDLE 优先级类，不这样处理会让窗口以 IDLE 运行。
+- 试听的 WASAPI 泵线程始终豁免：线程级关闭 EcoQoS（高 QoS），Eco 期间播放不被拖慢。不使用 MMCSS。
+- 设置失败按进程和能力只向 Trace 记录一次，不抛出、不显示给用户，也不计入后台健康。
+
+### 按需 BLE 扫描与开盖弹窗
+
+两个过滤的 Active watcher 只在至少存在一副已配对（Present）且在白名单（Allowed）的耳机时运行。Present 只看耳机是否仍在 Windows 已配对音频设备列表中，不要求连接，因此已配对但未连接的白名单耳机仍会扫描，后台开盖检测和 caseOpen 事件不变。没有符合条件的耳机（全部解除配对或移出白名单）时停止扫描；之后允许或配对一副耳机会重新启动，电量与开盖广播应在数秒内恢复（Windows 待验证）。扫描参数、过滤器和单包语义不变。
+
+开盖弹窗兼容：满载 CPU 时，IDLE 优先级可能让广播回调延迟数秒。用户 2026-10-22 决定现在保持 IDLE，实现弹窗时再复核：弹窗显示前像启动主窗口那样先恢复默认；若延迟仍不可接受，改用 BELOW_NORMAL 并保留 EcoQoS。登记为[优化待办](optimization-backlog.md) PWR-01。
+
+### 空闲唤醒、写盘与 IPC
+
+- 试听泵线程不播放时阻塞等待，不再在首次预览后于 worker 的整个生命周期内以 20 Hz 唤醒。
+- 资源协调器睡到下一次检查到期，不再每 30 秒空转：关闭在线资源时没有任何计划；偏好变化、重新下载、新美术目标和释放会唤醒它；电脑从休眠恢复时 Host 也会唤醒它（`Reschedule`），因为这一个长计时器未必计入休眠时间，休眠期间到期的检查随即按墙钟重新评估；两轮之间至少间隔 30 秒，10 分钟与 30 秒的检查节奏不变。
+- BLE 广播过期改为每个 peer 一个可复用计时器，取代每条广播一个 CTS 加延迟任务。
+- 设备状态缓存：内容除 SampleTime 外未变、且样本时间前进不足 60 秒时不写盘，内存保持最新；关闭时 `FlushAsync` 写入最新样本；崩溃后磁盘上的时间最多晚 60 秒（界面只显示 HH:mm）。
+- IPC：每条连接一个带缓冲的 `RpcLineReader`，直接读取管道或 worker 标准流的字节并增量解码 UTF-8（无 BOM；客户端严格解码），不再叠 `StreamReader`；`Stream.ReadAsync` 一有数据即返回，因此整行已到达时不会因 `StreamReader` 在缓冲读满时继续等待而被扣住。行长上限、EOF 与 '\r' 语义不变，该流不得再被其他读取者使用；旧的静态 `ReadLineAsync` 已删除；每个管道事件只序列化一次并供所有客户端共用，按客户端的合并与限额不变。线格式字节和 schema 4 不变。
+
+### 能耗轮验证边界
+
+策略时序、控制器、结构体布局、角色计数、序列化与写盘规则由静态分析和 Linux 上的模拟或离线测试覆盖（Host.Tests 现在可在 Linux 完整运行：110 个 PASS 行，其中 2 项只在 Windows 执行的检查提前返回并显示 SKIP，实际执行 108 项）。Linux 没有 Windows 的进程 QoS、优先级与 BLE API，**效率模式在任务管理器中的显示、IDLE 下的响应、BLE 按需启停和试听豁免均未在 Windows 验证**。依据、测试数量与 Windows 待验证清单见[后台能耗](research/backend-energy.md)。
 
 ## 验证边界
 
-离线测试覆盖真实命名管道和子进程隔离，协议测试使用合成通知/广播。Avalonia headless 与 Win32 模拟窗口验证推送、设置绑定和退出确认。三架构发布校验 Host 的 WinExe 子系统、新 Windows TFM、托盘图标、原生图形依赖与独立许可目录。以上不证明实际耳机广播、手机并发操作、休眠恢复或 ARM64 真机蓝牙行为。
+离线测试覆盖真实命名管道和子进程隔离，协议测试使用合成通知/广播。Avalonia headless 与 Win32 模拟窗口验证推送、设置绑定和退出确认。三架构发布校验 Host 的 WinExe 子系统、新 Windows TFM、托盘图标、原生图形依赖与独立许可目录。以上不证明实际耳机广播、手机并发操作、休眠恢复或 ARM64 真机蓝牙行为，也不证明效率模式在 Windows 上的实际表现。

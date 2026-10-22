@@ -60,7 +60,7 @@ App 也能自动启动后台；源码运行时，若输出目录没有 Host 可�
 
 ## 按改动选择验证
 
-`tests/` 下的检查是可执行项目，使用 `dotnet run`，不是 `dotnet test`。Linux 上可以运行无头的 App、DeviceManager、Calibration.UI、Client、Calibration、Protocol、Resources、Devices、Control 与 Daily 检查；ModelPreview 的默认运动检查已在 Linux x64 使用 `dotnet run --project tests/HeyMelody.ModelPreview.Tests -c Release` 通过，无需指定 RID。`--native*` 模式、Host／Probe／Audio 检查与 `Windows.OfflineChecks` 只在 Windows 运行。Linux 可用 `-p:EnableWindowsTargeting=true` 编译 Host 做静态检查，Host.Tests 仅在 Windows 完整运行（Linux 上运行到需要 COM 的试听测试处即停止）。可用内存较少时，构建加 `-nodeReuse:false -p:UseSharedCompilation=false` 并在测试前执行 `dotnet build-server shutdown`，以免常驻编译进程挤占测试内存。先选择能覆盖改动的检查，例如协议或界面：
+`tests/` 下的检查是可执行项目，使用 `dotnet run`，不是 `dotnet test`。Linux 上可以运行无头的 App、DeviceManager、Calibration.UI、Client、Calibration、Protocol、Resources、Devices、Control 与 Daily 检查；ModelPreview 的默认运动检查已在 Linux x64 使用 `dotnet run --project tests/HeyMelody.ModelPreview.Tests -c Release` 通过，无需指定 RID。`--native*` 模式、Probe／Audio 检查与 `Windows.OfflineChecks` 只在 Windows 运行。Linux 可用 `-p:EnableWindowsTargeting=true` 编译 Host 做静态检查；Host.Tests 现可在 Linux 完整运行（含能耗策略、状态写盘与 IPC 检查），2026-10-22 日志有 110 个 PASS 行，其中 2 项只在 Windows 执行的检查（真实 WASAPI 播放器的致命初始化；试听线程空闲释放）在 Linux 上提前返回，先打印 SKIP 再计为 PASS，实际执行 108 项；这 2 项须在 Windows 另行运行，不能算作已验证。可用内存较少时，构建加 `-nodeReuse:false -p:UseSharedCompilation=false` 并在测试前执行 `dotnet build-server shutdown`，以免常驻编译进程挤占测试内存。先选择能覆盖改动的检查，例如协议或界面：
 
 ```powershell
 dotnet run --project tests/HeyMelody.Protocol.Tests/HeyMelody.Protocol.Tests.csproj -c Release
@@ -84,7 +84,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Test
 - 静态发布校验检查包结构、版本、运行时、资源及许可材料，不连接蓝牙。
 - 真机记录须注明型号、固件、应用版本、命令范围与环境；旧 X4 记录不能证明所有目录型号、后续版本或 ARM64 实机行为。
 
-后台内存的 Windows 测量使用只读脚本 `tools/Measure-HostMemory.ps1`（Windows PowerShell 5.1 或 PowerShell 7，加 `-NoProfile`）：按命令行模式区分托盘、`--worker`、`--catalog-worker` 与 `HeyMelody.exe`，列出各进程的私有工作集、工作集、私有字节、线程和句柄数；可用 `-Samples`、`-IntervalSeconds` 采样，用 `-OutputPath` 另存新的 JSON（拒绝覆盖已有文件，只含系统、CPU 与 Host 版本和计数，不含命令行或蓝牙地址）。脚本不做任何设备操作。改前改后须在同一台机器、同一连接状态下比较；Linux 探针数字不能代替它，范围与未验证项见[后台内存审计](research/backend-memory-audit.md)，其他方向的待办见[优化待办](optimization-backlog.md)。
+后台内存与能耗的 Windows 测量使用只读脚本 `tools/Measure-HostMemory.ps1`（Windows PowerShell 5.1 或 PowerShell 7，加 `-NoProfile`）：按命令行模式区分托盘、`--worker`、`--catalog-worker` 与 `HeyMelody.exe`，列出各进程的私有工作集、工作集、私有字节、线程和句柄数，另有 CPU 用户／内核／合计毫秒（cpuUserMs、cpuKernelMs、cpuTotalMs）、相邻采样间的 CPU 百分比（cpuPercent，按逻辑处理器数归一，口径同任务管理器“详细信息”）、每秒上下文切换数（contextSwitchesPerSec）、priorityClass、powerThrottling（eco、default、custom 或 unknown）和 ignoreTimerResolution，并按角色汇总；读取电源节流状态时 Add-Type 会编译一个小的 P/Invoke 辅助类型（Windows PowerShell 5.1 在 `%TEMP%` 写临时编译文件，编译失败时 powerThrottling 为 unknown）；可用 `-Samples`、`-IntervalSeconds` 采样，用 `-OutputPath` 另存新的 JSON（拒绝覆盖已有文件，只含系统、CPU 与 Host 版本和计数，不含命令行或蓝牙地址）。脚本不做任何设备操作。改前改后须在同一台机器、同一连接状态下比较；比较效率模式时，先在所有窗口关闭至少 15 秒后测量，再打开主窗口测量；Linux 探针数字不能代替它，范围与未验证项见[后台内存审计](research/backend-memory-audit.md)与[后台能耗](research/backend-energy.md)，其他方向的待办见[优化待办](optimization-backlog.md)。
 
 内置资源仅包含欢律的 85 个耳机产品 ID。这是目录覆盖数量；未知 codec、缺少 SPP 或仅外部控制路由的功能会被禁用，目录条目本身不是硬件验证结论。跨窗口并发、校准流程、手机同时操作、休眠恢复及特定硬件的渲染仍需相应范围的实测证据。
 

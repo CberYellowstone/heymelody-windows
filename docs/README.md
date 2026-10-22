@@ -24,7 +24,7 @@
 - [CLI 工具](cli-tools.md)：只读查询与受控 Hi-Res 实验，使用前核对各命令边界。
 - [研究工具](../tools/research/README.md)：资源提取、协议依据与离线验收。
 - [优化待办](optimization-backlog.md)：分支按方向分轮优化的规则，以及各方向已完成与待处理的优化条目。
-- [后台内存测量脚本](../tools/Measure-HostMemory.ps1)：只读，列出 Host 托盘、worker 与界面进程的私有工作集等计数（仅 Windows）。
+- [后台内存与能耗测量脚本](../tools/Measure-HostMemory.ps1)：只读，列出 Host 托盘、worker 与界面进程的私有工作集、CPU、优先级与电源节流等计数（仅 Windows）。
 
 各文档中的静态分析、模拟测试、原生窗口检查和真实设备验证具有不同范围；已有离线结果不证明真实耳机广播、手机并发、休眠恢复或 ARM64 实机行为。
 
@@ -33,6 +33,7 @@
 完整专题与本地证据入口见 [研究索引](research/README.md)，档案与公开整理稿的职责见 [研究资料规范](research/organization.md)。以下入口便于按问题查阅。
 
 - [后台内存审计](research/backend-memory-audit.md)：2026-10-21 后端内存方向的发现、已实施与暂缓项、Linux 测量结果；Windows 内存未测量。
+- [后台能耗与 CPU](research/backend-energy.md)：2026-10-22 后端能耗方向的效率模式、按需 BLE 扫描、空闲唤醒与 Windows 待验证清单；Windows 行为未验证。
 - [上下文读取风险排查](research/context-read-risk-2026-10-11.md)：大文件、超长单行与工具输出风险，后续读取和处理顺序；503 成因尚未确认。
 - [黄金听感与贴合度重新研究](research/calibration-reassessment.md)、[组件修复](research/calibration-repair.md)：两 APK 与 X4 v116 的路由、滤波、停止／保存流程及实现验证。
 - [游戏音效与 Hi-Res／空间音效](research/game-audio-spatial.md)：游戏开关和类型命令、包名、互斥方向与手机分支。

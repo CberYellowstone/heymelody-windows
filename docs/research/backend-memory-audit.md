@@ -107,3 +107,7 @@ Linux 上可用 `-p:EnableWindowsTargeting=true` 编译 Host 做静态检查；H
 - 试听播放；在线美术的下载、解压与租约。
 - `Verify-Release` 与整个发布包。
 - 0.7.0 时约 30 MB 的测量口径；Windows 上 gen0 预算的默认值、ConserveMemory 的实际效果，以及 BLE 过滤省下的 CsWinRT 包装成本，均未测量。
+
+## 后续验证与进展（2026-10-22）
+
+本轮提交 `53a436a` 的 CI 全部成功：Windows x64 与 arm64 应用包（含 Verify-Release，仍是不执行应用的静态校验）以及 Windows、Ubuntu、macOS 的 Filament 运行时构建，上文“未验证内容”中的 Verify-Release 一项由此部分闭合。用户 2026-10-22 在 Windows x64 真机上用该 CI 构建试用了大部分功能，结论为“功能上没问题”；该结论只覆盖这一范围，不是逐项验证，也不是内存测量，Windows 私有工作集的改前改后对比仍未进行。上文“暂缓项”中的 MEM-10、IO-01、CPU-01、CPU-02 已在下一轮完成，见[后台能耗](backend-energy.md)。

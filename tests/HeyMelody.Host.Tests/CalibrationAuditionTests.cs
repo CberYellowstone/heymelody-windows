@@ -124,6 +124,8 @@ internal static class CalibrationAuditionTests
         });
         await test("fatal audition render initialization drains commands and rejects future work without hanging", async () =>
         {
+            // The render thread is a COM STA thread; off Windows the real player cannot even be constructed.
+            if (!OperatingSystem.IsWindows()) { Console.WriteLine("SKIP fatal audition render initialization drains commands and rejects future work without hanging"); return; }
             using var entered = new ManualResetEventSlim(); using var release = new ManualResetEventSlim();
             await using var player = new WasapiCalibrationAuditionPlayer(() => { entered.Set(); release.Wait(); throw new IOException("Synthetic COM initialization failure"); }, () => { });
             Check(entered.Wait(TimeSpan.FromSeconds(2)), "Synthetic render thread never started");

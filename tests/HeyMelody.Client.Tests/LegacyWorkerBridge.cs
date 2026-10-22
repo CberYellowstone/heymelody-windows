@@ -13,6 +13,7 @@ internal sealed class LegacyWorkerBridge : IHeadsetService, IDeviceManagementSer
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
     private Process? _worker;
+    private RpcLineReader? _workerOutput;
     private Task? _errorDrain;
     private long _nextId;
     private bool _disposed;
@@ -86,7 +87,7 @@ internal sealed class LegacyWorkerBridge : IHeadsetService, IDeviceManagementSer
             submitted = true;
             await _worker!.StandardInput.WriteLineAsync(request.AsMemory(), linked.Token);
             await _worker.StandardInput.FlushAsync(linked.Token);
-            string? record = await RpcWire.ReadLineAsync(_worker.StandardOutput, linked.Token);
+            string? record = await _workerOutput!.ReadLineAsync(linked.Token);
             if (record is null) throw new EndOfStreamException();
             var response = JsonSerializer.Deserialize<RpcResponse>(record, Json) ?? throw new InvalidDataException();
             if (response.SchemaVersion != 1 || response.Id != id) throw new InvalidDataException();
@@ -113,6 +114,7 @@ internal sealed class LegacyWorkerBridge : IHeadsetService, IDeviceManagementSer
         if (_worker is { HasExited: false }) return;
         StopWorker();
         _worker = Process.Start(_workerFactory()) ?? throw new IOException();
+        _workerOutput = new(_worker.StandardOutput.BaseStream);
         _errorDrain = DrainAsync(_worker.StandardError);
     }
 
@@ -124,7 +126,7 @@ internal sealed class LegacyWorkerBridge : IHeadsetService, IDeviceManagementSer
 
     private void StopWorker()
     {
-        var worker = _worker; _worker = null;
+        var worker = _worker; _worker = null; _workerOutput = null;
         if (worker is null) return;
         try { if (!worker.HasExited) worker.Kill(entireProcessTree: true); } catch (Exception) { }
         worker.Dispose();

@@ -97,7 +97,8 @@ internal static class NativeWorker
         {
             long lastId = 0;
             bool initialized = false;
-            while (await RpcWire.ReadLineAsync(Console.In, lifetime.Token) is { } line)
+            var input = new RpcLineReader(Console.OpenStandardInput());
+            while (await input.ReadLineAsync(lifetime.Token) is { } line)
             {
                 var request = JsonSerializer.Deserialize<WorkerRequest>(line, HostWire.Json) ?? throw new InvalidDataException();
                 if (request.Id <= lastId) throw new InvalidDataException();
@@ -194,6 +195,7 @@ internal sealed partial class PeerWorker(Func<ProcessStartInfo>? startFactory = 
     private readonly CancellationTokenSource _lifetime = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<long, TaskCompletionSource<WorkerMessage>> _pending = new();
     private Process? _process;
+    private IDisposable? _energy;
     private long _nextId;
     private int _stopped;
     public event Action<UiSnapshot>? SnapshotChanged;
@@ -218,8 +220,13 @@ internal sealed partial class PeerWorker(Func<ProcessStartInfo>? startFactory = 
             if (_process is null)
             {
                 _process = Process.Start(startFactory?.Invoke() ?? NativeWorker.StartInfo("--worker")) ?? throw new IOException();
+                // The tray's current energy mode applies to the new worker at once and follows later changes until Stop.
+                // Publish before reading _stopped; Stop sets _stopped before it takes _energy. Both sides use full-fence exchanges,
+                // so at least one sees the other, and the exchange lets exactly one of them dispose the attachment.
+                Interlocked.Exchange(ref _energy, HostEnergy.Controller?.Attach(_process));
+                if (Volatile.Read(ref _stopped) != 0) Interlocked.Exchange(ref _energy, null)?.Dispose();
                 _ = DrainErrorsAsync(_process.StandardError);
-                _ = ReadAsync(_process.StandardOutput);
+                _ = ReadAsync(_process.StandardOutput.BaseStream);
             }
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
             deadline.CancelAfter(testBudget ?? TimeSpan.FromSeconds(request.Operation == "apply" ? 120 : 75));
@@ -256,11 +263,13 @@ internal sealed partial class PeerWorker(Func<ProcessStartInfo>? startFactory = 
         finally { _pending.TryRemove(request.Id, out _); _commands.Release(); }
     }
 
-    private async Task ReadAsync(TextReader reader)
+    // The worker's stdout is read only through this line reader, never through Process.StandardOutput itself.
+    private async Task ReadAsync(Stream output)
     {
         try
         {
-            while (await RpcWire.ReadLineAsync(reader, _lifetime.Token) is { } line)
+            var lines = new RpcLineReader(output);
+            while (await lines.ReadLineAsync(_lifetime.Token) is { } line)
             {
                 var message = JsonSerializer.Deserialize<WorkerMessage>(line, HostWire.Json) ?? throw new InvalidDataException();
                 if (message.Kind == "snapshot" && message.Snapshot is { } snapshot) SnapshotChanged?.Invoke(snapshot);
@@ -281,6 +290,7 @@ internal sealed partial class PeerWorker(Func<ProcessStartInfo>? startFactory = 
     {
         if (Interlocked.Exchange(ref _stopped, 1) != 0) return;
         _lifetime.Cancel();
+        Interlocked.Exchange(ref _energy, null)?.Dispose();
         foreach (var pending in _pending.Values) pending.TrySetException(new IOException("设备后台已中断。"));
         var process = _process;
         try { if (process is { HasExited: false }) process.Kill(entireProcessTree: true); } catch { }
@@ -301,12 +311,13 @@ internal sealed partial class PeerWorker(Func<ProcessStartInfo>? startFactory = 
     internal static async Task<IReadOnlyList<BluetoothCandidate>> EnumerateAsync(CancellationToken token)
     {
         using var process = Process.Start(NativeWorker.StartInfo("--catalog-worker")) ?? throw new IOException();
+        using var energy = HostEnergy.Controller?.Attach(process);
         _ = DrainErrorsAsync(process.StandardError);
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(token);
         budget.CancelAfter(TimeSpan.FromSeconds(75));
         try
         {
-            var line = await RpcWire.ReadLineAsync(process.StandardOutput, budget.Token) ?? throw new IOException();
+            var line = await new RpcLineReader(process.StandardOutput.BaseStream).ReadLineAsync(budget.Token) ?? throw new IOException();
             var result = JsonSerializer.Deserialize<List<BluetoothCandidate>>(line, HostWire.Json) ?? throw new InvalidDataException();
             await process.WaitForExitAsync(budget.Token);
             if (process.ExitCode != 0 || result.Count > 4096) throw new IOException();

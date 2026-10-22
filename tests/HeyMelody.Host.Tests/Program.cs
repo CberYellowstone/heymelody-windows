@@ -180,6 +180,8 @@ try
     await AncBackendTests.RunAsync(Test, scratch);
     await AncPresentationTests.RunAsync(Test, scratch);
     await DeviceStateTests.RunAsync(Test, scratch);
+    await EnergyTests.RunAsync(Test, scratch);
+    await HostEfficiencyTests.RunAsync(Test, scratch);
     Console.WriteLine(JsonSerializer.Serialize(new { passed, success = true, nativeBluetoothCalls = 0 }));
     return 0;
 }

@@ -104,6 +104,7 @@ internal sealed class WasapiCalibrationAuditionPlayer : ICalibrationAuditionPlay
     private readonly Thread _thread;
     private readonly Func<int> _initializeCom;
     private readonly Action _uninitializeCom;
+    private readonly Func<bool> _exemptThread;
     private int _disposed;
     private IDeviceEnumerator? _enumerator;
     private IDevice? _endpoint;
@@ -120,10 +121,11 @@ internal sealed class WasapiCalibrationAuditionPlayer : ICalibrationAuditionPlay
     private readonly float[] _mono = new float[HearingSpectrumAnalyzer.FrameLength];
     public event Action<IReadOnlyList<double>>? Spectrum;
     public event Action? Failed;
-    internal WasapiCalibrationAuditionPlayer(Func<int>? initializeCom = null, Action? uninitializeCom = null)
+    internal WasapiCalibrationAuditionPlayer(Func<int>? initializeCom = null, Action? uninitializeCom = null, Func<bool>? exemptThread = null)
     {
         _initializeCom = initializeCom ?? (() => CoInitializeEx(IntPtr.Zero, 2));
         _uninitializeCom = uninitializeCom ?? CoUninitialize;
+        _exemptThread = exemptThread ?? WindowsProcessEnergy.TryExemptCurrentThread;
         _thread = new(Run) { IsBackground = true, Name = "HeyMelody calibration audition" };
         _thread.SetApartmentState(ApartmentState.STA); _thread.Start();
     }
@@ -151,9 +153,12 @@ internal sealed class WasapiCalibrationAuditionPlayer : ICalibrationAuditionPlay
         try
         {
             Check(_initializeCom()); initialized = true;
+            // The tray may be in EcoQoS while a preview plays; the 5 ms pump must not be throttled. A failed exemption only costs efficiency.
+            try { _exemptThread(); } catch { }
             while (!_commands.IsCompleted)
             {
-                if (_commands.TryTake(out var command, _playing ? 5 : 50))
+                // Idle: block until a command arrives or CompleteAdding wakes the thread; no polling while nothing plays.
+                if (_commands.TryTake(out var command, _playing ? 5 : Timeout.Infinite))
                 {
                     try { command.Token.ThrowIfCancellationRequested(); command.Action(); command.Completion.TrySetResult(); }
                     catch (OperationCanceledException) { command.Completion.TrySetCanceled(command.Token); }

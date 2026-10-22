@@ -43,6 +43,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("A vfxms slice is copied byte for byte to model.glb", VfxmsSlice),
     ("An older response still repairs a damaged cache from the retained bytes", OlderResponseRepair),
     ("The bundled catalog is shared and only online snapshots retain their bytes", SharedBundledCatalog),
+    ("Auto refresh makes no request and holds no timer while online resources are off, then checks at once when they are turned on", AutoRefreshOffline),
+    ("Auto refresh re-checks a success after 10 minutes and retries a failure after 30 seconds", AutoRefreshSchedule),
+    ("Auto refresh wakes for artwork due times and an added target", AutoRefreshArtwork),
+    ("A preference change clears the throttles but waits out the 30-second pass floor", AutoRefreshFloor),
+    ("Disposing the coordinator ends auto refresh within two seconds, sleeping or not", AutoRefreshDispose),
+    ("Rescheduling after the clock moved past a due check (system sleep) runs it at once, and does nothing when none is due", AutoRefreshReschedule),
 };
 if (args is ["--verify-x4-artwork", var controlPackage, var modelPackage])
     tests = [.. tests, ("Real X4 packages resolve animated product art and static fallback from HeyMelody", () => RealX4Artwork(controlPackage, modelPackage))];
@@ -620,6 +626,118 @@ static async Task SharedBundledCatalog()
     using var restarted = fixture.Coordinator(); await restarted.InitializeAsync();
     Check(restarted.Catalog.IsOnline && OriginalBytes(restarted.Catalog)!.SequenceEqual(fixture.Handler.Configuration), "A cached online snapshot did not retain its bytes");
 }
+static async Task WaitFor(Func<bool> condition, string reason, int milliseconds = 5000)
+{
+    for (int waited = 0; !condition(); waited += 10)
+    {
+        if (waited >= milliseconds) throw new InvalidOperationException("Timed out: " + reason);
+        await Task.Delay(10);
+    }
+}
+static Task Settle() => Task.Delay(300);
+static async Task AutoRefreshOffline()
+{
+    using var fixture = new Fixture(); var time = new ManualTime(); using var coordinator = fixture.Coordinator(time);
+    await coordinator.InitializeAsync(); fixture.Handler.Configuration = Config(117006010);
+    await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { UseOnlineResources = false });
+    coordinator.StartAutoRefresh(); await Settle();
+    Eq(0, fixture.Handler.Requests); Eq(0, time.Pending().Length);
+    time.Advance(TimeSpan.FromHours(3)); await Settle(); Eq(0, fixture.Handler.Requests);
+    // The previous pass began hours ago, so the 30-second floor no longer applies.
+    await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { UseOnlineResources = true });
+    var due = time.GetUtcNow().AddMinutes(10);
+    await WaitFor(() => fixture.Handler.Requests > 0 && time.Pending().Contains(due), "Turning online resources on did not check at once");
+    Eq(2, fixture.Handler.Requests);
+}
+static async Task AutoRefreshSchedule()
+{
+    using var fixture = new Fixture(); var time = new ManualTime(); using var coordinator = fixture.Coordinator(time);
+    await coordinator.InitializeAsync(); fixture.Handler.Configuration = Config(117006010);
+    var start = time.GetUtcNow(); coordinator.StartAutoRefresh();
+    await WaitFor(() => time.Pending().Contains(start.AddMinutes(10)), "The first check did not schedule the next one 10 minutes out");
+    int requests = fixture.Handler.Requests; Check(requests > 0, "No initial check");
+    time.Advance(TimeSpan.FromMinutes(9)); await Settle(); Eq(requests, fixture.Handler.Requests);
+    time.Advance(TimeSpan.FromMinutes(1));
+    await WaitFor(() => time.Pending().Contains(start.AddMinutes(20)), "The 10-minute re-check did not run");
+    Eq(requests + 1, fixture.Handler.Requests);
+    fixture.Handler.Failure = new HttpRequestException("down"); requests = fixture.Handler.Requests;
+    time.Advance(TimeSpan.FromMinutes(10));
+    await WaitFor(() => time.Pending().Contains(start.AddMinutes(20).AddSeconds(30)), "A failure was not retried after 30 seconds");
+    Eq(requests + 1, fixture.Handler.Requests);
+    time.Advance(TimeSpan.FromSeconds(29)); await Settle(); Eq(requests + 1, fixture.Handler.Requests);
+    time.Advance(TimeSpan.FromSeconds(1));
+    await WaitFor(() => time.Pending().Contains(start.AddMinutes(21)), "The retry did not run");
+    Eq(requests + 2, fixture.Handler.Requests); Check(coordinator.LastError is not null, "The failure was not reported");
+    fixture.Handler.Failure = null; time.Advance(TimeSpan.FromSeconds(30));
+    await WaitFor(() => time.Pending().Contains(start.AddMinutes(31)), "A recovered check did not return to the 10-minute cadence");
+    Check(coordinator.LastError is null, "Recovery left the error");
+    await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { UseOnlineResources = false });
+    await WaitFor(() => time.Pending().Length == 0, "Turning online resources off left a timer");
+    requests = fixture.Handler.Requests; time.Advance(TimeSpan.FromHours(2)); await Settle(); Eq(requests, fixture.Handler.Requests);
+}
+static async Task AutoRefreshArtwork()
+{
+    using var fixture = new Fixture(); var time = new ManualTime(); using var coordinator = fixture.Coordinator(time);
+    await coordinator.InitializeAsync(); fixture.Handler.Configuration = Config(117006010); fixture.Handler.Artwork = ArtZip(1);
+    var start = time.GetUtcNow(); coordinator.StartAutoRefresh();
+    await WaitFor(() => time.Pending().Contains(start.AddMinutes(10)), "The first check did not run");
+    time.Advance(TimeSpan.FromMinutes(4));
+    Check(await coordinator.RefreshArtworkAsync("06EC10", 0), "Artwork was not downloaded");
+    await Settle(); // the loop re-arms its wait after the new target's signal
+    time.Advance(TimeSpan.FromMinutes(6));
+    // Configuration is due now; the artwork slot added at +4 minutes is due at +14.
+    await WaitFor(() => time.Pending().Contains(start.AddMinutes(14)), "The added artwork target did not set the next wake");
+    int requests = fixture.Handler.Requests; Check(!time.Pending().Contains(start.AddMinutes(20)), "Only the earliest due time should be waited on");
+    time.Advance(TimeSpan.FromMinutes(4));
+    await WaitFor(() => time.Pending().Contains(start.AddMinutes(20)), "The artwork check did not run");
+    Eq(requests + 1, fixture.Handler.Requests);
+}
+static async Task AutoRefreshFloor()
+{
+    using var fixture = new Fixture(); var time = new ManualTime(); using var coordinator = fixture.Coordinator(time);
+    await coordinator.InitializeAsync(); fixture.Handler.Configuration = Config(117006010);
+    var start = time.GetUtcNow(); coordinator.StartAutoRefresh();
+    await WaitFor(() => time.Pending().Contains(start.AddMinutes(10)), "The first check did not run");
+    time.Advance(TimeSpan.FromSeconds(1)); int requests = fixture.Handler.Requests;
+    // The change clears every throttle, so a check is due now, but the previous pass began only a second ago.
+    await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { HeyMelodyKey = "test-key" });
+    await WaitFor(() => time.Pending().Contains(start.AddSeconds(30)), "The pass floor was not applied");
+    Check(time.Pending().Length == 1, "The superseded timer was left armed"); await Settle(); Eq(requests, fixture.Handler.Requests);
+    time.Advance(TimeSpan.FromSeconds(29));
+    await WaitFor(() => time.Pending().Contains(start.AddSeconds(30).AddMinutes(10)), "The floored pass did not run");
+    Eq(requests + 1, fixture.Handler.Requests);
+}
+static async Task AutoRefreshReschedule()
+{
+    using var fixture = new Fixture(); var time = new ManualTime(); using var coordinator = fixture.Coordinator(time);
+    await coordinator.InitializeAsync(); fixture.Handler.Configuration = Config(117006010);
+    var start = time.GetUtcNow(); coordinator.StartAutoRefresh();
+    await WaitFor(() => time.Pending().Contains(start.AddMinutes(10)), "The first check did not run");
+    int requests = fixture.Handler.Requests;
+    // A 30-minute sleep: the wall clock moved on, but the armed timer never fired.
+    time.Skip(TimeSpan.FromMinutes(30)); await Settle(); Eq(requests, fixture.Handler.Requests);
+    coordinator.Reschedule();
+    await WaitFor(() => fixture.Handler.Requests > requests && time.Pending().Contains(start.AddMinutes(40)), "Rescheduling did not run the overdue check");
+    Eq(1, time.Pending().Length);
+    // Nothing is due now: the wait is re-armed for the same deadline and no request is made.
+    requests = fixture.Handler.Requests; coordinator.Reschedule(); await Settle();
+    Eq(requests, fixture.Handler.Requests); Check(time.Pending().SequenceEqual([start.AddMinutes(40)]), "Rescheduling moved the next check");
+}
+static async Task AutoRefreshDispose()
+{
+    foreach (bool online in new[] { true, false })
+    {
+        using var fixture = new Fixture(); var time = new ManualTime(); var coordinator = fixture.Coordinator(time);
+        await coordinator.InitializeAsync(); fixture.Handler.Configuration = Config(117006010);
+        if (!online) await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { UseOnlineResources = false });
+        var start = time.GetUtcNow(); coordinator.StartAutoRefresh();
+        if (online) await WaitFor(() => time.Pending().Contains(start.AddMinutes(10)), "The loop did not go to sleep"); else await Settle();
+        var loop = (Task)typeof(ResourceCoordinator).GetField("_autoRefresh", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(coordinator)!;
+        coordinator.Dispose();
+        await loop.WaitAsync(TimeSpan.FromSeconds(2));
+        Eq(0, time.Pending().Length);
+    }
+}
 static byte[] GlbBytes(string json = "{\"asset\":{\"version\":\"2.0\"}} ", int? total = null, int? chunk = null, int extra = 0)
 {
     byte[] body = Encoding.UTF8.GetBytes(json), glb = new byte[20 + body.Length + extra];
@@ -702,7 +820,7 @@ sealed class Fixture : IDisposable
 {
     public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetFullPath("artifacts/resource-tests"), Guid.NewGuid().ToString("N"));
     public FakeVendorHandler Handler { get; } = new();
-    public ResourceCoordinator Coordinator() => new(Path, new HttpClient(Handler, false));
+    public ResourceCoordinator Coordinator(TimeProvider? time = null) => new(Path, new HttpClient(Handler, false)) { Time = time ?? TimeProvider.System };
     public void Dispose()
     {
         string allowed = System.IO.Path.GetFullPath("artifacts/resource-tests") + System.IO.Path.DirectorySeparatorChar;
@@ -788,4 +906,39 @@ sealed class PatternStream(long length, long stallAfter, TaskCompletionSource? s
     public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
     public override void SetLength(long value) => throw new NotSupportedException();
     public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+}
+/// <summary>Manual clock: timers fire only from <see cref="Advance"/>; <see cref="Pending"/> lists the due times still armed.</summary>
+sealed class ManualTime : TimeProvider
+{
+    private readonly object _gate = new();
+    private readonly List<ManualTimer> _timers = [];
+    private DateTimeOffset _now = new(2026, 10, 22, 0, 0, 0, TimeSpan.Zero);
+    public override DateTimeOffset GetUtcNow() { lock (_gate) return _now; }
+    public DateTimeOffset[] Pending() { lock (_gate) return [.. _timers.Where(timer => timer.Armed).Select(timer => timer.Due)]; }
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        var timer = new ManualTimer(this, callback, state);
+        lock (_gate) _timers.Add(timer);
+        timer.Change(dueTime, period); return timer;
+    }
+    /// <summary>Moves the clock without firing anything, like a machine asleep while a long timer is armed.</summary>
+    public void Skip(TimeSpan by) { lock (_gate) _now += by; }
+    public void Advance(TimeSpan by)
+    {
+        List<ManualTimer> due;
+        lock (_gate) { _now += by; due = [.. _timers.Where(timer => timer.Armed && timer.Due <= _now)]; foreach (var timer in due) timer.Armed = false; }
+        foreach (var timer in due) timer.Fire();
+    }
+    private sealed class ManualTimer(ManualTime owner, TimerCallback callback, object? state) : ITimer
+    {
+        public DateTimeOffset Due; public bool Armed;
+        public void Fire() => callback(state);
+        public bool Change(TimeSpan dueTime, TimeSpan period)
+        {
+            lock (owner._gate) { Armed = dueTime != Timeout.InfiniteTimeSpan; Due = owner._now + (Armed ? dueTime : TimeSpan.Zero); }
+            return true;
+        }
+        public void Dispose() { lock (owner._gate) { Armed = false; owner._timers.Remove(this); } }
+        public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+    }
 }

@@ -9,12 +9,12 @@ using HeyMelodyWindows.App;
 
 namespace HeyMelodyWindows.Host;
 
-internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pipeName = null) : IAsyncDisposable
+internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pipeName = null, EnergyPolicy? energy = null) : IAsyncDisposable
 {
     private readonly CancellationTokenSource _lifetime = new();
     private readonly ConcurrentDictionary<string, Client> _clients = new();
     private readonly SemaphoreSlim _exitGate = new(1);
-    private readonly object _activationSync = new(), _voteSync = new();
+    private readonly object _activationSync = new(), _voteSync = new(), _guiSync = new();
     private readonly Dictionary<string, TaskCompletionSource<bool>> _votes = [];
     private string? _exitId;
     private Process? _mainLaunch;
@@ -43,6 +43,7 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
                     if (_clients.Count >= 16) { pipe.Dispose(); continue; }
                     var client = new Client(pipe, this);
                     _clients[client.Key] = client;
+                    UpdateGuiCount();
                     _ = client.RunAsync();
                 }
                 catch { pipe.Dispose(); throw; }
@@ -66,10 +67,18 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetNamedPipeClientProcessId(nint pipe, out uint processId);
 
+    // One serialization serves every client of an event.
     private void Broadcast(BackendEvent value)
-    { foreach (var client in _clients.Values) if (client.Role is not null) client.SendEvent(value); }
+    {
+        Outbound? outbound = null;
+        foreach (var client in _clients.Values) if (client.Role is not null) client.Send(outbound ??= new(value));
+    }
     private void SendOwnerEvent(string owner, BackendEvent value)
-    { if (_clients.TryGetValue(owner, out var client) && client.Role == "calibration") client.SendEvent(value); }
+    { if (_clients.TryGetValue(owner, out var client) && client.Role == "calibration") client.Send(new Outbound(value)); }
+
+    // Every client counts as a window except a passive observer. One that has not subscribed yet may be a window starting up.
+    private void UpdateGuiCount()
+    { if (energy is not null) lock (_guiSync) energy.SetGuiCount(_clients.Values.Count(c => c.Role != "observer")); }
 
     private async Task HandleAsync(Client client, BackendRequest request)
     {
@@ -85,6 +94,7 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
             {
                 client.Role = request.Role; client.Reply(request.Id, subscription);
             });
+            UpdateGuiCount();
             lock (_activationSync)
             {
                 if (client.Role == "main" && _pendingActivation)
@@ -169,7 +179,12 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
             if (main is not null) { main.SendEvent(new() { Kind = "activate", BackendInstanceId = supervisor.InstanceId }); return; }
             _pendingActivation = true;
             if (!allowLaunch || _mainLaunch is { HasExited: false }) return;
-            _mainLaunch?.Dispose(); _mainLaunch = Process.Start(MainStartInfo());
+            _mainLaunch?.Dispose();
+            var start = MainStartInfo();
+            // The window inherits this process's priority class: leave Eco before it starts, then pin Normal in case the class stuck.
+            HostEnergy.Controller?.PrepareLaunch();
+            _mainLaunch = Process.Start(start);
+            try { if (_mainLaunch is not null) _mainLaunch.PriorityClass = ProcessPriorityClass.Normal; } catch { }
         }
     }
     private static ProcessStartInfo MainStartInfo()
@@ -221,6 +236,7 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
     private void Detach(Client client)
     {
         _clients.TryRemove(client.Key, out _);
+        UpdateGuiCount();
         supervisor.ClientDetached(client.Key);
         lock (_voteSync) if (_votes.TryGetValue(client.Key, out var vote)) vote.TrySetResult(true);
     }
@@ -233,10 +249,33 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
         _mainLaunch?.Dispose();
     }
 
+    // An event with its wire line, serialized by whichever client writes it first. The event is never mutated once published.
+    internal sealed class Outbound
+    {
+        private readonly BackendMessage _message;
+        private string? _line;
+        internal Outbound(BackendMessage message) => _message = message;
+        internal BackendMessage Message => _message;
+        internal Outbound(BackendEvent value)
+        {
+            _message = new BackendMessage { Kind = "event", Event = value };
+            if (value.Kind is "snapshot" or "catalog" or "health" or "calibration" or "resources" or "calibrationSpectrum")
+                CoalesceKey = value.Kind + ":" + (value.CalibrationSpectrum?.Handle ?? value.Calibration?.Handle ?? value.Snapshot?.Identity);
+        }
+        // Null for critical messages; otherwise a later message with the same key replaces an unsent one.
+        internal string? CoalesceKey { get; }
+        internal string Line()
+        {
+            if (Volatile.Read(ref _line) is { } line) return line;
+            line = JsonSerializer.Serialize(_message, RpcWire.Json);
+            return Interlocked.CompareExchange(ref _line, line, null) ?? line;
+        }
+    }
+
     private sealed class Client(NamedPipeServerStream pipe, BackendPipeServer owner) : IDisposable
     {
-        private readonly ConcurrentQueue<BackendMessage> _critical = new();
-        private readonly Dictionary<string, BackendMessage> _updates = [];
+        private readonly ConcurrentQueue<Outbound> _critical = new();
+        private readonly Dictionary<string, Outbound> _updates = [];
         private readonly object _outboxSync = new();
         private readonly Channel<byte> _signal = Channel.CreateBounded<byte>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
         private readonly SemaphoreSlim _dispatch = new(16);
@@ -247,24 +286,24 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
 
         public void Reply(long id, object? data, string? errorCode = null, string? error = null)
         {
-            Enqueue(new() { Id = id, Success = errorCode is null, ErrorCode = errorCode, Error = error,
-                Data = data is null ? null : JsonSerializer.SerializeToElement(data, RpcWire.Json) });
+            Enqueue(new(new BackendMessage { Id = id, Success = errorCode is null, ErrorCode = errorCode, Error = error,
+                Data = data is null ? null : JsonSerializer.SerializeToElement(data, RpcWire.Json) }));
         }
-        public void SendEvent(BackendEvent value)
+        public void SendEvent(BackendEvent value) => Send(new Outbound(value));
+        public void Send(Outbound outbound)
         {
-            var message = new BackendMessage { Kind = "event", Event = value };
-            if (value.Kind is "snapshot" or "catalog" or "health" or "calibration" or "resources" or "calibrationSpectrum")
+            if (outbound.CoalesceKey is { } key)
             {
                 lock (_outboxSync)
                 {
                     if (_updates.Count >= 256) { Dispose(); return; }
-                    _updates[value.Kind + ":" + (value.CalibrationSpectrum?.Handle ?? value.Calibration?.Handle ?? value.Snapshot?.Identity)] = message;
+                    _updates[key] = outbound;
                 }
                 _signal.Writer.TryWrite(0);
             }
-            else Enqueue(message);
+            else Enqueue(outbound);
         }
-        private void Enqueue(BackendMessage message)
+        private void Enqueue(Outbound message)
         {
             if (Lifetime.IsCancellationRequested) return;
             if (Interlocked.Increment(ref _criticalCount) > 128) { Dispose(); return; }
@@ -272,13 +311,14 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
         }
         public async Task RunAsync()
         {
-            using var reader = new StreamReader(pipe, new UTF8Encoding(false), false, 4096, leaveOpen: true);
+            // The line reader is the only consumer of the pipe's input.
+            var lines = new RpcLineReader(pipe);
             using var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, leaveOpen: true);
             var output = OutputAsync(writer);
             try
             {
                 long lastId = 0;
-                while (await RpcWire.ReadLineAsync(reader, Lifetime.Token) is { } line)
+                while (await lines.ReadLineAsync(Lifetime.Token) is { } line)
                 {
                     var request = JsonSerializer.Deserialize<BackendRequest>(line, RpcWire.Json) ?? throw new InvalidDataException();
                     if (request.Id <= lastId) throw new InvalidDataException(); lastId = request.Id;
@@ -303,15 +343,15 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
                 {
                     while (_critical.TryDequeue(out var message))
                     { Interlocked.Decrement(ref _criticalCount); await WriteAsync(message); }
-                    BackendMessage[] updates;
+                    Outbound[] updates;
                     lock (_outboxSync) { updates = _updates.Values.ToArray(); _updates.Clear(); }
                     foreach (var message in updates) await WriteAsync(message);
                 }
             }
             catch (Exception) { Dispose(); }
-            async Task WriteAsync(BackendMessage message)
+            async Task WriteAsync(Outbound message)
             {
-                var line = JsonSerializer.Serialize(message, RpcWire.Json);
+                var line = message.Line();
                 if (line.Length > RpcWire.MaximumLineCharacters) throw new InvalidDataException();
                 using var budget = CancellationTokenSource.CreateLinkedTokenSource(Lifetime.Token);
                 budget.CancelAfter(TimeSpan.FromSeconds(10));

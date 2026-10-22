@@ -445,18 +445,18 @@ internal static class DeviceStateTests
     { public Task<IControlTransport> OpenAsync(CancellationToken token) => throw new InvalidOperationException("Projection opened Bluetooth"); }
     private sealed class PipeClient(NamedPipeClientStream pipe) : IAsyncDisposable
     {
-        private readonly StreamReader _reader = new(pipe, new UTF8Encoding(false), false, 4096, true);
         private readonly StreamWriter _writer = new(pipe, new UTF8Encoding(false), 4096, true) { AutoFlush = true };
+        private RpcLineReader? _lines;
         internal static async Task<PipeClient> Connect(string name)
         { var pipe = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly); await pipe.ConnectAsync(3000); return new(pipe); }
         internal async Task<BackendMessage> Request(BackendRequest request)
         {
             await _writer.WriteLineAsync(JsonSerializer.Serialize(request, RpcWire.Json));
             for (int attempt = 0; attempt < 40; attempt++)
-            { string line = await RpcWire.ReadLineAsync(_reader, default).WaitAsync(TimeSpan.FromSeconds(3)) ?? throw new IOException("Pipe closed");
+            { string line = await (_lines ??= new(pipe)).ReadLineAsync(default).AsTask().WaitAsync(TimeSpan.FromSeconds(3)) ?? throw new IOException("Pipe closed");
                 var message = JsonSerializer.Deserialize<BackendMessage>(line, RpcWire.Json)!; if (message.Kind == "response" && message.Id == request.Id) return message; }
             throw new InvalidOperationException("Pipe response missing");
         }
-        public async ValueTask DisposeAsync() { await _writer.DisposeAsync(); _reader.Dispose(); await pipe.DisposeAsync(); }
+        public async ValueTask DisposeAsync() { await _writer.DisposeAsync(); await pipe.DisposeAsync(); }
     }
 }

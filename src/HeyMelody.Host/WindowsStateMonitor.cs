@@ -26,7 +26,11 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
     private CancellationTokenSource? _advertisementRetry;
     private CancellationTokenSource? _deviceRetry;
     private bool _catalogScheduled, _catalogDirty;
+    // BLE scanning runs only while the supervisor has a present, allowed headset to serve (guarded by _observerSync).
+    private bool _scanWanted;
     private bool? _radioAvailable;
+    // Set once the radio state has been evaluated (UpdateRadio) or its read failed (the fallback in StartAsync); until then scanning waits.
+    private bool _radioChecked;
     private int _advertisementFailures;
     private int _deviceFailures;
     private long _scanGeneration;
@@ -35,6 +39,9 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
     public async Task StartAsync()
     {
         if (!OperatingSystem.IsWindows()) return;
+        supervisor.ScanDemandChanged += OnScanDemand;
+        // The catalog may be known already; scanning itself starts below, once the radio state is.
+        lock (_observerSync) _scanWanted = supervisor.HasScanDemand();
         try
         {
             _power = new PowerMessageWindow(OnSuspend);
@@ -62,7 +69,11 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
             UpdateRadio();
         }
         catch (Exception)
-        { supervisor.ReportHealth("无法读取蓝牙开关状态；已连接耳机的状态监听继续运行。"); StartAdvertisements(); }
+        {
+            supervisor.ReportHealth("无法读取蓝牙开关状态；已连接耳机的状态监听继续运行。");
+            lock (_observerSync) _radioChecked = true;
+            StartAdvertisements();
+        }
     }
     private void Added(DeviceWatcher watcher, DeviceInformation info)
     {
@@ -103,6 +114,26 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
         if (!properties.TryGetValue("System.Devices.Aep.IsConnected", out var value) || value is not bool flag) return false;
         connected = flag; return true;
     }
+    private void OnScanDemand()
+    {
+        try
+        {
+            lock (_observerSync)
+            {
+                if (_disposed) return;
+                // The event only says "look again": notifications queue on the thread pool and may run out of order.
+                bool wanted = supervisor.HasScanDemand();
+                if (wanted == _scanWanted) return;
+                _scanWanted = wanted;
+                if (wanted) _advertisementFailures = 0;
+                // Before the radio state is known only the demand is recorded: UpdateRadio (or the fallback in StartAsync) starts scanning.
+                // Afterwards radio and suspend state decide inside StartAdvertisements, as they do for UpdateRadio.
+                if (!wanted) StopAdvertisements();
+                else if (_radioChecked) StartAdvertisements();
+            }
+        }
+        catch (Exception) { }
+    }
     private void RadioChanged(Radio sender, object args)
     {
         if (_disposed) return;
@@ -114,6 +145,7 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
         lock (_observerSync)
         {
             if (_disposed) return;
+            _radioChecked = true;
             bool? available = _radios.Any(r => r.State == RadioState.On) ? true
                 : _radios.Count > 0 && _radios.All(r => r.State is RadioState.Off or RadioState.Disabled) ? false : null;
             if (available is { } state)
@@ -172,7 +204,7 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
     {
         lock (_observerSync)
         {
-            if (_disposed || _suspended || _radioAvailable == false || _advertisements is not null || _advertisementRetry is not null) return;
+            if (_disposed || _suspended || _radioAvailable == false || !_scanWanted || _advertisements is not null || _advertisementRetry is not null) return;
             long generation = Interlocked.Increment(ref _scanGeneration);
             var startedAt = DateTimeOffset.UtcNow;
             var scans = _advertisements = new List<Scan>(CompanyIds.Length);
@@ -208,7 +240,7 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
     {
         lock (_observerSync)
         {
-            if (_disposed || _suspended || _radioAvailable == false || generation != _scanGeneration) return;
+            if (_disposed || _suspended || _radioAvailable == false || !_scanWanted || generation != _scanGeneration) return;
             // A new generation makes the sibling watcher's Stopped (and late Received) callbacks no-ops.
             Interlocked.Increment(ref _scanGeneration);
             ReleaseAdvertisementsLocked();
@@ -225,7 +257,8 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
                     lock (_observerSync)
                     {
                         if (!ReferenceEquals(_advertisementRetry, retry)) return;
-                        _advertisementRetry = null; StartAdvertisements();
+                        _advertisementRetry = null;
+                        if (_scanWanted) StartAdvertisements();
                     }
                 }
                 catch (OperationCanceledException) { }
@@ -339,6 +372,7 @@ internal sealed class WindowsStateMonitor(BackendSupervisor supervisor) : IDispo
     public void Dispose()
     {
         if (_disposed) return; _disposed = true;
+        supervisor.ScanDemandChanged -= OnScanDemand;
         StopAdvertisements();
         lock (_observerSync)
         {

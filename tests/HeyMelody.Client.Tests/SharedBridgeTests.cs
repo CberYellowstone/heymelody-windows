@@ -48,9 +48,9 @@ internal static class SharedBridgeTests
         {
             string pipe = Name();
             int started = 0, requests = 0;
-            async Task Serve(StreamReader reader, StreamWriter writer, CancellationToken token)
+            async Task Serve(RpcLineReader reader, StreamWriter writer, CancellationToken token)
             {
-                while (await RpcWire.ReadLineAsync(reader, token) is { } line)
+                while (await reader.ReadLineAsync(token) is { } line)
                 {
                     var request = JsonSerializer.Deserialize<BackendRequest>(line, RpcWire.Json)!;
                     Interlocked.Increment(ref requests);
@@ -205,8 +205,8 @@ internal static class SharedBridgeTests
     private static UiSnapshot Snapshot(long generation, long revision) => new()
     { Identity = "peer", BackendInstanceId = "instance", DeviceGeneration = generation, Revision = revision };
     private static string Name() => "HeyMelody-tests-" + Guid.NewGuid().ToString("N");
-    private static async Task<BackendRequest> Read(StreamReader reader, CancellationToken token) =>
-        JsonSerializer.Deserialize<BackendRequest>(await RpcWire.ReadLineAsync(reader, token) ?? throw new EndOfStreamException(), RpcWire.Json)!;
+    private static async Task<BackendRequest> Read(RpcLineReader reader, CancellationToken token) =>
+        JsonSerializer.Deserialize<BackendRequest>(await reader.ReadLineAsync(token) ?? throw new EndOfStreamException(), RpcWire.Json)!;
     private static Task Reply<T>(StreamWriter writer, BackendRequest request, T result, CancellationToken token) =>
         Send(writer, new BackendMessage { Id = request.Id, Success = true, Data = JsonSerializer.SerializeToElement(result, RpcWire.Json) }, token);
     private static async Task Send(StreamWriter writer, BackendMessage message, CancellationToken token)
@@ -214,8 +214,8 @@ internal static class SharedBridgeTests
         await writer.WriteLineAsync(JsonSerializer.Serialize(message, RpcWire.Json).AsMemory(), token);
         await writer.FlushAsync(token);
     }
-    private static async Task Drain(StreamReader reader, CancellationToken token)
-    { while (await RpcWire.ReadLineAsync(reader, token) is not null) { } }
+    private static async Task Drain(RpcLineReader reader, CancellationToken token)
+    { while (await reader.ReadLineAsync(token) is not null) { } }
     private static void Check(bool condition) { if (!condition) throw new Exception("Shared pipe assertion failed."); }
     private static async Task Throws(Func<Task> action)
     {
@@ -228,18 +228,18 @@ internal static class SharedBridgeTests
         private readonly CancellationTokenSource _lifetime = new(TimeSpan.FromSeconds(15));
         private readonly NamedPipeServerStream _pipe;
         private readonly Task _run;
-        public Server(string name, Func<StreamReader, StreamWriter, CancellationToken, Task> serve, int instances = 1)
+        public Server(string name, Func<RpcLineReader, StreamWriter, CancellationToken, Task> serve, int instances = 1)
         {
             _pipe = new(name, PipeDirection.InOut, instances, PipeTransmissionMode.Byte,
                 PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
             _run = Run(serve);
         }
-        private async Task Run(Func<StreamReader, StreamWriter, CancellationToken, Task> serve)
+        private async Task Run(Func<RpcLineReader, StreamWriter, CancellationToken, Task> serve)
         {
             try
             {
                 await _pipe.WaitForConnectionAsync(_lifetime.Token);
-                using var reader = new StreamReader(_pipe, new UTF8Encoding(false, true), false, 4096, true);
+                var reader = new RpcLineReader(_pipe, strictUtf8: true);
                 using var writer = new StreamWriter(_pipe, new UTF8Encoding(false), 4096, true);
                 await serve(reader, writer, _lifetime.Token);
             }

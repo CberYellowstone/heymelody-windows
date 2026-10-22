@@ -70,10 +70,10 @@ internal static class CalibrationBackendTests
             var frame = new UiCalibrationSpectrum(new string('a',32), fixture.Backend.InstanceId, 1, 1, 1, [.1,.2,.3,.4,.5,.6]);
             for (int i = 1; i <= 10000; i++) send.Invoke(client, [new BackendEvent { Kind = "calibrationSpectrum", CalibrationSpectrum = frame with { Sequence = i } }]);
             type.GetMethod("Reply")!.Invoke(client, [7L, true, null, null]);
-            var updates = (Dictionary<string, BackendMessage>)type.GetField("_updates", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(client)!;
+            var updates = (Dictionary<string, BackendPipeServer.Outbound>)type.GetField("_updates", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(client)!;
             int replies = (int)type.GetField("_criticalCount", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(client)!;
             var lifetime = (CancellationTokenSource)type.GetProperty("Lifetime")!.GetValue(client)!;
-            Check(updates.Count == 1 && updates.Values.Single().Event?.CalibrationSpectrum?.Sequence == 10000
+            Check(updates.Count == 1 && updates.Values.Single().Message.Event?.CalibrationSpectrum?.Sequence == 10000
                 && replies == 1 && !lifetime.IsCancellationRequested, "Slow-reader spectra grew an unbounded queue or displaced reliable replies");
         });
         await test("unconfirmed calibration STOP stays failed and leased until an acknowledged retry", async () =>
@@ -286,8 +286,8 @@ internal static class CalibrationBackendTests
 
     private sealed class PipeClient(NamedPipeClientStream pipe) : IAsyncDisposable
     {
-        private readonly StreamReader _reader = new(pipe, new UTF8Encoding(false), false, 4096, true);
         private readonly StreamWriter _writer = new(pipe, new UTF8Encoding(false), 4096, true) { AutoFlush = true };
+        private RpcLineReader? _lines;
         internal static async Task<PipeClient> Connect(string name)
         { var pipe = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly); await pipe.ConnectAsync(3000); return new(pipe); }
         internal async Task<BackendMessage> Request(BackendRequest request)
@@ -296,11 +296,11 @@ internal static class CalibrationBackendTests
         {
             for (int attempt = 0; attempt < 40; attempt++)
             {
-                string line = await RpcWire.ReadLineAsync(_reader, default).WaitAsync(TimeSpan.FromSeconds(3)) ?? throw new IOException("Pipe closed");
+                string line = await (_lines ??= new(pipe)).ReadLineAsync(default).AsTask().WaitAsync(TimeSpan.FromSeconds(3)) ?? throw new IOException("Pipe closed");
                 var message = JsonSerializer.Deserialize<BackendMessage>(line, RpcWire.Json)!; if (match(message)) return message;
             }
             throw new InvalidOperationException("Expected pipe event not found");
         }
-        public async ValueTask DisposeAsync() { await _writer.DisposeAsync(); _reader.Dispose(); await pipe.DisposeAsync(); }
+        public async ValueTask DisposeAsync() { await _writer.DisposeAsync(); await pipe.DisposeAsync(); }
     }
 }

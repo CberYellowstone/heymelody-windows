@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Threading.Channels;
 
 namespace HeyMelodyWindows.Resources;
 
@@ -21,6 +22,8 @@ public sealed class ResourceCoordinator : IDisposable
     private readonly HashSet<(string ProductId, int Color, bool Model)> _artworkTargets = [];
     private readonly object _leaseGate = new();
     private readonly Dictionary<string, Task<bool>> _artworkRefreshes = new(StringComparer.Ordinal);
+    // Wakes the auto-refresh loop whenever a due time or the online preference may have changed.
+    private readonly Channel<byte> _wake = Channel.CreateBounded<byte>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
     private int _batchedChanges;
     private CancellationTokenSource _settingsCancellation = new();
     private readonly CancellationTokenSource _lifetime = new();
@@ -35,6 +38,8 @@ public sealed class ResourceCoordinator : IDisposable
     /// <summary>How long a first artwork request waits for its download before falling back.</summary>
     public TimeSpan FirstDownloadWait { get; set; } = TimeSpan.FromSeconds(10);
     public event EventHandler<ResourceChangedEventArgs>? Changed;
+    /// <summary>Clock for the check throttle and the auto-refresh schedule; tests substitute a manual one.</summary>
+    internal TimeProvider Time { get; init; } = TimeProvider.System;
 
     public ResourceCoordinator(string? storageDirectory = null, HttpClient? httpClient = null, string? bundleDirectory = null)
     {
@@ -89,6 +94,7 @@ public sealed class ResourceCoordinator : IDisposable
             lock (_leaseGate) _artworkTargets.Clear();
         }
         finally { _gate.Release(); }
+        Wake();
         Changed?.Invoke(this, new(Revision, false, false));
     }
 
@@ -107,7 +113,7 @@ public sealed class ResourceCoordinator : IDisposable
         {
             if (!Preferences.UseOnlineResources) return RefreshOutcome.Skipped;
             const string check = "config";
-            if (!force && _checks.TryGetValue(check, out var next) && next > DateTimeOffset.UtcNow) return RefreshOutcome.Skipped;
+            if (!force && _checks.TryGetValue(check, out var next) && next > Time.GetUtcNow()) return RefreshOutcome.Skipped;
             try
             {
                 outcome = RefreshOutcome.Unchanged;
@@ -134,13 +140,14 @@ public sealed class ResourceCoordinator : IDisposable
                     _fileVersion = metadata.FileVersion;
                     await ResourceFiles.AtomicWriteAsync(Path.Combine(ResourceRoot(), "metadata.json"), JsonSerializer.SerializeToUtf8Bytes(metadata.FileVersion), linked.Token).ConfigureAwait(false);
                 }
-                _checks[check] = DateTimeOffset.UtcNow.AddMinutes(10); LastSuccessfulCheck = DateTimeOffset.UtcNow; LastError = null;
+                var now = Time.GetUtcNow();
+                _checks[check] = now.AddMinutes(10); LastSuccessfulCheck = now; LastError = null; Wake();
             }
             catch (OperationCanceledException) when (linked.IsCancellationRequested) { throw; }
             // An HttpClient timeout is an ordinary failure, not a caller cancellation.
             catch (Exception error) when (error is OperationCanceledException or HttpRequestException or IOException or InvalidDataException or JsonException
                 or CryptographicException or ArgumentException or UnauthorizedAccessException)
-            { _checks[check] = DateTimeOffset.UtcNow.AddSeconds(30); LastError = "在线资源更新失败，继续使用当前有效资源。"; outcome = RefreshOutcome.Failed; }
+            { _checks[check] = Time.GetUtcNow().AddSeconds(30); LastError = "在线资源更新失败，继续使用当前有效资源。"; outcome = RefreshOutcome.Failed; Wake(); }
         }
         finally { _gate.Release(); }
         if (outcome == RefreshOutcome.Updated && Volatile.Read(ref _batchedChanges) == 0) Changed?.Invoke(this, new(Revision, true, false));
@@ -152,9 +159,9 @@ public sealed class ResourceCoordinator : IDisposable
         if (_autoRefresh is not null) return;
         _autoRefresh = Task.Run(async () =>
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
             while (!_lifetime.IsCancellationRequested)
             {
+                var started = Time.GetUtcNow();
                 try
                 {
                     await RefreshAsync(token: _lifetime.Token).ConfigureAwait(false);
@@ -164,10 +171,69 @@ public sealed class ResourceCoordinator : IDisposable
                         await RefreshArtworkAsync(target.ProductId, target.Color, target.Model, token: _lifetime.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) { if (_lifetime.IsCancellationRequested) break; }
-                if (!await timer.WaitForNextTickAsync(_lifetime.Token).ConfigureAwait(false)) break;
+                try { await WaitForDueAsync(started, _lifetime.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; }
             }
         }, _lifetime.Token);
     }
+
+    private static readonly TimeSpan MinimumPassInterval = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Sleeps until a check is due: never while online resources are off, and never sooner than
+    /// <see cref="MinimumPassInterval"/> after the previous pass started (so a target the catalogue no
+    /// longer lists, or a failing key, cannot spin the loop). A wake signal only re-evaluates the schedule.
+    /// </summary>
+    private async Task WaitForDueAsync(DateTimeOffset passStarted, CancellationToken token)
+    {
+        while (true)
+        {
+            // Drain before reading state: a change after this point leaves a signal for the next wait.
+            while (_wake.Reader.TryRead(out _)) { }
+            DateTimeOffset? due;
+            await _gate.WaitAsync(token).ConfigureAwait(false);
+            try { due = NextDue(); }
+            finally { _gate.Release(); }
+            TimeSpan? delay = null;
+            if (due is { } at)
+            {
+                delay = (at > passStarted + MinimumPassInterval ? at : passStarted + MinimumPassInterval) - Time.GetUtcNow();
+                if (delay <= TimeSpan.Zero) return;
+            }
+            using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var signal = _wake.Reader.WaitToReadAsync(stop.Token).AsTask();
+            try
+            {
+                if (delay is { } wait) await Task.WhenAny(signal, Task.Delay(wait, Time, stop.Token)).ConfigureAwait(false);
+                else await signal.ConfigureAwait(false);
+            }
+            finally { stop.Cancel(); }
+            token.ThrowIfCancellationRequested();
+        }
+    }
+
+    /// <summary>Earliest throttle expiry (caller holds the gate); a missing key means due now, null means nothing to do.</summary>
+    private DateTimeOffset? NextDue()
+    {
+        if (!Preferences.UseOnlineResources) return null;
+        var due = _checks.GetValueOrDefault("config", DateTimeOffset.MinValue);
+        (string ProductId, int Color, bool Model)[] targets;
+        lock (_leaseGate) targets = _artworkTargets.ToArray();
+        foreach (var (productId, color, model) in targets)
+            // The pass skips products the catalogue lacks without recording a check; they must not keep the loop awake.
+            if (Catalog.Find(productId) is not null) due = Min(due, _checks.GetValueOrDefault(ArtworkSlot(productId, color, model), DateTimeOffset.MinValue));
+        return due;
+        static DateTimeOffset Min(DateTimeOffset a, DateTimeOffset b) => a < b ? a : b;
+    }
+
+    private void Wake() => _wake.Writer.TryWrite(0);
+
+    /// <summary>
+    /// Re-evaluates the auto-refresh schedule against the wall clock now. The wait is one long timer, which may not count the time
+    /// the machine slept, so the Host calls this on resume: a check that came due meanwhile then runs at once, still not sooner than
+    /// 30 seconds after the previous pass started. Does nothing while online resources are off.
+    /// </summary>
+    public void Reschedule() => Wake();
 
     /// <summary>
     /// Returns installed art without waiting for the network. Online checks run in the background and
@@ -259,9 +325,10 @@ public sealed class ResourceCoordinator : IDisposable
         try
         {
             if (!Preferences.UseOnlineResources || Catalog.Find(productId) is null) return RefreshOutcome.Skipped;
-            lock (_leaseGate) _artworkTargets.Add((productId, color, model));
+            bool added; lock (_leaseGate) added = _artworkTargets.Add((productId, color, model));
+            if (added) Wake();
             string key = ArtworkSlot(productId, color, model);
-            if (!force && _checks.TryGetValue(key, out var next) && next > DateTimeOffset.UtcNow) return RefreshOutcome.Skipped;
+            if (!force && _checks.TryGetValue(key, out var next) && next > Time.GetUtcNow()) return RefreshOutcome.Skipped;
             try
             {
                 outcome = RefreshOutcome.Unchanged;
@@ -300,12 +367,12 @@ public sealed class ResourceCoordinator : IDisposable
                         finally { if (Directory.Exists(temporary)) ResourcePaths.DeleteOwnedDirectory(_online, temporary); }
                     }
                 }
-                _checks[key] = DateTimeOffset.UtcNow.AddMinutes(10); LastError = null;
+                _checks[key] = Time.GetUtcNow().AddMinutes(10); LastError = null; Wake();
             }
             catch (OperationCanceledException) when (linked.IsCancellationRequested) { throw; }
             catch (Exception error) when (error is OperationCanceledException or HttpRequestException or IOException or InvalidDataException or JsonException
                 or CryptographicException or ArgumentException or UnauthorizedAccessException)
-            { _checks[key] = DateTimeOffset.UtcNow.AddSeconds(30); LastError = "在线美术资源更新失败，继续使用当前有效资源。"; outcome = RefreshOutcome.Failed; }
+            { _checks[key] = Time.GetUtcNow().AddSeconds(30); LastError = "在线美术资源更新失败，继续使用当前有效资源。"; outcome = RefreshOutcome.Failed; Wake(); }
         }
         finally { _gate.Release(); }
         if (outcome == RefreshOutcome.Updated && Volatile.Read(ref _batchedChanges) == 0) Changed?.Invoke(this, new(Revision, false, true));
@@ -361,6 +428,7 @@ public sealed class ResourceCoordinator : IDisposable
             _checks.Clear(); LastError = null;
         }
         finally { _gate.Release(); }
+        Wake();
         long before = Revision; int updated = 0, unchanged = 0, failed = 0;
         Interlocked.Increment(ref _batchedChanges);
         bool catalogChanged;
@@ -562,5 +630,5 @@ public sealed class ResourceCoordinator : IDisposable
 
     private enum RefreshOutcome { Skipped, Unchanged, Updated, Failed }
 
-    public void Dispose() { _lifetime.Cancel(); _settingsCancellation.Cancel(); _vendor.Dispose(); }
+    public void Dispose() { _lifetime.Cancel(); Wake(); _settingsCancellation.Cancel(); _vendor.Dispose(); }
 }
