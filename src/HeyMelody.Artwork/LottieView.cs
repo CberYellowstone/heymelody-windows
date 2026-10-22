@@ -56,8 +56,11 @@ public class LottieView(ILottieSource source, Func<Control?>? fallback = null,
             _poster.Tick += (_, _) => { StopPoster(); if (_attached && generation == _generation && !AnimationLoaded && LoadError is null) Content = poster(); };
             _poster.Start();
         }
+        AnimationYield.Changed += OnYieldChanged;
         _ = LoadAsync(generation);
     }
+
+    private void OnYieldChanged(object? sender, EventArgs e) => _composition?.SendHandlerMessage(AnimationYield.Active ? LottieCommand.Yield : LottieCommand.Unyield);
 
     private async Task LoadAsync(int generation)
     {
@@ -75,7 +78,7 @@ public class LottieView(ILottieSource source, Func<Control?>? fallback = null,
             AnimationLoaded = true;
             playback = null; // The compositor owns all native Skia objects from here.
             ElementComposition.SetElementChildVisual(this, _composition);
-            InvalidateMeasure(); InvalidateArrange(); Resize(); RefreshActivity();
+            InvalidateMeasure(); InvalidateArrange(); Resize(); RefreshActivity(); OnYieldChanged(null, EventArgs.Empty);
         }
         catch (Exception error)
         {
@@ -90,6 +93,7 @@ public class LottieView(ILottieSource source, Func<Control?>? fallback = null,
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         _attached = false; ++_generation;
+        AnimationYield.Changed -= OnYieldChanged;
         StopPoster();
         _visibility?.Dispose();
         _visibility = null;
@@ -116,16 +120,24 @@ public class LottieView(ILottieSource source, Func<Control?>? fallback = null,
         _composition?.SendHandlerMessage(AnimationActive ? LottieCommand.Play : LottieCommand.Pause);
     }
 
-    private enum LottieCommand { Play, Pause, Dispose }
+    private enum LottieCommand { Play, Pause, Dispose, Yield, Unyield }
     private sealed class LottieHandler(LottiePlayback playback, Action rendered) : CompositionCustomVisualHandler
     {
         private LottiePlayback? _playback = playback;
-        private bool _playing, _settled;
+        private bool _playing, _settled, _yielding;
+        private long _presentedStep = -1;
+        // A held final frame is rendered once into a GPU surface and redrawn as an image; looping frames never are.
+        private SKImage? _settledImage;
+        private GRContext? _settledContext;
+        private SKRect _settledBounds;
+        private SKSizeI _settledPixels;
         private TimeSpan? _lastFrame;
         private double _elapsed;
         public override void OnMessage(object message)
         {
             if (message is not LottieCommand command) return;
+            if (command is LottieCommand.Yield or LottieCommand.Unyield) { _yielding = command == LottieCommand.Yield; return; }
+            ReleaseSettledImage();
             if (command == LottieCommand.Dispose)
             { _playing = false; _playback?.Dispose(); _playback = null; return; }
             _playing = command == LottieCommand.Play;
@@ -139,8 +151,11 @@ public class LottieView(ILottieSource source, Func<Control?>? fallback = null,
             if (_lastFrame is { } last) _elapsed += Math.Max(0, (CompositionNow - last).TotalSeconds);
             _lastFrame = CompositionNow;
             _playback.Plan.TimeAt(_elapsed, out _settled);
+            // While yielding, time keeps advancing every callback but a new frame is drawn only when the 30 fps step changes.
+            long step = (long)Math.Floor(_elapsed * AnimationYield.FrameRate);
+            if (!_yielding || _settled || step != _presentedStep) { _presentedStep = step; Invalidate(); }
             // A held final frame needs no further frame callbacks.
-            Invalidate(); if (!_settled) RegisterForNextAnimationFrameUpdate();
+            if (!_settled) RegisterForNextAnimationFrameUpdate();
         }
         public override void OnRender(ImmediateDrawingContext context)
         {
@@ -157,10 +172,31 @@ public class LottieView(ILottieSource source, Func<Control?>? fallback = null,
             using (context.PushClip(bounds))
             {
                 using var lease = feature.Lease();
-                animation.Render(lease.SkCanvas, destination);
+                if (!(_settled && lease.GrContext is { } gpu && DrawSettled(lease.SkCanvas, gpu, animation, destination, bounds)))
+                { ReleaseSettledImage(); animation.Render(lease.SkCanvas, destination); }
             }
             rendered();
         }
+
+        private bool DrawSettled(SKCanvas canvas, GRContext gpu, Animation animation, SKRect destination, Rect bounds)
+        {
+            var matrix = canvas.TotalMatrix;
+            var pixels = new SKSizeI(Math.Max(1, (int)Math.Ceiling(bounds.Width * Math.Abs(matrix.ScaleX))), Math.Max(1, (int)Math.Ceiling(bounds.Height * Math.Abs(matrix.ScaleY))));
+            var local = new SKRect(0, 0, (float)bounds.Width, (float)bounds.Height);
+            if (_settledImage is null || _settledContext != gpu || _settledPixels != pixels || _settledBounds != local)
+            {
+                ReleaseSettledImage();
+                using var surface = SKSurface.Create(gpu, false, new SKImageInfo(pixels.Width, pixels.Height));
+                if (surface is null) return false;
+                surface.Canvas.Scale(pixels.Width / local.Width, pixels.Height / local.Height);
+                animation.Render(surface.Canvas, destination);
+                _settledImage = surface.Snapshot(); _settledContext = gpu; _settledPixels = pixels; _settledBounds = local;
+            }
+            canvas.DrawImage(_settledImage, local);
+            return true;
+        }
+
+        private void ReleaseSettledImage() { _settledImage?.Dispose(); _settledImage = null; _settledContext = null; }
     }
 }
 

@@ -4,6 +4,7 @@
              xmlns:vm="clr-namespace:HeyMelodyWindows.App;assembly=HeyMelody.Client"
              xmlns:contracts="clr-namespace:HeyMelodyWindows.App;assembly=HeyMelody.Contracts"
              xmlns:local="clr-namespace:HeyMelodyWindows.App"
+             xmlns:art="clr-namespace:HeyMelodyWindows.Artwork;assembly=HeyMelody.Artwork"
              x:Class="HeyMelodyWindows.App.MainView" x:DataType="vm:MainViewModel"
              Background="Transparent">
   <UserControl.Resources>
@@ -252,7 +253,14 @@
                           <Slider Orientation="Vertical" Height="124" Width="32" Minimum="{Binding Minimum}"
                                   Maximum="{Binding Maximum}" Value="{Binding Gain, Mode=TwoWay}"
                                   TickFrequency="1" IsSnapToTickEnabled="True"
-                                  AutomationProperties.Name="{Binding FrequencyHz, StringFormat='{}{0} Hz 增益'}" />
+                                  AutomationProperties.Name="{Binding FrequencyHz, StringFormat='{}{0} Hz 增益'}">
+                            <!-- The vertical template reserves 14 + 18 + 14 = 46 px; in a 32 px slot the thumb sat 7 px right of centre and its
+                                 hover-scaled ellipse crossed the edge. 7 + 18 + 7 = 32 centres it. -->
+                            <Slider.Resources>
+                              <GridLength x:Key="SliderPreContentMargin">7</GridLength>
+                              <GridLength x:Key="SliderPostContentMargin">7</GridLength>
+                            </Slider.Resources>
+                          </Slider>
                           <TextBlock Text="{Binding FrequencyLabel}" Classes="band-label" />
                         </StackPanel>
                       </DataTemplate>
@@ -394,5 +402,6 @@
         </Border>
       </ScrollViewer>
     </Border>
+    <art:GpuJanitor HorizontalAlignment="Left" VerticalAlignment="Top" />
   </Grid>
 </UserControl>

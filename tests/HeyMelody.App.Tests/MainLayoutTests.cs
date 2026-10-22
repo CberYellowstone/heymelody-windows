@@ -19,7 +19,7 @@ internal static class MainLayoutTests
         Run("demo layout uses the same expanded ANC default and eight-pixel spacing", () => LayoutAsync(true));
         Run("device information copies current fields and handles pending, failed and stale requests", CopyAsync);
         Run("pinned header keeps its status dot and activity slot stable during reads and writes", HeaderActivityAsync);
-        return 4;
+        return 4 + EqSliderGeometryTests.Run(session);
 
         void Run(string name, Func<Task> action)
         {

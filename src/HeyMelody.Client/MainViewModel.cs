@@ -424,7 +424,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void AdvanceSession()
     {
-        ClearAncChoices(preserveUnsubmittedDraft: true);
+        ClearQueuedChoices(preserveUnsubmittedDraft: true);
         _sessionEpoch++;
         _sessionWork.Cancel(); _sessionWork.Dispose(); _sessionWork = new();
         _operations.CancelQueuedWrites(); _pending.Clear();
@@ -487,7 +487,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void InvalidateSnapshot(bool clearPresentation = false)
     {
-        ClearAncChoices(preserveUnsubmittedDraft: true);
+        ClearQueuedChoices(preserveUnsubmittedDraft: true);
         _liveSnapshot = null;
         _snapshot = !clearPresentation && EventService is not null && _snapshot is { } previous
             ? ReadOnlyPresentation(previous) : null;
@@ -517,7 +517,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void ResetSelection()
     {
-        ClearAncChoices();
+        ClearQueuedChoices();
         _pendingAnc = _pendingPreset = _pendingSpatial = false;
         _pendingAncKey = _pendingPresetKey = _pendingSpatialKey = null;
         _pendingAncPrimary = null;
@@ -529,7 +529,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     private Task ApplyOptionAsync(string kind, UiOption? option) => option is null ? Task.CompletedTask
-        : kind == "Anc" ? QueueAncActionAsync(new(kind, option.Key)) : ApplyAsync(new(kind, option.Key));
+        : kind == "Anc" ? QueueAncActionAsync(new(kind, option.Key))
+        : kind == "Equalizer" ? QueueEqActionAsync(new(kind, option.Key)) : ApplyAsync(new(kind, option.Key));
     private bool Supports(UiAction action) => _liveSnapshot is { } s && !s.PresentationCached && action.Kind switch
     {
         "Anc" => s.CanSetAnc && s.AncOptions.Any(x => x.Key == action.Value),
@@ -596,7 +597,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     private Task UseEqAsync() => SelectedEqEntry is { Id: > 0 } entry && !EqDirty
-        ? ApplyAsync(new("CustomSelect", entry.Id)) : Task.CompletedTask;
+        ? QueueEqActionAsync(new("CustomSelect", entry.Id)) : Task.CompletedTask;
 
     private void LoadEntry(UiEqEntry? entry)
     {

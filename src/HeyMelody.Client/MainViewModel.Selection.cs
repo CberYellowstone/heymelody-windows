@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace HeyMelodyWindows.App;
 
 public sealed partial class MainViewModel
@@ -42,7 +40,7 @@ public sealed partial class MainViewModel
     {
         // Keep the last observed settings, never the VM's staged selections or EQ draft.
         // Clone before marking them cached so retained backend evidence stays immutable.
-        var result = JsonSerializer.Deserialize<UiSnapshot>(JsonSerializer.Serialize(source))!;
+        var result = source.Clone();
         result.PresentationCached = true;
         result.PresentationSampleTime ??= source.SampleTime == default ? null : source.SampleTime;
         result.ControlReady = false;

@@ -54,7 +54,7 @@ App 也能自动启动后台；源码运行时，若输出目录没有 Host 可�
 
 ## 界面渲染与字体
 
-三个 GUI 入口在 AppBuilder 阶段调用 `src/HeyMelody.App/RenderingSetup.cs` 与 `Typography.cs`（以源码链接编入各程序集，不新增 DLL）：`RenderingSetup` 固定 Win32 的 AngleEgl 与 WinUI／DirectComposition 合成（Mica 依赖前者），Skia GPU 资源上限 256 MiB、字形缓存 64 MiB。Host 托盘只链接 `Typography.cs`，使用 Win32 软件渲染与 RedirectionSurface，不初始化 GPU 与合成器，也不设置 Skia 缓存上限（见[后台架构](backend-architecture.md#资源占用)）。字体部分（`Typography.cs`）GUI 与托盘相同：界面区域性固定为 zh-CN，默认字体为系统 Microsoft YaHei UI，汉字回退先于按区域打分固定到简体中文字体，550–699 字重使用真实粗体字面。没有雅黑的系统使用随附的 Noto Sans SC（`fonts/`，OFL-1.1）；Linux 无头预览与测试把该目录登记到 fontconfig，以路径方式打开字体，避免 Avalonia 12.1 从流加载字体时随窗口累积原生内存。共享样式与间距令牌在 `src/HeyMelody.App/Styles/HeyMelodyTheme.axaml`，代码构建的界面使用 `UiMetrics.cs` 中的同名数值。
+三个 GUI 入口在 AppBuilder 阶段调用 `src/HeyMelody.App/RenderingSetup.cs` 与 `Typography.cs`（以源码链接编入各程序集，不新增 DLL）：`RenderingSetup` 固定 Win32 的 AngleEgl 与 WinUI／DirectComposition 合成（Mica 依赖前者），Skia GPU 资源上限 256 MiB、字形缓存 64 MiB。合成脏矩形使用区域跟踪（`UseRegionDirtyRectClipping`、最多 8 块），左侧英雄动画与右侧设置变化不再合并成整窗重绘；Avalonia 从不回收 GPU 纹理，`GpuJanitor` 在动画让路结束、窗口失活等事件后最多每 10 秒调用一次 `PurgeUnusedResources(30 s)`，不使用空闲定时器。Host 托盘只链接 `Typography.cs`，使用 Win32 软件渲染与 RedirectionSurface，不初始化 GPU 与合成器，也不设置 Skia 缓存上限（见[后台架构](backend-architecture.md#资源占用)）。字体部分（`Typography.cs`）GUI 与托盘相同：界面区域性固定为 zh-CN，默认字体为系统 Microsoft YaHei UI，汉字回退先于按区域打分固定到简体中文字体，550–699 字重使用真实粗体字面。没有雅黑的系统使用随附的 Noto Sans SC（`fonts/`，OFL-1.1）；Linux 无头预览与测试把该目录登记到 fontconfig，以路径方式打开字体，避免 Avalonia 12.1 从流加载字体时随窗口累积原生内存。共享样式与间距令牌在 `src/HeyMelody.App/Styles/HeyMelodyTheme.axaml`，代码构建的界面使用 `UiMetrics.cs` 中的同名数值。
 
 设 `HEYMELODY_RENDER_DIAGNOSTICS=1` 或在窗口中按 Ctrl+Shift+F12 显示 Avalonia 的帧率、渲染与布局耗时叠加层，三维模型另显示 Filament 帧统计。验收 120 Hz 时在 120 Hz 显示器上展开／折叠设置项、拖动模型，并关注叠加层而不是空闲窗口的数值。
 

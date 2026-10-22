@@ -50,11 +50,18 @@ PWR-00 为 2026-10-22 后端能耗轮已完成项的汇总，依据、测试数�
 
 ## 界面与前端（UI）
 
+UI-00 为 2026-10-22 界面性能轮（起点 `a13e236`）已完成项的汇总，依据、反编译核实、测试数量与 Windows 待验证清单见[界面性能（0.9.9）](research/ui-performance-0.9.9.md)。该轮同时完成了 UI-01、UI-02，并核实了 UI-03；UI-04 起为该轮登记的后续项，位置以 `a13e236` 为基准，涉及该轮改动的文件按符号定位。
+
 | 编号 | 位置 | 现象与依据 | 预估收益 | 风险与依赖 | 状态 | 登记来源 |
 | --- | --- | --- | --- | --- | --- | --- |
-| UI-01 | `src/HeyMelody.Client/MainViewModel.Selection.cs:45` `ReadOnlyPresentation` @f415d29 | 用默认选项的 JSON 往返复制快照，可改用 `UiSnapshot.Clone()`（静态分析） | 减少界面端分配与反射序列化；未测量 | 须保持“只读展示不含暂存选择和 EQ 草稿”的语义；Client.Tests 覆盖 | 待处理 | 2026-10-21 后端内存（顺带发现） |
-| UI-02 | `src/HeyMelody.App/RenderingSetup.cs:17`、`:22` @f415d29 | GUI 的 Skia GPU 资源上限为 256 MiB，而 Avalonia.Skia 12.1.4 不按时清理 GPU 缓存（静态分析，依据程序集元数据，未反编译） | 可能降低 GUI 长时间运行的显存与内存占用；未测量 | 影响三维模型与 120 Hz 渲染预算；需 Windows 原生窗口验证 | 待处理 | 2026-10-21 后端内存（顺带发现） |
-| UI-03 | FluentAvaloniaTheme 3.1.0 包依赖 @f415d29 | 该主题包把 Avalonia.Controls.DataGrid 和 ColorPicker 带入每个 GUI 进程（包元数据，静态分析） | 减少加载的程序集；未测量 | 升级或替换主题包会影响外观，见 [FluentAvalonia 调研](research/fluent-avalonia.md) | 待处理 | 2026-10-21 后端内存（顺带发现） |
+| UI-00 | `src/HeyMelody.App/RenderingSetup.cs`、`EncoFree4ModelView.cs`、`AnimationYieldTriggers.cs`（新增）、`MainView.axaml`，`src/HeyMelody.Artwork/LottieView.cs`、`AnimationYield.cs`、`GpuJanitor.cs`（新增），`src/HeyMelody.Client/MainViewModel.WriteQueue.cs`（新增）等 @a13e236 起点 | 合成器默认把一帧的全部脏区并成一个包围矩形（反编译核实），改为区域跟踪；界面展开、滚动与窗口失活时，模型空闲自转与 Lottie 降到 30 fps；模型帧直接写入锁定位图，少一次整帧复制；Lottie 末帧缓存为 GPU 图像；EQ 竖直滑块居中不再被裁；动态设置行与 EQ 选择改为非阻塞排队（静态分析、反编译与 Linux 无头测试） | 降低弱 GPU 上的整窗重绘与 UI 线程复制；未在 Windows 测量 | 8cx 等真机的帧时间、Mica 与合成行为、真机写入均待 Windows 验证 | 已完成（Windows 待验证） | 2026-10-22 界面性能 |
+| UI-01 | `src/HeyMelody.Client/MainViewModel.Selection.cs:45` `ReadOnlyPresentation` @f415d29 | 用默认选项的 JSON 往返复制快照，可改用 `UiSnapshot.Clone()`（静态分析） | 减少界面端分配与反射序列化；未测量 | 须保持“只读展示不含暂存选择和 EQ 草稿”的语义；Client.Tests 覆盖 | 已完成（2026-10-22 界面性能轮，改用 `Clone()`，语义由既有 Clone 等价检查覆盖） | 2026-10-21 后端内存（顺带发现） |
+| UI-02 | `src/HeyMelody.App/RenderingSetup.cs:17`、`:22` @f415d29 | GUI 的 Skia GPU 资源上限为 256 MiB，而 Avalonia.Skia 12.1.4 不按时清理 GPU 缓存（2026-10-22 反编译确认：只调用 `SetResourceCacheLimit`，从不 purge；`WriteableBitmap` 每次修改生成新 `SKImage`，即新纹理） | 可能降低 GUI 长时间运行的显存与内存占用；未测量 | 影响三维模型与 120 Hz 渲染预算；需 Windows 原生窗口验证 | 已完成（保留 256 MiB 上限，新增事件驱动的 `GpuJanitor`：动画让路结束或窗口失活后最多每 10 s 调用 `PurgeUnusedResources(30 s)`，无空闲定时器；Windows 显存未测量） | 2026-10-21 后端内存（顺带发现） |
+| UI-03 | FluentAvaloniaTheme 3.1.0 包依赖 @f415d29 | 该主题包把 Avalonia.Controls.DataGrid 和 ColorPicker 带入每个 GUI 进程（包元数据，静态分析）。2026-10-22 反编译：`ControlThemes/Controls.axaml` 无条件以 `typeof(DataGrid)`、`typeof(ColorPicker)` 等为键注册延迟主题，主题类没有排除选项 | 减少加载的程序集；未测量 | 只能替换主题包或修补其资源字典，会影响外观，见 [FluentAvalonia 调研](research/fluent-avalonia.md)；加载时机未运行验证 | 待处理（本轮核实后不实施：无受支持的排除方式） | 2026-10-21 后端内存（顺带发现） |
+| UI-04 | `src/HeyMelody.App/EncoFree4ModelView.cs` `PresentLatestFrame`，`src/HeyMelody.Rendering.Filament` @a13e236 | 模型每帧仍经 GPU 回读、CPU 复制到位图、再由 Skia 上传新纹理（静态分析）；可改为 Filament 与 Avalonia 共享 GPU 纹理（D3D11/Vulkan 互操作） | 去掉回读与重新上传，弱 GPU 上收益最大；未测量 | 需要原生层与 Avalonia GPU 互操作改造，OpenGL/Vulkan 两后端分别验证；属架构改动 | 待处理 | 2026-10-22 界面性能 |
+| UI-05 | `EncoFree4ModelView.cs` `FitCamera`（物理像素尺寸、`MsaaSamples = 4`）@a13e236 | 模型按物理像素和 4×MSAA 渲染，200% 缩放的大窗口约 1440×1280（静态分析） | 弱 GPU 上可按渲染耗时降低分辨率或 MSAA；未测量 | 画质取舍需用户决定；须在 8cx 等真机测量 | 待处理 | 2026-10-22 界面性能 |
+| UI-06 | Avalonia 12.1.4 Win32 合成（WinUI/DirectComposition 交换链）| 反编译未见部分呈现（partial present）；区域脏矩形减少的是重绘，交换链是否仍整窗提交未核实（静态分析，低置信度） | 若整窗提交，可进一步降低 GPU 带宽；未测量 | 需 Windows 上的 GPU 计数或 PIX 测量；可能依赖上游改动 | 待处理 | 2026-10-22 界面性能 |
+| UI-07 | `src/HeyMelody.Artwork/LottieView.cs` `LottieHandler` @a13e236 | 未让路时循环 Lottie 仍按每个合成帧执行 Skottie（0.9.0 为 120 Hz 平滑有意保留；静态分析） | 若 Windows 测量显示 Lottie 仍是瓶颈，可按动画原生帧率或缓存循环帧 | 违背 0.9.0 的平滑决定，需用户确认；缓存循环帧内存开销大 | 待处理 | 2026-10-22 界面性能 |
 
 ## 磁盘 I/O（IO）
 

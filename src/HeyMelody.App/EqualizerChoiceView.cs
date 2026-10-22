@@ -30,7 +30,7 @@ public sealed class EqualizerChoiceView : UserControl
     {
         if (e.PropertyName is nameof(MainViewModel.PresetOptions) or nameof(MainViewModel.SelectedPreset) or nameof(MainViewModel.EqEntries)
             or nameof(MainViewModel.SelectedEqEntry) or nameof(MainViewModel.CanCreateEq) or nameof(MainViewModel.CanEditEq)
-            or nameof(MainViewModel.CanChoosePreset) or null) Build();
+            or nameof(MainViewModel.CanChoosePreset) or nameof(MainViewModel.PendingEqEntryId) or null) Build();
     }
     private void Build()
     {
@@ -61,7 +61,7 @@ public sealed class EqualizerChoiceView : UserControl
         foreach (var entry in model.EqEntries)
         {
             var radio = new RadioButton { Content = entry.Name, GroupName = group, IsEnabled = model.CanEditEq,
-                IsChecked = model.SelectedPreset is null && entry.Selected };
+                IsChecked = model.SelectedPreset is null && (model.PendingEqEntryId is { } pending ? entry.Id == pending : entry.Selected) };
             radio.Click += async (_, _) =>
             { if (model.EqEntries.FirstOrDefault(current => current.Id == entry.Id) is { } current) await model.ActivateEqEntryAsync(current); };
             _custom[entry.Id] = radio;
@@ -80,7 +80,7 @@ public sealed class EqualizerChoiceView : UserControl
             { radio.IsEnabled = model.CanChoosePreset; radio.IsChecked = option.Key == model.SelectedPreset?.Key; }
         foreach (var entry in model.EqEntries)
             if (_custom.TryGetValue(entry.Id, out var radio))
-            { radio.IsEnabled = model.CanEditEq; radio.IsChecked = model.SelectedPreset is null && entry.Selected; }
+            { radio.IsEnabled = model.CanEditEq; radio.IsChecked = model.SelectedPreset is null && (model.PendingEqEntryId is { } pending ? entry.Id == pending : entry.Selected); }
         if (_create is not null) { _create.IsVisible = model.CanCreateEq; _create.IsEnabled = model.CanEditEq; }
     }
 }

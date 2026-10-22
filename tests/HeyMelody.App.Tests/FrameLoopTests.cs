@@ -13,7 +13,7 @@ internal static class FrameLoopTests
         Run("the model frame-rate preference persists beside the theme and compatibility choices", () => { Preference(output); return Task.CompletedTask; });
         Run("the model loop advances on animation ticks and pauses while hidden or minimized", LoopAsync);
         Run("changing only the model frame rate retains its renderer and motion", ChangeRateAsync);
-        return pacingChecks + 4;
+        return pacingChecks + 4 + FrameCopyTests.Run(session);
 
         void Run(string name, Func<Task> action)
         {

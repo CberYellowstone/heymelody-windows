@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Rendering;
+using Avalonia.Rendering.Composition;
 using SkiaSharp;
 
 namespace HeyMelodyWindows.Ui;
@@ -20,6 +21,9 @@ internal static class RenderingSetup
     {
         SKGraphics.SetFontCacheLimit(FontCacheLimitBytes);
         builder = builder.With(new SkiaOptions { MaxGpuResourceSizeBytes = GpuResourceLimitBytes });
+        // Avalonia's default merges every dirty rect of a frame into one union, so the hero animation on the left and any
+        // change on the right pane repaint nearly the whole window together. Region tracking keeps them separate.
+        builder = builder.With(new CompositionOptions { UseRegionDirtyRectClipping = true, MaxDirtyRects = 8 });
         if (OperatingSystem.IsWindows())
             builder = builder.With(new Win32PlatformOptions
             {

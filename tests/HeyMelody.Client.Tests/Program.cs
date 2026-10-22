@@ -142,6 +142,7 @@ try
     await SelectionPresentationTests.RunAsync(Test);
     await ResourceVmTests.RunAsync(Test);
     await FeatureInteractionTests.RunAsync(Test);
+    await WriteQueueTests.RunAsync(Test);
     await ResourceVmTests.RunArtworkAsync(Test);
     await AncVmTests.RunAsync(Test);
     await DemoVmTests.RunAsync(Test);

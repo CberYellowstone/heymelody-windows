@@ -20,6 +20,10 @@
 
 验证边界：Linux 上 Resources 34→40、Client 173→181 为新增检查（含审查修复新增的 `RpcLineReader` 字节读取、真实管道与休眠后重新调度检查），Daily 177、Devices 21、Control 19、Protocol 77、Calibration 55、DeviceManager 8、Calibration.UI 13、App 129 改后全量重跑数量不变、全部通过；Host 以 `-p:EnableWindowsTargeting=true` 编译 0 警告 0 错误，Host.Tests 现在可在 Linux 完整运行，日志有 110 个 PASS 行，其中 2 项 Windows 专用检查（真实 WASAPI 播放器的致命初始化；试听线程空闲释放）在 Linux 上提前返回、先打印 SKIP 再计为 PASS，实际执行 108 项；此前为 48 项通过后在 COM 处停止。以上为静态分析与模拟或离线测试，没有 Linux 能耗测量。**Windows 行为均未验证**：任务管理器的效率模式显示、IDLE 下的响应、BLE 按需启停、试听豁免和测量脚本新增字段。依据、清单与顺带发现见[后台能耗](../research/backend-energy.md)和[优化待办](../optimization-backlog.md)。
 
+2026-10-22（界面性能）：在 review/0.9.9 分支完成一轮主界面性能与体验优化。合成器改用区域脏矩形（Avalonia 默认把一帧的脏区并成一个包围矩形，左侧主图动画与右侧任何变化会合成近乎整窗重绘）；展开或收起设置卡、滚动设置区以及主窗口失活时，三维模型的空闲自转与 Lottie 降到 30 fps，拖动与惯性不变；模型帧由渲染器直接写入位图，少一次整帧复制；Lottie 末帧缓存为 GPU 图像；新增事件驱动的 GPU 缓存回收（待办 UI-02）；只读展示改用 `UiSnapshot.Clone()`（UI-01）。EQ 竖直滑块拇指居中，不再被裁。动态设置行（声音、设备、BassWave）与 EQ 预设、自定义条目在写入待确认时不再禁用，改为与降噪相同的“最后目标”排队：前一项确认后才发送，回读已满足则不写，未确认即丢弃且不重放。产品版本仍为 0.9.2，尚未发布；公共 IPC 与设备 SET 规则不变。
+
+验证边界：Linux 上 App 129→136、Client 181→190 为新增检查，其余 DeviceManager 9、Calibration.UI 13、Calibration 55、Protocol 77、Resources 40、Devices 21、Control 20、Daily 177、Host 110 个 PASS 行与 ModelPreview 180 项数量不变、全部通过；App Release 编译 0 警告。以上为反编译核实、静态分析与无头测试。**Windows 未验证**：8cx Gen3 等设备的实际帧率、区域脏矩形在 Win32 交换链上的效果、30 fps 让路观感、GPU 缓存回收与显存、真实耳机上的排队写入。依据与后续项见[界面性能（0.9.9）](../research/ui-performance-0.9.9.md)和[优化待办](../optimization-backlog.md)。
+
 ## 历史版本
 
 以下原段整理自 2026-10-11 文档重整前的根目录 `README.md` 与 `REPOSITORY.md`，保留原版本、日期、设备、平台及验证范围，仅调整链接位置。原段中的 “current”、默认行为与检查数量属于对应历史版本，不作为后续版本的保证。两个来源有重叠时分别列出；原文未给验证日期的条目不补写日期。

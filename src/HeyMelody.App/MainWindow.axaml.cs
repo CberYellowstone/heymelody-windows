@@ -28,6 +28,7 @@ public partial class MainWindow : FAAppWindow
         InitializeComponent();
         Ui.Typography.ApplyTextOptions(this);
         Ui.RenderDiagnostics.Attach(this);
+        AnimationYieldTriggers.AttachWindow(this);
         _service = service;
         _events = service as IHeadsetEventService;
         _manager = manager is null ? null : new TrackedDeviceManager(manager);

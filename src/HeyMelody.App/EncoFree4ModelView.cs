@@ -13,6 +13,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using HeyMelody.Rendering.Filament;
+using HeyMelodyWindows.Artwork;
 using HeyMelodyWindows.Ui;
 
 namespace HeyMelodyWindows.App;
@@ -64,6 +65,17 @@ public class DeviceModelView : UserControl
     private int _loopGeneration;
     private TimeSpan? _lastFrame;
     private readonly ModelFramePacer _framePacer = new();
+    // Idle auto-rotation steps down to 30 fps while AnimationYield is active; dragging and inertia keep _framePacer.
+    private readonly ModelFramePacer _yieldPacer = new(ModelFrameRate.Fps30);
+    private bool _yielding;
+    // Locking a WriteableBitmap invalidates its Skia image (a new GPU upload) even if nothing is written, so the renderer
+    // is polled only until a frame arrives after the last request. Requests can overlap (the frame copied first may predate
+    // the last pose), so polling continues for a short grace after the last request instead of stopping at the first frame.
+    private const double FramePollGraceSeconds = .25;
+    private bool _frameRequested;
+    private double _frameRequestedAt;
+    /// <summary>Set when the renderer's frame layout cannot go straight into the bitmap; tests set it to force the managed path.</summary>
+    internal bool DirectCopyDisabled { get; set; }
     private float _appliedYaw = float.NaN, _appliedPitch = float.NaN;
     private ulong _afterFrameId;
     private double _lastPresentedAt;
@@ -247,6 +259,8 @@ public class DeviceModelView : UserControl
             ModelReady = true;
             _lastDiagnostics = _renderer.GetDiagnostics();
             _afterFrameId = 0;
+            MarkFrameRequested();
+            DirectCopyDisabled = false;
             _presentedFrames = 0;
             _lastPresentedAt = 0;
             _presentationIntervals.Clear();
@@ -459,7 +473,9 @@ public class DeviceModelView : UserControl
             var dt = _lastFrame is { } last ? Math.Clamp((time - last).TotalSeconds, 0, .1) : 0;
             _lastFrame = time;
             Motion.Step(dt);
-            if (_framePacer.ShouldRender(time)) ApplyCamera();
+            bool yielding = AnimationYield.Active && Motion.Phase == ModelOrbitPhase.Idle;
+            if (yielding != _yielding) { _yielding = yielding; _yieldPacer.Reset(ModelFrameRate.Fps30); }
+            if ((yielding ? _yieldPacer : _framePacer).ShouldRender(time)) ApplyCamera();
             PresentLatestFrame();
         }
         catch (Exception exception) { FailRenderer(exception); return; }
@@ -479,32 +495,34 @@ public class DeviceModelView : UserControl
         {
             _renderer.Configure(_configuration);
             _renderer.RequestFrame();
+            MarkFrameRequested();
             ++CameraUpdateCount;
         }
         catch (Exception exception) { FailRenderer(exception); }
     }
 
+    internal int BitmapLockCount { get; private set; }
+    internal int DirectFrameCopyCount { get; private set; }
+    internal int FallbackFrameCopyCount { get; private set; }
+
+    private void MarkFrameRequested() { _frameRequested = true; _frameRequestedAt = _clock.Elapsed.TotalSeconds; }
+
     private void PresentLatestFrame()
     {
         if (_renderer is null || _configuration.Width <= 0 || _configuration.Height <= 0) return;
-        var required = checked(_configuration.Width * _configuration.Height * 4);
-        if (_frameBuffer is null || _frameBuffer.Length < required) _frameBuffer = new byte[required];
-        if (!_renderer.TryCopyLatestFrame(_afterFrameId, _frameBuffer, out var frame)) return;
+        if (!_frameRequested && _clock.Elapsed.TotalSeconds - _frameRequestedAt >= FramePollGraceSeconds) return;
+        FilamentFrameInfo frame;
+        switch (TryCopyDirect(out frame))
+        {
+            case DirectCopy.NoFrame: return;
+            case DirectCopy.Presented: break;
+            default:
+                if (!CopyThroughBuffer(out frame)) return;
+                break;
+        }
         _afterFrameId = frame.FrameId;
         if (frame.Width != _configuration.Width || frame.Height != _configuration.Height) { _lastFrameInfo = default; return; }
-        if (frame.RowBytes < frame.Width * 4 || (long)frame.RowBytes * frame.Height > _frameBuffer.Length)
-            throw new InvalidDataException("The renderer returned an invalid frame stride.");
-        if (_bitmap is null || _bitmap.PixelSize.Width != frame.Width || _bitmap.PixelSize.Height != frame.Height)
-        {
-            Viewport.Source = null;
-            _bitmap?.Dispose();
-            _bitmap = new WriteableBitmap(new PixelSize(frame.Width, frame.Height), new Vector(96, 96),
-                PixelFormats.Rgba8888, AlphaFormat.Opaque);
-            Viewport.Source = _bitmap;
-        }
-        using (var buffer = _bitmap.Lock())
-            for (var y = 0; y < frame.Height; y++)
-                Marshal.Copy(_frameBuffer, y * frame.RowBytes, buffer.Address + y * buffer.RowBytes, frame.Width * 4);
+        _frameRequested = false;
         _lastFrameInfo = frame;
         _status.IsVisible = false;
         Viewport.InvalidateVisual();
@@ -519,11 +537,66 @@ public class DeviceModelView : UserControl
         if (now - _diagnosticsAt >= .5) { _diagnosticsAt = now; _lastDiagnostics = _renderer.GetDiagnostics(); UpdateDiagnostics(); }
     }
 
+    private enum DirectCopy { NoFrame, Presented, Unavailable }
+
+    /// <summary>Copies the renderer's frame straight into the locked bitmap when it already has the frame's size and stride.</summary>
+    private unsafe DirectCopy TryCopyDirect(out FilamentFrameInfo frame)
+    {
+        frame = default;
+        int width = _configuration.Width, height = _configuration.Height;
+        if (DirectCopyDisabled || _renderer is null || _bitmap is null || _bitmap.PixelSize.Width != width || _bitmap.PixelSize.Height != height) return DirectCopy.Unavailable;
+        ++BitmapLockCount;
+        using var buffer = _bitmap.Lock();
+        if (buffer.RowBytes != width * 4) return DirectCopy.Unavailable;
+        var destination = new Span<byte>((void*)buffer.Address, buffer.RowBytes * height);
+        try
+        {
+            if (!_renderer.TryCopyLatestFrame(_afterFrameId, destination, out frame)) return DirectCopy.NoFrame;
+        }
+        // A renderer whose stride exceeds the bitmap's rejects the smaller destination; the managed path takes over for good.
+        catch (Exception) { DirectCopyDisabled = true; return DirectCopy.Unavailable; }
+        // A frame of another size is not laid out like the bitmap; the caller discards it.
+        if (frame.Width != width || frame.Height != height) return DirectCopy.Presented;
+        if (frame.RowBytes != buffer.RowBytes) { DirectCopyDisabled = true; return DirectCopy.Unavailable; }
+        ++DirectFrameCopyCount;
+        return DirectCopy.Presented;
+    }
+
+    /// <summary>Managed fallback: renderer to _frameBuffer, then row by row into a (re)created bitmap.</summary>
+    private bool CopyThroughBuffer(out FilamentFrameInfo frame)
+    {
+        var required = checked(_configuration.Width * _configuration.Height * 4);
+        if (_frameBuffer is null || _frameBuffer.Length < required) _frameBuffer = new byte[required];
+        if (!_renderer!.TryCopyLatestFrame(_afterFrameId, _frameBuffer, out frame)) return false;
+        if (frame.Width != _configuration.Width || frame.Height != _configuration.Height) return true;
+        if (frame.RowBytes < frame.Width * 4 || (long)frame.RowBytes * frame.Height > _frameBuffer.Length)
+            throw new InvalidDataException("The renderer returned an invalid frame stride.");
+        if (_bitmap is null || _bitmap.PixelSize.Width != frame.Width || _bitmap.PixelSize.Height != frame.Height)
+        {
+            Viewport.Source = null;
+            _bitmap?.Dispose();
+            _bitmap = new WriteableBitmap(new PixelSize(frame.Width, frame.Height), new Vector(96, 96),
+                PixelFormats.Rgba8888, AlphaFormat.Opaque);
+            Viewport.Source = _bitmap;
+        }
+        ++BitmapLockCount; ++FallbackFrameCopyCount;
+        using (var buffer = _bitmap.Lock())
+            for (var y = 0; y < frame.Height; y++)
+                Marshal.Copy(_frameBuffer, y * frame.RowBytes, buffer.Address + y * buffer.RowBytes, frame.Width * 4);
+        return true;
+    }
+
     /// <summary>Copies the last frame presented by Avalonia, for focused native-render validation.</summary>
     public byte[]? CaptureLatestFrame(out FilamentFrameInfo frame)
     {
         frame = _lastFrameInfo;
-        return frame.FrameId == 0 || _frameBuffer is null ? null : _frameBuffer.AsSpan(0, checked(frame.RowBytes * frame.Height)).ToArray();
+        if (frame.FrameId == 0 || _bitmap is null) return null;
+        // Rows are tightly packed in the bitmap; the result uses the renderer's reported stride like the managed copy did.
+        var result = new byte[checked(frame.RowBytes * frame.Height)];
+        using var buffer = _bitmap.Lock();
+        for (var y = 0; y < frame.Height; y++)
+            Marshal.Copy(buffer.Address + y * buffer.RowBytes, result, y * frame.RowBytes, frame.Width * 4);
+        return result;
     }
 
     private void OnDiagnosticsChanged(object? sender, EventArgs e) => UpdateDiagnostics();

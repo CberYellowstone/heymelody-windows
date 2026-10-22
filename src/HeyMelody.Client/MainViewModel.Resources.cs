@@ -133,9 +133,12 @@ public sealed partial class MainViewModel
                 return Task.CompletedTask;
             int value = vm.Kind == "Switch" ? (vm.BooleanValue ? 1 : 0) : vm.Kind is "Radio" or "Combo"
                 ? vm.SelectedOption?.Key ?? int.MinValue : checked((int)Math.Round(vm.NumberValue));
-            return ApplyAsync(new("Feature", value, FeatureId: vm.Id, Text: vm.Kind == "Text" ? vm.TextValue : null));
-        }, () => CanWrite && !_pending.ContainsKey("Feature"));
-        var equalizerDefinitions = snapshot.FeatureSections.SelectMany(section => section.Controls)
+            return QueueFeatureAsync(new("Feature", value, FeatureId: vm.Id, Text: vm.Kind == "Text" ? vm.TextValue : null), sourceRevision);
+        }, () => CanWrite);
+        var featureSections = _writeTargets.Count == 0 ? snapshot.FeatureSections
+            : snapshot.FeatureSections.Select(section => section with
+            { Controls = section.Controls.Select(control => ShowQueuedFeature(control, snapshot)).ToArray() }).ToArray();
+        var equalizerDefinitions = featureSections.SelectMany(section => section.Controls)
             .Where(control => control.Id is "bass-enabled" or "bass").OrderBy(control => control.Id == "bass-enabled" ? 0 : 1)
             .Select(control => control.Id == "bass-enabled" ? control with
             {
@@ -146,7 +149,7 @@ public sealed partial class MainViewModel
             || !_equalizerFeatures.Zip(equalizerDefinitions).All(pair => SameFeature(pair.First.Definition, pair.Second)))
             _equalizerFeatures = equalizerDefinitions.Select(CreateControl).ToArray();
         // Apply the same presentation to live definitions, demos and older offline snapshots.
-        var visibleSections = snapshot.FeatureSections.Select(section => section with
+        var visibleSections = featureSections.Select(section => section with
         { Controls = GroupGameControls(section.Controls.Where(control => control.Id is not ("auto-volume" or "game-sound" or "bass-enabled" or "bass")).ToArray()) })
             .Where(section => section.Controls.Count != 0);
         var nextSections = visibleSections.Select(s =>
@@ -188,7 +191,7 @@ public sealed partial class MainViewModel
     public Task SelectPresetAsync(UiOption option)
     { if (_displaying) return Task.CompletedTask; SelectedPreset = option; return ApplyOptionAsync("Equalizer", option); }
     public async Task ActivateEqEntryAsync(UiEqEntry entry)
-    { await SelectEqEntryAsync(entry); if (SelectedEqEntry?.Id == entry.Id && !EqDirty) await ApplyAsync(new("CustomSelect", entry.Id)); }
+    { await SelectEqEntryAsync(entry); if (SelectedEqEntry?.Id == entry.Id && !EqDirty) await QueueEqActionAsync(new("CustomSelect", entry.Id)); }
     private async Task LoadResourcePreferencesAsync()
     {
         if (_service is not IResourceSettingsService resources) return;

@@ -22,6 +22,8 @@ public sealed partial class MainViewModel
         public string Stage { get; set; } = "等待应用";
         public List<UiApplyResult> Attempts { get; } = [];
         public bool Confirmed { get; set; }
+        // Completes after the intent left the pending map; queued writes chain on it instead of overlapping.
+        public TaskCompletionSource<bool> Done { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     private static string GroupFor(string kind) => kind switch
@@ -86,6 +88,7 @@ public sealed partial class MainViewModel
                 else { _selectedAncMode = null; _selectedAncSubmode = null; _selectedAnc = null; }
             }
             NotifyState();
+            intent.Done.TrySetResult(intent.Confirmed && Current(intent));
         }
         return intent.Confirmed && Current(intent);
     }
