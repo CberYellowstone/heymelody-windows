@@ -21,6 +21,8 @@ public partial class AppSettingsPanel : UserControl
     public AppSettingsPanel()
     {
         InitializeComponent();
+        UiBasicRenderCard.IsVisible = OperatingSystem.IsWindows();
+        UiBasicRenderSwitch.IsChecked = ThemePreferences.LoadUiBasicRenderMode();
         ModelCompatibilityCard.IsVisible = !OperatingSystem.IsMacOS();
         ModelBackendChoice.ItemsSource = new[] { "Vulkan", "OpenGL" };
         ModelBackendChoice.SelectedIndex = 0;
@@ -56,6 +58,7 @@ public partial class AppSettingsPanel : UserControl
     internal string SelectedTheme => ThemeChoice.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" };
     internal bool UseOnlineResources => OnlineSwitch.IsChecked == true;
     internal bool ModelCompatibilityMode => ModelBackendChoice.SelectedIndex == 1;
+    internal bool UiBasicRenderMode => UiBasicRenderSwitch.IsChecked == true;
     internal ModelFrameRate ModelFrameRate => Math.Round(ModelFrameRateSlider.Value) switch
     {
         0 => ModelFrameRate.Fps30,

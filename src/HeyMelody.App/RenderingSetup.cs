@@ -1,8 +1,12 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Logging;
+using Avalonia.Platform;
 using Avalonia.Rendering;
 using Avalonia.Rendering.Composition;
+using Avalonia.Win32;
+using HeyMelodyWindows.App;
 using SkiaSharp;
 
 namespace HeyMelodyWindows.Ui;
@@ -17,7 +21,61 @@ internal static class RenderingSetup
     // WebP frames and the glyph atlas; evicted textures would otherwise be uploaded again.
     internal const long GpuResourceLimitBytes = 256L * 1024 * 1024;
 
-    internal static AppBuilder UseHeyMelodyRendering(this AppBuilder builder)
+    internal static Win32PlatformOptions CreateWindowsOptions(bool basicRenderMode,
+        Func<byte[]?>? resolveWarpLuid = null)
+    {
+        var options = new Win32PlatformOptions
+        {
+            // Use the same DXGI first adapter as Avalonia's normal non-ARM64 path, on every Windows architecture.
+            // Supplying a callback bypasses Avalonia 12.1.4's default ARM64 Adreno blocklist.
+            GraphicsAdapterSelectionCallback = _ => 0,
+            RenderingMode = [Win32RenderingMode.AngleEgl, Win32RenderingMode.Software],
+            // Mica needs WinUI composition; both composition modes pace frames at the display refresh rate.
+            CompositionMode = [Win32CompositionMode.WinUIComposition, Win32CompositionMode.DirectComposition,
+                Win32CompositionMode.RedirectionSurface]
+        };
+
+        if (!basicRenderMode)
+            return options;
+
+        byte[]? warpLuid;
+        try
+        {
+            warpLuid = (resolveWarpLuid ?? WindowsWarpAdapterResolver.GetAdapterLuid)();
+        }
+        catch (Exception exception)
+        {
+            Logger.TryGet(LogEventLevel.Warning, "OpenGL")?.Log(null,
+                "Unable to resolve the WARP adapter; using software rendering: {Error}", exception);
+            warpLuid = null;
+        }
+
+        if (warpLuid is not { Length: 8 })
+        {
+            Logger.TryGet(LogEventLevel.Warning, "OpenGL")?.Log(null,
+                "Basic Render was requested, but no WARP adapter LUID is available; using software rendering.");
+            options.RenderingMode = [Win32RenderingMode.Software];
+            options.GraphicsAdapterSelectionCallback = null;
+            return options;
+        }
+
+        // Keep the choice immutable even if a caller owns the resolver's returned buffer.
+        var expectedLuid = (byte[])warpLuid.Clone();
+        options.GraphicsAdapterSelectionCallback = adapters =>
+        {
+            for (var index = 0; index < adapters.Count; index++)
+                if (adapters[index].DeviceLuid is { } luid && luid.AsSpan().SequenceEqual(expectedLuid))
+                    return index;
+
+            // D3D11AngleWin32PlatformGraphics.TryCreate catches this and the next RenderingMode is Software.
+            // Returning 0 here would silently select hardware despite the user's Basic Render preference.
+            throw new InvalidOperationException("Basic Render was requested, but the WARP adapter is absent from " +
+                "the ANGLE adapter list. Falling back to software rendering.");
+        };
+        return options;
+    }
+
+    internal static AppBuilder UseHeyMelodyRendering(this AppBuilder builder, bool? basicRenderMode = null)
     {
         SKGraphics.SetFontCacheLimit(FontCacheLimitBytes);
         builder = builder.With(new SkiaOptions { MaxGpuResourceSizeBytes = GpuResourceLimitBytes });
@@ -25,14 +83,10 @@ internal static class RenderingSetup
         // change on the right pane repaint nearly the whole window together. Region tracking keeps them separate.
         builder = builder.With(new CompositionOptions { UseRegionDirtyRectClipping = true, MaxDirtyRects = 8 });
         if (OperatingSystem.IsWindows())
-            builder = builder.With(new Win32PlatformOptions
-            {
-                // These are Avalonia's defaults, pinned on purpose: Mica needs WinUI composition (a low-latency
-                // swap chain would drop it), and both composition modes pace frames at the display refresh rate.
-                RenderingMode = [Win32RenderingMode.AngleEgl, Win32RenderingMode.Software],
-                CompositionMode = [Win32CompositionMode.WinUIComposition, Win32CompositionMode.DirectComposition,
-                    Win32CompositionMode.RedirectionSurface]
-            });
+            builder = builder
+                .With(CreateWindowsOptions(basicRenderMode ?? UiRenderingPreferenceReader.Load()))
+                // The D3D9 path does not use GraphicsAdapterSelectionCallback. Never let it bypass Basic Render.
+                .With(new AngleOptions { AllowedPlatformApis = [AngleOptions.PlatformApi.DirectX11] });
         return builder;
     }
 }

@@ -23,30 +23,54 @@ internal static class NativeSmoke
 {
     private static SmokeState _state = new();
 
-    public static int Run(bool openSettings = false)
+    public static int Run(bool openSettings = false, bool useRenderingSetup = false,
+        bool? basicRenderMode = null, string? outputDirectory = null, string? renderingFailure = null)
     {
         if (!OperatingSystem.IsWindows())
         {
             Console.WriteLine(JsonSerializer.Serialize(new { success = false, reason = "Windows required", nativeBluetoothCalls = 0 }));
             return 2;
         }
-        _state = new() { OpenSettings = openSettings };
+        if (renderingFailure is not (null or "software-fallback" or "warp-missing"))
+            throw new ArgumentException("Unknown rendering failure injection.", nameof(renderingFailure));
+        _state = new() { OpenSettings = openSettings, BasicRenderMode = basicRenderMode, RenderingFailure = renderingFailure,
+            Output = outputDirectory is null ? null : Path.GetFullPath(outputDirectory) };
+        var originalPreferencesPath = ThemePreferences.SettingsPathOverride;
+        if (basicRenderMode is not null)
+        {
+            _state.Output ??= Path.GetFullPath(Path.Combine("artifacts", "ui-render-policy-native-" + Guid.NewGuid().ToString("N")));
+            Directory.CreateDirectory(_state.Output);
+            ThemePreferences.SettingsPathOverride = Path.Combine(_state.Output, "isolated-preferences.json");
+            File.WriteAllText(ThemePreferences.SettingsPathOverride, "{\"theme\":\"light\",\"uiBasicRenderMode\":" + (basicRenderMode.Value ? "true" : "false") + "}");
+        }
         var uiThread = new Thread(() =>
         {
             try
             {
-                AppBuilder.Configure<SmokeApplication>().UsePlatformDetect().LogToTrace()
+                var builder = AppBuilder.Configure<SmokeApplication>().UsePlatformDetect();
+                if (useRenderingSetup)
+                {
+                    System.Diagnostics.Trace.Listeners.Add(new System.Diagnostics.ConsoleTraceListener());
+                    builder = HeyMelodyWindows.Ui.RenderingSetup.UseHeyMelodyRendering(builder, basicRenderMode);
+                    if (renderingFailure is not null)
+                        builder = builder.With(HeyMelodyWindows.Ui.RenderingSetup.CreateWindowsOptions(true,
+                            () => renderingFailure == "software-fallback" ? null : Enumerable.Repeat((byte)0x7f, 8).ToArray()));
+                    builder = HeyMelodyWindows.Ui.Typography.UseHeyMelodyTypography(builder);
+                }
+                builder.LogToTrace(useRenderingSetup ? Avalonia.Logging.LogEventLevel.Information : Avalonia.Logging.LogEventLevel.Warning)
                     .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
             }
             catch (Exception error) { _state.Failure = error.ToString(); }
         }) { IsBackground = true, Name = "HeyMelody native smoke UI" };
         uiThread.SetApartmentState(ApartmentState.STA);
         uiThread.Start();
-        if (!uiThread.Join(TimeSpan.FromSeconds(20))) _state.Failure ??= "Native UI thread did not stop in twenty seconds.";
+        if (!uiThread.Join(TimeSpan.FromSeconds(basicRenderMode is null ? 20 : 40)))
+            _state.Failure ??= "Native UI thread did not stop within its time limit.";
+        ThemePreferences.SettingsPathOverride = originalPreferencesPath;
         var success = _state.Failure is null && _state.Closed && _state.Service.Disposals == 1
             && _state.Service.Submissions == 0 && _state.Checks > 0
             && (!_state.OpenSettings || _state.SystemSettingsLaunchAccepted == true);
-        Console.WriteLine(JsonSerializer.Serialize(new
+        var report = JsonSerializer.Serialize(new
         {
             schemaVersion = 1, success, passed = _state.Checks, nativeBluetoothCalls = 0,
             applicationSetSubmissions = _state.Service.Submissions,
@@ -56,11 +80,18 @@ internal static class NativeSmoke
             systemSettingsLaunchRequested = _state.OpenSettings,
             systemSettingsLaunchAccepted = _state.SystemSettingsLaunchAccepted,
             systemSettingsLaunchUri = _state.SystemSettingsLaunchUri,
-            scope = _state.OpenSettings
+            requestedBasicRenderMode = _state.BasicRenderMode, renderingFailureInjection = _state.RenderingFailure,
+            rendering = _state.Probe?.Receipt,
+            screenshots = _state.Screenshots,
+            scope = _state.BasicRenderMode is not null
+                ? "Real visible Win32 main window and in-window dialogs; actual compositor GL renderer, screen-DC pixel captures for manual review, both themes, sizes, Mica/DWM/opaque fallback and fake-service lifecycle. Preferences are isolated. No production backend, native Bluetooth or headset SET."
+                : _state.OpenSettings
                 ? "real Win32 FAAppWindow geometry, themes, Avalonia Composition Mica, DWM properties, opaque fallback and lifecycle with an in-memory headset service; one real Windows settings launch; true means the OS accepted the URI request, not that page content was verified; no DWM pixel or hardware assertions"
                 : "real Win32 FAAppWindow geometry, themes, Avalonia Composition Mica, DWM properties, opaque fallback and lifecycle with an in-memory service; no system settings launch, DWM pixel or hardware assertions",
             states = _state.Receipts, failure = _state.Failure
-        }));
+        }, new JsonSerializerOptions { WriteIndented = _state.Output is not null });
+        if (_state.Output is not null) File.WriteAllText(Path.Combine(_state.Output, "report.json"), report);
+        Console.WriteLine(report);
         return success ? 0 : 1;
     }
 
@@ -72,6 +103,11 @@ internal static class NativeSmoke
         public bool SettingsDialogCompleted { get; set; }
         public bool FailureDialogsCompleted { get; set; }
         public bool OpenSettings { get; init; }
+        public bool? BasicRenderMode { get; init; }
+        public string? RenderingFailure { get; init; }
+        public string? Output { get; set; }
+        public NativeRenderingProbe? Probe { get; set; }
+        public List<object> Screenshots { get; } = [];
         public bool? SystemSettingsLaunchAccepted { get; set; }
         public string? SystemSettingsLaunchUri { get; set; }
         public string? Failure { get; set; }
@@ -92,6 +128,13 @@ internal static class NativeSmoke
                 ShowActivated = false, WindowStartupLocation = WindowStartupLocation.Manual,
                 Position = new PixelPoint(-10000, -10000)
             };
+            if (_state.BasicRenderMode is not null)
+            {
+                window.ShowActivated = true;
+                window.Topmost = true;
+                window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+                _state.Probe = NativeRenderingProbe.Attach(window);
+            }
             desktop.MainWindow = window;
             window.Closed += (_, _) =>
             {
@@ -117,6 +160,21 @@ internal static class NativeSmoke
             var handle = window.TryGetPlatformHandle();
             Check(handle is not null && handle.Handle != IntPtr.Zero && handle.HandleDescriptor == "HWND", "Real Win32 HWND.");
             Check(window.Icon is not null && window.Title == "HeyMelody", "Title and icon loaded.");
+            if (_state.Probe is { } probe)
+            {
+                for (int attempt = 0; !probe.Queried && attempt < 80; attempt++) await Task.Delay(50);
+                Check(probe.Queried && probe.Failure is null, "The actual compositor context was observed without an observer failure.");
+                if (_state.RenderingFailure is not null)
+                    Check(!probe.HasGpuContext && probe.Renderer is null,
+                        "WARP query/matching failure reaches software Skia without silently returning to a hardware GPU.");
+                else
+                {
+                    Check(probe.HasGpuContext && !string.IsNullOrWhiteSpace(probe.Renderer),
+                        "The actual compositor render context exposes its ANGLE renderer.");
+                    Check(_state.BasicRenderMode == probe.Renderer!.Contains("Microsoft Basic Render Driver", StringComparison.OrdinalIgnoreCase),
+                        "The actual renderer matches the requested default GPU or Basic Render mode.");
+                }
+            }
             foreach (var dark in new[] { false, true })
             foreach (var size in new[] { new Size(1280, 900), new Size(900, 640) })
             {
@@ -184,6 +242,13 @@ internal static class NativeSmoke
                     selectedDeviceCenter = selectedCenter, devicePadding = padding.Padding.Left,
                     backdrop
                 });
+                if (_state.Output is not null && size.Width == 900)
+                {
+                    await NativeRenderingProbe.WaitForPixelsAsync(window);
+                    _state.Screenshots.Add(NativeRenderingProbe.Capture(window,
+                        Path.Combine(_state.Output, dark ? "main-dark.png" : "main-light.png")));
+                    Check(true, "A visible on-screen compositor screenshot was saved for manual review.");
+                }
             }
             var bundle = new BundledResourceStore();
             var animationAsset = bundle.FindNamedAsset("melody_ui_gold_hearing_detecting_guide")
@@ -222,6 +287,12 @@ internal static class NativeSmoke
                     Avalonia.Automation.AutomationProperties.GetName(control) == "云端资源密钥"),
                 "Native settings expose one HeyMelody key and no source selector.");
             Check(!settingsTask.IsCompleted, "Settings dialog opens after the failure dialog releases ownership.");
+            if (_state.Output is not null)
+            {
+                await NativeRenderingProbe.WaitForPixelsAsync(window);
+                _state.Screenshots.Add(NativeRenderingProbe.Capture(window, Path.Combine(_state.Output, "settings-popup.png")));
+                Check(true, "The visible settings popup compositor screenshot was saved for manual review.");
+            }
         }
         catch (Exception error) { _state.Failure = error.ToString(); }
         finally
@@ -279,7 +350,7 @@ internal static class NativeSmoke
 
     private static async Task StopOnTimeoutAsync(MainWindow window, IClassicDesktopStyleApplicationLifetime desktop)
     {
-        await Task.Delay(TimeSpan.FromSeconds(12));
+        await Task.Delay(TimeSpan.FromSeconds(_state.BasicRenderMode is null ? 12 : 30));
         if (_state.Closed) return;
         _state.Failure ??= "Native smoke exceeded twelve seconds.";
         window.Close();

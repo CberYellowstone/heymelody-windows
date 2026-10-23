@@ -58,6 +58,10 @@ App 也能自动启动后台；源码运行时，若输出目录没有 Host 可�
 
 设 `HEYMELODY_RENDER_DIAGNOSTICS=1` 或在窗口中按 Ctrl+Shift+F12 显示 Avalonia 的帧率、渲染与布局耗时叠加层，三维模型另显示 Filament 帧统计。验收 120 Hz 时在 120 Hz 显示器上展开／折叠设置项、拖动模型，并关注叠加层而不是空闲窗口的数值。
 
+所有 Windows GUI 显式选择 DXGI 枚举首适配器，绕过 Avalonia 的 ARM64 Adreno 默认过滤；不按 GPU 品牌或架构选卡，也不新增独显优先策略。应用设置的“使用 Basic Render 兼容模式”保存为 `%LOCALAPPDATA%\HeyMelody\preferences.json` 中的 `uiBasicRenderMode` 布尔值，只有 `true` 启用，缺失或无效值使用默认 GPU。各 GUI 在渲染初始化前独立读取同一设置；保存后重新打开主窗口、设备管理器及校准窗口生效，不必退出托盘后台。此选项不改变 Filament 后端、画质或动画。
+
+Basic 模式通过 DXGI `EnumWarpAdapter` 查询 WARP LUID，再匹配 Avalonia 的适配器标识，不依赖显示名称。ANGLE 固定 D3D11；WARP 查询、匹配或初始化失败时退到 Avalonia Software 并记录原因，不改回硬件。Software 与 WARP 是不同路径，不能把后备写成已启用 WARP；运行中设备丢失不承诺自动切换后端。旧体验版的 `HEYMELODY_UI_ADAPTER` 不再参与选卡。背景见[本机诊断](research/ui-lag-arm64-2026-10-23.md)和[上游历史](research/avalonia-adreno-history-2026-10-23.md)。定向策略检查使用 App.Tests 的 `--rendering-policy-tests`，设置检查使用 `--rendering-settings-tests`；原生检查使用模拟服务，不连接耳机。没有新增应急启动参数，无法显示时可手动修改上述配置字段为 `true` 后重开界面。
+
 ## 按改动选择验证
 
 `tests/` 下的检查是可执行项目，使用 `dotnet run`，不是 `dotnet test`。Linux 上可以运行无头的 App、DeviceManager、Calibration.UI、Client、Calibration、Protocol、Resources、Devices、Control 与 Daily 检查；ModelPreview 的默认运动检查已在 Linux x64 使用 `dotnet run --project tests/HeyMelody.ModelPreview.Tests -c Release` 通过，无需指定 RID。`--native*` 模式、Probe／Audio 检查与 `Windows.OfflineChecks` 只在 Windows 运行。Linux 可用 `-p:EnableWindowsTargeting=true` 编译 Host 做静态检查；Host.Tests 现可在 Linux 完整运行（含能耗策略、状态写盘与 IPC 检查），2026-10-22 日志有 110 个 PASS 行，其中 2 项只在 Windows 执行的检查（真实 WASAPI 播放器的致命初始化；试听线程空闲释放）在 Linux 上提前返回，先打印 SKIP 再计为 PASS，实际执行 108 项；这 2 项须在 Windows 另行运行，不能算作已验证。可用内存较少时，构建加 `-nodeReuse:false -p:UseSharedCompilation=false` 并在测试前执行 `dotnet build-server shutdown`，以免常驻编译进程挤占测试内存。先选择能覆盖改动的检查，例如协议或界面：

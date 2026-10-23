@@ -22,25 +22,33 @@ internal static class NativeCalibrationSmoke
     private static bool _completed;
     private static int _checks;
     private static CancellationTokenSource _loop = null!;
+    private static bool? _basicRenderMode;
+    private static NativeRenderingProbe? _probe;
+    private static readonly List<object> Screenshots = [];
 
-    public static int Run()
+    public static int Run(bool? basicRenderMode = null, string? outputDirectory = null)
     {
         if (!OperatingSystem.IsWindows()) return 2;
-        _output = Path.GetFullPath(Path.Combine("artifacts", "calibration-native-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss")));
+        _basicRenderMode = basicRenderMode;
+        _output = Path.GetFullPath(outputDirectory ?? Path.Combine("artifacts", "calibration-native-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss")));
         Directory.CreateDirectory(_output);
         _loop = new CancellationTokenSource();
         var thread = new Thread(() =>
         {
             try
             {
-                AppBuilder.Configure<NativeFixtureApplication>().UsePlatformDetect().SetupWithoutStarting();
+                var builder = AppBuilder.Configure<NativeFixtureApplication>().UsePlatformDetect();
+                if (basicRenderMode is not null)
+                    builder = HeyMelodyWindows.Ui.RenderingSetup.UseHeyMelodyRendering(builder, basicRenderMode);
+                builder.SetupWithoutStarting();
                 Dispatcher.UIThread.MainLoop(_loop.Token);
             }
             catch (Exception error) { _failure = error.ToString(); }
         }) { IsBackground = true, Name = "Calibration native fixture" };
         thread.SetApartmentState(ApartmentState.STA); thread.Start();
-        if (!thread.Join(TimeSpan.FromSeconds(30))) _failure ??= "Native fixture did not finish.";
+        if (!thread.Join(TimeSpan.FromSeconds(basicRenderMode is null ? 30 : 50))) _failure ??= "Native fixture did not finish.";
         var result = new { success = _completed && _failure is null, passed = _checks, nativeBluetoothCalls = 0,
+            requestedBasicRenderMode = _basicRenderMode, rendering = _probe?.Receipt, screenshots = Screenshots,
             scope = "Win32 wizard windows with fixture responses and routed keyboard input; no device or acoustic test", failure = _failure };
         File.WriteAllText(Path.Combine(_output, "receipt.json"), JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine(JsonSerializer.Serialize(result)); Console.WriteLine(_output);
@@ -58,17 +66,29 @@ internal static class NativeCalibrationSmoke
             var model = new CalibrationViewModel(service, "operation", "hearing");
             var view = new CalibrationView(model);
             var window = CreateWindow(view, "黄金听感 fixture");
+            if (_basicRenderMode is not null) _probe = NativeRenderingProbe.Attach(window);
             window.Opened += async (_, _) =>
             {
                 try
                 {
                     await model.InitializeAsync(); await Task.Delay(200);
+                    if (_probe is { } probe)
+                    {
+                        for (int attempt = 0; !probe.Queried && attempt < 80; attempt++) await Task.Delay(50);
+                        Check(probe.Queried && probe.HasGpuContext && !string.IsNullOrWhiteSpace(probe.Renderer),
+                            "The calibration compositor exposes its actual ANGLE renderer.");
+                        Check(_basicRenderMode == probe.Renderer!.Contains("Microsoft Basic Render Driver", StringComparison.OrdinalIgnoreCase),
+                            "The calibration renderer matches the requested GPU policy.");
+                    }
                     var handle = window.TryGetPlatformHandle();
                     Check(handle is not null && handle.Handle != IntPtr.Zero && view.Bounds.Width > 0, "A real Win32 wizard window is laid out.");
                     var slider = view.GetVisualDescendants().OfType<Slider>().Single();
                     Check(slider.Value == 5 && model.State.Decibels == -19, "Factory middle level is the initial native slider value.");
                     slider.Focus(); PressKey(slider, Key.Right);
                     await service.Started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+                    // The service can signal before CalibrationView's coalesced Dispatcher.Post
+                    // applies CanContinue to the button. Keep the ACK blocked while awaiting it.
+                    await Until(() => model.LevelPending && !Button(view, "下一步").IsEnabled);
                     Check(!Button(view, "下一步").IsEnabled, "Native Next is disabled while the tone ACK is pending.");
                     service.ReleaseLevel.TrySetResult(); await Until(() => !model.LevelPending);
                     Check(service.Inputs.Last() is { Action: "level", LevelIndex: 6 } && model.State.Decibels == -11,
@@ -78,7 +98,7 @@ internal static class NativeCalibrationSmoke
                         "Native slider keyboard input also sends the lower level.");
                     Push(service.State with { StepIndex = 1, FrequencyType = 2, FrequencyHz = 1000, LevelIndex = 5, Decibels = -19 });
                     Check(view.GetVisualDescendants().OfType<Slider>().Single().Value == 5, "A native step change resets the middle level.");
-                    Capture(view, "hearing-slider");
+                    await CaptureAsync(view, "hearing-slider");
                     Push(service.State with { Stage = "Results", StepIndex = 12, FiltersReady = false });
                     Check(!view.GetVisualDescendants().OfType<TextBox>().Any(), "Incomplete native results do not expose Save.");
                     var resultRadar = new UiHearingRadar(new double[] { .85, .62, .66, .58, .7, .82 }, new double[] { .83, .6, .64, .58, .67, .55 });
@@ -87,7 +107,7 @@ internal static class NativeCalibrationSmoke
                         "Complete native results expose effect comparison and Save.");
                     var chart = view.GetVisualDescendants().OfType<HearingRadarChart>().Single();
                     Check(!model.State.PreviewAudioPlaying && chart.ShowEnhancement, "The native result page shows a static radar without autoplay.");
-                    Capture(view, "hearing-results");
+                    await CaptureAsync(view, "hearing-results");
                     Preview(view, "PreviewOriginal").RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
                     await Until(() => !model.Busy && service.Inputs.Last().Action == "preview-original");
                     Check(!chart.ShowEnhancement && model.State.PreviewAudioPlaying, "Native original audition hides enhancement.");
@@ -98,31 +118,31 @@ internal static class NativeCalibrationSmoke
                         && chart.RightLevels.Zip(resultRadar.Right).Any(pair => Math.Abs(pair.First - pair.Second) > .01)
                         && chart.EnhancementLevels.Count == 0 && model.State.Revision == originalRevision,
                         "Native original spectrum animates both ears while keeping orange hidden and the revision stable.");
-                    Capture(view, "hearing-results-original");
+                    await CaptureAsync(view, "hearing-results-original");
                     Preview(view, "PreviewEnhanced").RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
                     await Until(() => !model.Busy && service.Inputs.Last().Action == "preview-enhanced");
                     long actionRevision = model.State.Revision;
                     model.AdoptSpectrum(new("operation", "fixture", 42, model.State.PreviewEpoch, 1, spectrum));
                     Check(chart.EnhancementLevels.SequenceEqual(spectrum) && model.State.Revision == actionRevision && ReferenceEquals(model.State.HearingRadar, resultRadar),
                         "Native enhanced spectrum displays orange without replacing the source curves or changing the action revision.");
-                    Capture(view, "hearing-results-enhanced");
+                    await CaptureAsync(view, "hearing-results-enhanced");
                     var scroll = view.GetVisualDescendants().OfType<ScrollViewer>().Single(x => x.Name == "PageScroll");
-                    scroll.Offset = new Vector(0, 300); await Task.Delay(50); Capture(view, "hearing-audition-controls");
+                    scroll.Offset = new Vector(0, 300); await Task.Delay(50); await CaptureAsync(view, "hearing-audition-controls");
                     scroll.Offset = new Vector(0, 0);
                     Preview(view, "PreviewEnhanced").RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
                     await Until(() => !model.Busy && service.Inputs.Last().Action == "preview-stop");
                     Check(chart.ShowEnhancement && chart.EnhancementLevels.Count == 0
                         && chart.LeftLevels.SequenceEqual(resultRadar.Left) && chart.RightLevels.SequenceEqual(resultRadar.Right),
                         "Native active-row pause restores static ears and the orange outline.");
-                    window.RequestedThemeVariant = ThemeVariant.Dark; await Task.Delay(50); Capture(view, "hearing-results-dark");
-                    window.Width = 400; window.Height = 520; await Task.Delay(50); Capture(view, "hearing-results-narrow");
+                    window.RequestedThemeVariant = ThemeVariant.Dark; await Task.Delay(50); await CaptureAsync(view, "hearing-results-dark");
+                    window.Width = 400; window.Height = 520; await Task.Delay(50); await CaptureAsync(view, "hearing-results-narrow");
                     window.Width = 520; window.Height = 720; window.RequestedThemeVariant = ThemeVariant.Light; await Task.Delay(50);
                     service.StopFailuresRemaining = 1;
                     Button(view, "取消").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
                     await Until(() => model.CancellationFailed && !model.CancellationPending);
                     Check(!model.StopConfirmed && window.IsVisible && Button(view, "重试停止").IsEnabled,
                         "Native STOP failure keeps the window and its retry button available.");
-                    Capture(view, "stop-failed");
+                    await CaptureAsync(view, "stop-failed");
                     Button(view, "重试停止").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
                     await Until(() => model.StopConfirmed && !model.CancellationPending);
                     Check(service.Cancels == 2 && model.State.Stage == "Cancelled" && model.Error.Length == 0,
@@ -139,7 +159,7 @@ internal static class NativeCalibrationSmoke
                         var text = fitView.GetVisualDescendants().OfType<TextBlock>().Select(x => x.Text).ToArray();
                         Check(text.Contains("贴合一般") && text.Contains("贴合良好") && Button(fitView, "重新测试").IsEnabled,
                             "Native fit results preserve the three-state wording and retry.");
-                        Capture(fitView, "fit-results");
+                        await CaptureAsync(fitView, "fit-results");
                     }
                     finally { fitWindow.Close(); }
                     await CheckWindowClosingAsync();
@@ -160,7 +180,10 @@ internal static class NativeCalibrationSmoke
     private static FAAppWindow CreateWindow(CalibrationView view, string title)
     {
         view.Bind(TemplatedControl.BackgroundProperty, new DynamicResourceExtension("SolidBackgroundFillColorBaseBrush"));
-        return new() { Content = view, Title = title, Width = 520, Height = 720, ShowActivated = false, Position = new PixelPoint(-32000, -32000) };
+        return _basicRenderMode is null
+            ? new() { Content = view, Title = title, Width = 520, Height = 720, ShowActivated = false, Position = new PixelPoint(-32000, -32000) }
+            : new() { Content = view, Title = title, Width = 520, Height = 720, ShowActivated = true,
+                Topmost = true, WindowStartupLocation = WindowStartupLocation.CenterScreen };
     }
     private static async Task CheckWindowClosingAsync()
     {
@@ -224,8 +247,13 @@ internal static class NativeCalibrationSmoke
         for (var i = 0; i < 300 && !condition(); i++) await Task.Delay(10);
         Check(condition(), "Native interaction completed.");
     }
-    private static void Capture(Control view, string name)
+    private static async Task CaptureAsync(Control view, string name)
     {
+        if (_basicRenderMode is not null && TopLevel.GetTopLevel(view) is Window window)
+        {
+            await NativeRenderingProbe.WaitForPixelsAsync(window);
+            Screenshots.Add(NativeRenderingProbe.Capture(window, Path.Combine(_output, name + "-screen.png")));
+        }
         var actionBar = view.GetVisualDescendants().OfType<Border>().Single(x => x.Name == "ActionBar");
         Check(actionBar.Background is ISolidColorBrush brush && brush.Color.A == 255 && brush.Opacity == 1,
             "The native hearing and fit action bars remain opaque across scroll positions and themes.");

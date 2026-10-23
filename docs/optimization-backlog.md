@@ -62,6 +62,9 @@ UI-00 为 2026-10-22 界面性能轮（起点 `a13e236`）已完成项的汇总�
 | UI-05 | `EncoFree4ModelView.cs` `FitCamera`（物理像素尺寸、`MsaaSamples = 4`）@a13e236 | 模型按物理像素和 4×MSAA 渲染，200% 缩放的大窗口约 1440×1280（静态分析） | 弱 GPU 上可按渲染耗时降低分辨率或 MSAA；未测量 | 画质取舍需用户决定；须在 8cx 等真机测量 | 待处理 | 2026-10-22 界面性能 |
 | UI-06 | Avalonia 12.1.4 Win32 合成（WinUI/DirectComposition 交换链）| 反编译未见部分呈现（partial present）；区域脏矩形减少的是重绘，交换链是否仍整窗提交未核实（静态分析，低置信度） | 若整窗提交，可进一步降低 GPU 带宽；未测量 | 需 Windows 上的 GPU 计数或 PIX 测量；可能依赖上游改动 | 待处理 | 2026-10-22 界面性能 |
 | UI-07 | `src/HeyMelody.Artwork/LottieView.cs` `LottieHandler` @a13e236 | 未让路时循环 Lottie 仍按每个合成帧执行 Skottie（0.9.0 为 120 Hz 平滑有意保留；静态分析） | 若 Windows 测量显示 Lottie 仍是瓶颈，可按动画原生帧率或缓存循环帧 | 违背 0.9.0 的平滑决定，需用户确认；缓存循环帧内存开销大 | 待处理 | 2026-10-22 界面性能 |
+| UI-08 | `src/HeyMelody.App/RenderingSetup.cs`／Avalonia 12.1.4 ARM64 Adreno 选卡 | 本机默认选卡命中上游屏蔽规则，普通 UI 实际为 WARP；同 WebP 场景显式 Adreno 后回调节拍与 CPU 明显改善，见[本机卡顿调查](research/ui-lag-arm64-2026-10-23.md) | 解除已实测的主要软件绘制成本；数据仅适用于本机离线组合压力场景，不是上屏 FPS | 上游历史透明窗口问题仍需兼容验证；覆盖所有共享 RenderingSetup 的窗口、弹出层及设备丢失恢复，保留回退 | 已完成：所有 Windows 默认首适配器与持久 Basic Render 开关；本机 ARM64 离线原生与失败后备已验，x64／x86 仅构建，旧驱动／长期兼容性仍有边界 | 2026-10-23 本机 ARM64 卡顿调查 |
+| UI-09 | `src/HeyMelody.Artwork/AnimatedWebpView.cs`／X4 主图 | 真实主图为 780×780、约30.3帧／秒 WebP；同组件同源暂停后帧回调由约86升至112次／秒，已定位持续更新路径的额外成本，未拆分解码／复制／纹理上传占比 | 硬件路径上的后续帧时改善；保持素材、画质与完整功能 | 需继续用同源对照与线程／纹理数据定位，不能把源30帧当作整个UI上限 | 调查定位完成，机制细分与修复待处理 | 2026-10-23 本机 ARM64 卡顿调查 |
+| UI-10 | 未来 NSIS 安装器与 `uiBasicRenderMode` 初始值 | 部分旧 Adreno 设备曾出现透明窗口故障，见[上游历史](research/avalonia-adreno-history-2026-10-23.md)；当前默认 GPU，用户可选 Basic Render | 安装阶段为经过确认的不兼容设备初始化兼容值，降低首次启动失绘风险 | 需经验证的 GPU／驱动组合清单；尊重用户已有选择，不按所有 ARM 设备笼统启用 | 待未来引入 NSIS 时实现；本轮不实现检测、安装器或初始化逻辑 | 2026-10-23 用户指定后续方向 |
 
 ## 磁盘 I/O（IO）
 
