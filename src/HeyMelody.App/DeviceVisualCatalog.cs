@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Globalization;
 using Avalonia.Data.Converters;
 using Avalonia.Threading;
+using HeyMelody.Rendering.Filament;
 
 namespace HeyMelodyWindows.App;
 
@@ -15,12 +16,14 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
     private readonly Dictionary<string, string> _shown = new(StringComparer.Ordinal);
     private readonly DispatcherTimer _retry = new();
     private string _epoch = "";
+    private string? _selectedSlotKey;
     private IArtworkService? _artwork;
     private bool _disposed;
     public int Revision { get; private set; }
     public event PropertyChangedEventHandler? PropertyChanged;
     internal IReadOnlyList<TimeSpan> RetryDelays { get; init; } =
         [TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15), TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5)];
+    internal Action<DeviceModelVisual> PrefetchModel { get; init; } = DeviceModelView.PrefetchModel;
 
     public DeviceVisualCatalog() => _retry.Tick += (_, _) => RetryDue();
 
@@ -32,6 +35,7 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         public int? Color { get; } = color;
         public object? Visual;
         public string? Content;
+        public HashSet<FilamentBackend> PreparedBackends { get; } = [];
         public SharedArtworkLease? Lease, FallbackLease;
         public CancellationTokenSource? Loading;
         public string ResolvedEpoch = "";
@@ -81,6 +85,8 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         { _appearances.Remove(removed); changed = true; }
         foreach (string removed in _shown.Keys.Where(key => !identities.Contains(key[..key.LastIndexOf('/')])).ToArray())
             _shown.Remove(removed);
+        _selectedSlotKey = selected is not null && identities.Contains(selected.Identity)
+            && _appearances.TryGetValue(selected.Identity, out var selectedAppearance) ? KeyFor(selectedAppearance) : null;
         if (_artwork is not null)
             foreach (var (identity, appearance) in _appearances)
             {
@@ -88,6 +94,8 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
                 if (NeedsResolve(slot)) Resolve(slot);
                 changed |= Show(identity, slot);
             }
+        if (_selectedSlotKey is not null && _slots.TryGetValue(_selectedSlotKey, out var selectedSlot))
+            PrepareSelectedModel(selectedSlot);
         Collect();
         if (changed) Changed();
     }
@@ -211,11 +219,22 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         // Renderers hold their own lease references, so replacing these cannot delete files in use.
         slot.Lease?.Dispose(); slot.FallbackLease?.Dispose();
         slot.Visual = visual; slot.Content = content; slot.Lease = lease; slot.FallbackLease = fallbackLease;
-        if (visual is DeviceModelVisual modelVisual) DeviceModelView.PrefetchModel(modelVisual);
+        slot.PreparedBackends.Clear();
+        PrepareSelectedModel(slot);
         foreach (var (identity, appearance) in _appearances)
             if (KeyFor(appearance) == slot.Key) Show(identity, slot);
         Collect();
         Changed();
+    }
+
+    private void PrepareSelectedModel(Slot slot)
+    {
+        if (slot.Key != _selectedSlotKey || slot.Visual is not DeviceModelVisual visual) return;
+        var backend = ModelRenderingPreferences.Backend;
+        if (!slot.PreparedBackends.Add(backend)) return;
+        // The slot owns its leases before preparation; selection getters never repeat runtime identity reads.
+        try { PrefetchModel(visual); }
+        catch (Exception) { slot.PreparedBackends.Remove(backend); }
     }
 
     private void Fail(Slot slot, CancellationToken token)
@@ -266,7 +285,7 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
     private void ResetSlots()
     {
         foreach (var slot in _slots.Values) slot.Release();
-        _slots.Clear(); _shown.Clear(); _retry.Stop();
+        _slots.Clear(); _shown.Clear(); _selectedSlotKey = null; _retry.Stop();
     }
 
     public void Dispose() { _disposed = true; ResetSlots(); }

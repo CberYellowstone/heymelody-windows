@@ -53,6 +53,7 @@ RenderingPolicyTests.Run();
 string output = args.Length == 2 && args[0] == "--output-dir" ? Path.GetFullPath(args[1])
     : args is ["--model-tests", "--output-dir", var modelOutput] ? Path.GetFullPath(modelOutput)
     : args is ["--model-loading-tests", "--output-dir", var modelLoadingOutput] ? Path.GetFullPath(modelLoadingOutput)
+    : args is ["--visual-catalog-tests", "--output-dir", var visualCatalogOutput] ? Path.GetFullPath(visualCatalogOutput)
     : args is ["--artwork-persistence-tests", "--output-dir", var artworkPersistenceOutput] ? Path.GetFullPath(artworkPersistenceOutput)
     : args is ["--anc-feature-tests", "--output-dir", var ancOutput] ? Path.GetFullPath(ancOutput)
     : args is ["--rendering-settings-tests", "--output-dir", var renderSettingsOutput] ? Path.GetFullPath(renderSettingsOutput)
@@ -83,6 +84,12 @@ try
             return true;
         }, CancellationToken.None).GetAwaiter().GetResult();
         Console.WriteLine(JsonSerializer.Serialize(new { passed = count + 2, success = true, nativeBluetoothCalls = 0, output }));
+        return 0;
+    }
+    if (args is ["--visual-catalog-tests"] or ["--visual-catalog-tests", "--output-dir", _])
+    {
+        int count = DeviceVisualTests.RunCatalog(session);
+        Console.WriteLine(JsonSerializer.Serialize(new { passed = count, success = true, nativeBluetoothCalls = 0, output }));
         return 0;
     }
     if (args is ["--rendering-settings-tests"] or ["--rendering-settings-tests", "--output-dir", _])

@@ -50,7 +50,7 @@ Filament 的部分初始化失败发生在自己的驱动线程或 noexcept 路�
 
 运行错误会移除成功缓存并递增 generation。`Invalidate` 保留尚未完成的旧代任务，后来者等待其退出后才加入或启动新代，避免两个探测重叠；旧代成功或失败都不能重新填充失效缓存。工厂已完成创建后若仅调用方取消，会释放该 renderer，但不把已证明可用的后端标为失效。
 
-`NativeFilamentRendererFactory.PrepareBackendAsync` 提供仅准备入口：在线程池加载／核对运行库并等待共享探测，不创建进程内 Engine。App 仅在解析出模型外观后按当前偏好调用，不新增常驻进程或启动预热。Prepare 与后续 `Create` 都重新计算 payload 身份并检查磁盘 DLL 是否仍与已加载版本一致；进程内成功缓存不省略这次检查，也没有跨进程持久化。探测程序、库和 manifest 缺失或不匹配归类为组件错误。初始化探测不提供持续渲染阶段的驱动崩溃隔离。
+`NativeFilamentRendererFactory.PrepareBackendAsync` 提供仅准备入口：在线程池加载／核对运行库并等待共享探测，不创建进程内 Engine。App 仅在当前选中 hero 解析出模型外观且 slot 租约建立后按当前偏好调用，不新增常驻进程或启动预热。Prepare 与后续 `Create` 都重新计算 payload 身份并检查磁盘 DLL 是否仍与已加载版本一致；进程内成功缓存不省略这次检查，也没有跨进程持久化。探测程序、库和 manifest 缺失或不匹配归类为组件错误。初始化探测不提供持续渲染阶段的驱动崩溃隔离。
 
 ## 构建与产物
 
@@ -120,7 +120,7 @@ pwsh -NoProfile -File tools/filament/tests/Test-FilamentArtifactCache.ps1 -Outpu
 
 可移植渲染检查、默认模型运动检查及原十三个默认 runner 保持各自入口。后端选择、偏好迁移、取消、错误分类和静态回退测试使用隔离设置与替代 renderer，不依赖 GPU。
 
-2026-10-23 本轮 `dotnet run --project tests/HeyMelody.Rendering.Filament.Tests -c Release -p:NuGetAudit=false` 通过 108 项可移植检查，包括同 key 并发加入、部分／全部调用方取消、旧代成功／失败失效后的无重叠重试、runner 取消重试、expected 摘要拒绝及原始模型字节保留。另在 Windows x64 构建当前原生产物，通过 ABI smoke、九组 CNG／portable 参考向量与 GLB 对拍、`-RequireCurrent` 及 `--native-recovery`。该 SHA 阶段仍保留装载后的 drain；分阶段性能与验证边界见[加载实测记录](research/model-loading-performance-2026-10-23.md)。这些结果不能证明 ARM64 硬件或其它操作系统运行效果。
+2026-10-23 本轮 `dotnet run --project tests/HeyMelody.Rendering.Filament.Tests -c Release -p:NuGetAudit=false` 通过 108 项可移植检查，包括同 key 并发加入、部分／全部调用方取消、旧代成功／失败失效后的无重叠重试、runner 取消重试、expected 摘要拒绝及原始模型字节保留。另在 Windows x64 构建当前原生产物，通过 ABI smoke、九组 CNG／portable 参考向量与 GLB 对拍、`-RequireCurrent` 及 `--native-recovery`。最终产物保留装载后的 drain；使用最终 Windows x64 DLL 实际检查两内置模型 × 两后端，伪造 expected 和篡改原件尾字节均返回 `HM_NATIVE_ERROR` 与摘要不匹配错误，随后原件仍可装载、出帧和 resize。分阶段性能与验证边界见[加载实测记录](research/model-loading-performance-2026-10-23.md)。这些结果不能证明 ARM64 硬件或其它操作系统运行效果。
 
 2026-10-21 在 Ubuntu 26.04.1 WSL 中的 Ubuntu 24.04.5 bwrap 用户空间完成固定 Filament commit 的 `linux-x64` 本地复现，工具链为 Clang 18.1.3、CMake 3.28.3、Ninja 1.11.1、PowerShell 7.6.6 与 .NET SDK 10.0.402。baseline 重现与 GitHub Actions 相同的 `Platform.h:658` 线程 capability 错误；依次处理注解兼容、缺少 GLES 头文件和 GLESv2 链接声明后，完整原生构建、无 `LD_LIBRARY_PATH` 的无参数 ABI smoke、`-RequireCurrent` 静态验包、便携渲染 87 项、模型运动 180 项检查及报告归档全部通过。模型运动检查使用普通 `dotnet run`，未指定 RID。完整本机记录见 [Linux 构建复现档案](../research/filament-linux-build-2026-10-21/run-20261020T172244Z/README.md)；该结果覆盖本地编译、动态加载、ABI 与离线检查，Linux GPU 和完整客户端验证另行记录。
 

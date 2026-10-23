@@ -19,12 +19,31 @@ internal static class DeviceVisualTests
         Run("artwork requires actual PID and does not infer models from Bluetooth names", IdentityAsync);
         Run("backend replacement rejects old artwork requests and releases their leases", BackendAsync);
         Run("colour changes cancel stale requests and resolve the replacement artwork", ColorAsync);
+        var preparationTests = RunSelectedModelPreparation(session);
         Run("X4 product PNG uses independent presentation controls and shared bitmap data", PngAsync);
         Run("active renderer leases outlive catalog replacement and release exactly once", LeaseAsync);
         Run("Skottie renders embedded and package images and rejects escaped paths", LottieAsync);
         Run("original hearing Lottie renders a frame, pauses while hidden, and releases on detach", OriginalLottieAsync);
         Run("the product area shows a progress ring instead of text while artwork resolves or decodes", LoadingRingAsync);
-        return 8;
+        return 8 + preparationTests;
+        void Run(string label, Func<Task> test)
+        { session.Dispatch<bool>(async () => { await test(); return true; }, CancellationToken.None).GetAwaiter().GetResult(); Console.WriteLine("PASS " + label); }
+    }
+    internal static int RunSelectedModelPreparation(HeadlessUnitTestSession session)
+    {
+        Run("only the selected hero model is prepared and cached selection is deduplicated", SelectedModelPreparationAsync);
+        Run("late artwork completion prepares the current selection before notifying views", PreparationSelectionAsync);
+        Run("cancelled and failed artwork generations do not consume model preparation", PreparationGenerationAsync);
+        return 3;
+        void Run(string label, Func<Task> test)
+        { session.Dispatch<bool>(async () => { await test(); return true; }, CancellationToken.None).GetAwaiter().GetResult(); Console.WriteLine("PASS " + label); }
+    }
+    internal static int RunCatalog(HeadlessUnitTestSession session)
+    {
+        Run("artwork requires actual PID and does not infer models from Bluetooth names", IdentityAsync);
+        Run("backend replacement rejects old artwork requests and releases their leases", BackendAsync);
+        Run("colour changes cancel stale requests and resolve the replacement artwork", ColorAsync);
+        return 3 + RunSelectedModelPreparation(session);
         void Run(string label, Func<Task> test)
         { session.Dispatch<bool>(async () => { await test(); return true; }, CancellationToken.None).GetAwaiter().GetResult(); Console.WriteLine("PASS " + label); }
     }
@@ -98,6 +117,133 @@ internal static class DeviceVisualTests
         await Task.Delay(10); Dispatcher.UIThread.RunJobs();
         Check(catalog.ProductFor(device) is FileBitmapVisual && service.Releases.Count == 1,
             "Only the replacement colour is accepted; the stale hero package lease is released.");
+    }
+    private static async Task SelectedModelPreparationAsync()
+    {
+        var service = new ArtworkService();
+        var prepared = new List<DeviceModelVisual>();
+        using var catalog = new DeviceVisualCatalog { PrefetchModel = prepared.Add };
+        var image = new UiDevice("image", "静态美术", false) { ProductId = "IMAGE" };
+        var model = new UiDevice("model", "模型美术", false) { ProductId = "MODEL" };
+        catalog.Update([image, model], image, "IMAGE", artwork: service);
+        var modelArt = ModelArt("unselected", 'a');
+        await CompleteModelAsync(service, service.Requests.Single(request => request.ProductId == "MODEL"), modelArt);
+        await PumpUntilAsync(() => catalog.ProductFor(model) is DeviceModelVisual, "Unselected model metadata resolves normally.");
+        service.Requests.Single(request => request.ProductId == "IMAGE").Completion.TrySetResult(Art("image"));
+        await PumpUntilAsync(() => catalog.ProductFor(image) is FileBitmapVisual, "The selected image resolves normally.");
+        Check(prepared.Count == 0, "Selecting a non-model never reads or probes another device's model.");
+
+        catalog.Update([image, model], model, "MODEL", artwork: service);
+        Check(prepared.Count == 1 && prepared[0].File.Sha256 == modelArt.Sha256,
+            "Selecting an already completed model prepares it before Update returns.");
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            _ = catalog.ProductFor(model);
+            catalog.Update([image, model], model, "MODEL", artwork: service);
+        }
+        catalog.Update([image, model], image, "IMAGE", artwork: service);
+        catalog.Update([image, model], model, "MODEL", artwork: service);
+        Check(prepared.Count == 1 && service.Requests.Count == 3,
+            "Getters, unchanged snapshots and selecting the same completed model again do not repeat preparation or artwork requests.");
+    }
+
+    private static async Task PreparationSelectionAsync()
+    {
+        var service = new ArtworkService();
+        var prepared = new List<DeviceModelVisual>();
+        using var catalog = new DeviceVisualCatalog { PrefetchModel = prepared.Add };
+        var first = new UiDevice("first", "首个模型", false) { ProductId = "FIRST" };
+        var second = new UiDevice("second", "第二个模型", false) { ProductId = "SECOND" };
+        catalog.Update([first, second], first, "FIRST", artwork: service);
+        catalog.Update([first, second], second, "SECOND", artwork: service);
+        var firstArt = ModelArt("first", 'b'); var secondArt = ModelArt("second", 'c');
+        bool notifiedBeforePreparation = false;
+        catalog.PropertyChanged += (_, _) =>
+        {
+            if (catalog.ProductFor(second) is DeviceModelVisual visual && !prepared.Contains(visual))
+                notifiedBeforePreparation = true;
+        };
+        await CompleteModelAsync(service, service.Requests.Single(request => request.ProductId == "FIRST"), firstArt);
+        await PumpUntilAsync(() => catalog.ProductFor(first) is DeviceModelVisual, "A model completing after selection changes remains available.");
+        Check(prepared.Count == 0, "The old selection's late completion does not prepare an unused model.");
+        await CompleteModelAsync(service, service.Requests.Single(request => request.ProductId == "SECOND"), secondArt);
+        await PumpUntilAsync(() => catalog.ProductFor(second) is DeviceModelVisual, "The current selected model resolves.");
+        Check(prepared.Count == 1 && prepared[0].File.Sha256 == secondArt.Sha256 && !notifiedBeforePreparation,
+            "Only the current selection is prepared, after acquiring its slot leases and before its ready notification.");
+        catalog.Update([first, second], first, "FIRST", artwork: service);
+        catalog.Update([first, second], second, "SECOND", artwork: service);
+        Check(prepared.Count == 2 && prepared[1].File.Sha256 == firstArt.Sha256,
+            "Switching to the previously completed model prepares it once without repeating the other model's preparation.");
+    }
+
+    private static async Task PreparationGenerationAsync()
+    {
+        var service = new ArtworkService();
+        var prepared = new List<DeviceModelVisual>();
+        var readingLeases = new List<IDisposable>();
+        using var catalog = new DeviceVisualCatalog
+        {
+            PrefetchModel = visual =>
+            {
+                readingLeases.Add(visual.File.Acquire() ?? throw new InvalidOperationException("Prepared model has no package lease."));
+                prepared.Add(visual);
+            }
+        };
+        var device = new UiDevice("generation", "模型代次", false) { ProductId = "MODEL" };
+        try
+        {
+            catalog.Update([device], device, "MODEL", 1, artwork: service);
+            var cancelled = service.Requests.Single();
+            catalog.Update([device], device, "MODEL", 2, artwork: service);
+            Check(cancelled.Token.IsCancellationRequested, "Replacing an unresolved colour cancels its old slot.");
+            int revision = catalog.Revision;
+            service.Requests.Last().Completion.TrySetException(new IOException("Synthetic artwork failure."));
+            await PumpUntilAsync(() => catalog.Revision > revision, "A failed replacement ends its loading state.");
+            var cancelledArt = ModelArt("cancelled", 'd');
+            await CompleteModelAsync(service, cancelled, cancelledArt);
+            await PumpUntilAsync(() => service.Releases.Contains(cancelledArt.LeaseId), "A late cancelled response releases its lease.");
+            Check(prepared.Count == 0, "Neither failed nor cancelled artwork consumes preparation for a later generation.");
+
+            catalog.Update([device], device, "MODEL", 2, epoch: "retry", artwork: service);
+            var firstArt = ModelArt("recovered", 'e');
+            await CompleteModelAsync(service, service.Requests.Last(), firstArt);
+            await PumpUntilAsync(() => prepared.Count == 1, "Retrying the same slot can prepare its first valid model.");
+            var firstVisual = catalog.ProductFor(device);
+            catalog.Update([device], device, "MODEL", 2, epoch: "republished", artwork: service);
+            revision = catalog.Revision;
+            service.Requests.Last().Completion.TrySetException(new IOException("Synthetic refresh failure."));
+            await PumpUntilAsync(() => catalog.Revision > revision, "A failed refresh retains its prior model.");
+            Check(prepared.Count == 1 && ReferenceEquals(catalog.ProductFor(device), firstVisual),
+                "A failed new generation does not reprepare or discard its valid previous model.");
+
+            catalog.Update([device], device, "MODEL", 2, epoch: "recovered", artwork: service);
+            var replacementArt = ModelArt("replacement", 'f');
+            await CompleteModelAsync(service, service.Requests.Last(), replacementArt);
+            await PumpUntilAsync(() => prepared.Count == 2, "A successful new model generation is prepared once.");
+            Check(prepared[1].File.Sha256 == replacementArt.Sha256 && !service.Releases.Contains(firstArt.LeaseId),
+                "Replacement preparation uses the new model while an in-progress old read retains its own lease.");
+            readingLeases[0].Dispose();
+            await PumpUntilAsync(() => service.Releases.Contains(firstArt.LeaseId), "The last old reader releases its package.");
+            Check(service.Releases.Count(id => id == firstArt.LeaseId) == 1,
+                "Replacing a prepared model preserves exactly-once release of its retired package.");
+        }
+        finally { foreach (var lease in readingLeases) lease.Dispose(); }
+    }
+
+    private static async Task CompleteModelAsync(ArtworkService service, ArtworkService.Request request, UiArtwork artwork)
+    {
+        int previousRequests = service.Requests.Count;
+        request.Completion.TrySetResult(artwork);
+        await PumpUntilAsync(() => service.Requests.Skip(previousRequests).Any(next => next.Role == "detail"),
+            "A model resolves its independent static fallback.");
+        service.Requests.Skip(previousRequests).Single(next => next.Role == "detail").Completion.TrySetResult(null);
+    }
+
+    private static async Task PumpUntilAsync(Func<bool> condition, string reason)
+    {
+        for (var attempt = 0; attempt < 200 && !condition(); attempt++)
+        { await Task.Delay(1); Dispatcher.UIThread.RunJobs(); }
+        Check(condition(), reason);
     }
     private static async Task LoadingRingAsync()
     {
@@ -235,13 +381,15 @@ internal static class DeviceVisualTests
         finally { window.Close(); }
     }
     private static UiArtwork Art(string role) => new(Guid.NewGuid().ToString("N"), Path.GetFullPath("artwork-" + role + ".png"), "image", Path.GetFullPath("."), "", 1, 0);
+    private static UiArtwork ModelArt(string name, char digest) => Art(name) with
+    { FullPath = Path.GetFullPath("artwork-" + name + ".glb"), Kind = "model", Sha256 = new string(digest, 64) };
     private sealed class ArtworkService : IArtworkService
     {
-        public sealed record Request(string Role, TaskCompletionSource<UiArtwork?> Completion);
+        public sealed record Request(string ProductId, int? Color, string Role, CancellationToken Token, TaskCompletionSource<UiArtwork?> Completion);
         public List<Request> Requests { get; } = [];
         public List<string> Releases { get; } = [];
         public Task<UiArtwork?> AcquireArtworkAsync(string productId, int? color, string role, CancellationToken token)
-        { var completion = new TaskCompletionSource<UiArtwork?>(); Requests.Add(new(role, completion)); return completion.Task; }
+        { var completion = new TaskCompletionSource<UiArtwork?>(); Requests.Add(new(productId, color, role, token, completion)); return completion.Task; }
         public Task ReleaseArtworkAsync(string id, CancellationToken token) { Releases.Add(id); return Task.CompletedTask; }
     }
     private sealed class TestLease(Action release) : IDisposable { public void Dispose() => release(); }
