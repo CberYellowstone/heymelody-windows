@@ -220,6 +220,15 @@ internal static class ModelLoadingBenchmark
             // Drain any older asynchronous readback before saving the fixed-pose model frame.
             await Task.Delay(300);
             SaveFrame(model);
+            if (RenderDiagnostics.Enabled)
+            {
+                // Capture only the changed model/diagnostic region, without a desktop screenshot.
+                using var overlay = new RenderTargetBitmap(new PixelSize(
+                    (int)Math.Ceiling(model.Bounds.Width), (int)Math.Ceiling(model.Bounds.Height)), new Vector(96, 96));
+                overlay.Render(model);
+                using var output = new FileStream(Path.Combine(_state.Options.Output, "diagnostics.png"), FileMode.CreateNew, FileAccess.Write);
+                overlay.Save(output, PngBitmapEncoderOptions.Default);
+            }
             _state.Completed = true;
         }
         catch (Exception error) { _state.Failure = error.ToString(); }

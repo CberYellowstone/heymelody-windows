@@ -37,7 +37,7 @@ public class DeviceModelView : UserControl
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly TextBlock _diagnostics = new()
     {
-        IsHitTestVisible = false, IsVisible = false, FontSize = 12, Margin = new Thickness(8),
+        IsHitTestVisible = false, IsVisible = false, FontSize = 12, Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap,
         HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top
     };
     // Failure and availability guidance only; loading is shown by the shared ring, never as text.

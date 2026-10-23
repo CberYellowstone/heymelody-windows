@@ -6,15 +6,18 @@ using FluentAvalonia.UI.Controls;
 using HeyMelody.Rendering.Filament;
 using HeyMelody.Rendering.Tests;
 using HeyMelodyWindows.App;
+using HeyMelodyWindows.Ui;
 
 internal static class ModelRendererLifecycleTests
 {
     internal static async Task RunAsync(string output)
     {
         var old = ModelRenderingPreferences.CompatibilityMode;
+        var oldDiagnostics = RenderDiagnostics.Enabled;
         try
         {
             ModelRenderingPreferences.Apply(false);
+            RenderDiagnostics.Set(true);
             using (var ringBarrier = new ManualResetEventSlim(false))
             {
                 var ringFactory = new RecordingFilamentRendererFactory { CreateBarrier = ringBarrier };
@@ -44,9 +47,17 @@ internal static class ModelRendererLifecycleTests
                         "The first presented frame completes one load measurement using elapsed time.");
                     _ = ringView.CaptureLatestFrame(out _);
                     Check(measurements == 1, "Subsequent frames do not report another model load.");
+                    await TickAsync();
+                    var overlay = ringView.GetVisualDescendants().OfType<TextBlock>()
+                        .Single(text => text.Text?.StartsWith("3D ", StringComparison.Ordinal) == true);
+                    Check(overlay.Text!.Contains("\n加载 ", StringComparison.Ordinal)
+                        && overlay.TextWrapping == Avalonia.Media.TextWrapping.Wrap
+                        && overlay.Bounds.Width <= ringView.Bounds.Width - 16 + 1,
+                        "Load diagnostics wrap inside a narrow model viewport instead of clipping the new row.");
                 }
                 finally { DeviceModelView.LoadMeasured -= OnMeasured; ringBarrier.Set(); ringWindow.Close(); }
             }
+            RenderDiagnostics.Set(oldDiagnostics);
             int leases = 0;
             var invalidFactory = new RecordingFilamentRendererFactory();
             var invalidRead = new DeviceModelView(Visual(), invalidFactory,
@@ -228,7 +239,7 @@ internal static class ModelRendererLifecycleTests
                 finally { cancellationBarrier.Set(); switchingWindow.Close(); }
             }
         }
-        finally { ModelRenderingPreferences.Apply(old); }
+        finally { RenderDiagnostics.Set(oldDiagnostics); ModelRenderingPreferences.Apply(old); }
     }
 
     private static DeviceModelView View(RecordingFilamentRendererFactory factory, Func<IDisposable>? lease = null) => new(Visual(lease), factory);

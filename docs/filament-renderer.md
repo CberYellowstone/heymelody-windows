@@ -36,7 +36,9 @@ C ABI 为版本 2，创建、配置、帧信息、诊断结构体仍分别为 16
 
 `FilamentModelData.CreateValidated` 未提供 expected 摘要时只计算一次托管 SHA-256，私有已校验构造路径复用该结果；公开构造函数和提供 expected 的路径仍检查 GLB 头、摘要格式与实际字节。原生 `hm_load_model` 继续独立计算 SHA-256 并与 expected 比较，不信任调用方摘要，材质 profile 仍只按实际摘要授予。
 
-原生 SHA 接口接收指针与长度。Windows 使用 CNG `BCryptHash` 与 `BCRYPT_SHA256_ALG_HANDLE`，相关目标链接系统 `bcrypt`，非零状态抛出 `runtime_error` 而不跳过校验；其它平台逐个处理原始 64 字节块，仅用最多 128 字节的尾块缓冲做填充，取消 SHA 实现中的整份输入复制。桥接与 `hm_filament_sha256_tests` 共用实现；自检定义空串、`abc`、55／56／63／64／65 个 `a`、两个内置 GLB 共九组参考向量，Windows 自检还编译 portable 路径对拍。构建脚本只在本机 RID 执行自检，x64 到 ARM64 交叉构建不称作已执行；自检 exe 不进入 runtime manifest。`hm_load_model` 投递到工作线程时的拥有型 vector 复制仍保留；`loadResources` 后的同步 `drain()` 暂维持，最终取舍须另以源码生命周期结论和当前产物实测记录说明。
+原生 SHA 接口接收指针与长度。Windows 使用 CNG `BCryptHash` 与 `BCRYPT_SHA256_ALG_HANDLE`，相关目标链接系统 `bcrypt`，非零状态抛出 `runtime_error` 而不跳过校验；其它平台逐个处理原始 64 字节块，仅用最多 128 字节的尾块缓冲做填充，取消 SHA 实现中的整份输入复制。桥接与 `hm_filament_sha256_tests` 共用实现；自检定义空串、`abc`、55／56／63／64／65 个 `a`、两个内置 GLB 共九组参考向量，Windows 自检还编译 portable 路径对拍。构建脚本只在本机 RID 执行自检，x64 到 ARM64 交叉构建不称作已执行；自检 exe 不进入 runtime manifest。`hm_load_model` 投递到工作线程时的拥有型 vector 复制仍保留。
+
+`loadResources` 后的同步 `drain()` 最终保留。锁定源码中的上传回调持有 SourceHandle／像素缓冲，允许首帧推进上传，但两后端、两内置模型的 240 次交替配对加载未证明移除该等待有稳定的首帧收益：模型装载阶段减少的时间大多转移到首帧阶段，OpenGL Free4 的冷加载与热加载最大值还变差。20 对同姿态模型 PNG 的像素完全一致；候选原生库、原始数据及源码依据另行保留，不作为最终产物。完整门槛与分阶段结果见[加载实测记录](research/model-loading-performance-2026-10-23.md)。
 
 `FilamentDiagnostics.CreationTimings` 是可选托管诊断，包含运行库身份准备、探测等待、Engine 创建耗时与 `FilamentProbeDisposition`（Cached／Started／Joined）。既有 `IFilamentRendererFactory.Create` 接口和原生 ABI 2 不变；诊断不增加原生结构体字段。
 

@@ -19,6 +19,15 @@ std::string error(hm_renderer* renderer) {
 void check(int32_t result,hm_renderer* renderer,const char* operation) {
     if(result<0)throw std::runtime_error(std::string(operation)+": "+error(renderer));
 }
+void require_sha256_rejection(hm_renderer* renderer,const std::vector<uint8_t>& bytes,
+        const char* expected,const char* operation) {
+    const auto result=hm_load_model(renderer,bytes.data(),bytes.size(),expected);
+    const auto message=error(renderer);
+    if(result!=HM_NATIVE_ERROR ||
+            message.find("GLB SHA256 does not match the verified input")==std::string::npos)
+        throw std::runtime_error(std::string(operation)+": native SHA256 rejection was not observed");
+    std::cerr<<operation<<": result="<<result<<"; error="<<message<<'\n';
+}
 hm_frame_info await_frame(hm_renderer* renderer,uint64_t after,std::vector<uint8_t>& pixels) {
     const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(120);
     while(std::chrono::steady_clock::now()<deadline) {
@@ -68,6 +77,18 @@ int main(int argc,char** argv) {
         configuration.clear_red=0.1f;configuration.clear_green=0.12f;configuration.clear_blue=0.15f;
         configuration.exposure=1;configuration.light_intensity=100000;
         check(hm_configure(raw,&configuration),raw,"configure");
+        if(argc>2 && *argv[2]) {
+            std::string forged=argv[2];
+            forged[0]=forged[0]=='0'?'1':'0';
+            require_sha256_rejection(raw,glb,forged.c_str(),"forged expected digest");
+            {
+                auto tampered=glb;
+                if(tampered.empty())throw std::runtime_error("Input GLB is empty");
+                tampered.back()^=1;
+                require_sha256_rejection(raw,tampered,argv[2],"tampered model bytes");
+            }
+            std::cerr<<"native SHA256 rejected forged expected and tampered model bytes\n";
+        }
         check(hm_load_model(raw,glb.data(),glb.size(),argc>2?argv[2]:nullptr),raw,"load");
         std::cerr<<"load completed\n";
         check(hm_render(raw),raw,"render");

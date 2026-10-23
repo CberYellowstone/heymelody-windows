@@ -19,10 +19,12 @@ internal sealed class ModelLoadTrace : IDisposable
     {
         var path = Environment.GetEnvironmentVariable(EnvironmentVariable);
         if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path)) return null;
+        FileStream? stream = null;
+        StreamWriter? writer = null;
         try
         {
-            var writer = new StreamWriter(new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
-                { AutoFlush = true };
+            stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+            writer = new StreamWriter(stream) { AutoFlush = true };
             writer.WriteLine(JsonSerializer.Serialize(new
             {
                 kind = "session", schemaVersion = 1, processId = Environment.ProcessId,
@@ -31,12 +33,25 @@ internal sealed class ModelLoadTrace : IDisposable
                 architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(),
                 startedUtc = DateTimeOffset.UtcNow
             }));
-            return new ModelLoadTrace(writer);
+            var trace = new ModelLoadTrace(writer);
+            writer = null;
+            stream = null;
+            return trace;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
         {
             Trace.WriteLine($"Model load trace unavailable: {error.Message}");
             return null;
+        }
+        finally
+        {
+            try
+            {
+                if (writer is not null) writer.Dispose();
+                else stream?.Dispose();
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or ObjectDisposedException)
+            { /* A failed opt-in log must not keep its file handle or disrupt application startup. */ }
         }
     }
 
