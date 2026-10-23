@@ -72,6 +72,8 @@ internal static class Program
     {
         // Previews and tests capture single frames; cosmetic fades would be caught half way.
         ProductArtwork.TransitionsEnabled = false;
+        // Their dispatcher clock does not run on its own either: show the loading ring at once.
+        HeroLoadingIndicator.Delay = TimeSpan.Zero;
         return AppBuilder.Configure<App>()
             .UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
             .UseHeyMelodyRendering().UseHeyMelodyTypography();

@@ -21,6 +21,7 @@
 | [降噪区域的通透人声与模式名称核查](anc-transparency-controls.md) | X2／X3 强化人声开关、四型号独立聆听、分层模式名称与原 App 控件证据；本轮局部验证边界 |
 | [界面审计与渲染性能（0.9.0）](ui-performance-0.9.0.md) | 四个界面的重排、120 Hz 预算与逐项优化、简体中文字体与嵌入字体内存问题、Linux 验证范围与 Windows 验收方法 |
 | [界面性能与交互（0.9.9）](ui-performance-0.9.9.md) | 2026-10-22 界面方向：区域脏矩形、界面操作时装饰动画让路到 30 fps、模型帧直写位图、Lottie 末帧缓存、GPU 缓存回收、EQ 滑块裁切与设置非阻塞排队；反编译核实与 Linux 测试，Windows 帧率未测量 |
+| [3D 模型加载提速交接书](model-loading-handoff-2026-10-23.md) | 2026-10-23：模型加载链路、静态判断的耗时排序（探测子进程、Engine、贴图、首帧、原生 SHA-256）、先计时再改的托管与原生小改步骤、Windows 构建验证与验收；未实施、未计时 |
 | [主界面启动与首屏加载（0.9.9）](main-window-startup-0.9.9.md) | 2026-10-23 启动方向：提前连接、互斥体探针、先显示后台名单再核对、加入托盘首次目录刷新、降噪图标路径移出 UI 线程；Linux 测试，Windows 耗时未测量 |
 | [后台内存审计](backend-memory-audit.md) | 2026-10-21 后端内存方向的问题、发现、已实施与暂缓项、Linux 测量结果和未验证内容；Windows 内存未测量，其他方向的待办见[优化待办](../optimization-backlog.md) |
 | [后台能耗与 CPU](backend-energy.md) | 2026-10-22 后端能耗方向：无界面时的效率模式（EcoQoS 加 IDLE）、BLE 按需扫描、空闲唤醒、写盘与 IPC 改动、Linux 测试结果和 Windows 待验证清单；Windows 行为未验证 |

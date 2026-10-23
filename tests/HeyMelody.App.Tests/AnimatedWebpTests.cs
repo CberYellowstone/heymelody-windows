@@ -93,10 +93,13 @@ internal static class AnimatedWebpTests
         var window = new Window { Content = container, Width = 160, Height = 160 };
         try
         {
-            window.Show(); Dispatcher.UIThread.RunJobs();
+            window.Show();
             var animation = artwork.GetVisualDescendants().OfType<AnimatedWebpView>().Single();
+            Check(animation.Content is HeroLoadingIndicator, "A loading product animation shows the progress ring.");
+            Dispatcher.UIThread.RunJobs();
             await PumpAsync(() => animation.AnimationLoaded || animation.LoadError is not null);
             Check(animation.AnimationLoaded && animation.AnimationActive, "The animated-webp visual creates an active product renderer.");
+            Check(animation.Content is null, "The loaded animation replaces the progress ring.");
             var captures = new List<byte[]>();
             int redFrame = -1, blueFrame = -1;
             for (int index = 0; index < 10; index++)

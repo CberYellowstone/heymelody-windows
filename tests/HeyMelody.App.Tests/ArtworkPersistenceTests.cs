@@ -105,7 +105,8 @@ internal static class ArtworkPersistenceTests
         catalog.Update([device], device, null, null, "backend:1", service);
         service.CompleteAll(sha: "a"); await PumpAsync(() => catalog.ProductFor(device) is FileBitmapVisual);
         catalog.Update([device], device, "068C10", 1, "backend:1", service);
-        Check(Equals(catalog.ProductFor(device), DeviceVisuals.GenericProduct), "Another product's art is removed at once.");
+        Check(Equals(catalog.ProductFor(device), DeviceVisuals.LoadingProduct),
+            "Another product's art is removed at once and its own first lookup shows the loading state.");
         service.CompleteAll(sha: "b"); await PumpAsync(() => catalog.ProductFor(device) is FileBitmapVisual);
     }
 

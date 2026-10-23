@@ -39,12 +39,14 @@ public class DeviceModelView : UserControl
         IsHitTestVisible = false, IsVisible = false, FontSize = 12, Margin = new Thickness(8),
         HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top
     };
+    // Failure and availability guidance only; loading is shown by the shared ring, never as text.
     private readonly TextBlock _status = new()
     {
-        Text = "正在加载耳机模型…", IsHitTestVisible = false,
+        IsVisible = false, IsHitTestVisible = false,
         HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
         TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new Thickness(16)
     };
+    private readonly HeroLoadingIndicator _loadingIndicator = new() { IsVisible = false };
     private Window? _window;
     private IPointer? _pointer;
     private IFilamentRenderer? _renderer;
@@ -90,6 +92,8 @@ public class DeviceModelView : UserControl
     };
     public ModelOrbitMotion Motion { get; } = new();
     public bool ModelReady { get; private set; }
+    internal bool LoadingIndicatorVisible => _loadingIndicator.IsVisible;
+    internal string? VisibleStatus => _status.IsVisible ? _status.Text : null;
     public string? LoadError { get; private set; }
     public long CameraUpdateCount { get; private set; }
     internal long AnimationCallbackCount { get; private set; }
@@ -112,9 +116,10 @@ public class DeviceModelView : UserControl
         {
             RowDefinitions = new RowDefinitions("*,Auto"),
             HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch,
-            Children = { _fallback, Viewport, _status, _diagnostics }
+            Children = { _fallback, Viewport, _loadingIndicator, _status, _diagnostics }
         };
         Grid.SetRowSpan(Viewport, 2);
+        Grid.SetRowSpan(_loadingIndicator, 2);
         Grid.SetRowSpan(_diagnostics, 2);
         Content = _root;
         AutomationProperties.SetName(this, "耳机三维模型，可用鼠标拖动旋转");
@@ -265,10 +270,10 @@ public class DeviceModelView : UserControl
             _lastPresentedAt = 0;
             _presentationIntervals.Clear();
             _fallback.IsVisible = false;
-            Grid.SetRow(_status, 0);
             Viewport.IsVisible = true;
-            _status.IsVisible = true;
-            _status.Text = "正在加载耳机模型…";
+            // The ring stays until the first frame is presented.
+            _status.IsVisible = false;
+            _loadingIndicator.IsVisible = true;
             FitCamera();
             RefreshActivity();
             if (_motionToRestore is { } motion)
@@ -316,9 +321,8 @@ public class DeviceModelView : UserControl
         {
             _loading = true;
             _fallback.IsVisible = false;
-            Grid.SetRow(_status, 0);
-            _status.Text = "正在加载耳机模型…";
-            _status.IsVisible = true;
+            _status.IsVisible = false;
+            _loadingIndicator.IsVisible = true;
             var cancellation = _loadCancellation = new CancellationTokenSource();
             _ = LoadAsync(++_loadGeneration, backend, cancellation, _rendererRetirement);
         }
@@ -332,6 +336,7 @@ public class DeviceModelView : UserControl
         _fallback.Content ??= DeviceVisuals.DefaultTemplate.Build(_visual.Fallback) ?? DeviceVisuals.DefaultTemplate.Build(DeviceVisuals.GenericProduct);
         _fallback.IsVisible = true;
         Viewport.IsVisible = false;
+        _loadingIndicator.IsVisible = false;
         _status.Text = status;
         _status.IsVisible = status is not null;
         ModelReady = false;
@@ -524,7 +529,7 @@ public class DeviceModelView : UserControl
         if (frame.Width != _configuration.Width || frame.Height != _configuration.Height) { _lastFrameInfo = default; return; }
         _frameRequested = false;
         _lastFrameInfo = frame;
-        _status.IsVisible = false;
+        _loadingIndicator.IsVisible = false;
         Viewport.InvalidateVisual();
         var now = _clock.Elapsed.TotalSeconds;
         if (_lastPresentedAt > 0)

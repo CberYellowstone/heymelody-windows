@@ -7,6 +7,8 @@
          beside each UI executable so the platform font manager can open them by path (see Typography.cs). -->
     <Content Include="Fonts/*.otf" Link="fonts/%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- The App's loading indicator follows the same visibility rules as the animations it stands in for. -->
+    <InternalsVisibleTo Include="HeyMelody" />
     <InternalsVisibleTo Include="HeyMelody.App.Tests" />
     <InternalsVisibleTo Include="HeyMelody.Calibration.UI.Tests" />
   </ItemGroup>

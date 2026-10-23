@@ -18,7 +18,7 @@ namespace HeyMelodyWindows.Artwork;
 /// full-frame copy on every draw.
 /// </remarks>
 public class AnimatedWebpView(ILottieSource source, Func<Control?>? fallback = null,
-    Func<Control?>? poster = null) : UserControl
+    Func<Control?>? poster = null, Func<Control?>? loading = null) : UserControl
 {
     private CompositionCustomVisual? _composition;
     private Window? _window;
@@ -41,6 +41,9 @@ public class AnimatedWebpView(ILottieSource source, Func<Control?>? fallback = n
         _visibility = new VisibilityTracker(this, RefreshActivity);
         LoadError = null;
         int generation = ++_generation;
+        // The caller's loading state shows until the animation replaces it; a poster that follows within the ring's
+        // own reveal delay would only flash it, so a poster takes its place.
+        if (loading is not null && poster is null) Content = loading();
         if (poster is not null)
         {
             _poster = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
@@ -62,7 +65,7 @@ public class AnimatedWebpView(ILottieSource source, Func<Control?>? fallback = n
             playback = await Task.Run(() => AnimatedWebpPlayback.Load(source));
             if (!_attached || generation != _generation) { playback.Dispose(); return; }
             var parent = ElementComposition.GetElementVisual(this);
-            if (parent is null) { playback.Dispose(); return; }
+            if (parent is null) { playback.Dispose(); StopPoster(); Content = null; return; }
             StopPoster(); Content = null;
             _sourceSize = new Size(playback.Frame.Width, playback.Frame.Height);
             _composition = parent.Compositor.CreateCustomVisual(new WebpHandler(playback,

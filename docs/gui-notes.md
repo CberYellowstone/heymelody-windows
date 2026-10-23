@@ -53,6 +53,8 @@
 
 参考 `research/main-page.png` 和 `research/headphone-configs.png`，默认窗口 1280×900，最小 900×640：左侧展示产品，右侧顶部固定显示身份、连接状态与应用设置按钮，其下为电量和设置，底部固定设备选择区。0.9.0 起各宽度都保持左右排列：宽度小于 1080 时边距 16、右侧面板 480 px（FluentAvalonia 设置行在 460 px 以下会把右侧控件换行）、主图最高 360；1600×1000 以上面板 540 px、主图最大 720×640，内容最宽 1680 并居中。此前小于 1080 时改为上下布局，在 900×640 只给设置约 230 px，现在约 430 px。右侧页头仍固定，设置区域单独滚动。内嵌 X4 产品大图使用用户提供的 `research/x4-pods-with-earphones.png`；两张原始 1440×1440 透明 PNG 仍嵌入 App 的 `Assets/Devices/EncoX4`，运行时不依赖 `research` 目录，历史底栏素材不再用作设备卡片图标。
 
+左侧产品区的加载状态统一使用居中的 48 px 不定进度环（`HeroLoadingIndicator`），不显示文字。适用于首次查找或下载设备美术、位图解码、Lottie 与动态 WebP 加载、3D 模型加载直至首帧呈现。进度环在加载开始 200 ms 后才出现，较快的解码不会闪现；只在窗口显示且未最小化、自身实际可见时转动，离开视觉树、隐藏或最小化时停止。带 detail 海报的 Lottie／WebP 不显示进度环，仍在 250 ms 后显示海报（海报本身解码时显示进度环），以免进度环与海报相继闪现。首次美术查找失败后退回通用耳机图标，后续重试期间不再显示进度环。3D 加载失败时显示原有的失败说明文字。模型加载提速的 Windows 交接见[交接书](research/model-loading-handoff-2026-10-23.md)。
+
 上述路径是图像采用时的原始出处。2026-10-08 归档后的访问入口为 [主界面参考](../research/screenshots/main-page.png)、[设置参考](../research/screenshots/headphone-configs.png)、[X4 产品大图](../research/screenshots/x4-pods-with-earphones.png) 与 [X4 底栏图标](../research/screenshots/x4-both-earphones.png)；文件仍仅在本地保存，组织规则见 [研究资料归档](research/README.md)。
 
 早期按蓝牙名称识别 X4 的规则已在 0.8.1 移除。当前外观只依据实际产品 ID 与协议颜色：来源是 Host 按设备持久化的外观提示（`UiDevice.ProductId/Color`），以及所选设备会话中的实时值，不从蓝牙名称推断。美术目录中的已知值只增不减，资源版本号前进时在后台重新解析，内容相同时保留原渲染控件；没有资源服务的预览模式仍按产品 ID 显示内嵌的 X4 PNG。外观提示只影响显示，不授予控制能力。详见 [外观资源持久化](artwork-persistence.md)；应用设置已改为设置卡片，并提供“重新下载在线资源”。

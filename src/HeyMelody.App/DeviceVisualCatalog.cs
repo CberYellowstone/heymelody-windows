@@ -93,7 +93,13 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
     }
 
     internal object ProductFor(UiDevice? device) => MainViewModel.IsDemoDevice(device) ? new EncoFree4DynaudioModelVisual()
-        : Displayed(device) ?? (_artwork is null && IsX4(device) ? DeviceVisuals.X4Product : DeviceVisuals.GenericProduct);
+        : Displayed(device) ?? (_artwork is null && IsX4(device) ? DeviceVisuals.X4Product
+            : FirstResolving(device) ? DeviceVisuals.LoadingProduct : DeviceVisuals.GenericProduct);
+
+    // Only the first lookup shows the loading state: after a failure the generic icon stays through the retries.
+    private bool FirstResolving(UiDevice? device) => _artwork is not null && device is not null
+        && _appearances.TryGetValue(device.Identity, out var appearance) && _slots.TryGetValue(KeyFor(appearance), out var slot)
+        && slot is { Visual: null, Loading: not null, Failures: 0 };
 
     internal bool IsX4(UiDevice? device) => device is not null && _appearances.TryGetValue(device.Identity, out var appearance)
         && StringComparer.OrdinalIgnoreCase.Equals(appearance.ProductId, "06EC10");
@@ -216,6 +222,8 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         if (token.IsCancellationRequested || _disposed || !_slots.TryGetValue(slot.Key, out var live) || !ReferenceEquals(live, slot)) return;
         slot.Loading?.Dispose(); slot.Loading = null;
         ScheduleRetry(slot);
+        // A first failure ends the loading state shown for this slot.
+        Changed();
     }
 
     private void ScheduleRetry(Slot slot)

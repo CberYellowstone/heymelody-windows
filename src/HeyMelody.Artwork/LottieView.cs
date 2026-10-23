@@ -25,7 +25,8 @@ public enum LottiePresentation { Loop, Product }
 
 /// <summary>Skottie artwork rendered by Avalonia's compositor without a UI frame timer.</summary>
 public class LottieView(ILottieSource source, Func<Control?>? fallback = null,
-    LottiePresentation presentation = LottiePresentation.Loop, Func<Control?>? poster = null) : UserControl
+    LottiePresentation presentation = LottiePresentation.Loop, Func<Control?>? poster = null,
+    Func<Control?>? loading = null) : UserControl
 {
     private static readonly TimeSpan PosterDelay = TimeSpan.FromMilliseconds(250);
     private CompositionCustomVisual? _composition;
@@ -49,6 +50,9 @@ public class LottieView(ILottieSource source, Func<Control?>? fallback = null,
         _window = TopLevel.GetTopLevel(this) as Window;
         _visibility = new VisibilityTracker(this, RefreshActivity);
         int generation = ++_generation;
+        // The caller's loading state shows until the animation replaces it; a poster that follows within the ring's
+        // own reveal delay would only flash it, so a poster takes its place.
+        if (loading is not null && poster is null && !AnimationLoaded) Content = loading();
         if (poster is not null && !AnimationLoaded)
         {
             // A slow parse shows the static image; a fast one never flashes it.
@@ -70,7 +74,7 @@ public class LottieView(ILottieSource source, Func<Control?>? fallback = null,
             playback = await Task.Run(() => LottiePlayback.Load(source, presentation));
             if (!_attached || generation != _generation) { playback.Dispose(); return; }
             var parent = ElementComposition.GetElementVisual(this);
-            if (parent is null) { playback.Dispose(); return; }
+            if (parent is null) { playback.Dispose(); StopPoster(); Content = null; return; }
             StopPoster(); Content = null;
             Plan = playback.Plan;
             _sourceSize = new Size(playback.Plan.Crop.Width, playback.Plan.Crop.Height);

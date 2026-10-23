@@ -16,6 +16,8 @@ public sealed record BitmapVisual(Uri Source);
 public sealed record EncoFree4ModelVisual;
 public sealed record EncoFree4DynaudioModelVisual;
 public sealed record GenericProductVisual;
+/// <summary>The device's own artwork is still being looked up or downloaded for the first time.</summary>
+public sealed record LoadingProductVisual;
 
 /// <summary>Built-in presentation data and its default template, independent of device identification.</summary>
 public static class DeviceVisuals
@@ -23,6 +25,7 @@ public static class DeviceVisuals
     public static BitmapVisual X4Product { get; } = new(new Uri(
         "avares://HeyMelody/Assets/Devices/EncoX4/x4-pods-with-earphones.png"));
     public static GenericProductVisual GenericProduct { get; } = new();
+    public static LoadingProductVisual LoadingProduct { get; } = new();
     public static IDataTemplate DefaultTemplate { get; } = new DeviceVisualTemplate();
 
     private static readonly object BitmapLock = new();
@@ -86,6 +89,9 @@ public static class DeviceVisuals
         return fallback;
     }
 
+    /// <summary>The shared loading state of the left-hand product area; never a text prompt.</summary>
+    internal static Control CreateLoadingIndicator() => new HeroLoadingIndicator();
+
     /// <summary>Releases shared bitmaps after all application windows have closed.</summary>
     public static void DisposeResources()
     {
@@ -98,7 +104,7 @@ public static class DeviceVisuals
 
     private sealed class DeviceVisualTemplate : IDataTemplate
     {
-        public bool Match(object? data) => data is BitmapVisual or FileBitmapVisual or DeviceModelVisual or LottieVisual or AnimatedWebpVisual or EncoFree4ModelVisual or EncoFree4DynaudioModelVisual or GenericProductVisual;
+        public bool Match(object? data) => data is BitmapVisual or FileBitmapVisual or DeviceModelVisual or LottieVisual or AnimatedWebpVisual or EncoFree4ModelVisual or EncoFree4DynaudioModelVisual or GenericProductVisual or LoadingProductVisual;
 
         public Control? Build(object? data) => data switch
         {
@@ -110,6 +116,7 @@ public static class DeviceVisuals
             EncoFree4ModelVisual => new EncoFree4ModelView(),
             EncoFree4DynaudioModelVisual => new EncoFree4DynaudioModelView(),
             GenericProductVisual => CreateGenericProduct(),
+            LoadingProductVisual => CreateLoadingIndicator(),
             _ => null
         };
 

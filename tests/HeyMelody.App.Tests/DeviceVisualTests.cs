@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using HeyMelodyWindows.App;
+using FluentAvalonia.UI.Controls;
 using SkiaSharp;
 using HeyMelodyWindows.Artwork;
 using HeyMelodyWindows.Resources;
@@ -22,7 +23,8 @@ internal static class DeviceVisualTests
         Run("active renderer leases outlive catalog replacement and release exactly once", LeaseAsync);
         Run("Skottie renders embedded and package images and rejects escaped paths", LottieAsync);
         Run("original hearing Lottie renders a frame, pauses while hidden, and releases on detach", OriginalLottieAsync);
-        return 7;
+        Run("the product area shows a progress ring instead of text while artwork resolves or decodes", LoadingRingAsync);
+        return 8;
         void Run(string label, Func<Task> test)
         { session.Dispatch<bool>(async () => { await test(); return true; }, CancellationToken.None).GetAwaiter().GetResult(); Console.WriteLine("PASS " + label); }
     }
@@ -56,8 +58,8 @@ internal static class DeviceVisualTests
         catalog.Update([device], device, "06EC10", 1, artwork: replacement);
         foreach (var request in service.Requests) request.Completion.TrySetResult(Art(request.Role));
         await Task.Delay(10); Dispatcher.UIThread.RunJobs();
-        Check(Equals(catalog.ProductFor(device), DeviceVisuals.GenericProduct) && service.Releases.Count == 1,
-            "A stale backend response is released before it can be displayed.");
+        Check(Equals(catalog.ProductFor(device), DeviceVisuals.LoadingProduct) && service.Releases.Count == 1,
+            "A stale backend response is released before it can be displayed; the current backend's lookup is still loading.");
         foreach (var request in replacement.Requests) request.Completion.TrySetResult(Art(request.Role));
         await Task.Delay(10); Dispatcher.UIThread.RunJobs();
         Check(catalog.ProductFor(device) is FileBitmapVisual && replacement.Requests.Count == 1,
@@ -97,6 +99,52 @@ internal static class DeviceVisualTests
         Check(catalog.ProductFor(device) is FileBitmapVisual && service.Releases.Count == 1,
             "Only the replacement colour is accepted; the stale hero package lease is released.");
     }
+    private static async Task LoadingRingAsync()
+    {
+        var service = new ArtworkService();
+        using var catalog = new DeviceVisualCatalog();
+        var device = new UiDevice("earbuds", "耳机", false);
+        catalog.Update([device], device, "068C10", 1, artwork: service);
+        Check(Equals(catalog.ProductFor(device), DeviceVisuals.LoadingProduct), "The first artwork lookup shows the loading state.");
+        int revision = catalog.Revision;
+        foreach (var request in service.Requests) request.Completion.TrySetException(new IOException());
+        await Task.Delay(10); Dispatcher.UIThread.RunJobs();
+        Check(Equals(catalog.ProductFor(device), DeviceVisuals.GenericProduct) && catalog.Revision > revision,
+            "A failed first lookup announces the change and falls back to the generic icon, not a ring during retries.");
+
+        var art = Path.Combine(Path.GetTempPath(), "hm-loading-" + Guid.NewGuid().ToString("N") + ".png");
+        using (var bitmap = new SKBitmap(64, 48))
+        using (var image = SKImage.FromBitmap(bitmap))
+        using (var data = image.Encode(SKEncodedImageFormat.Png, 100))
+        using (var file = File.Create(art)) data.SaveTo(file);
+        var loading = new ProductArtwork { Visual = DeviceVisuals.LoadingProduct, Width = 240, Height = 180 };
+        var decoded = new ProductArtwork { Visual = new FileBitmapVisual(new ArtworkFile(new Uri(art), Path.GetDirectoryName(art)!, ""),
+            DeviceVisuals.GenericProduct), Width = 240, Height = 180 };
+        var window = new Window { Content = new StackPanel { Children = { loading, decoded } }, Width = 300, Height = 420 };
+        try
+        {
+            window.Show();
+            var pending = decoded.GetVisualDescendants().OfType<ArtworkBitmapView>().Single();
+            Check(pending.Content is HeroLoadingIndicator, "A decoding bitmap shows the loading indicator, not an empty area.");
+            Dispatcher.UIThread.RunJobs();
+            var ring = loading.GetVisualDescendants().OfType<FAProgressRing>().Single();
+            Check(ring.IsVisible && ring.IsActive && ring.IsIndeterminate
+                && !loading.GetVisualDescendants().OfType<TextBlock>().Any(text => !string.IsNullOrEmpty(text.Text)),
+                "The loading state is an active indeterminate progress ring without a text prompt.");
+            for (int attempt = 0; attempt < 100 && pending.Content is not Image; attempt++)
+            { await Task.Delay(10); Dispatcher.UIThread.RunJobs(); }
+            Check(pending.Content is Image && !decoded.GetVisualDescendants().OfType<FAProgressRing>().Any(),
+                "The decoded bitmap replaces the ring.");
+            window.WindowState = WindowState.Minimized; Dispatcher.UIThread.RunJobs();
+            Check(!ring.IsActive && !ring.IsVisible, "A minimized window does not keep the ring spinning.");
+            window.WindowState = WindowState.Normal; Dispatcher.UIThread.RunJobs();
+            Check(ring.IsActive && ring.IsVisible, "Restoring the window resumes the ring while still loading.");
+            window.Content = null; Dispatcher.UIThread.RunJobs();
+            Check(!ring.IsActive && !ring.IsVisible, "A detached indicator stops animating.");
+        }
+        finally { window.Close(); File.Delete(art); }
+    }
+
     private static Task LeaseAsync()
     {
         var releases = 0;

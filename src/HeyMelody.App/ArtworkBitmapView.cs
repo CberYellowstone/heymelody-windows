@@ -20,7 +20,8 @@ internal sealed class ArtworkBitmapView(FileBitmapVisual visual) : UserControl
         try
         {
             _lease = visual.File.Acquire();
-            // A 1440 px PNG takes tens of milliseconds to decode; the view stays empty for that moment.
+            // A 1440 px PNG takes tens of milliseconds to decode; the delayed ring only appears for slower loads.
+            Content = DeviceVisuals.CreateLoadingIndicator();
             var bitmap = await Task.Run(() =>
             {
                 using var stream = visual.File.Open();

@@ -15,6 +15,24 @@ internal static class ModelRendererLifecycleTests
         try
         {
             ModelRenderingPreferences.Apply(false);
+            using (var ringBarrier = new ManualResetEventSlim(false))
+            {
+                var ringFactory = new RecordingFilamentRendererFactory { CreateBarrier = ringBarrier };
+                var ringView = View(ringFactory);
+                var ringWindow = new Window { Content = ringView, Width = 280, Height = 240 };
+                try
+                {
+                    ringWindow.Show(); Dispatcher.UIThread.RunJobs();
+                    Check(ringView.LoadingIndicatorVisible && ringView.VisibleStatus is null
+                        && ringView.GetVisualDescendants().OfType<FAProgressRing>().Single() is { IsVisible: true, IsActive: true },
+                        "A loading model shows the progress ring and no loading text.");
+                    ringBarrier.Set();
+                    await UntilAsync(() => ringView.CaptureLatestFrame(out _) is not null && !ringView.LoadingIndicatorVisible,
+                        "The first presented frame hides the progress ring.");
+                    Check(ringView.VisibleStatus is null, "A ready model shows no status text.");
+                }
+                finally { ringBarrier.Set(); ringWindow.Close(); }
+            }
             int leases = 0;
             var cacheFactory = new RecordingFilamentRendererFactory();
             var cacheView = View(cacheFactory, () => { Interlocked.Increment(ref leases); return new Lease(() => Interlocked.Decrement(ref leases)); });
@@ -56,6 +74,8 @@ internal static class ModelRendererLifecycleTests
                 {
                     window.Show();
                     await UntilAsync(() => failed.LoadError is not null, "A backend initialization failure reaches static artwork.");
+                    Check(!failed.LoadingIndicatorVisible && failed.VisibleStatus is not null,
+                        "A failure replaces the progress ring with its guidance text.");
                     bool hint = failed.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text?.Contains("“3D模型渲染API”中选择 OpenGL") == true);
                     Check(hint == (!compatibility && !OperatingSystem.IsMacOS()),
                         "Only an unavailable Vulkan backend recommends manually enabling compatibility.");
