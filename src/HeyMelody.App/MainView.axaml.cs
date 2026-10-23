@@ -399,6 +399,7 @@ public partial class MainView : UserControl
         token.ThrowIfCancellationRequested();
         FAContentDialog? dialog = null;
         var savedTheme = ThemePreferences.Load();
+        var savedUiBasicRenderMode = ThemePreferences.LoadUiBasicRenderMode();
         var panel = new AppSettingsPanel(vm, savedTheme,
             OperatingSystem.IsWindows() && ManageDevicesRequested is not null,
             () => { _manageDevicesRequested = true; dialog?.Hide(); });
@@ -416,8 +417,14 @@ public partial class MainView : UserControl
             _resourcePreferenceDraft = new(panel.UseOnlineResources, panel.CloudKey);
         if (Application.Current is App app) app.ApplyTheme(selected);
         ModelRenderingPreferences.Apply(panel.ModelCompatibilityMode, panel.ModelFrameRate);
-        if (!ThemePreferences.Save(selected, panel.ModelCompatibilityMode, panel.ModelFrameRate))
-            await ShowSettingsDialogAsync(new FAContentDialog { Title = "外观已切换", Content = "无法保存外观偏好，下次启动将使用原来的设置。", CloseButtonText = "确定" }, owner, token);
+        if (!ThemePreferences.Save(selected, panel.ModelCompatibilityMode, panel.ModelFrameRate, panel.UiBasicRenderMode))
+            await ShowSettingsDialogAsync(new FAContentDialog { Title = "设置未保存",
+                Content = "无法保存偏好，新的界面渲染选择未保存。当前主题和3D外观可能已生效，重启后仍使用原来的设置。",
+                CloseButtonText = "确定" }, owner, token);
+        else if (savedUiBasicRenderMode != panel.UiBasicRenderMode)
+            await ShowSettingsDialogAsync(new FAContentDialog { Title = "界面渲染设置已保存",
+                Content = "请关闭并重新打开所有界面后生效：主界面、设备管理器、贴合度测试和黄金听感。无需退出托盘后台，后台连接可继续运行。",
+                CloseButtonText = "确定" }, owner, token);
 
     }
 

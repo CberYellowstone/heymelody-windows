@@ -19,6 +19,8 @@ internal static class ThemePreferences
     // Only the JSON boolean true enables compatibility. Legacy GPU settings have no meaning here.
     internal static bool LoadModelCompatibilityMode() => Read()["modelCompatibilityMode"]?.GetValueKind() == JsonValueKind.True;
 
+    internal static bool LoadUiBasicRenderMode() => UiRenderingPreferenceReader.Load(SettingsPath);
+
     internal static ModelFrameRate LoadModelFrameRate() => ParseModelFrameRate(Read()["modelFrameRate"]);
 
     // The former "display" and "120" choices, missing values and malformed values use the unlimited default.
@@ -39,7 +41,8 @@ internal static class ThemePreferences
         _ => "unlimited"
     };
 
-    public static bool Save(string theme, bool? modelCompatibilityMode = null, ModelFrameRate? modelFrameRate = null)
+    public static bool Save(string theme, bool? modelCompatibilityMode = null, ModelFrameRate? modelFrameRate = null,
+        bool? uiBasicRenderMode = null)
     {
         string? temporary = null;
         try
@@ -48,6 +51,7 @@ internal static class ThemePreferences
             preferences["theme"] = theme;
             preferences.Remove("modelGpuAcceleration");
             if (modelCompatibilityMode is { } enabled) preferences["modelCompatibilityMode"] = enabled;
+            if (uiBasicRenderMode is { } basicRender) preferences[UiRenderingPreferenceReader.PreferenceName] = basicRender;
             preferences["modelFrameRate"] = Serialize(modelFrameRate ?? ParseModelFrameRate(preferences["modelFrameRate"]));
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
             temporary = SettingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";

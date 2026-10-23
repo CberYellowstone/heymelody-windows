@@ -1,6 +1,11 @@
 using HeyMelodyWindows.App;
 using HeyMelodyWindows.Calibration.UI;
 
+if (args is ["--native-rendering-policy-smoke", var renderMode, "--output-dir", var renderOutput]
+    && renderMode is "default" or "basic")
+    return NativeCalibrationSmoke.Run(basicRenderMode: renderMode == "basic", outputDirectory: Path.GetFullPath(renderOutput));
+if (args.FirstOrDefault() == "--native-rendering-policy-smoke")
+{ Console.Error.WriteLine("Usage: --native-rendering-policy-smoke <default|basic> --output-dir path"); return 2; }
 if (args.Contains("--native", StringComparer.Ordinal)) return NativeCalibrationSmoke.Run();
 
 var passed = 0;

@@ -1,6 +1,8 @@
 # HeyMelody Windows 使用说明
 
-本 Filament 试验提供 Windows x64、ARM64 单架构包，请选择与系统对应的版本；ARM64 为交叉构建，尚未完成 ARM64 硬件运行验证。三维模型默认使用 Vulkan，可在应用设置的“3D模型渲染API”下拉框选择 OpenGL，保存后立即生效。无法使用 Vulkan 时显示静态外观并提示手动选择 OpenGL，不自动切换；没有同款图片的演示显示通用耳机图标。帧率滑块提供 30帧、60帧、无限制，默认无限制；旧跟随显示器和试验版 120 帧设置对应无限制。请保留原生库、`hm_filament_probe.exe`、`filament-runtime.json`、`materials` 和 `licenses`。
+普通界面默认使用 Windows 的默认 GPU。“应用设置 → 外观 → 使用 Basic Render 兼容模式”可启用兼容绘制，可能降低流畅度；保存后手动关闭并重新打开所有界面窗口生效，托盘后台无需退出，不影响三维模型 API 设置。如果界面完全透明或黑屏而无法操作，关闭界面后将 `%LOCALAPPDATA%\HeyMelody\preferences.json` 的 `uiBasicRenderMode` 改为 `true`（保留其他字段），再打开界面；文件不存在时可创建 `{"uiBasicRenderMode":true}`。切换前先正常结束或取消正在进行的校准。
+
+本 Filament 试验提供 Windows x64、ARM64 单架构包，请选择与系统对应的版本；各架构的实际验证范围以匹配文件摘要的本地验收收据为准。三维模型默认使用 Vulkan，可在应用设置的“3D模型渲染API”下拉框选择 OpenGL，保存后立即生效。无法使用 Vulkan 时显示静态外观并提示手动选择 OpenGL，不自动切换；没有同款图片的演示显示通用耳机图标。帧率滑块提供 30帧、60帧、无限制，默认无限制；旧跟随显示器和试验版 120 帧设置对应无限制。请保留原生库、`hm_filament_probe.exe`、`filament-runtime.json`、`materials` 和 `licenses`。
 
 这是采用 Avalonia 和 FluentAvalonia 的社区 Windows 耳机客户端。资源目录使用欢律的 85 个耳机产品 ID；配置、协议与实际设备能力共同决定可用功能，未知控制不会开放。OPPO、OnePlus、realme 耳机目录已纳入，音箱排除。
 

@@ -11,6 +11,11 @@ using HeyMelodyWindows.App;
 using HeyMelodyWindows.DeviceManager;
 using HeyMelodyWindows.Ui;
 
+if (args is ["--native-rendering-policy-smoke", var renderMode, "--output-dir", var renderOutput]
+    && renderMode is "default" or "basic")
+    return NativeSmoke.Run(basicRenderMode: renderMode == "basic", outputDirectory: Path.GetFullPath(renderOutput));
+if (args.FirstOrDefault() == "--native-rendering-policy-smoke")
+{ Console.Error.WriteLine("Usage: --native-rendering-policy-smoke <default|basic> --output-dir path"); return 2; }
 if (args is ["--native-smoke"]) return NativeSmoke.Run();
 if (args is ["--native-alt-f4-smoke"]) return NativeSmoke.Run(closeWithAltF4: true);
 

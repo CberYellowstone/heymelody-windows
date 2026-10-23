@@ -14,6 +14,16 @@ using HeyMelodyWindows.App;
 
 if (ProcessLifetimeTests.TryRunHelper(args, out var helperExit)) return helperExit;
 
+if (args is ["--rendering-policy-tests"]) return RenderingPolicyTests.Run();
+if (args is ["--native-rendering-smoke"]) return NativeSmoke.Run(useRenderingSetup: true);
+if (args is ["--native-rendering-policy-smoke", var renderMode, "--output-dir", var renderOutput]
+    && renderMode is "default" or "basic" or "software-fallback" or "warp-missing")
+    return NativeSmoke.Run(useRenderingSetup: true, basicRenderMode: renderMode != "default",
+        outputDirectory: Path.GetFullPath(renderOutput),
+        renderingFailure: renderMode is "software-fallback" or "warp-missing" ? renderMode : null);
+if (args.FirstOrDefault() == "--native-rendering-policy-smoke")
+{ Console.Error.WriteLine("Usage: --native-rendering-policy-smoke <default|basic|software-fallback|warp-missing> --output-dir path"); return 2; }
+
 if (args is ["--native-smoke"]) return NativeSmoke.Run();
 if (args is ["--native-settings-smoke"]) return NativeSmoke.Run(openSettings: true);
 if (args is ["--native-model-settings-smoke"]) return NativeModelSettingsSmoke.Run();
@@ -37,9 +47,12 @@ if (args.FirstOrDefault() == "--native-demo-smoke")
     return NativeDemoSmoke.Run(nativeDemoOutput, backend);
 }
 
+RenderingPolicyTests.Run();
+
 string output = args.Length == 2 && args[0] == "--output-dir" ? Path.GetFullPath(args[1])
     : args is ["--model-tests", "--output-dir", var modelOutput] ? Path.GetFullPath(modelOutput)
     : args is ["--anc-feature-tests", "--output-dir", var ancOutput] ? Path.GetFullPath(ancOutput)
+    : args is ["--rendering-settings-tests", "--output-dir", var renderSettingsOutput] ? Path.GetFullPath(renderSettingsOutput)
     : Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "avalonia-ui-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8]);
 Directory.CreateDirectory(output);
 var receipts = new List<object>();
@@ -50,6 +63,12 @@ DeviceModelView.DefaultFactoryOverride = new RecordingFilamentRendererFactory();
 using var session = HeadlessUnitTestSession.StartNew(typeof(PreviewBootstrap));
 try
 {
+    if (args is ["--rendering-settings-tests"] or ["--rendering-settings-tests", "--output-dir", _])
+    {
+        var checks = RenderingSettingsTests.Run(session, output);
+        Console.WriteLine(JsonSerializer.Serialize(new { passed = checks, success = true, nativeBluetoothCalls = 0, output }));
+        return 0;
+    }
     if (args is ["--model-tests"] or ["--model-tests", "--output-dir", _])
     {
         int count = CompatibilityRenderingTests.Run(session, output) + FrameLoopTests.Run(session, output);
@@ -174,6 +193,7 @@ try
     passed += layoutChecks;
     var startupChecks = StartupTests.Run(session);
     var settingsManagementChecks = SettingsManagementTests.Run(session);
+    passed += RenderingSettingsTests.Run(session, output);
     passed += startupChecks + settingsManagementChecks;
     var typographyChecks = TypographyTests.Run(session);
     passed += typographyChecks;

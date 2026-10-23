@@ -19,16 +19,19 @@ internal static class NativeSmoke
 {
     private static SmokeState _state = new();
 
-    public static int Run(bool closeWithAltF4 = false)
+    public static int Run(bool closeWithAltF4 = false, bool? basicRenderMode = null, string? outputDirectory = null)
     {
         if (!OperatingSystem.IsWindows()) return 2;
-        _state = new() { CloseWithAltF4 = closeWithAltF4 };
+        _state = new() { CloseWithAltF4 = closeWithAltF4, BasicRenderMode = basicRenderMode,
+            OutputOverride = outputDirectory is null ? null : Path.GetFullPath(outputDirectory) };
         var uiThread = new Thread(() =>
         {
             try
             {
-                _state.ExitCode = AppBuilder.Configure<SmokeApplication>().UsePlatformDetect().LogToTrace()
-                    .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
+                var builder = AppBuilder.Configure<SmokeApplication>().UsePlatformDetect();
+                if (basicRenderMode is not null)
+                    builder = HeyMelodyWindows.Ui.RenderingSetup.UseHeyMelodyRendering(builder, basicRenderMode);
+                _state.ExitCode = builder.LogToTrace().StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
             }
             catch (Exception error) { _state.Failure = error.ToString(); }
         }) { IsBackground = true, Name = "Device manager native smoke UI" };
@@ -43,6 +46,7 @@ internal static class NativeSmoke
             whitelistWrites = _state.Service.Saves, serviceDisposals = _state.Service.Disposals,
             windowClosed = _state.Closed, closeButtonClicked = _state.CloseButtonClicked, altF4Sent = _state.AltF4Sent,
             applicationExitCode = _state.ExitCode,
+            requestedBasicRenderMode = _state.BasicRenderMode, rendering = _state.Probe?.Receipt,
             operatingSystem = Environment.OSVersion.Version.ToString(),
             scope = "Real Win32 window and DWM attributes, compositor screenshots, both themes and sizes; in-memory paired catalog only. No Bluetooth or user configuration writes.",
             states = _state.Receipts, failure = _state.Failure
@@ -61,7 +65,10 @@ internal static class NativeSmoke
                 index == 0 ? "OPPO Enco X4" : index == 1 ? "OPPO Enco Air4 Pro" : index == 2 ? "OnePlus Buds Pro 3" : "已配对的耳机 " + index,
                 index % 3 == 0, index == 0)).ToArray())
         };
-        public string Output => Path.Combine(Directory.GetCurrentDirectory(), "artifacts",
+        public bool? BasicRenderMode { get; init; }
+        public NativeRenderingProbe? Probe { get; set; }
+        public string? OutputOverride { get; init; }
+        public string Output => OutputOverride ?? Path.Combine(Directory.GetCurrentDirectory(), "artifacts",
             CloseWithAltF4 ? "device-manager-native-063-alt-f4" : "device-manager-native-063");
         public List<object> Receipts { get; } = [];
         public int Checks { get; set; }
@@ -83,6 +90,7 @@ internal static class NativeSmoke
             var desktop = ApplicationLifetime as IClassicDesktopStyleApplicationLifetime
                 ?? throw new InvalidOperationException("Desktop lifetime required.");
             var window = new DeviceManagerWindow(_state.Service, preview: true) { Topmost = true };
+            if (_state.BasicRenderMode is not null) _state.Probe = NativeRenderingProbe.Attach(window);
             desktop.MainWindow = window;
             window.Closed += (_, _) => _state.Closed = true;
             window.Opened += (_, _) => _ = VerifyAndCloseAsync(window);
@@ -100,6 +108,14 @@ internal static class NativeSmoke
             Check(vm.Devices.Count == 12 && !vm.Busy && vm.ExitCode == 1, "The mock catalog initializes without a write.");
             var hwnd = window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
             Check(hwnd != IntPtr.Zero, "Real native HWND exists.");
+            if (_state.Probe is { } probe)
+            {
+                for (int attempt = 0; !probe.Queried && attempt < 80; attempt++) await Task.Delay(50);
+                Check(probe.Queried && probe.HasGpuContext && !string.IsNullOrWhiteSpace(probe.Renderer),
+                    "The manager compositor exposes its actual ANGLE renderer.");
+                Check(_state.BasicRenderMode == probe.Renderer!.Contains("Microsoft Basic Render Driver", StringComparison.OrdinalIgnoreCase),
+                    "The manager renderer matches the requested GPU policy.");
+            }
             var style = IntPtr.Size == 8 ? GetWindowLongPtr(hwnd, -16).ToInt64() : GetWindowLong(hwnd, -16);
             Check(window.ShowAsDialog && window.CanResize && !window.CanMinimize && !window.CanMaximize,
                 "The dialog exposes only Close while allowing resizing.");

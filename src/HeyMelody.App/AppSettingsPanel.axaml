@@ -24,6 +24,15 @@
       </fa:FASettingsExpanderItem.Footer>
     </fa:FASettingsExpanderItem>
 
+    <fa:FASettingsExpanderItem x:Name="UiBasicRenderCard" Content="使用 Basic Render 兼容模式"
+                               Description="显示异常时尝试启用，会降低流畅度；重新打开主界面后生效">
+      <fa:FASettingsExpanderItem.IconSource><fa:FASymbolIconSource Symbol="Sync" /></fa:FASettingsExpanderItem.IconSource>
+      <fa:FASettingsExpanderItem.Footer>
+        <ToggleSwitch x:Name="UiBasicRenderSwitch" OnContent="开" OffContent="关"
+                      AutomationProperties.Name="使用 Basic Render 兼容模式" />
+      </fa:FASettingsExpanderItem.Footer>
+    </fa:FASettingsExpanderItem>
+
     <fa:FASettingsExpanderItem x:Name="ModelCompatibilityCard" Content="3D模型渲染API"
                                Description="若存在渲染问题，请尝试切换到 OpenGL">
       <fa:FASettingsExpanderItem.IconSource><fa:FASymbolIconSource Symbol="Sync" /></fa:FASettingsExpanderItem.IconSource>

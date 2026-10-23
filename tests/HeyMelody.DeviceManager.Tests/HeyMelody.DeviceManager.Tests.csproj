@@ -7,4 +7,8 @@
     <ProjectReference Include="../../src/HeyMelody.DeviceManager/HeyMelody.DeviceManager.csproj" />
     <PackageReference Include="Avalonia.Headless" Version="12.1.4" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../HeyMelody.App.Tests/NativeRenderingProbe.cs" Link="NativeRenderingProbe.cs" />
+    <Compile Include="../HeyMelody.ModelPreview.Tests/NativeWindowCapture.cs" Link="NativeWindowCapture.cs" />
+  </ItemGroup>
 </Project>

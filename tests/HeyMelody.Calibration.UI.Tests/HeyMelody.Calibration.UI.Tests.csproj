@@ -2,4 +2,8 @@
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
   <ItemGroup><ProjectReference Include="../../src/HeyMelody.Calibration.UI/HeyMelody.Calibration.UI.csproj" /></ItemGroup>
   <ItemGroup><PackageReference Include="Avalonia.Headless" Version="12.1.4" /></ItemGroup>
+  <ItemGroup>
+    <Compile Include="../HeyMelody.App.Tests/NativeRenderingProbe.cs" Link="NativeRenderingProbe.cs" />
+    <Compile Include="../HeyMelody.ModelPreview.Tests/NativeWindowCapture.cs" Link="NativeWindowCapture.cs" />
+  </ItemGroup>
 </Project>

@@ -200,9 +200,9 @@ internal static class CompatibilityRenderingTests
             operation = view.OpenSettingsDialogAsync(); await Task.Delay(20); Dispatcher.UIThread.RunJobs();
             dialog = Settings(window); BackendChoice(dialog).SelectedIndex = 1; ClickSave(window, dialog);
             await ModelRendererLifecycleTests.UntilAsync(() => window.GetVisualDescendants().OfType<FAContentDialog>()
-                .Any(d => Equals(d.Title, "外观已切换")), "Save failure is shown to the user.");
+                .Any(d => Equals(d.Title, "设置未保存")), "Save failure is shown to the user.");
             Check(ModelRenderingPreferences.CompatibilityMode, "A failed disk save still applies the current compatibility mode.");
-            window.GetVisualDescendants().OfType<FAContentDialog>().Single(d => Equals(d.Title, "外观已切换")).Hide();
+            window.GetVisualDescendants().OfType<FAContentDialog>().Single(d => Equals(d.Title, "设置未保存")).Hide();
             await operation.WaitAsync(TimeSpan.FromSeconds(3));
             ThemePreferences.SettingsPathOverride = originalPath;
         }
