@@ -100,6 +100,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-Client.ps1 -Test
 pwsh -NoProfile -File .\Build-Client.ps1 -Version 0.9.2
 ```
 
+已有客户端目录可通过独立的 `Build-Installer.ps1` 封装为 NSIS 安装器；脚本读取包内 `manifest.json` 的版本，不重新编译客户端。需要本机安装 NSIS，默认包装 x64，可用 `-Architectures x64,arm64` 选择包内已有的架构，`-OutputRoot` 默认指向 `release/installers`，`-MakeNsisPath` 可指定 `makensis.exe`。例如在 PowerShell 7 中运行：
+
+```powershell
+.\Build-Installer.ps1 -PackageRoot .\release\HeyMelody_Windows_0.9.2 -Architectures x64,arm64
+```
+
+安装器面向当前用户，支持自定义安装目录，并为特定旧 Qualcomm GPU 设置 Basic Render 兼容模式；检测范围、设置保全和验证边界见[安装器说明](installer.md)。该脚本不接入 `Build-Client.ps1` 或 GitHub Actions，也不创建 GitHub Release；CI 继续构建、校验目录及 ZIP。
+
 GitHub Actions 的 Windows x64、ARM64 应用包由 push 和手动运行发布：实际分支为 `refs/heads/main` 时保留 7 天，其他分支或 tag 保留 1 天。PR 仍编译并验包，但不重复发布应用包；校验回执保留 1 天。PR 的目标分支是 main 不会改变这个规则，工作流运行记录和日志继续按既有策略保留。
 
 Windows 原生 Filament 运行时另存为 30 天 artifact 缓存，应用构建和 portability 的 Windows job 共用恢复入口。命中后校验并跳过原生编译，缓存不可用时在当前 job 重建；可信 push／手动运行会重新上传已验证运行时，滚动续存 30 天。手动运行可勾选 `force_native_rebuild` 强制重建。缓存依据、错误回退和离线检查见[Filament 构建说明](filament-renderer.md#github-actions-原生缓存)。

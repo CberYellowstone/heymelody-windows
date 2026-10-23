@@ -2,6 +2,10 @@
 
 普通界面默认使用 Windows 的默认 GPU。“应用设置 → 外观 → 使用 Basic Render 兼容模式”可启用兼容绘制，可能降低流畅度；保存后手动关闭并重新打开所有界面窗口生效，托盘后台无需退出，不影响三维模型 API 设置。如果界面完全透明或黑屏而无法操作，关闭界面后将 `%LOCALAPPDATA%\HeyMelody\preferences.json` 的 `uiBasicRenderMode` 改为 `true`（保留其他字段），再打开界面；文件不存在时可创建 `{"uiBasicRenderMode":true}`。切换前先正常结束或取消正在进行的校准。
 
+如使用本地生成的 NSIS 安装器，程序只为当前用户安装，默认目录为 `%LOCALAPPDATA%\Programs\HeyMelody`，目录页允许自定义，无需管理员权限。最后一页的“创建桌面快捷方式”默认勾选，可取消。安装完成后可从开始菜单启动主程序、设备管理器或离线 3D 演示，并使用卸载入口移除程序；卸载保留用户设置和已下载资源，只清理安装清单列出的程序文件。更新前关闭所有界面并从托盘退出后台，安装器检测到程序仍在运行时会提示退出。安装 EXE 由独立本地脚本生成，GitHub Actions 继续提供目录和 ZIP，实际下载内容以发布页为准。
+
+NSIS 安装器识别到旧 Qualcomm `ACPI\QCOM043A` GPU 家族（Adreno 680、685、690）时，将 `uiBasicRenderMode` 设为 `true`；8cx Gen 3 的 `QCOM0636`、Snapdragon X 及未识别设备不修改此设置。其他偏好字段保留；偏好文件损坏时安装器报错并保留原文件，不会静默覆盖。来源、匹配规则和验证范围见[安装器说明](https://github.com/CberYellowstone/heymelody-windows/blob/review/0.9.9/docs/installer.md)。
+
 本 Filament 试验提供 Windows x64、ARM64 单架构包，请选择与系统对应的版本；各架构的实际验证范围以匹配文件摘要的本地验收收据为准。三维模型默认使用 Vulkan，可在应用设置的“3D模型渲染API”下拉框选择 OpenGL，保存后立即生效。无法使用 Vulkan 时显示静态外观并提示手动选择 OpenGL，不自动切换；没有同款图片的演示显示通用耳机图标。帧率滑块提供 30帧、60帧、无限制，默认无限制；旧跟随显示器和试验版 120 帧设置对应无限制。请保留原生库、`hm_filament_probe.exe`、`filament-runtime.json`、`materials` 和 `licenses`。
 
 这是采用 Avalonia 和 FluentAvalonia 的社区 Windows 耳机客户端。资源目录使用欢律的 85 个耳机产品 ID；配置、协议与实际设备能力共同决定可用功能，未知控制不会开放。OPPO、OnePlus、realme 耳机目录已纳入，音箱排除。
