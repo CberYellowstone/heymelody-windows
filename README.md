@@ -26,7 +26,7 @@
 3. 双击 `Start-HeyMelody.cmd`，通过设备管理器选中要管理的耳机并保存名单。
 4. 在主界面选择耳机，等待连接和状态读取完成，再调整设置。
 
-本地构建另可封装为 NSIS 安装器，安装到当前用户的 `%LOCALAPPDATA%\Programs\HeyMelody`，也可在目录页自定义位置，无需管理员权限。安装后从开始菜单启动；卸载保留用户设置和已下载资源。此安装器由独立脚本生成，GitHub Actions 继续生成目录与 ZIP，发布页未必提供安装 EXE，详见[安装器说明](docs/installer.md)。
+本地构建另可封装为 Inno Setup 安装器，安装到当前用户的 `%LOCALAPPDATA%\Programs\HeyMelody`，也可在目录页自定义位置，无需管理员权限。开始菜单只添加一个 HeyMelody 入口；可从 Windows“应用和功能”卸载，保留用户设置和已下载资源。此安装器由独立脚本生成，GitHub Actions 继续生成目录与 ZIP，发布页未必提供安装 EXE，详见[安装器说明](docs/installer.md)。
 
 请保留包内的 `backend`、`ResourceBundles`、DLL 和许可证文件。关闭主窗口后后台仍在托盘运行；完全退出时，右键托盘图标选择“退出”。更新前先关闭所有界面并退出旧版后台，再使用完整的新包，避免新界面连接到旧后台。
 

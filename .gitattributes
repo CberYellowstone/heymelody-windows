@@ -14,3 +14,6 @@ src/HeyMelody.Devices/Assets/oppo-enco-x4.json -text
 # Catalog and artwork hashes require the original bytes on every checkout.
 src/HeyMelody.Resources/Bundles/** -text
 *.otf binary
+# Preserve the official Inno Setup license and translation byte for byte.
+packaging/inno/LICENSE.txt -text whitespace=cr-at-eol
+packaging/inno/Languages/ChineseSimplified.isl -text whitespace=cr-at-eol

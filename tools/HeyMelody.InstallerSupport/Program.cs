@@ -4,15 +4,31 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
-        if (args is not ["compatibility"] && args is not ["probe-compatibility"] && args is not ["check-running", _])
+        if (args is not ["compatibility"] && args is not ["probe-compatibility"]
+            && args is not ["check-running", _] && args is not ["check-installation", _]
+            && args is not ["desktop-preference", "read"] && args is not ["desktop-preference", "write", "true" or "false"])
         {
-            Console.Error.WriteLine("Usage: HeyMelody.InstallerSupport compatibility | probe-compatibility | check-running <installation-root>");
+            Console.Error.WriteLine("Usage: HeyMelody.InstallerSupport compatibility | probe-compatibility | check-running <installation-root>"
+                + " | check-installation <installation-root> | desktop-preference read | desktop-preference write <true|false>");
             return 2;
         }
         try
         {
             if (!OperatingSystem.IsWindows())
                 throw new PlatformNotSupportedException("Installer support requires Windows.");
+            if (args[0] == "desktop-preference")
+            {
+                var path = CurrentUserPreferencesPath("installer-preferences.json");
+                if (args[1] == "read")
+                {
+                    var enabled = DesktopShortcutPreferences.Read(path);
+                    Console.WriteLine(enabled ? "true" : "false");
+                    return enabled ? 0 : 20;
+                }
+                DesktopShortcutPreferences.Write(path, args[2] == "true");
+                Console.WriteLine("Desktop shortcut preference saved: " + args[2]);
+                return 0;
+            }
             if (args[0] is "compatibility" or "probe-compatibility")
             {
                 var adapters = WindowsDisplayAdapters.Enumerate();
@@ -29,10 +45,7 @@ internal static class Program
                 // Preferences are shared across portable copies and installations for this user.
                 var runningForPreferences = RunningApplications.FindAny(WindowsProcesses.Enumerate(), Environment.ProcessId);
                 if (runningForPreferences.Count != 0) return ReportRunning(runningForPreferences);
-                var localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                if (string.IsNullOrEmpty(localApplicationData) || !Path.IsPathFullyQualified(localApplicationData))
-                    throw new IOException("The current user's LocalAppData directory is unavailable; preferences were not changed.");
-                var path = Path.Combine(localApplicationData, "HeyMelody", "preferences.json");
+                var path = CurrentUserPreferencesPath("preferences.json");
                 var result = CompatibilityPreferences.Apply(adapters, path);
                 Console.WriteLine(result switch
                 {
@@ -43,18 +56,29 @@ internal static class Program
                 return 0;
             }
             var running = RunningApplications.Find(args[1], WindowsProcesses.Enumerate(), Environment.ProcessId);
-            if (running.Count == 0)
+            if (running.Count != 0) return ReportRunning(running);
+            if (args[0] == "check-installation")
             {
-                Console.WriteLine("No running HeyMelody applications in the installation directory.");
+                var checkedFiles = InstallationFiles.CheckUnlocked(args[1]);
+                Console.WriteLine($"No running HeyMelody applications; {checkedFiles} payload files are unlocked. Missing payload files are allowed.");
                 return 0;
             }
-            return ReportRunning(running);
+            Console.WriteLine("No running HeyMelody applications in the installation directory.");
+            return 0;
         }
         catch (Exception error) when (error is not OutOfMemoryException and not StackOverflowException)
         {
             Console.Error.WriteLine(error.Message);
             return 1;
         }
+    }
+
+    private static string CurrentUserPreferencesPath(string fileName)
+    {
+        var localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrEmpty(localApplicationData) || !Path.IsPathFullyQualified(localApplicationData))
+            throw new IOException("The current user's LocalAppData directory is unavailable; preferences were not changed.");
+        return Path.Combine(localApplicationData, "HeyMelody", fileName);
     }
 
     private static int ReportRunning(IReadOnlyList<ProcessSnapshot> processes)

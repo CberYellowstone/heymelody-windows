@@ -9,7 +9,8 @@ internal static class Program
         try
         {
             Directory.CreateDirectory(output);
-            var count = CompatibilityTests.Run(output) + ProcessTests.Run(output);
+            var count = CompatibilityTests.Run(output) + ProcessTests.Run(output) + DesktopShortcutTests.Run(output)
+                + InstallationFilesTests.Run(output);
             Console.WriteLine($"PASS {count} installer-support checks; no UI, hardware enumeration or user preferences accessed.");
             return 0;
         }

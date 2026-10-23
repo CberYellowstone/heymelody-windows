@@ -4,13 +4,17 @@ param(
     [Parameter(Mandatory)][string]$PackageRoot,
     [ValidateNotNullOrEmpty()][ValidateSet('x64', 'arm64')][string[]]$Architectures = @('x64'),
     [string]$OutputRoot = (Join-Path $PSScriptRoot 'release/installers'),
-    [string]$MakeNsisPath
+    [string]$InnoCompilerPath
 )
 $ErrorActionPreference = 'Stop'
 if (-not $IsWindows) { throw 'Build this Windows installer on Windows with PowerShell 7.4 or later.' }
 $repositoryRoot = $PSScriptRoot
 $PackageRoot = (Resolve-Path -LiteralPath $PackageRoot).Path
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
+if ($OutputRoot.Equals($PackageRoot, [StringComparison]::OrdinalIgnoreCase) -or
+    $OutputRoot.StartsWith($PackageRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'OutputRoot must be outside the input client package.'
+}
 $architecturesToBuild = @($Architectures | Select-Object -Unique)
 
 function Read-SmallJson([string]$Path) {
@@ -18,9 +22,11 @@ function Read-SmallJson([string]$Path) {
     return [IO.File]::ReadAllText($Path) | ConvertFrom-Json
 }
 
-function ConvertTo-NsisLiteral([string]$Value) {
-    if ($Value.Contains("`n") -or $Value.Contains("`r")) { throw 'NSIS paths cannot contain line breaks.' }
-    return $Value.Replace('$', '$$').Replace('"', '$\"')
+function ConvertTo-InnoString([string]$Value) {
+    if ($Value.Contains("`n") -or $Value.Contains("`r") -or $Value.Contains('"')) {
+        throw 'Inno Setup build paths cannot contain quotes or line breaks.'
+    }
+    return '"' + $Value + '"'
 }
 
 function Assert-NoReparsePoints([string]$Directory) {
@@ -35,22 +41,22 @@ function Assert-NoReparsePoints([string]$Directory) {
     }
 }
 
-if (-not $MakeNsisPath) {
-    $compiler = Get-Command makensis.exe -ErrorAction SilentlyContinue
-    if ($compiler) { $MakeNsisPath = $compiler.Source }
+if (-not $InnoCompilerPath) {
+    $compiler = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+    if ($compiler) { $InnoCompilerPath = $compiler.Source }
     else {
         foreach ($programFilesRoot in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
             if (-not $programFilesRoot) { continue }
-            $candidate = Join-Path $programFilesRoot 'NSIS/makensis.exe'
-            if (Test-Path -LiteralPath $candidate -PathType Leaf) { $MakeNsisPath = $candidate; break }
+            foreach ($directory in @('Inno Setup 6', 'Inno Setup 7')) {
+                $candidate = Join-Path $programFilesRoot "$directory/ISCC.exe"
+                if (Test-Path -LiteralPath $candidate -PathType Leaf) { $InnoCompilerPath = $candidate; break }
+            }
+            if ($InnoCompilerPath) { break }
         }
     }
 }
-if (-not $MakeNsisPath) { throw 'Install NSIS 3 (https://nsis.sourceforge.io/Download) or pass -MakeNsisPath.' }
-$MakeNsisPath = (Resolve-Path -LiteralPath $MakeNsisPath).Path
-$compilerVersion = (& $MakeNsisPath /VERSION | Out-String).Trim()
-if ($LASTEXITCODE -ne 0 -or $compilerVersion -notmatch '^v3\.') { throw 'NSIS 3 is required.' }
-
+if (-not $InnoCompilerPath) { throw 'Install Inno Setup 6.6 or later (https://jrsoftware.org/isinfo.php), or pass -InnoCompilerPath.' }
+$InnoCompilerPath = (Resolve-Path -LiteralPath $InnoCompilerPath).Path
 $manifestPath = Join-Path $PackageRoot 'manifest.json'
 $manifest = Read-SmallJson $manifestPath
 $version = [string]$manifest.version
@@ -64,32 +70,32 @@ foreach ($architecture in $architecturesToBuild) {
         if (-not (Test-Path -LiteralPath (Join-Path $PackageRoot $relative) -PathType Leaf)) { throw "Missing package file: $relative" }
     }
     $installerPath = Join-Path $OutputRoot "HeyMelody_Windows_${version}_${architecture}_Setup.exe"
-    if (Test-Path -LiteralPath $installerPath) { throw "Installer already exists; select a new output directory: $installerPath" }
-    if (Test-Path -LiteralPath "$installerPath.json") { throw "Installer receipt already exists: $installerPath.json" }
+    if ((Test-Path -LiteralPath $installerPath) -or (Test-Path -LiteralPath "$installerPath.json")) { throw "Installer or receipt already exists; select a new output directory: $installerPath" }
+}
+if (@(Get-ChildItem -LiteralPath $PackageRoot -File | Where-Object Name -Match '^(Uninstall\.exe|unins\d+\.(exe|dat|msg))$').Count) {
+    throw 'Use a Build-Client package, not an installed application directory.'
 }
 Assert-NoReparsePoints $PackageRoot
 New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
-$workRoot = Join-Path $repositoryRoot ('artifacts/nsis-build-' + [Guid]::NewGuid().ToString('N'))
+$workRoot = Join-Path $repositoryRoot ('artifacts/installer-build-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $workRoot | Out-Null
-$utf8Bom = [Text.UTF8Encoding]::new($true)
 $packageCache = Join-Path $repositoryRoot 'artifacts/nuget-cache'
 $restoreArguments = @("-p:RestorePackagesPath=$packageCache")
 $fallbackCache = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.nuget/packages'
 if (Test-Path -LiteralPath $fallbackCache -PathType Container) { $restoreArguments += "-p:RestoreFallbackFolders=$fallbackCache" }
+$utf8Bom = [Text.UTF8Encoding]::new($true)
 
 foreach ($architecture in $architecturesToBuild) {
     $work = Join-Path $workRoot $architecture
     $payload = Join-Path $work 'payload'
     New-Item -ItemType Directory -Path $payload -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $PackageRoot $architecture) -Destination $payload -Recurse
-    # Root launchers, provenance and notices stay with the selected architecture.
-    foreach ($file in Get-ChildItem -LiteralPath $PackageRoot -File -Force) {
-        Copy-Item -LiteralPath $file.FullName -Destination $payload
-    }
+    foreach ($file in Get-ChildItem -LiteralPath $PackageRoot -File -Force) { Copy-Item -LiteralPath $file.FullName -Destination $payload }
     foreach ($name in @('README.md', 'README-使用说明.md')) {
         Copy-Item -LiteralPath (Join-Path $repositoryRoot 'packaging/README.md') -Destination (Join-Path $payload $name) -Force
     }
-    # Narrow the package manifest so it does not advertise an absent architecture.
+    New-Item -ItemType Directory -Path (Join-Path $payload 'installer-licenses') | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot 'packaging/inno/LICENSE.txt') -Destination (Join-Path $payload 'installer-licenses/InnoSetup-LICENSE.txt')
     $payloadManifest = Read-SmallJson $manifestPath
     $payloadManifest.builds = @($payloadManifest.builds | Where-Object architecture -eq $architecture)
     $payloadManifest | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath (Join-Path $payload 'manifest.json') -Encoding utf8
@@ -99,56 +105,45 @@ foreach ($architecture in $architecturesToBuild) {
     $helperOutput = Join-Path $work 'helper'
     & dotnet publish (Join-Path $repositoryRoot 'tools/HeyMelody.InstallerSupport/HeyMelody.InstallerSupport.csproj') -c Release -r "win-$architecture" --self-contained true -o $helperOutput "-p:RuntimeFrameworkVersion=$($framework[0].version)" '-p:PublishSingleFile=true' '-p:PublishTrimmed=true' '-p:IncludeNativeLibrariesForSelfExtract=true' '-p:EnableCompressionInSingleFile=false' '-p:CopyDebugSymbolFilesFromPackages=false' @restoreArguments
     if ($LASTEXITCODE -ne 0) { throw "Installer helper publish failed: $architecture" }
-    # A standalone helper runs from NSIS's temporary directory, including on retry
-    # after an interrupted uninstall has removed part of the application's runtime.
+    $helperPath = Join-Path $helperOutput 'HeyMelody.InstallerSupport.exe'
     $files = @(Get-ChildItem -LiteralPath $payload -File -Recurse -Force | Sort-Object FullName)
-    $installLines = [Collections.Generic.List[string]]::new()
-    $uninstallLines = [Collections.Generic.List[string]]::new()
-    $relativeFiles = [Collections.Generic.List[string]]::new()
-    $lastDirectory = $null
-    foreach ($file in $files) {
-        $relative = [IO.Path]::GetRelativePath($payload, $file.FullName).Replace('/', '\')
-        $relativeFiles.Add($relative)
-        $directory = [IO.Path]::GetDirectoryName($relative)
-        if ($lastDirectory -cne $directory) {
-            $target = if ($directory) { '\' + (ConvertTo-NsisLiteral $directory) } else { '' }
-            $installLines.Add('SetOutPath "$INSTDIR' + $target + '"')
-            $lastDirectory = $directory
-        }
-        $installLines.Add('File "' + (ConvertTo-NsisLiteral $file.FullName) + '"')
-        $uninstallLines.Add('Delete "$INSTDIR\' + (ConvertTo-NsisLiteral $relative) + '"')
+    $relativeFiles = @($files | ForEach-Object { [IO.Path]::GetRelativePath($payload, $_.FullName).Replace('/', '\') })
+    $fileListPath = Join-Path $work 'payload-files.txt'
+    [IO.File]::WriteAllLines($fileListPath, $relativeFiles, $utf8Bom)
+    $outputBaseName = "HeyMelody_Windows_${version}_${architecture}_Setup"
+    $installerPath = Join-Path $OutputRoot "$outputBaseName.exe"
+    $definitions = [ordered]@{
+        AppVersion = $version; AppArch = $architecture; PayloadDir = $payload; HelperExe = $helperPath
+        FilesManifest = $fileListPath; OutputDir = $OutputRoot; OutputBaseName = $outputBaseName
+        AppIcon = Join-Path $repositoryRoot 'src/HeyMelody.App/Assets/HeyMelody.ico'
+        LanguageFile = Join-Path $repositoryRoot 'packaging/inno/Languages/ChineseSimplified.isl'
     }
-    $directories = @(Get-ChildItem -LiteralPath $payload -Directory -Recurse -Force | Sort-Object { $_.FullName.Length } -Descending)
-    $removeDirectoryLines = foreach ($directory in $directories) {
-        'RMDir "$INSTDIR\' + (ConvertTo-NsisLiteral ([IO.Path]::GetRelativePath($payload, $directory.FullName).Replace('/', '\'))) + '"'
+    $entryLines = [Collections.Generic.List[string]]::new()
+    foreach ($pair in $definitions.GetEnumerator()) { $entryLines.Add('#define ' + $pair.Key + ' ' + (ConvertTo-InnoString ([string]$pair.Value))) }
+    $entryLines.Add('#include ' + (ConvertTo-InnoString (Join-Path $repositoryRoot 'packaging/inno/HeyMelody.iss')))
+    $entryPath = Join-Path $work 'Build.iss'
+    [IO.File]::WriteAllLines($entryPath, $entryLines, $utf8Bom)
+    $compilerLog = Join-Path $work 'inno-compile.log'
+    & $InnoCompilerPath $entryPath *> $compilerLog
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $installerPath -PathType Leaf)) {
+        Get-Content -LiteralPath $compilerLog -Tail 12 | ForEach-Object { if ($_.Length -le 500) { Write-Host $_ } }
+        throw "Inno Setup compilation failed: $architecture (work files retained at $work)"
     }
-    [IO.File]::WriteAllLines((Join-Path $work 'install-files.nsh'), $installLines, $utf8Bom)
-    [IO.File]::WriteAllLines((Join-Path $work 'uninstall-files.nsh'), $uninstallLines, $utf8Bom)
-    [IO.File]::WriteAllLines((Join-Path $work 'uninstall-directories.nsh'), [string[]]$removeDirectoryLines, $utf8Bom)
-    $installerPath = Join-Path $OutputRoot "HeyMelody_Windows_${version}_${architecture}_Setup.exe"
-    $definitions = @(
-        '!define APP_VERSION "' + $version + '"'
-        '!define APP_ARCH "' + $architecture + '"'
-        '!define OUTPUT_FILE "' + (ConvertTo-NsisLiteral $installerPath) + '"'
-        '!define GENERATED_DIR "' + (ConvertTo-NsisLiteral $work) + '"'
-        '!define APP_ICON "' + (ConvertTo-NsisLiteral (Join-Path $repositoryRoot 'src/HeyMelody.App/Assets/HeyMelody.ico')) + '"'
-        '!define HELPER_EXE "' + (ConvertTo-NsisLiteral (Join-Path $helperOutput 'HeyMelody.InstallerSupport.exe')) + '"'
-        '!define ESTIMATED_SIZE ' + [Math]::Ceiling(($files | Measure-Object Length -Sum).Sum / 1KB)
-    )
-    $configPath = Join-Path $work 'build-config.nsh'
-    [IO.File]::WriteAllLines($configPath, $definitions, $utf8Bom)
-    & $MakeNsisPath /NOCONFIG /INPUTCHARSET UTF8 /V2 "/DBUILD_CONFIG=$configPath" (Join-Path $repositoryRoot 'packaging/nsis/HeyMelody.nsi')
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $installerPath -PathType Leaf)) { throw "NSIS compilation failed: $architecture (work files retained at $work)" }
-    $receipt = [ordered]@{
-        schemaVersion = 1; version = $version; architecture = $architecture
+    $compilerVersion = 'Inno Setup (minimum 6.6 validated by preprocessor)'
+    foreach ($line in [IO.File]::ReadLines($compilerLog)) {
+        if ($line -match 'Compiler engine version:\s*(.+)$') { $compilerVersion = $Matches[1].Trim(); break }
+    }
+    [ordered]@{
+        schemaVersion = 2; installerFormat = 'inno-setup'; version = $version; architecture = $architecture
         createdAtUtc = [DateTime]::UtcNow.ToString('o'); compiler = $compilerVersion
         packageManifestSha256 = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
         installerSha256 = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        helperPath = [IO.Path]::GetRelativePath($repositoryRoot, $helperPath).Replace('\', '/')
+        helperSha256 = (Get-FileHash -LiteralPath $helperPath -Algorithm SHA256).Hash.ToLowerInvariant()
         scope = 'current-user'; defaultDirectory = '%LOCALAPPDATA%\Programs\HeyMelody'
-        compatibilityProbeCommand = '/S /CHECKCOMPATIBILITY'
-        compatibilityHardwareId = 'ACPI\VEN_QCOM&DEV_043A'; payloadFiles = $relativeFiles.ToArray()
-        validationScope = 'packaged only; no hardware or installer execution implied'
-    }
-    $receipt | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$installerPath.json" -Encoding utf8
-    Write-Host "Created $installerPath ($($receipt.installerSha256)); work files: $work"
+        desktopPreference = '%LOCALAPPDATA%\HeyMelody\installer-preferences.json:desktopShortcut'
+        compatibilityHardwareId = 'ACPI\VEN_QCOM&DEV_043A'; payloadFiles = $relativeFiles
+        validationScope = 'packaged only; no hardware, UI or installer execution implied'
+    } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$installerPath.json" -Encoding utf8
+    Write-Host "Created $installerPath ($((Get-FileHash -LiteralPath $installerPath).Hash.ToLowerInvariant())); work files: $work"
 }
