@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -171,6 +172,12 @@ public sealed class ResourceCoordinator : IDisposable
                         await RefreshArtworkAsync(target.ProductId, target.Color, target.Model, token: _lifetime.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) { if (_lifetime.IsCancellationRequested) break; }
+                // Anything else must not end the loop silently. The pass recorded no throttle, so the next one runs after the 30-second floor.
+                catch (Exception error)
+                {
+                    Trace.WriteLine($"HeyMelody resources: auto-refresh pass failed: {error}");
+                    LastError = "在线资源更新失败，继续使用当前有效资源。";
+                }
                 try { await WaitForDueAsync(started, _lifetime.Token).ConfigureAwait(false); }
                 catch (OperationCanceledException) { break; }
             }

@@ -13,6 +13,16 @@ internal sealed partial class BackendSupervisor
     private long _activeResourceRevision;
     private bool _catalogPending;
     private bool _resourceTransition;
+    /// <summary>
+    /// The release ships one ResourceBundles, beside HeyMelody.exe, and none in backend/: the windows read icons and guides from it
+    /// directly and the Host hands them paths into it. A Host started from its own build output still uses the copy next to it.
+    /// </summary>
+    internal static string BundleDirectory(string baseDirectory)
+    {
+        string own = Path.Combine(baseDirectory, "ResourceBundles");
+        string shared = Path.GetFullPath(Path.Combine(baseDirectory, "..", "ResourceBundles"));
+        return !Directory.Exists(own) && File.Exists(Path.Combine(shared, "artwork.json")) ? shared : own;
+    }
     private void SetResourceTransitionLocked(bool value)
     {
         _resourceTransition = value;

@@ -286,7 +286,15 @@ def verify(root, package, evidence=None, architectures=("x64", "x86", "arm64")):
         resources = None
         if resource_release:
             assert any(key.startswith("SkiaSharp.Skottie/") for key in gui_dependencies["libraries"])
-            resources = dict(gui=verify_resource_bundle(folder), host=verify_resource_bundle(host.parent))
+            resources = dict(gui=verify_resource_bundle(folder))
+            # Builds that declare it ship one ResourceBundles beside the GUI and the backend reads that copy; older builds carry two.
+            if declared[arch].get("hostResourceBundles") == "gui":
+                assert not (host.parent / "ResourceBundles").exists(), "Backend carries a second ResourceBundles"
+                checked_file(host.parent, "HeyMelody.Resources.dll")
+                checked_file(host.parent, "licenses/upstream/Extracted-Earphone-Resources-NOTICE.txt")
+                resources["host"] = dict(sharedWith="gui")
+            else:
+                resources["host"] = verify_resource_bundle(host.parent)
             assert declared[arch]["resourceIndexSha256"] == resources["gui"]["indexSha256"]
         assert not (folder / "PresentationFramework.dll").exists()
         assert not (folder / "LICENSE-WINDOWSDESKTOP.txt").exists()

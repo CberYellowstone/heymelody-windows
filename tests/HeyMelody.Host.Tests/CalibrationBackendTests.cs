@@ -191,6 +191,35 @@ internal static class CalibrationBackendTests
             await Throws<InvalidOperationException>(() => Task.FromResult(fixture.Backend.GetCalibration("launcher", ready.Handle, "calibration")));
             await Throws<InvalidOperationException>(() => Task.FromResult(fixture.Backend.GetCalibration("second-component", ready.Handle, "calibration")));
         });
+        await test("pipe treats a null uid or color that the wire omitted as null instead of failing", async () =>
+        {
+            await using var fixture = await Fixture.Create(scratch);
+            var snapshot = fixture.Snapshots()[0];
+            string name = "HeyMelody-null-args-" + Guid.NewGuid().ToString("N");
+            await using var server = new BackendPipeServer(fixture.Backend, name); server.Start();
+            await using var client = await PipeClient.Connect(name);
+            Check((await client.Request(new() { Id = 1, Operation = "subscribe", Role = "main" })).Success, "Main role unavailable");
+            var off = JsonSerializer.SerializeToElement(new HearingSelectionArgs(null), RpcWire.Json);
+            Check(!off.TryGetProperty("uid", out _), "The wire no longer omits a null uid; this test would not cover the omission");
+            var hearing = await client.Request(new() { Id = 2, Operation = "selectHearing", Identity = snapshot.Identity, BackendInstanceId = fixture.Backend.InstanceId,
+                DeviceGeneration = snapshot.DeviceGeneration, Action = off });
+            Check(hearing.Success && fixture.Workers[0].HearingSelections.SequenceEqual([null]), "Turning hearing enhancement off failed or sent a uid");
+            var explicitNull = await client.Request(new() { Id = 3, Operation = "selectHearing", Identity = snapshot.Identity, BackendInstanceId = fixture.Backend.InstanceId,
+                DeviceGeneration = snapshot.DeviceGeneration, Action = JsonDocument.Parse("{\"uid\":null}").RootElement.Clone() });
+            var chosen = await client.Request(new() { Id = 4, Operation = "selectHearing", Identity = snapshot.Identity, BackendInstanceId = fixture.Backend.InstanceId,
+                DeviceGeneration = snapshot.DeviceGeneration, Action = JsonSerializer.SerializeToElement(new HearingSelectionArgs(7), RpcWire.Json) });
+            Check(explicitNull.Success && chosen.Success && fixture.Workers[0].HearingSelections.SequenceEqual([null, null, 7]), "An explicit null or a uid was misread");
+            var artwork = await client.Request(new() { Id = 5, Operation = "acquireArtwork",
+                Action = JsonSerializer.SerializeToElement(new ArtworkAcquireArgs("06EC10", null, "hero"), RpcWire.Json) });
+            Check(artwork.Success, "Artwork without a colour hint failed");
+            var missingRole = await client.Request(new() { Id = 6, Operation = "acquireArtwork", Action = JsonDocument.Parse("{\"productId\":\"06EC10\"}").RootElement.Clone() });
+            var noAction = await client.Request(new() { Id = 7, Operation = "releaseArtwork" });
+            var textColor = await client.Request(new() { Id = 8, Operation = "acquireArtwork",
+                Action = JsonDocument.Parse("{\"productId\":\"06EC10\",\"color\":\"3\",\"role\":\"hero\"}").RootElement.Clone() });
+            Check(missingRole.ErrorCode == "operationFailed" && noAction.ErrorCode == "operationFailed" && textColor.ErrorCode == "operationFailed"
+                && missingRole.Error == noAction.Error && textColor.Error == noAction.Error && !missingRole.Error!.Contains("Object", StringComparison.Ordinal),
+                "A missing or mistyped argument was accepted or leaked a runtime message");
+        });
         await test("independent calibration window can veto Host exit and approval stops its operation", async () =>
         {
             await using var fixture = await Fixture.Create(scratch);
@@ -280,7 +309,9 @@ internal static class CalibrationBackendTests
             CalibrationChanged?.Invoke(_state); return Task.FromResult(_state);
         }
         public Task<IReadOnlyList<UiHearingProfile>> HearingProfilesAsync(CancellationToken token) => Task.FromResult<IReadOnlyList<UiHearingProfile>>([]);
-        public Task<UiApplyResult> SelectHearingAsync(int? uid, CancellationToken token) => Task.FromResult(new UiApplyResult { TargetSubmitted = true });
+        public Task<UiApplyResult> SelectHearingAsync(int? uid, CancellationToken token)
+        { HearingSelections.Add(uid); return Task.FromResult(new UiApplyResult { TargetSubmitted = true }); }
+        internal readonly List<int?> HearingSelections = [];
         public ValueTask DisposeAsync() { Unavailable?.Invoke(); return ValueTask.CompletedTask; }
     }
 

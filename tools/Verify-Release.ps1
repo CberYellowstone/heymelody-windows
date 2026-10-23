@@ -273,9 +273,13 @@ foreach ($architecture in $targetArchitectures) {
     Check-Notice $hostDirectory $hostNotice
     if ($resourceRelease) {
         Require (@($notice.packages | Where-Object { $_.package -eq 'SkiaSharp.Skottie' }).Count -eq 1) ('Lottie dependency notice missing: ' + $architecture)
+        # Builds that declare it ship one ResourceBundles beside the GUI; the backend reads that copy. Older builds carry two.
+        $sharedBundles = $build.PSObject.Properties.Name -contains 'hostResourceBundles' -and $build.hostResourceBundles -eq 'gui'
+        if ($sharedBundles) { Require (-not (Test-Path -LiteralPath (Join-Path $hostDirectory 'ResourceBundles'))) ('Backend carries a second ResourceBundles: ' + $architecture) }
         foreach ($directory in @($appDirectory, $hostDirectory)) {
             Add-CriticalFile (Checked-File $directory 'HeyMelody.Resources.dll')
             Add-CriticalFile (Checked-File $directory 'licenses/upstream/Extracted-Earphone-Resources-NOTICE.txt')
+            if ($sharedBundles -and $directory -eq $hostDirectory) { continue }
             $bundle = Join-Path $directory 'ResourceBundles'
             $indexPath = Checked-File $bundle 'artwork.json'
             $provenancePath = Checked-File $bundle 'provenance.json'

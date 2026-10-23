@@ -46,7 +46,7 @@ PWR-00 为 2026-10-22 后端能耗轮已完成项的汇总，依据、测试数�
 | --- | --- | --- | --- | --- | --- | --- |
 | PWR-00 | `src/HeyMelody.Host/EnergyPolicy.cs`、`EnergyController.cs`、`WindowsProcessEnergy.cs`（新增），`BackendPipeServer.cs`、`TrayApplication.cs`、`WindowsStateMonitor.cs`、`BackendSupervisor.cs`、`CalibrationAuditionPlayer.cs`、`DeviceStateStore.cs`，`src/HeyMelody.Resources/ResourceCoordinator.cs`，`RpcWire.cs`、`ClientBridge.cs` @53a436a 起点 | 无界面连接时（启动后 15 秒宽限、最后一个界面断开后 10 秒延迟）托盘与全部 worker 进入 EcoQoS 加 IDLE 优先级，界面连接立即恢复，启动窗口前先恢复默认并保持 30 秒，试听线程豁免；BLE 两个 watcher 只在存在已配对且在白名单的耳机时运行；试听泵与资源协调器改为空闲阻塞或睡到到期，BLE 过期每 peer 一个计时器；设备状态内容未变时不写盘；IPC 缓冲读取与单次序列化。已实施部分由静态分析与 Linux 模拟或离线测试验证，未做 Linux 能耗测量 | 未在 Windows 测量 | 效率模式显示、IDLE 响应、BLE 启停、试听豁免等 Windows 待验证，清单见[后台能耗](research/backend-energy.md) | 已完成（Linux 验证，Windows 待验证） | 2026-10-22 后端能耗 |
 | PWR-01 | 开盖弹窗实现处（尚未实现）；`EnergyPolicy.cs`、`BackendPipeServer.cs` 启动窗口路径 @53a436a | 开盖弹窗实现时复核效率模式优先级（IDLE→BELOW_NORMAL 备选）：满载 CPU 时 IDLE 优先级可能让 BLE 广播回调延迟数秒，用户 2026-10-22 决定先保持 IDLE（静态分析层面的推断，未测量） | 避免开盖弹窗因广播回调延迟而迟到；未测量 | 弹窗显示前须像启动主窗口那样先恢复默认；延迟不可接受时改 BELOW_NORMAL 并保留 EcoQoS；须在 Windows 满载下测广播回调延迟 | 待处理 | 2026-10-22 后端能耗 |
-| PWR-02 | `src/HeyMelody.Host/BackendPipeServer.cs` `UpdateGuiCount`、subscribe 处理 @53a436a | 管道没有 subscribe 超时：已连接但一直不订阅（保持沉默）的客户端按角色未知的界面计入 GUI 数，直到它断开，期间托盘与 worker 不会进入效率模式；observer 以外全部计入是有意的，以免启动中的窗口遇到被限速的后台（静态分析；CPU 与能耗） | 异常或挂起的客户端存在时仍可进入效率模式；未测量 | 超时须长于正常界面的启动与订阅耗时，不能让慢启动的窗口遇到 Eco；需 Host.Tests 覆盖 | 待处理 | 2026-10-22 后端能耗（顺带发现） |
+| PWR-02 | `src/HeyMelody.Host/BackendPipeServer.cs` `UpdateGuiCount`、subscribe 处理 @53a436a | 管道没有 subscribe 超时：已连接但一直不订阅（保持沉默）的客户端按角色未知的界面计入 GUI 数，直到它断开，期间托盘与 worker 不会进入效率模式；observer 以外全部计入是有意的，以免启动中的窗口遇到被限速的后台（静态分析；CPU 与能耗） | 异常或挂起的客户端存在时仍可进入效率模式；未测量 | 超时须长于正常界面的启动与订阅耗时，不能让慢启动的窗口遇到 Eco；需 Host.Tests 覆盖 | 已完成（2026-10-23 可靠性小轮：连接 60 秒仍未订阅即不再计入界面，之后订阅按角色重新计入，沿用 EnergyPolicy 的时钟；Host.Tests 新增检查在 Linux 通过，Windows 未测；见[后台架构](backend-architecture.md)） | 2026-10-22 后端能耗（顺带发现） |
 
 ## 界面与前端（UI）
 
@@ -71,7 +71,7 @@ UI-00 为 2026-10-22 界面性能轮（起点 `a13e236`）已完成项的汇总�
 | 编号 | 位置 | 现象与依据 | 预估收益 | 风险与依赖 | 状态 | 登记来源 |
 | --- | --- | --- | --- | --- | --- | --- |
 | IO-01 | `src/HeyMelody.Host/DeviceStateStore.cs:113-123`、`:137-165`、`:216`、`:277`；调用方 `BackendSupervisor.cs:600-607` @f415d29 | 每个 SPP 快照都重写并以 WriteThrough 落盘，因为 SampleTime 总在变；`:277` 为检查大小而序列化整份展示。建议仅 SampleTime 前进且小于 60 秒时跳过落盘（界面只显示 HH:mm）（静态分析） | 减少频繁的磁盘写与 fsync；未测量 | 须保持缓存展示与“上次连接时间”语义；设备状态缓存见[设备状态](device-state.md) | 已完成（2026-10-22 能耗轮：内容未变且样本前进不足 60 秒时不写盘，关闭时写入最新样本；Linux 离线测试通过，Windows 未验证；见[后台能耗](research/backend-energy.md)） | 2026-10-21 后端内存（顺带发现） |
-| IO-02 | `src/HeyMelody.Host/DeviceStateStore.cs` `Load`、`Remember` @53a436a | `Load` 不预置写入节流状态（已排队内容与样本时间），重启后第一次 `Remember` 总会重写文件，即使内容与文件相同（静态分析） | 每次重启每个设备少一次写盘；小 | 预置须与文件内容一致并保持 60 秒规则；崩溃后保存时间最多晚 60 秒的约定不变 | 待处理 | 2026-10-22 后端能耗（顺带发现） |
+| IO-02 | `src/HeyMelody.Host/DeviceStateStore.cs` `Load`、`Remember` @53a436a | `Load` 不预置写入节流状态（已排队内容与样本时间），重启后第一次 `Remember` 总会重写文件，即使内容与文件相同（静态分析） | 每次重启每个设备少一次写盘；小 | 预置须与文件内容一致并保持 60 秒规则；崩溃后保存时间最多晚 60 秒的约定不变 | 已完成（2026-10-23 可靠性小轮：Load 按文件预置 schema 2 且未经修复条目的节流状态，60 秒规则与关闭时写入不变；Host.Tests 新增检查在 Linux 通过） | 2026-10-22 后端能耗（顺带发现） |
 
 ## CPU、IPC 与启动（CPU）
 
@@ -90,11 +90,11 @@ UI-00 为 2026-10-22 界面性能轮（起点 `a13e236`）已完成项的汇总�
 
 | 编号 | 位置 | 现象与依据 | 预估收益 | 风险与依赖 | 状态 | 登记来源 |
 | --- | --- | --- | --- | --- | --- | --- |
-| PKG-01 | `Build-Client.ps1:219-222` @f415d29 | HeyMelody.Resources 的 Bundles/data（约 34 MB、635 个文件）同时复制进 GUI 目录和 backend；Host 只检查存在并把路径交给界面（静态分析） | 发布包减小约 34 MB 每份副本；未测量 | 去重前先确认界面实际读取哪一份；Verify-Release 与三架构包结构需同步 | 待处理 | 2026-10-21 后端内存（顺带发现） |
+| PKG-01 | `Build-Client.ps1:219-222` @f415d29 | HeyMelody.Resources 的 Bundles/data（约 34 MB、635 个文件）同时复制进 GUI 目录和 backend；Host 只检查存在并把路径交给界面（静态分析） | 发布包减小约 34 MB 每份副本；未测量 | 去重前先确认界面实际读取哪一份；Verify-Release 与三架构包结构需同步 | 已完成（2026-10-23 可靠性小轮：确认 Host 用 backend 副本把美术路径交给界面，GUI 直接读自己目录的副本（降噪图标、听感引导动画），两份都在用；改为只发 GUI 一份，Host 缺自身副本时读 `..\ResourceBundles`，Build-Client 删除后台副本并在清单标记，Verify-Release／verify_release.py／Verify-ConnectedHeadset 同步；体积收益未测量，Windows CI 构建与静态校验见[版本记录](history/release-notes.md)） | 2026-10-21 后端内存（顺带发现） |
 
 ## 正确性（BUG）
 
 | 编号 | 位置 | 现象与依据 | 预估收益 | 风险与依赖 | 状态 | 登记来源 |
 | --- | --- | --- | --- | --- | --- | --- |
-| BUG-01 | `src/HeyMelody.Host/BackendPipeServer.cs:159` @f415d29 | 值为 null 的 uid 或 color 被 WhenWritingNull 省略后，`GetProperty` 抛出（静态分析；既有行为，本轮未改） | 修复一个已有的边界缺陷，无内存收益 | 需先确认触发路径，修复须有测试依据 | 待处理 | 2026-10-21 后端内存（顺带发现） |
-| BUG-02 | `src/HeyMelody.Resources/ResourceCoordinator.cs` `StartAutoRefresh` 的循环 @53a436a | 自动刷新一轮中抛出 OperationCanceledException 以外的异常时，循环内的 `try` 只捕获取消，异常逃出 `Task.Run`，循环静默结束，此后不再自动刷新也没有记录（静态分析；既有行为，改为睡到到期后仍然如此） | 修复静默停摆；无能耗收益 | 须保持取消与释放语义和 30 秒下限；应记录而非吞没异常；需 Resources.Tests 覆盖 | 待处理 | 2026-10-22 后端能耗（顺带发现） |
+| BUG-01 | `src/HeyMelody.Host/BackendPipeServer.cs:159` @f415d29 | 值为 null 的 uid 或 color 被 WhenWritingNull 省略后，`GetProperty` 抛出（静态分析；既有行为，本轮未改） | 修复一个已有的边界缺陷，无内存收益 | 需先确认触发路径，修复须有测试依据 | 已完成（2026-10-23 可靠性小轮：触发路径为关闭黄金听感（uid 为 null）与无颜色提示的美术请求；缺失的可空参数按 null 处理，必需参数缺失返回通用失败且不转发运行时异常文字；Host.Tests 新增管道检查在 Linux 通过） | 2026-10-21 后端内存（顺带发现） |
+| BUG-02 | `src/HeyMelody.Resources/ResourceCoordinator.cs` `StartAutoRefresh` 的循环 @53a436a | 自动刷新一轮中抛出 OperationCanceledException 以外的异常时，循环内的 `try` 只捕获取消，异常逃出 `Task.Run`，循环静默结束，此后不再自动刷新也没有记录（静态分析；既有行为，改为睡到到期后仍然如此） | 修复静默停摆；无能耗收益 | 须保持取消与释放语义和 30 秒下限；应记录而非吞没异常；需 Resources.Tests 覆盖 | 已完成（2026-10-23 可靠性小轮：意外异常写入 Trace 并设置 LastError，按 30 秒下限重试，取消与释放语义不变；Resources.Tests 新增检查在 Linux 通过） | 2026-10-22 后端能耗（顺带发现） |

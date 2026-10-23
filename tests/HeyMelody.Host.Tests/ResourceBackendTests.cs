@@ -29,6 +29,20 @@ internal static class ResourceBackendTests
             Check(second is not null && File.Exists(second.FullPath), "Artwork could not be reacquired");
             Check(worker.Applies == 0 && f.Workers.Count == 1, "Artwork lookup changed device settings or connection");
         });
+        await test("backend without its own ResourceBundles uses the single copy beside the GUI", () =>
+        {
+            string root = Path.Combine(scratch, "bundle-layout-" + Guid.NewGuid().ToString("N")), backend = Path.Combine(root, "backend");
+            string own = Path.Combine(backend, "ResourceBundles"), shared = Path.Combine(root, "ResourceBundles");
+            Directory.CreateDirectory(backend);
+            Check(BackendSupervisor.BundleDirectory(backend) == own, "A missing shared copy was chosen");
+            Directory.CreateDirectory(shared); File.WriteAllText(Path.Combine(shared, "artwork.json"), "[]");
+            Check(BackendSupervisor.BundleDirectory(backend) == shared, "The release layout did not use the GUI copy");
+            Directory.CreateDirectory(own);
+            Check(BackendSupervisor.BundleDirectory(backend) == own, "A Host with its own copy (build output) left it");
+            var store = new BundledResourceStore(BackendSupervisor.BundleDirectory(AppContext.BaseDirectory));
+            Check(store.Artwork.Count > 0 && File.Exists(store.FullPath(store.Artwork[0])), "The test build's own bundle did not resolve");
+            return Task.CompletedTask;
+        });
         await test("resource settings updates preserve worker connection and active calibration", async () =>
         {
             await using var f = await Fixture.Create(scratch);

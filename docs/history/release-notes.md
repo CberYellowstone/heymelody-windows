@@ -24,6 +24,10 @@
 
 验证边界：Linux 上 App 129→136、Client 181→190 为新增检查，其余 DeviceManager 9、Calibration.UI 13、Calibration 55、Protocol 77、Resources 40、Devices 21、Control 20、Daily 177、Host 110 个 PASS 行与 ModelPreview 180 项数量不变、全部通过；App Release 编译 0 警告。以上为反编译核实、静态分析与无头测试。**Windows 未验证**：8cx Gen3 等设备的实际帧率、区域脏矩形在 Win32 交换链上的效果、30 fps 让路观感、GPU 缓存回收与显存、真实耳机上的排队写入。依据与后续项见[界面性能（0.9.9）](../research/ui-performance-0.9.9.md)和[优化待办](../optimization-backlog.md)。
 
+2026-10-23（可靠性小轮）：在 review/0.9.9 分支处理待办 BUG-01、BUG-02、PWR-02、IO-02 与 PKG-01。管道请求中值为 null 而被线格式省略的 `uid`／`color` 不再导致失败，关闭黄金听感与无颜色提示的美术请求恢复正常，必需参数缺失时返回通用失败且不转发运行时异常文字。在线资源自动刷新遇到意外异常时写入 Trace、设置 `LastError` 并按 30 秒下限重试，不再静默停止。已连接但 60 秒仍未订阅的管道客户端不再计为界面，后台可进入效率模式；之后订阅则重新计入。Host 启动时按文件预置设备状态的写入节流，重启后 60 秒内内容相同的首次记录不再重写文件。核实界面与后台各自读取离线资源（Host 把 `backend/ResourceBundles` 中的美术路径交给界面，GUI 直接读取自身目录的降噪图标与听感引导动画）后，发布包只保留 GUI 目录一份 `ResourceBundles`（约 34 MB，635 个文件），Host 缺少自身副本时读取 `..\ResourceBundles`；`Build-Client.ps1` 删除后台副本并在清单写入 `hostResourceBundles`，两个发布校验脚本与 `Verify-ConnectedHeadset.ps1` 同步，旧的双副本包仍按原规则校验。
+
+验证边界：Linux 上 Resources 40→41、Host 110→114 个 PASS 行（4 项新增，仍有 2 项 Windows 专用检查打印 SKIP）全部通过，Host 以 `-p:EnableWindowsTargeting=true` 编译 0 警告 0 错误；修改的三个 PowerShell 脚本经 PowerShell 7 语法解析。其余项目未改动未重跑。发布包结构与体积变化由 Windows CI（Build-Client 加 Verify-Release）检查，本机未构建发布包、未测量体积。**Windows 未验证**：真机上降噪图标、听感引导与设备美术从共享目录加载，效率模式在沉默客户端存在时的实际进入。
+
 ## 历史版本
 
 以下原段整理自 2026-10-11 文档重整前的根目录 `README.md` 与 `REPOSITORY.md`，保留原版本、日期、设备、平台及验证范围，仅调整链接位置。原段中的 “current”、默认行为与检查数量属于对应历史版本，不作为后续版本的保证。两个来源有重叠时分别列出；原文未给验证日期的条目不补写日期。

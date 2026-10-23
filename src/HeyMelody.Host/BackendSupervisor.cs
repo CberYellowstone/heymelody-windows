@@ -80,7 +80,7 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
         _deviceState = deviceState ?? DeviceStateStore.NextTo(_whitelist);
         _enumerate = enumerate ?? PeerWorker.EnumerateAsync;
         _workerFactory = workerFactory ?? (() => new PeerWorker());
-        _resources = resources ?? (workerFactory is null ? new() : null);
+        _resources = resources ?? (workerFactory is null ? new(bundleDirectory: BundleDirectory(AppContext.BaseDirectory)) : null);
         _time = time ?? TimeProvider.System;
         try { _allowed = _whitelist.Load(); }
         catch (InvalidDataException) { _catalogWarning = "设备选择记录已损坏，请重新选择并保存。"; }

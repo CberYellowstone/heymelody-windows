@@ -168,6 +168,10 @@ foreach ($architecture in $targetArchitectures) {
         if ($LASTEXITCODE -ne 0) { throw ('Host publish failed: ' + $rid) }
         Copy-Item -Path (Join-Path $filamentNativeDirectory '*') -Destination $app -Recurse -Force
     }
+    # The Host falls back to the GUI's ResourceBundles (..\ResourceBundles) and hands the windows paths into it; a second
+    # copy in backend/ would only add about 34 MB. Also applies to a staged publication finalized again.
+    $hostBundle = Join-Path $hostOutput 'ResourceBundles'
+    if (Test-Path -LiteralPath $hostBundle) { Remove-Item -LiteralPath $hostBundle -Recurse -Force }
     $nativeVerification = & (Join-Path $root 'tools/Verify-FilamentRuntime.ps1') -Directory $app -RuntimeIdentifier $rid -RequireCurrent
     $nestedNative = Join-Path $app ('runtimes/' + $rid + '/native')
     if ((Test-Path -LiteralPath (Join-Path $nestedNative 'HeyMelody.Filament.Native.dll')) -or (Test-Path -LiteralPath (Join-Path $nestedNative 'filament-runtime.json')) -or (Test-Path -LiteralPath (Join-Path $nestedNative 'hm_filament_probe.exe'))) {
@@ -216,11 +220,11 @@ foreach ($architecture in $targetArchitectures) {
             if (-not $guiAssets.libraries.PSObject.Properties[$dependency.Name]) { throw ('Calibration dependency is not covered by shared GUI notices: ' + $dependency.Name) }
         }
     }
-    foreach ($resourceDirectory in @($app, $hostOutput)) {
-        foreach ($resourceFile in @('HeyMelody.Resources.dll', 'ResourceBundles/artwork.json', 'ResourceBundles/provenance.json')) {
-            if (-not (Test-Path -LiteralPath (Join-Path $resourceDirectory $resourceFile) -PathType Leaf)) { throw ('Offline resources missing from publication: ' + $resourceFile) }
-        }
+    foreach ($resourceFile in @('HeyMelody.Resources.dll', 'ResourceBundles/artwork.json', 'ResourceBundles/provenance.json')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $app $resourceFile) -PathType Leaf)) { throw ('Offline resources missing from publication: ' + $resourceFile) }
     }
+    if (-not (Test-Path -LiteralPath (Join-Path $hostOutput 'HeyMelody.Resources.dll') -PathType Leaf)) { throw 'Offline resources missing from backend publication: HeyMelody.Resources.dll' }
+    if (Test-Path -LiteralPath (Join-Path $hostOutput 'ResourceBundles')) { throw ('The backend must share the GUI ResourceBundles: ' + $rid) }
     Export-PackageNotices (Join-Path $root 'src/HeyMelody.App/obj/project.assets.json') $app
     Export-PackageNotices (Join-Path $root 'src/HeyMelody.Host/obj/project.assets.json') $hostOutput
     $builds += [ordered]@{
@@ -233,6 +237,7 @@ foreach ($architecture in $targetArchitectures) {
         fitTestSha256 = (Get-FileHash -LiteralPath (Join-Path $app 'HeyMelody.FitTest.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
         hearingSetupSha256 = (Get-FileHash -LiteralPath (Join-Path $app 'HeyMelody.HearingSetup.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
         resourceIndexSha256 = (Get-FileHash -LiteralPath (Join-Path $app 'ResourceBundles/artwork.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+        hostResourceBundles = 'gui'
         hostSha256 = (Get-FileHash -LiteralPath (Join-Path $hostOutput 'HeyMelody.Host.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
         hardwareExecutionVerified = $false; validationScope = 'build-only; see VALIDATION.json for actual execution evidence'
         modelRenderer = $nativeVerification

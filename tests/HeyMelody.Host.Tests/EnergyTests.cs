@@ -141,6 +141,30 @@ internal static class EnergyTests
             clock.Advance(TimeSpan.FromSeconds(9)); Check(policy.Mode == EnergyMode.Default, "Windows leaving did not linger");
             clock.Advance(TimeSpan.FromSeconds(2)); Check(policy.Mode == EnergyMode.Eco, "An observer kept the backend in Default");
         });
+        await test("pipe server stops counting a client that never subscribes after the subscribe grace", async () =>
+        {
+            var clock = new FakeClock(); using var policy = new EnergyPolicy(clock); clock.Advance(TimeSpan.FromSeconds(20));
+            string directory = Path.Combine(scratch, "energy-grace"); Directory.CreateDirectory(directory);
+            await using var backend = new BackendSupervisor(new DeviceWhitelistStore(Path.Combine(directory, "devices.json")),
+                _ => Task.FromResult<IReadOnlyList<BluetoothCandidate>>([]), () => throw new InvalidOperationException());
+            string pipeName = "HeyMelody-energy-grace-" + Guid.NewGuid().ToString("N");
+            await using var server = new BackendPipeServer(backend, pipeName, policy); server.Start();
+            await using var silent = await RawClient.Connect(pipeName);
+            await using var prompt = await RawClient.Connect(pipeName);
+            await Until(() => policy.GuiCount == 2);
+            clock.Advance(BackendPipeServer.SubscribeGrace - TimeSpan.FromSeconds(1));
+            await prompt.Subscribe(1, "main");
+            Check(policy.GuiCount == 2 && policy.Mode == EnergyMode.Default, "A client was dropped from the count before the grace ended");
+            clock.Advance(TimeSpan.FromSeconds(2));
+            await Until(() => policy.GuiCount == 1); await Task.Delay(100);
+            Check(policy.GuiCount == 1, "The grace lapse affected a subscribed window");
+            await prompt.DisposeAsync(); await Until(() => policy.GuiCount == 0);
+            clock.Advance(EnergyPolicy.Linger + TimeSpan.FromSeconds(1));
+            Check(policy.Mode == EnergyMode.Eco, "A silent client kept the backend out of Eco");
+            await silent.Subscribe(1, "manager");
+            await Until(() => policy.GuiCount == 1);
+            Check(policy.Mode == EnergyMode.Default, "A late subscription after the grace was not counted as a window");
+        });
         await test("idle audition thread blocks without polling, applies the thread exemption once and disposes within 2 s", async () =>
         {
             if (!OperatingSystem.IsWindows()) { Console.WriteLine("SKIP idle audition thread blocks without polling, applies the thread exemption once and disposes within 2 s"); return; }

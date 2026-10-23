@@ -45,6 +45,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("The bundled catalog is shared and only online snapshots retain their bytes", SharedBundledCatalog),
     ("Auto refresh makes no request and holds no timer while online resources are off, then checks at once when they are turned on", AutoRefreshOffline),
     ("Auto refresh re-checks a success after 10 minutes and retries a failure after 30 seconds", AutoRefreshSchedule),
+    ("Auto refresh reports an unexpected failure and retries after the 30-second floor instead of stopping", AutoRefreshUnexpectedFailure),
     ("Auto refresh wakes for artwork due times and an added target", AutoRefreshArtwork),
     ("A preference change clears the throttles but waits out the 30-second pass floor", AutoRefreshFloor),
     ("Disposing the coordinator ends auto refresh within two seconds, sleeping or not", AutoRefreshDispose),
@@ -674,6 +675,20 @@ static async Task AutoRefreshSchedule()
     await coordinator.UpdatePreferencesAsync(coordinator.Preferences with { UseOnlineResources = false });
     await WaitFor(() => time.Pending().Length == 0, "Turning online resources off left a timer");
     requests = fixture.Handler.Requests; time.Advance(TimeSpan.FromHours(2)); await Settle(); Eq(requests, fixture.Handler.Requests);
+}
+static async Task AutoRefreshUnexpectedFailure()
+{
+    using var fixture = new Fixture(); var time = new ManualTime(); using var coordinator = fixture.Coordinator(time);
+    await coordinator.InitializeAsync(); fixture.Handler.Configuration = Config(117006010);
+    // Not one of the failures RefreshAsync handles: it escapes the pass, as an invalid request URI from HttpClient would.
+    fixture.Handler.Failure = new InvalidOperationException("unexpected");
+    var start = time.GetUtcNow(); coordinator.StartAutoRefresh();
+    await WaitFor(() => time.Pending().Contains(start.AddSeconds(30)), "An unexpected failure stopped the loop instead of waiting for the floor");
+    int requests = fixture.Handler.Requests; Check(requests > 0 && coordinator.LastError is not null, "The failed pass made no request or was not reported");
+    time.Advance(TimeSpan.FromSeconds(29)); await Settle(); Eq(requests, fixture.Handler.Requests);
+    fixture.Handler.Failure = null; time.Advance(TimeSpan.FromSeconds(1));
+    await WaitFor(() => time.Pending().Contains(start.AddSeconds(30).AddMinutes(10)), "The loop did not retry after the 30-second floor");
+    Check(fixture.Handler.Requests > requests && coordinator.LastError is null, "The retry did not recover");
 }
 static async Task AutoRefreshArtwork()
 {

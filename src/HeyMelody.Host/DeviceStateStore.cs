@@ -215,7 +215,14 @@ internal sealed class DeviceStateStore
                 if (entry is not null && ValidKey(entry.Key))
                 {
                     var presentation = NormalizeAncToggles(entry.Presentation);
-                    if (ValidPresentation(presentation)) _entries[entry.Key] = entry with { Presentation = presentation };
+                    if (!ValidPresentation(presentation)) continue;
+                    _entries[entry.Key] = entry with { Presentation = presentation };
+                    // The file already holds this sample: seed Remember's throttle so an identical re-read within 60 s of it
+                    // is not rewritten. Only when the file needs no migration or repair, so the seed matches what is on disk.
+                    if (version != 2) continue;
+                    var content = JsonSerializer.SerializeToUtf8Bytes(presentation with { SampleTime = default }, Json);
+                    if (content.AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(entry.Presentation with { SampleTime = default }, Json)))
+                        _queued[entry.Key] = (content, presentation.SampleTime);
                 }
             if (version == 1) _version++;
         }

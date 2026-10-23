@@ -30,6 +30,7 @@ internal sealed class EnergyPolicy : IDisposable
 
     public EnergyMode Mode { get { lock (_sync) return _mode; } }
     internal int GuiCount { get { lock (_sync) return _guiCount; } }
+    internal TimeProvider Time => _time;
 
     public void SetGuiCount(int count) => Update(now =>
     {

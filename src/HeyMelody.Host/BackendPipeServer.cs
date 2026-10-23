@@ -11,6 +11,9 @@ namespace HeyMelodyWindows.Host;
 
 internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pipeName = null, EnergyPolicy? energy = null) : IAsyncDisposable
 {
+    // A window sends subscribe in the same request that opens its connection, so this only bounds a silent or stuck client.
+    // It is longer than EnergyPolicy's launch hold and shorter than ClientBridge's 90 s subscribe budget.
+    internal static readonly TimeSpan SubscribeGrace = TimeSpan.FromSeconds(60);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly ConcurrentDictionary<string, Client> _clients = new();
     private readonly SemaphoreSlim _exitGate = new(1);
@@ -43,6 +46,7 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
                     if (_clients.Count >= 16) { pipe.Dispose(); continue; }
                     var client = new Client(pipe, this);
                     _clients[client.Key] = client;
+                    if (energy is not null) client.LapseUnsubscribedAfter(energy.Time, SubscribeGrace, UpdateGuiCount);
                     UpdateGuiCount();
                     _ = client.RunAsync();
                 }
@@ -76,9 +80,13 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
     private void SendOwnerEvent(string owner, BackendEvent value)
     { if (_clients.TryGetValue(owner, out var client) && client.Role == "calibration") client.Send(new Outbound(value)); }
 
-    // Every client counts as a window except a passive observer. One that has not subscribed yet may be a window starting up.
+    // Every client counts as a window except a passive observer. One that has not subscribed yet may be a window starting up,
+    // until SubscribeGrace lapses; it counts again by role if it subscribes later.
     private void UpdateGuiCount()
-    { if (energy is not null) lock (_guiSync) energy.SetGuiCount(_clients.Values.Count(c => c.Role != "observer")); }
+    {
+        if (energy is not null)
+            lock (_guiSync) energy.SetGuiCount(_clients.Values.Count(c => c.Role is { } role ? role != "observer" : !c.Lapsed));
+    }
 
     private async Task HandleAsync(Client client, BackendRequest request)
     {
@@ -165,8 +173,12 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
         }
         string Identity() => request.Identity ?? throw new InvalidDataException();
         string Handle() => request.CalibrationHandle is { Length: 32 } handle ? handle : throw new InvalidDataException();
-        string StringArg(string property) => request.Action.GetProperty(property).GetString() ?? throw new InvalidDataException();
-        int? NullableInt(string property) => request.Action.GetProperty(property).ValueKind == JsonValueKind.Null ? null : request.Action.GetProperty(property).GetInt32();
+        // RpcWire omits null members (WhenWritingNull), so a missing optional argument means null; a missing required one is invalid.
+        JsonElement? Arg(string property) => request.Action.ValueKind == JsonValueKind.Object
+            && request.Action.TryGetProperty(property, out var value) && value.ValueKind != JsonValueKind.Null ? value : null;
+        string StringArg(string property) => Arg(property) is { ValueKind: JsonValueKind.String } value ? value.GetString()! : throw new InvalidDataException();
+        int? NullableInt(string property) => Arg(property) is not { } value ? null
+            : value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int number) ? number : throw new InvalidDataException();
         void GenerationCheck() { if (request.BackendInstanceId != supervisor.InstanceId) throw new InvalidOperationException("后台或连接已变化，未提交设置。"); }
         long Generation() { GenerationCheck(); return request.DeviceGeneration ?? throw new InvalidDataException(); }
     }
@@ -281,8 +293,17 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
         private readonly SemaphoreSlim _dispatch = new(16);
         private int _criticalCount, _disposed;
         public string Key { get; } = Guid.NewGuid().ToString("N");
-        public string? Role;
+        public volatile string? Role;
+        public volatile bool Lapsed;
+        private volatile ITimer? _grace;
         public CancellationTokenSource Lifetime { get; } = new();
+
+        public void LapseUnsubscribedAfter(TimeProvider time, TimeSpan grace, Action changed)
+        {
+            _grace = time.CreateTimer(_ => { if (Role is null && !Lifetime.IsCancellationRequested) { Lapsed = true; changed(); } },
+                null, grace, Timeout.InfiniteTimeSpan);
+            if (Volatile.Read(ref _disposed) != 0) _grace.Dispose();
+        }
 
         public void Reply(long id, object? data, string? errorCode = null, string? error = null)
         {
@@ -359,6 +380,9 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
             }
         }
         public void Dispose()
-        { if (Interlocked.Exchange(ref _disposed, 1) != 0) return; Lifetime.Cancel(); pipe.Dispose(); _signal.Writer.TryComplete(); }
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            Lifetime.Cancel(); pipe.Dispose(); _signal.Writer.TryComplete(); _grace?.Dispose();
+        }
     }
 }

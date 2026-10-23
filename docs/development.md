@@ -106,7 +106,7 @@ Windows 原生 Filament 运行时另存为 30 天 artifact 缓存，应用构建
 
 自 0.9.0 起所有 `dotnet publish` 统一启用 ReadyToRun（`-p:PublishReadyToRun=true`），预编译只含 IL 的界面库，避免首次展开设置、拖动模型或打开向导时的 JIT 停顿；发布包因此变大，x64 机器可交叉编译 ARM64。`-Architectures x64` 或 `-Architectures arm64` 可选择单架构；`-SkipTests` 跳过默认 runner。普通构建拒绝已有目标目录或 ZIP；可用 `-OutputRoot release/arm64` 将另一架构构建放在独立目录，校验时传入同一参数。`-FinalizeOnly` 要求对应目录已存在且 ZIP 尚不存在，并跳过默认测试与 `dotnet publish`，封装已有输出。调整参数前先阅读脚本入口与条件，避免把跳过测试的产物称为完整验证。
 
-App、DeviceManager、FitTest、HearingSetup 共用每个 GUI 目录的运行时与依赖，Host 位于 `backend`。GUI 和后台分别携带资源及第三方声明；提取资源、Filament 和 Skottie 的声明必须随包保留。脚本从 `packaging/README.md` 复制用户说明，从 `packaging/SOURCE-NOTES.md` 复制来源与验证说明，两者是发布素材，更新时需核对发布消费关系。
+App、DeviceManager、FitTest、HearingSetup 共用每个 GUI 目录的运行时与依赖，Host 位于 `backend`。离线资源 `ResourceBundles`（约 34 MB）只随 GUI 目录发布一份：Host 自身目录没有该目录时读取 `..\ResourceBundles`，并把其中的路径交给界面；从构建输出直接运行的 Host 仍使用自己旁边的副本。`Build-Client.ps1` 删除 `backend/ResourceBundles` 并在清单写入 `hostResourceBundles: gui`，两个发布校验脚本据此要求后台不含第二份，旧的双副本包仍按原规则校验。GUI 和后台分别携带 `HeyMelody.Resources.dll` 及第三方声明；提取资源、Filament 和 Skottie 的声明必须随包保留。脚本从 `packaging/README.md` 复制用户说明，从 `packaging/SOURCE-NOTES.md` 复制来源与验证说明，两者是发布素材，更新时需核对发布消费关系。
 
 PowerShell 7 的 `tools/Verify-Release.ps1` 默认检查三架构目录和 `_AllArchitectures.zip`，本分支须加 `-Architectures x64` 或 `-Architectures arm64` 选择对应包。收据默认写入输出根目录的 `HeyMelody_Windows_<版本>_STATIC-VALIDATION.json`；已有收据会被拒绝，可用 `-OutputPath` 另存新文件：
 

@@ -56,6 +56,26 @@ internal static class DeviceStateTests
             loaded.Remember(key, tooLong); await loaded.FlushAsync();
             Check(loaded.Find(key) is null && !File.Exists(path), "Oversized entry was scheduled for persistence");
         });
+        await test("display store restart keeps the 60 s rewrite throttle for content already on disk", async () =>
+        {
+            string directory = DirectoryFor("restart-throttle"); string path = Path.Combine(directory, "device-state.json");
+            string key = DeviceWhitelistStore.KeyFor(0x0A0B0C0D0E0F); var sample = DateTimeOffset.UtcNow;
+            var first = new DeviceStateStore(path); first.Remember(key, At("same", sample)); await first.FlushAsync();
+            DevicePresentation At(string firmware, DateTimeOffset time) => DevicePresentation.From(Full(firmware), time) with { SampleTime = time };
+            DateTimeOffset Saved() => JsonNode.Parse(File.ReadAllText(path))!["devices"]![0]!["presentation"]!["sampleTime"]!.GetValue<DateTimeOffset>();
+            Check(Saved() == sample, "Setup did not persist the first sample");
+            var restarted = new DeviceStateStore(path);
+            restarted.Remember(key, At("same", sample.AddSeconds(30))); await Task.Delay(400);
+            Check(Saved() == sample && restarted.Find(key)?.SampleTime == sample.AddSeconds(30), "An unchanged re-read after restart rewrote the file");
+            await restarted.FlushAsync();
+            Check(Saved() == sample.AddSeconds(30), "Shutdown flush dropped the throttled sample time");
+            var late = new DeviceStateStore(path);
+            late.Remember(key, At("same", sample.AddSeconds(91))); await Task.Delay(400);
+            Check(Saved() == sample.AddSeconds(91), "A sample 60 s after the saved one was not written after restart");
+            var changed = new DeviceStateStore(path);
+            changed.Remember(key, At("changed", sample.AddSeconds(92))); await Task.Delay(400);
+            Check(Saved() == sample.AddSeconds(92) && new DeviceStateStore(path).Find(key)?.Firmware == "changed", "Changed content after restart was throttled");
+        });
         await test("main selection persists through host restart rename disconnect and fresh catalogs without internal reads changing it", async () =>
         {
             string directory = DirectoryFor("selection"); var whitelist = Whitelist(directory, 1, 2);

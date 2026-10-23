@@ -164,7 +164,11 @@ public static class ConnectedHeadsetCacheReader {
         }
         catch { $receipt.preferencesFallback = $true; $preferences = @{} }
     }
-    $bundleStore = [HeyMelodyWindows.Resources.BundledResourceStore]::new((Join-Path $script:taskHostDirectory 'ResourceBundles'))
+    # Same choice as the Host: its own copy when present, otherwise the GUI's beside backend/ (current releases ship only that one).
+    $bundleDirectory = Join-Path $script:taskHostDirectory 'ResourceBundles'
+    $sharedBundle = Join-Path ([IO.Path]::GetDirectoryName($script:taskHostDirectory)) 'ResourceBundles'
+    if (-not [IO.Directory]::Exists($bundleDirectory) -and [IO.File]::Exists((Join-Path $sharedBundle 'artwork.json'))) { $bundleDirectory = $sharedBundle }
+    $bundleStore = [HeyMelodyWindows.Resources.BundledResourceStore]::new($bundleDirectory)
     $catalog = $bundleStore.GetCatalog()
     $invalidCaches = 0
     if (-not $Bundled -and $preferences.ContainsKey('CacheEncryptionKey')) {
