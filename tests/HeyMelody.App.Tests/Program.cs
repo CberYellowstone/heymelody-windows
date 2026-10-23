@@ -33,6 +33,7 @@ if (args.FirstOrDefault() == "--native-model-settings-smoke")
 { Console.Error.WriteLine("Usage: --native-model-settings-smoke [--output-dir path]"); return 2; }
 if (args is ["--native-startup-smoke"]) return NativeStartupSmoke.Run();
 if (args is ["--native-backend-smoke"]) return NativeBackendSmoke.Run();
+if (args.FirstOrDefault() == "--native-model-loading-benchmark") return ModelLoadingBenchmark.Run(args);
 if (args.FirstOrDefault() == "--native-demo-smoke")
 {
     FilamentBackend backend = FilamentBackend.Vulkan;
@@ -51,6 +52,8 @@ RenderingPolicyTests.Run();
 
 string output = args.Length == 2 && args[0] == "--output-dir" ? Path.GetFullPath(args[1])
     : args is ["--model-tests", "--output-dir", var modelOutput] ? Path.GetFullPath(modelOutput)
+    : args is ["--model-loading-tests", "--output-dir", var modelLoadingOutput] ? Path.GetFullPath(modelLoadingOutput)
+    : args is ["--artwork-persistence-tests", "--output-dir", var artworkPersistenceOutput] ? Path.GetFullPath(artworkPersistenceOutput)
     : args is ["--anc-feature-tests", "--output-dir", var ancOutput] ? Path.GetFullPath(ancOutput)
     : args is ["--rendering-settings-tests", "--output-dir", var renderSettingsOutput] ? Path.GetFullPath(renderSettingsOutput)
     : Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "avalonia-ui-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8]);
@@ -63,6 +66,25 @@ DeviceModelView.DefaultFactoryOverride = new RecordingFilamentRendererFactory();
 using var session = HeadlessUnitTestSession.StartNew(typeof(PreviewBootstrap));
 try
 {
+    if (args is ["--artwork-persistence-tests"] or ["--artwork-persistence-tests", "--output-dir", _])
+    {
+        var count = ArtworkPersistenceTests.Run(session, output, receipts);
+        Console.WriteLine(JsonSerializer.Serialize(new { passed = count, success = true, nativeBluetoothCalls = 0, output }));
+        return 0;
+    }
+    if (args is ["--model-loading-tests"] or ["--model-loading-tests", "--output-dir", _])
+    {
+        int count = FrameLoopTests.Run(session, output);
+        count += VerifiedModelCacheTests.RunAsync(output).GetAwaiter().GetResult();
+        session.Dispatch<bool>(async () =>
+        {
+            await ModelRendererLifecycleTests.RunAsync(output);
+            await DynaudioModelTests.VerifyAsync();
+            return true;
+        }, CancellationToken.None).GetAwaiter().GetResult();
+        Console.WriteLine(JsonSerializer.Serialize(new { passed = count + 2, success = true, nativeBluetoothCalls = 0, output }));
+        return 0;
+    }
     if (args is ["--rendering-settings-tests"] or ["--rendering-settings-tests", "--output-dir", _])
     {
         var checks = RenderingSettingsTests.Run(session, output);

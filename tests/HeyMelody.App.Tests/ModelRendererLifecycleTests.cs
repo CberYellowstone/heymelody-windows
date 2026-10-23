@@ -19,6 +19,15 @@ internal static class ModelRendererLifecycleTests
             {
                 var ringFactory = new RecordingFilamentRendererFactory { CreateBarrier = ringBarrier };
                 var ringView = View(ringFactory);
+                int measurements = 0;
+                ModelLoadTimings measured = default;
+                void OnMeasured(DeviceModelView view, ModelLoadTimings timings)
+                {
+                    if (!ReferenceEquals(view, ringView)) return;
+                    ++measurements;
+                    measured = timings;
+                }
+                DeviceModelView.LoadMeasured += OnMeasured;
                 var ringWindow = new Window { Content = ringView, Width = 280, Height = 240 };
                 try
                 {
@@ -30,10 +39,65 @@ internal static class ModelRendererLifecycleTests
                     await UntilAsync(() => ringView.CaptureLatestFrame(out _) is not null && !ringView.LoadingIndicatorVisible,
                         "The first presented frame hides the progress ring.");
                     Check(ringView.VisibleStatus is null, "A ready model shows no status text.");
+                    Check(measurements == 1 && measured.TotalMilliseconds >= measured.FirstFrameMilliseconds
+                        && measured.ReadVerifyMilliseconds >= 0 && measured.ModelLoadMilliseconds >= 0,
+                        "The first presented frame completes one load measurement using elapsed time.");
+                    _ = ringView.CaptureLatestFrame(out _);
+                    Check(measurements == 1, "Subsequent frames do not report another model load.");
                 }
-                finally { ringBarrier.Set(); ringWindow.Close(); }
+                finally { DeviceModelView.LoadMeasured -= OnMeasured; ringBarrier.Set(); ringWindow.Close(); }
             }
             int leases = 0;
+            var invalidFactory = new RecordingFilamentRendererFactory();
+            var invalidRead = new DeviceModelView(Visual(), invalidFactory,
+                _ => Task.FromException<FilamentModelData>(new InvalidDataException("Deliberate invalid model read.")));
+            var invalidWindow = new Window { Content = invalidRead, Width = 280, Height = 240 };
+            try
+            {
+                invalidWindow.Show();
+                await UntilAsync(() => invalidRead.LoadError is not null, "An already failed read reaches the view's error presentation.");
+                Check(invalidFactory.CreateCalls == 0 && invalidRead.VisibleStatus == "三维模型资源无效",
+                    "An already failed model read never creates an engine and keeps its invalid-resource classification.");
+            }
+            finally { invalidWindow.Close(); }
+
+            var combinedRead = new TaskCompletionSource<FilamentModelData>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var combinedFactory = new RecordingFilamentRendererFactory { FailCreate = true };
+            var combined = new DeviceModelView(Visual(), combinedFactory, _ => combinedRead.Task);
+            var combinedWindow = new Window { Content = combined, Width = 280, Height = 240 };
+            try
+            {
+                combinedWindow.Show();
+                await UntilAsync(() => combinedFactory.CreateCalls == 1, "The backend can fail while model validation is still pending.");
+                combinedRead.SetException(new InvalidDataException("The pending model was also invalid."));
+                await UntilAsync(() => combined.LoadError is not null, "Combined read/backend failures reach the view.");
+                Check(combined.VisibleStatus == "三维模型资源无效" && combinedFactory.Instances.Count == 0,
+                    "A later invalid read retains the original read-before-backend error priority.");
+            }
+            finally { combinedRead.TrySetCanceled(); combinedWindow.Close(); }
+
+            var pendingRead = new TaskCompletionSource<FilamentModelData>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var readFactory = new RecordingFilamentRendererFactory();
+            var reading = new DeviceModelView(Visual(() =>
+            {
+                Interlocked.Increment(ref leases);
+                return new Lease(() => Interlocked.Decrement(ref leases));
+            }), readFactory, _ => pendingRead.Task);
+            var readingWindow = new Window { Content = reading, Width = 280, Height = 240 };
+            try
+            {
+                readingWindow.Show();
+                await UntilAsync(() => readFactory.CreateCalls == 1, "Engine creation overlaps an outstanding model read.");
+                readingWindow.Content = null;
+                Check(leases == 1, "Detaching keeps the loading lease until the outstanding read really finishes.");
+                pendingRead.SetException(new InvalidDataException("A cancelled read can still fail."));
+                await UntilAsync(() => leases == 0 && readFactory.Instances.Single().Disposed,
+                    "A late read failure is observed, the cancelled engine is disposed and all leases reach zero.");
+                Check(!reading.ModelReady && reading.CaptureLatestFrame(out _) is null,
+                    "A cancelled model read cannot publish a renderer or stale pixels.");
+            }
+            finally { pendingRead.TrySetCanceled(); readingWindow.Close(); }
+
             var cacheFactory = new RecordingFilamentRendererFactory();
             var cacheView = View(cacheFactory, () => { Interlocked.Increment(ref leases); return new Lease(() => Interlocked.Decrement(ref leases)); });
             var cacheWindow = new Window { Content = cacheView, Width = 280, Height = 240 };
@@ -167,9 +231,11 @@ internal static class ModelRendererLifecycleTests
         finally { ModelRenderingPreferences.Apply(old); }
     }
 
-    private static DeviceModelView View(RecordingFilamentRendererFactory factory, Func<IDisposable>? lease = null) => new(new DeviceModelVisual(
+    private static DeviceModelView View(RecordingFilamentRendererFactory factory, Func<IDisposable>? lease = null) => new(Visual(lease), factory);
+
+    private static DeviceModelVisual Visual(Func<IDisposable>? lease = null) => new(
         new ArtworkFile(new Uri("avares://HeyMelody/Assets/Devices/EncoFree4Dynaudio/model.glb"), "", GlbSource.DynaudioSha256, lease),
-        DeviceVisuals.GenericProduct), factory);
+        DeviceVisuals.GenericProduct);
 
     private sealed class Lease(Action release) : IDisposable
     {

@@ -22,10 +22,11 @@ namespace HeyMelodyWindows.App;
 public class DeviceModelView : UserControl
 {
     private const int VerifiedModelCacheCapacity = 2;
-    private static readonly LinkedList<FilamentModelData> VerifiedModels = new();
+    private static readonly VerifiedModelCache VerifiedModels = new(VerifiedModelCacheCapacity, ReadModel);
     internal static IFilamentRendererFactory? DefaultFactoryOverride { get; set; }
     private readonly DeviceModelVisual _visual;
     private readonly IFilamentRendererFactory _factory;
+    private readonly Func<ArtworkFile, Task<FilamentModelData>>? _readModelOverride;
     private readonly SemaphoreSlim _lifetimeGate = new(1, 1);
     private readonly Grid _root;
     private readonly ContentControl _fallback = new() { IsVisible = false, IsHitTestVisible = false };
@@ -58,6 +59,12 @@ public class DeviceModelView : UserControl
     private bool _attached;
     private bool _loading;
     private int _loadGeneration;
+    private long _attachedAt, _timingOriginAt, _modelLoadedAt;
+    private bool _hasLoadSinceAttach, _firstFrameTimingPending;
+    private ModelLoadTimings? _loadTimings;
+    internal ModelLoadTimings? LoadTimings => _loadTimings;
+    internal string ModelDigest => _visual.File.Sha256;
+    internal static event Action<DeviceModelView, ModelLoadTimings>? LoadMeasured;
     private CancellationTokenSource? _loadCancellation;
     private Task _rendererRetirement = Task.CompletedTask;
     private FilamentBackend? _requestedBackend;
@@ -139,40 +146,46 @@ public class DeviceModelView : UserControl
         ApplyRenderingPreference();
     }
 
+    internal DeviceModelView(DeviceModelVisual visual, IFilamentRendererFactory rendererFactory,
+        Func<ArtworkFile, Task<FilamentModelData>> readModel) : this(visual, rendererFactory)
+        => _readModelOverride = readModel;
+
     /// <summary>Validates the original GLB without loading the native renderer.</summary>
     internal static Task<FilamentModelData> LoadModelAsync(DeviceModelVisual visual)
-        => Task.Run(() => ReadVerifiedModel(visual.File));
+        => VerifiedModels.GetAsync(visual.File, out _);
 
-    private static FilamentModelData ReadVerifiedModel(ArtworkFile file)
+    internal static void PrefetchModel(DeviceModelVisual visual)
+    {
+        // GetAsync acquires the package reference before queuing a miss; a cache hit does not read the file.
+        try { _ = ObservePrefetchAsync(LoadModelAsync(visual)); }
+        catch (Exception) { /* The view owns the eventual error presentation. */ }
+        if ((DefaultFactoryOverride ?? NativeFilamentRendererFactory.Instance) is NativeFilamentRendererFactory native)
+            try { _ = ObservePrefetchAsync(native.PrepareBackendAsync(ModelRenderingPreferences.Backend)); }
+            catch (Exception) { /* Failed preparation remains retryable at the actual load. */ }
+    }
+
+    private static async Task ObservePrefetchAsync(Task task)
+    {
+        try { await task.ConfigureAwait(false); }
+        catch (Exception) { /* Prefetch never changes availability or the UI's failure classification. */ }
+    }
+
+    private static FilamentModelData ReadModel(ArtworkFile file)
     {
         var expected = file.Sha256?.ToLowerInvariant();
-        if (!string.IsNullOrEmpty(expected))
-            lock (VerifiedModels)
-                for (var node = VerifiedModels.First; node is not null; node = node.Next)
-                    if (node.Value.Sha256 == expected)
-                    {
-                        VerifiedModels.Remove(node);
-                        VerifiedModels.AddFirst(node);
-                        return node.Value;
-                    }
         using var stream = file.Open();
         if (stream.Length is <= 0 or > FilamentModelData.MaximumBytes)
             throw new InvalidDataException("Model size exceeds its limit.");
         var bytes = new byte[checked((int)stream.Length)];
         stream.ReadExactly(bytes);
-        var model = FilamentModelData.CreateValidated(bytes, string.IsNullOrEmpty(expected) ? null : expected);
-        if (!string.IsNullOrEmpty(expected))
-            lock (VerifiedModels)
-            {
-                VerifiedModels.AddFirst(model);
-                while (VerifiedModels.Count > VerifiedModelCacheCapacity) VerifiedModels.RemoveLast();
-            }
-        return model;
+        return FilamentModelData.CreateValidated(bytes, string.IsNullOrEmpty(expected) ? null : expected);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        _attachedAt = Stopwatch.GetTimestamp();
+        _hasLoadSinceAttach = false;
         _attached = true;
         ModelRenderingPreferences.Changed += OnRenderingPreferenceChanged;
         RenderDiagnostics.Changed += OnDiagnosticsChanged;
@@ -233,22 +246,61 @@ public class DeviceModelView : UserControl
 
     private async Task LoadAsync(int generation, FilamentBackend backend, CancellationTokenSource cancellation, Task retirement)
     {
+        var started = Stopwatch.GetTimestamp();
+        var origin = _hasLoadSinceAttach ? started : _attachedAt;
+        _hasLoadSinceAttach = true;
+        _firstFrameTimingPending = false;
+        _loadTimings = null;
+        var timings = new ModelLoadTimings(generation, backend,
+            Stopwatch.GetElapsedTime(origin, started).TotalMilliseconds, 0, 0, 0, false, 0, 0, 0, 0, 0, 0,
+            FilamentProbeDisposition.Cached);
         IFilamentRenderer? renderer = null;
+        IDisposable? loadingLease = null;
+        Task<FilamentModelData>? modelTask = null;
+        long readStarted = 0, readFinishedAt = 0, modelLoadedAt = 0;
+        async Task<FilamentModelData> MeasureReadAsync(Task<FilamentModelData> pending)
+        {
+            try { return await pending.ConfigureAwait(false); }
+            finally { readFinishedAt = Stopwatch.GetTimestamp(); }
+        }
         try
         {
-            using var loadingLease = _visual.File.Acquire();
+            loadingLease = _visual.File.Acquire();
+            readStarted = Stopwatch.GetTimestamp();
+            bool cacheHit = false;
+            modelTask = MeasureReadAsync(_readModelOverride is null
+                ? VerifiedModels.GetAsync(_visual.File, out cacheHit) : _readModelOverride(_visual.File));
             renderer = await Task.Run(async () =>
             {
                 // Never create the replacement engine while the old engine is still draining readbacks.
+                var stage = Stopwatch.GetTimestamp();
                 await retirement.ConfigureAwait(false);
+                timings = timings with { RetirementWaitMilliseconds = Stopwatch.GetElapsedTime(stage).TotalMilliseconds };
+                stage = Stopwatch.GetTimestamp();
                 await _lifetimeGate.WaitAsync(cancellation.Token).ConfigureAwait(false);
+                timings = timings with { GateWaitMilliseconds = Stopwatch.GetElapsedTime(stage).TotalMilliseconds };
                 try
                 {
                     if (!IsCurrentLoad(generation)) return null;
-                    var model = ReadVerifiedModel(_visual.File);
+                    // Observe an already failed read before allocating an engine. A later failure disposes it below.
+                    if (modelTask.IsCompleted) await modelTask.ConfigureAwait(false);
                     if (!IsCurrentLoad(generation)) return null;
+                    cancellation.Token.ThrowIfCancellationRequested();
                     var created = _factory.Create(backend, cancellation.Token);
-                    try { created.LoadModel(model); }
+                    try
+                    {
+                        var model = await modelTask.ConfigureAwait(false);
+                        timings = timings with
+                        {
+                            ReadVerifyMilliseconds = Stopwatch.GetElapsedTime(readStarted, readFinishedAt).TotalMilliseconds,
+                            CacheHit = cacheHit
+                        };
+                        if (!IsCurrentLoad(generation) || cancellation.IsCancellationRequested) { created.Dispose(); return null; }
+                        stage = Stopwatch.GetTimestamp();
+                        created.LoadModel(model);
+                        modelLoadedAt = Stopwatch.GetTimestamp();
+                        timings = timings with { ModelLoadMilliseconds = Stopwatch.GetElapsedTime(stage, modelLoadedAt).TotalMilliseconds };
+                    }
                     catch { created.Dispose(); throw; }
                     if (IsCurrentLoad(generation)) return created;
                     created.Dispose();
@@ -263,6 +315,18 @@ public class DeviceModelView : UserControl
             LoadError = null;
             ModelReady = true;
             _lastDiagnostics = _renderer.GetDiagnostics();
+            if (_lastDiagnostics.CreationTimings is { } creation)
+                timings = timings with
+                {
+                    RuntimePreparationMilliseconds = creation.RuntimePreparationMilliseconds,
+                    ProbeWaitMilliseconds = creation.ProbeWaitMilliseconds,
+                    EngineCreateMilliseconds = creation.EngineCreateMilliseconds,
+                    ProbeDisposition = creation.ProbeDisposition
+                };
+            _timingOriginAt = origin;
+            _modelLoadedAt = modelLoadedAt;
+            _loadTimings = timings;
+            _firstFrameTimingPending = true;
             _afterFrameId = 0;
             MarkFrameRequested();
             DirectCopyDisabled = false;
@@ -286,11 +350,22 @@ public class DeviceModelView : UserControl
         catch (Exception exception)
         {
             if (!IsCurrentLoad(generation)) return;
+            // Preserve the serial loader's read-before-backend error priority when both fail.
+            var failure = exception;
+            if (modelTask is not null)
+                try { await modelTask; }
+                catch (Exception readFailure) { failure = readFailure; }
+            if (!IsCurrentLoad(generation)) return;
             _loading = false;
-            FailRenderer(exception);
+            FailRenderer(failure);
         }
         finally
         {
+            // Keep the load's lease until the read has actually finished, including cancelled/stale loads.
+            if (modelTask is not null)
+                try { await modelTask; }
+                catch (Exception) { /* The active load reports it above; abandoned shared work is still observed. */ }
+            loadingLease?.Dispose();
             if (renderer is not null) QueueRendererDisposal(renderer);
             if (ReferenceEquals(_loadCancellation, cancellation)) _loadCancellation = null;
             cancellation.Dispose();
@@ -531,6 +606,7 @@ public class DeviceModelView : UserControl
         _lastFrameInfo = frame;
         _loadingIndicator.IsVisible = false;
         Viewport.InvalidateVisual();
+        CompleteLoadTiming();
         var now = _clock.Elapsed.TotalSeconds;
         if (_lastPresentedAt > 0)
         {
@@ -543,6 +619,23 @@ public class DeviceModelView : UserControl
     }
 
     private enum DirectCopy { NoFrame, Presented, Unavailable }
+
+    private void CompleteLoadTiming()
+    {
+        if (!_firstFrameTimingPending || _loadTimings is not { } timings || timings.Generation != _loadGeneration) return;
+        _firstFrameTimingPending = false;
+        var now = Stopwatch.GetTimestamp();
+        timings = timings with
+        {
+            FirstFrameMilliseconds = Stopwatch.GetElapsedTime(_modelLoadedAt, now).TotalMilliseconds,
+            TotalMilliseconds = Stopwatch.GetElapsedTime(_timingOriginAt, now).TotalMilliseconds
+        };
+        _loadTimings = timings;
+        if (RenderDiagnostics.Enabled)
+            Trace.WriteLine(FormattableString.Invariant($"model_load generation={timings.Generation} backend={timings.Backend} total_ms={timings.TotalMilliseconds:F3} attach_ms={timings.AttachToLoadStartMilliseconds:F3} retirement_ms={timings.RetirementWaitMilliseconds:F3} gate_ms={timings.GateWaitMilliseconds:F3} read_ms={timings.ReadVerifyMilliseconds:F3} cache_hit={timings.CacheHit} runtime_ms={timings.RuntimePreparationMilliseconds:F3} probe={timings.ProbeDisposition} probe_ms={timings.ProbeWaitMilliseconds:F3} engine_ms={timings.EngineCreateMilliseconds:F3} model_ms={timings.ModelLoadMilliseconds:F3} first_frame_ms={timings.FirstFrameMilliseconds:F3}"));
+        LoadMeasured?.Invoke(this, timings);
+        UpdateDiagnostics();
+    }
 
     /// <summary>Copies the renderer's frame straight into the locked bitmap when it already has the frame's size and stride.</summary>
     private unsafe DirectCopy TryCopyDirect(out FilamentFrameInfo frame)
@@ -615,6 +708,8 @@ public class DeviceModelView : UserControl
         _diagnostics.Text = $"3D {fps:0} fps · P95 {p95:0.0} ms · 渲染 {_lastFrameInfo.RenderMilliseconds:0.0} ms"
             + $" · 回读 {_lastFrameInfo.ReadbackMilliseconds:0.0} ms · {_lastDiagnostics.Backend} · MSAA {_lastDiagnostics.MsaaSamples}×"
             + $" · 已呈现 {_presentedFrames} 帧";
+        if (_loadTimings is { } loading)
+            _diagnostics.Text += $"\n加载 {loading.TotalMilliseconds:0} ms（探测 {loading.ProbeWaitMilliseconds:0}／引擎 {loading.EngineCreateMilliseconds:0}／模型 {loading.ModelLoadMilliseconds:0}／首帧 {loading.FirstFrameMilliseconds:0}）";
     }
 
     private void OnPointerPressed(object? sender, PointerPressedEventArgs e)

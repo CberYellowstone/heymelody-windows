@@ -211,6 +211,7 @@ public sealed class DeviceVisualCatalog : INotifyPropertyChanged, IDisposable
         // Renderers hold their own lease references, so replacing these cannot delete files in use.
         slot.Lease?.Dispose(); slot.FallbackLease?.Dispose();
         slot.Visual = visual; slot.Content = content; slot.Lease = lease; slot.FallbackLease = fallbackLease;
+        if (visual is DeviceModelVisual modelVisual) DeviceModelView.PrefetchModel(modelVisual);
         foreach (var (identity, appearance) in _appearances)
             if (KeyFor(appearance) == slot.Key) Show(identity, slot);
         Collect();

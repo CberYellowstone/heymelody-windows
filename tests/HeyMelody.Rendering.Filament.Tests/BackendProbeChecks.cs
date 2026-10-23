@@ -35,6 +35,10 @@ internal static class BackendProbeChecks
             try { NativeFilamentRendererFactory.Instance.Create(invalid); }
             catch (ArgumentOutOfRangeException) { rejected = true; }
             check(rejected, "Automatic and invalid backends fail before loading native components.");
+            rejected = false;
+            try { await NativeFilamentRendererFactory.Instance.PrepareBackendAsync(invalid); }
+            catch (ArgumentOutOfRangeException) { rejected = true; }
+            check(rejected, "Backend preparation also rejects automatic and invalid backends before loading native components.");
         }
         check(Marshal.SizeOf<NativeCreateOptions>() == 16 && Marshal.SizeOf<NativeDiagnostics>() == 96
             && Marshal.OffsetOf<NativeCreateOptions>(nameof(NativeCreateOptions.RequestedBackend)).ToInt32() == 12
@@ -66,9 +70,13 @@ internal static class BackendProbeChecks
         var payload = new NativeProbePayload(Path.Combine(fixtureRoot, "fixture-probe"), "payload-a");
         var successRunner = new FixtureRunner((_, _, _) => Task.FromResult(new NativeProbeResult(0, "ready", "")));
         var successProbe = new NativeBackendProbe(successRunner);
-        successProbe.EnsureAvailable(payload, FilamentBackend.Vulkan, default);
-        successProbe.EnsureAvailable(payload, FilamentBackend.Vulkan, default);
+        var startedObservation = successProbe.EnsureAvailable(payload, FilamentBackend.Vulkan, default);
+        var cachedObservation = successProbe.EnsureAvailable(payload, FilamentBackend.Vulkan, default);
         check(successRunner.Calls == 1, "A completed success is cached for the exact native payload and backend.");
+        check(startedObservation.Disposition == FilamentProbeDisposition.Started
+            && cachedObservation.Disposition == FilamentProbeDisposition.Cached
+            && startedObservation.WaitMilliseconds >= 0 && cachedObservation.WaitMilliseconds >= 0,
+            "Probe timing distinguishes a newly started child from an existing success without changing caching.");
         successProbe.EnsureAvailable(payload, FilamentBackend.OpenGL, default);
         successProbe.EnsureAvailable(payload with { Identity = "payload-b" }, FilamentBackend.Vulkan, default);
         check(successRunner.Calls == 3, "A different backend or native payload gets a new probe.");
@@ -109,40 +117,122 @@ internal static class BackendProbeChecks
             try { successProbe.EnsureAvailable(payload, FilamentBackend.Vulkan, alreadyCancelled.Token); }
             catch (OperationCanceledException) { cancelled = true; }
             check(cancelled && successRunner.Calls == 4, "A cancelled view cannot reuse or launch a probe.");
+            cancelled = false;
+            try { await NativeFilamentRendererFactory.Instance.PrepareBackendAsync(FilamentBackend.Vulkan, alreadyCancelled.Token); }
+            catch (OperationCanceledException) { cancelled = true; }
+            check(cancelled, "Cancelled preparation does not load the native runtime.");
+        }
+        {
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var sharedRunner = new FixtureRunner(async (_, _, _) =>
+            {
+                await release.Task;
+                return new(0, "ready", "");
+            });
+            var sharedProbe = new NativeBackendProbe(sharedRunner);
+            var callers = Enumerable.Range(0, 8)
+                .Select(_ => sharedProbe.EnsureAvailableAsync(payload, FilamentBackend.Vulkan, default)).ToArray();
+            check(sharedRunner.Calls == 1 && callers.All(task => !task.IsCompleted),
+                "Concurrent callers join one in-flight child for the same payload and backend.");
+            release.SetResult();
+            var observations = await Task.WhenAll(callers).WaitAsync(TimeSpan.FromSeconds(5));
+            check(observations.Count(value => value.Disposition == FilamentProbeDisposition.Started) == 1
+                && observations.Count(value => value.Disposition == FilamentProbeDisposition.Joined) == 7
+                && sharedProbe.EnsureAvailable(payload, FilamentBackend.Vulkan, default).Disposition == FilamentProbeDisposition.Cached,
+                "Joined probe callers share success and report their own wait disposition.");
         }
         using (var cancelFirst = new CancellationTokenSource())
         {
             var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var independentRunner = new FixtureRunner(async (call, _, token) =>
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            bool receivedCallerCancellation = true;
+            var sharedRunner = new FixtureRunner(async (_, _, token) =>
             {
-                if (call == 1) { firstStarted.SetResult(); await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+                receivedCallerCancellation = token.CanBeCanceled;
+                firstStarted.SetResult();
+                await release.Task;
                 return new(0, "ready", "");
             });
-            var independentProbe = new NativeBackendProbe(independentRunner);
-            var first = Task.Run(() => independentProbe.EnsureAvailable(payload, FilamentBackend.Vulkan, cancelFirst.Token));
+            var sharedProbe = new NativeBackendProbe(sharedRunner);
+            var first = sharedProbe.EnsureAvailableAsync(payload, FilamentBackend.Vulkan, cancelFirst.Token);
             await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            independentProbe.EnsureAvailable(payload, FilamentBackend.Vulkan, default);
+            var second = sharedProbe.EnsureAvailableAsync(payload, FilamentBackend.Vulkan, default);
             cancelFirst.Cancel();
             bool cancelled = false;
             try { await first; } catch (OperationCanceledException) { cancelled = true; }
-            independentProbe.EnsureAvailable(payload, FilamentBackend.Vulkan, default);
-            check(cancelled && independentRunner.Calls == 2, "Cancelling one in-flight caller leaves another caller and its completed success intact.");
+            check(cancelled && !receivedCallerCancellation && !second.IsCompleted && sharedRunner.Calls == 1,
+                "Cancelling one wait does not cancel the shared child or another caller.");
+            release.SetResult();
+            var observation = await second.WaitAsync(TimeSpan.FromSeconds(5));
+            sharedProbe.EnsureAvailable(payload, FilamentBackend.Vulkan, default);
+            check(observation.Disposition == FilamentProbeDisposition.Joined && sharedRunner.Calls == 1,
+                "A surviving caller completes and caches the shared probe after its first caller cancels.");
         }
+        using (var cancelOnlyCaller = new CancellationTokenSource())
+        {
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var abandonedRunner = new FixtureRunner(async (_, _, _) =>
+            {
+                await release.Task;
+                return new(0, "ready", "");
+            });
+            var abandonedProbe = new NativeBackendProbe(abandonedRunner);
+            var abandoned = abandonedProbe.EnsureAvailableAsync(payload, FilamentBackend.Vulkan, cancelOnlyCaller.Token);
+            cancelOnlyCaller.Cancel();
+            bool cancelled = false;
+            try { await abandoned; } catch (OperationCanceledException) { cancelled = true; }
+            release.SetResult();
+            await abandonedProbe.EnsureAvailableAsync(payload, FilamentBackend.Vulkan, default).WaitAsync(TimeSpan.FromSeconds(5));
+            var cached = abandonedProbe.EnsureAvailable(payload, FilamentBackend.Vulkan, default);
+            check(cancelled && abandonedRunner.Calls == 1 && cached.Disposition == FilamentProbeDisposition.Cached,
+                "A successful shared child remains reusable after all of its original callers cancel.");
+        }
+        foreach (bool staleFailure in new[] { false, true })
         {
             var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var replacementStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseReplacement = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var activityGate = new object();
+            int active = 0, maximumActive = 0;
             var raceRunner = new FixtureRunner(async (call, _, _) =>
             {
-                if (call == 1) { started.SetResult(); await release.Task; }
-                return new(0, "ready", "");
+                int running = Interlocked.Increment(ref active);
+                lock (activityGate) maximumActive = Math.Max(maximumActive, running);
+                try
+                {
+                    if (call == 1) { started.SetResult(); await release.Task; }
+                    else { replacementStarted.SetResult(); await releaseReplacement.Task; }
+                    return call == 1 && staleFailure ? new(7, "", "stale failure") : new(0, "ready", "");
+                }
+                finally { Interlocked.Decrement(ref active); }
             });
             var raceProbe = new NativeBackendProbe(raceRunner);
-            var inFlight = Task.Run(() => raceProbe.EnsureAvailable(payload, FilamentBackend.Vulkan, default));
+            var inFlight = raceProbe.EnsureAvailableAsync(payload, FilamentBackend.Vulkan, default);
             await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
             raceProbe.Invalidate(payload, FilamentBackend.Vulkan);
-            release.SetResult(); await inFlight;
+            var afterInvalidation = raceProbe.EnsureAvailableAsync(payload, FilamentBackend.Vulkan, default);
+            check(raceRunner.Calls == 1 && !afterInvalidation.IsCompleted,
+                "Invalidation retains the old child until it exits instead of starting an overlapping probe.");
+            release.SetResult();
+            await replacementStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            check(raceRunner.Calls == 2 && maximumActive == 1,
+                "An invalidated generation is replaced only after its child has completed.");
+            releaseReplacement.SetResult();
+            await Task.WhenAll(inFlight, afterInvalidation).WaitAsync(TimeSpan.FromSeconds(5));
             raceProbe.EnsureAvailable(payload, FilamentBackend.Vulkan, default);
-            check(raceRunner.Calls == 2, "An older in-flight probe cannot resurrect a cache entry invalidated by a runtime failure.");
+            check(raceRunner.Calls == 2, "An older success or failure cannot resurrect an invalidated cache entry; callers share the replacement.");
+        }
+        {
+            var cancelledRunner = new FixtureRunner((call, _, _) => call == 1
+                ? Task.FromCanceled<NativeProbeResult>(new CancellationToken(true))
+                : Task.FromResult(new NativeProbeResult(0, "ready", "")));
+            var cancelledProbe = new NativeBackendProbe(cancelledRunner);
+            bool cancelled = false;
+            try { await cancelledProbe.EnsureAvailableAsync(payload, FilamentBackend.Vulkan, default); }
+            catch (OperationCanceledException) { cancelled = true; }
+            await cancelledProbe.EnsureAvailableAsync(payload, FilamentBackend.Vulkan, default);
+            check(cancelled && cancelledRunner.Calls == 2, "A cancelled shared runner is not cached and can be retried.");
         }
 
         string apphost = Path.Combine(AppContext.BaseDirectory, "HeyMelody.Rendering.Filament.Tests" + (OperatingSystem.IsWindows() ? ".exe" : ""));

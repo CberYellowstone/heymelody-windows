@@ -42,42 +42,100 @@ internal readonly record struct NativeProbeResult(int ExitCode, string StandardO
     internal bool Succeeded => !TimedOut && ExitCode == 0;
 }
 
+internal readonly record struct NativeProbeObservation(FilamentProbeDisposition Disposition, double WaitMilliseconds);
+
 internal interface INativeBackendProbeRunner
 {
     Task<NativeProbeResult> RunAsync(string executablePath, FilamentBackend backend, CancellationToken cancellationToken);
 }
 
-/// <summary>Each caller owns its own child, so cancelling one view cannot cancel another view's probe.</summary>
+/// <summary>Callers share one child per payload/backend; cancellation only abandons the caller's wait.</summary>
 internal sealed class NativeBackendProbe(INativeBackendProbeRunner runner)
 {
     internal static NativeBackendProbe Shared { get; } = new(new NativeBackendProbeProcess());
     private readonly object _gate = new();
     private readonly HashSet<(string Payload, FilamentBackend Backend)> _successes = [];
     private readonly Dictionary<(string Payload, FilamentBackend Backend), long> _generations = [];
+    private readonly Dictionary<(string Payload, FilamentBackend Backend), ProbeOperation> _inflight = [];
 
-    internal void EnsureAvailable(NativeProbePayload payload, FilamentBackend backend, CancellationToken cancellationToken)
+    internal NativeProbeObservation EnsureAvailable(NativeProbePayload payload, FilamentBackend backend, CancellationToken cancellationToken)
+        => EnsureAvailableAsync(payload, backend, cancellationToken).GetAwaiter().GetResult();
+
+    internal async Task<NativeProbeObservation> EnsureAvailableAsync(
+        NativeProbePayload payload, FilamentBackend backend, CancellationToken cancellationToken)
     {
+        var started = Stopwatch.GetTimestamp();
         FilamentBackendPolicy.Validate(backend);
         cancellationToken.ThrowIfCancellationRequested();
         var key = (payload.Identity, backend);
-        long generation;
-        lock (_gate)
+        while (true)
         {
-            if (_successes.Contains(key)) return;
-            generation = _generations.GetValueOrDefault(key);
+            cancellationToken.ThrowIfCancellationRequested();
+            ProbeOperation operation;
+            bool ownsStart = false;
+            lock (_gate)
+            {
+                if (_successes.Contains(key))
+                    return new(FilamentProbeDisposition.Cached, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                if (!_inflight.TryGetValue(key, out operation!))
+                {
+                    operation = new(_generations.GetValueOrDefault(key));
+                    _inflight.Add(key, operation);
+                    ownsStart = true;
+                }
+            }
+            if (ownsStart) _ = RunProbeAsync(payload, backend, key, operation);
+            NativeProbeResult result;
+            try
+            {
+                result = await operation.Completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch
+            {
+                lock (_gate)
+                    if (_generations.GetValueOrDefault(key) != operation.Generation) continue;
+                throw;
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+                if (_generations.GetValueOrDefault(key) != operation.Generation) continue;
+            ThrowIfUnavailable(result, backend);
+            return new(ownsStart ? FilamentProbeDisposition.Started : FilamentProbeDisposition.Joined,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
-        NativeProbeResult result;
+    }
+
+    private async Task RunProbeAsync(NativeProbePayload payload, FilamentBackend backend,
+        (string Payload, FilamentBackend Backend) key, ProbeOperation operation)
+    {
+        NativeProbeResult result = default;
+        Exception? failure = null;
         try
         {
-            result = runner.RunAsync(payload.ExecutablePath, backend, cancellationToken).GetAwaiter().GetResult();
+            result = await runner.RunAsync(payload.ExecutablePath, backend, CancellationToken.None).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception error) when (error is Win32Exception or IOException or UnauthorizedAccessException)
+        catch (Exception error)
         {
-            throw new FilamentRendererException("The Filament backend probe component could not be started.",
-                FilamentFailureKind.ComponentUnavailable, FilamentFailureStage.Probe, backend, innerException: error);
+            failure = error is Win32Exception or IOException or UnauthorizedAccessException
+                ? new FilamentRendererException("The Filament backend probe component could not be started.",
+                    FilamentFailureKind.ComponentUnavailable, FilamentFailureStage.Probe, backend, innerException: error)
+                : error;
         }
-        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            // Retain an invalidated operation until its child exits: a new generation cannot overlap it.
+            if (failure is null && result.Succeeded && _generations.GetValueOrDefault(key) == operation.Generation)
+                _successes.Add(key);
+            if (_inflight.TryGetValue(key, out var current) && ReferenceEquals(current, operation))
+                _inflight.Remove(key);
+            if (failure is null) operation.Completion.TrySetResult(result);
+            else operation.Completion.TrySetException(failure);
+        }
+    }
+
+    private static void ThrowIfUnavailable(NativeProbeResult result, FilamentBackend backend)
+    {
         if (!result.Succeeded)
         {
             var reason = result.TimedOut ? "timed out after 30 seconds" : $"exited with code {result.ExitCode}";
@@ -86,9 +144,6 @@ internal sealed class NativeBackendProbe(INativeBackendProbeRunner runner)
             throw new FilamentRendererException($"The {backend} backend probe {reason}. {detail}".Trim(),
                 FilamentFailureKind.BackendUnavailable, FilamentFailureStage.Probe, backend);
         }
-        // Only a completed successful child is reusable. Failures and cancelled work remain retryable.
-        lock (_gate)
-            if (_generations.GetValueOrDefault(key) == generation) _successes.Add(key);
     }
 
     internal void Invalidate(NativeProbePayload payload, FilamentBackend backend)
@@ -98,6 +153,21 @@ internal sealed class NativeBackendProbe(INativeBackendProbeRunner runner)
         {
             _successes.Remove(key);
             _generations[key] = _generations.GetValueOrDefault(key) + 1;
+        }
+    }
+
+    private sealed class ProbeOperation(long generation)
+    {
+        internal long Generation { get; } = generation;
+        internal TaskCompletionSource<NativeProbeResult> Completion { get; } = CreateCompletion();
+
+        private static TaskCompletionSource<NativeProbeResult> CreateCompletion()
+        {
+            var completion = new TaskCompletionSource<NativeProbeResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            // All callers may cancel before the shared child faults. Its exception still needs observing.
+            _ = completion.Task.ContinueWith(static task => { _ = task.Exception; }, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            return completion;
         }
     }
 }

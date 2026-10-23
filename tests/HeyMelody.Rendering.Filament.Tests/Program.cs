@@ -53,14 +53,17 @@ if (args is ["--native-recovery", var nativeSource])
     string sourceDirectory = Directory.Exists(nativeSource) ? Path.GetFullPath(nativeSource) : Path.GetDirectoryName(Path.GetFullPath(nativeSource))!;
     foreach (var file in Directory.EnumerateFiles(sourceDirectory))
         File.Copy(file, Path.Combine(Path.GetDirectoryName(target)!, Path.GetFileName(file)), overwrite: false);
+    await NativeFilamentRendererFactory.Instance.PrepareBackendAsync(FilamentBackend.OpenGL);
     FilamentDiagnostics recoveredDiagnostics;
     using (var recovered = NativeFilamentRendererFactory.Instance.Create(FilamentBackend.OpenGL))
         recoveredDiagnostics = recovered.GetDiagnostics();
     if (recoveredDiagnostics.RequestedBackend != FilamentBackend.OpenGL || recoveredDiagnostics.ActualBackend != FilamentBackend.OpenGL)
         throw new InvalidOperationException("The native recovery renderer must retain its explicitly requested OpenGL backend.");
+    if (recoveredDiagnostics.CreationTimings is not { ProbeDisposition: FilamentProbeDisposition.Cached })
+        throw new InvalidOperationException("Backend preparation must be reusable by Create without probing again.");
     var recoveryReport = new
     {
-        success = true, passed = 3, nativeRequested = true, initialMissing,
+        success = true, passed = 4, nativeRequested = true, initialMissing,
         requestedBackend = recoveredDiagnostics.RequestedBackend.ToString(), actualBackend = recoveredDiagnostics.ActualBackend.ToString(),
         recovered = true, nativeSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(target))).ToLowerInvariant(),
         scope = "Real native module discovery retries successfully after a missing payload is supplied; no UI, model, Bluetooth or preferences."
@@ -102,7 +105,12 @@ foreach (var fixture in new[]
     Check(model.Sha256 == fixture.Hash && model.Bytes.Span.SequenceEqual(bytes), "Model validation preserves original bytes and normalizes SHA.");
     Check(model.MaterialProfile == "opaque-1001" && source.AlphaMode == "BLEND" && source.MaterialName == "1001",
         "An exact audited SHA chooses a correction without changing source transparency.");
-    Check(FilamentModelData.CreateValidated(bytes).Sha256 == fixture.Hash, "Hash calculation and expected-hash validation agree.");
+    var computedModel = FilamentModelData.CreateValidated(bytes);
+    Check(computedModel.Sha256 == fixture.Hash && computedModel.Bytes.Equals(new ReadOnlyMemory<byte>(bytes)),
+        "Computed model validation preserves the original memory and agrees with expected-hash validation.");
+    Check(FilamentModelData.CreateValidated(bytes, fixture.Hash.ToUpperInvariant()).Sha256 == fixture.Hash,
+        "Expected-hash factory validation accepts normalized digest case.");
+    Reject(() => FilamentModelData.CreateValidated(bytes, new string('0', 64)), "The model factory rejects a mismatched expected digest.");
     Reject(() => new FilamentModelData(bytes, new string('0', 64)), "A mismatched expected digest must be rejected.");
 }
 

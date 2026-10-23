@@ -13,6 +13,8 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        using var loadTrace = ModelLoadTrace.Start();
+        if (args.FirstOrDefault() == "--model-loading-benchmark") return ModelLoadingBenchmark.Run(args);
         if (args.Length > 0 && args[0] == "--3d-demo")
         {
             if (args.Length != 1) { Console.Error.WriteLine(Usage); return 2; }

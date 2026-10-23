@@ -23,8 +23,21 @@ public sealed record FilamentModelData
         Bytes = bytes;
     }
 
+    private FilamentModelData(ReadOnlyMemory<byte> bytes, VerifiedDigest digest)
+    {
+        Bytes = bytes;
+        Sha256 = digest.Value;
+    }
+
     public static FilamentModelData CreateValidated(ReadOnlyMemory<byte> bytes, string? expectedSha256 = null)
-        => new(bytes, expectedSha256 ?? Convert.ToHexString(SHA256.HashData(bytes.Span)));
+    {
+        if (expectedSha256 is not null) return new(bytes, expectedSha256);
+        ValidateHeader(bytes.Span);
+        var digest = Convert.ToHexString(SHA256.HashData(bytes.Span)).ToLowerInvariant();
+        return new(bytes, new VerifiedDigest(digest));
+    }
+
+    private readonly record struct VerifiedDigest(string Value);
 
     private static void ValidateHeader(ReadOnlySpan<byte> bytes)
     {
@@ -50,6 +63,12 @@ public enum FilamentRendererState { Empty, Loading, Ready, Failed, Stopping }
 
 /// <summary>Explicit native backend. Values are shared with C ABI 2; zero never selects an automatic fallback.</summary>
 public enum FilamentBackend { OpenGL = 1, Metal = 2, Vulkan = 3 }
+
+public enum FilamentProbeDisposition { Cached, Started, Joined }
+
+public readonly record struct FilamentCreationTimings(
+    double RuntimePreparationMilliseconds, double ProbeWaitMilliseconds,
+    double EngineCreateMilliseconds, FilamentProbeDisposition ProbeDisposition);
 
 public enum FilamentFailureKind { ComponentUnavailable, BackendUnavailable, InvalidModel, RuntimeFailure }
 public enum FilamentFailureStage { RuntimeLoading, Probe, Creation, ModelLoading, Rendering }
@@ -96,6 +115,7 @@ public sealed record FilamentDiagnostics(FilamentRendererState State, string Bac
 {
     public FilamentBackend? RequestedBackend { get; init; }
     public FilamentBackend? ActualBackend { get; init; }
+    public FilamentCreationTimings? CreationTimings { get; init; }
     public static FilamentDiagnostics Empty { get; } = new(FilamentRendererState.Empty, "Unavailable", 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, default, default);
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -5,7 +6,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace HeyMelody.Rendering.Filament;
 
-/// <summary>Loads the native runtime only when a GPU viewport is actually requested.</summary>
+/// <summary>Loads the native runtime on demand when a model backend is requested.</summary>
 public sealed class NativeFilamentRendererFactory : IFilamentRendererFactory
 {
     public static NativeFilamentRendererFactory Instance { get; } = new();
@@ -13,26 +14,19 @@ public sealed class NativeFilamentRendererFactory : IFilamentRendererFactory
     {
         FilamentBackendPolicy.Validate(backend);
         cancellationToken.ThrowIfCancellationRequested();
-        NativeBindings api;
-        NativeProbePayload payload;
-        try
-        {
-            // Loading exports and checking ABI creates no GPU context. Do it before the child probe
-            // so a missing or old component is never reported as an unavailable Vulkan driver.
-            api = NativeBindings.Instance;
-            payload = api.GetProbePayload();
-        }
-        catch (Exception error) when (error is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException
-            or PlatformNotSupportedException or IOException or UnauthorizedAccessException)
-        {
-            throw new FilamentRendererException("The packaged Filament rendering components are missing or incompatible.",
-                FilamentFailureKind.ComponentUnavailable, FilamentFailureStage.RuntimeLoading, backend, innerException: error);
-        }
-        NativeBackendProbe.Shared.EnsureAvailable(payload, backend, cancellationToken);
+        var runtimeStarted = Stopwatch.GetTimestamp();
+        var (api, payload) = PrepareRuntime(backend);
+        var runtimeMilliseconds = Stopwatch.GetElapsedTime(runtimeStarted).TotalMilliseconds;
+        var probe = NativeBackendProbe.Shared.EnsureAvailable(payload, backend, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         try
         {
-            var renderer = new NativeFilamentRenderer(api, payload, backend);
+            var engineStarted = Stopwatch.GetTimestamp();
+            var renderer = new NativeFilamentRenderer(api, payload, backend)
+            {
+                CreationTimings = new(runtimeMilliseconds, probe.WaitMilliseconds,
+                    Stopwatch.GetElapsedTime(engineStarted).TotalMilliseconds, probe.Disposition)
+            };
             if (cancellationToken.IsCancellationRequested)
             {
                 renderer.Dispose();
@@ -40,10 +34,37 @@ public sealed class NativeFilamentRendererFactory : IFilamentRendererFactory
             }
             return renderer;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch
         {
             NativeBackendProbe.Shared.Invalidate(payload, backend);
             throw;
+        }
+    }
+
+    /// <summary>Checks the runtime and shares its backend probe without creating an in-process Engine.</summary>
+    public async Task PrepareBackendAsync(FilamentBackend backend, CancellationToken cancellationToken = default)
+    {
+        FilamentBackendPolicy.Validate(backend);
+        cancellationToken.ThrowIfCancellationRequested();
+        var prepared = await Task.Run(() => PrepareRuntime(backend), cancellationToken).ConfigureAwait(false);
+        await NativeBackendProbe.Shared.EnsureAvailableAsync(prepared.Payload, backend, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static (NativeBindings Api, NativeProbePayload Payload) PrepareRuntime(FilamentBackend backend)
+    {
+        try
+        {
+            // Recheck the current payload at both preparation and Create. A previous preparation
+            // cannot vouch for runtime files replaced between these two entry points.
+            var api = NativeBindings.Instance;
+            return (api, api.GetProbePayload());
+        }
+        catch (Exception error) when (error is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException
+            or PlatformNotSupportedException or IOException or UnauthorizedAccessException)
+        {
+            throw new FilamentRendererException("The packaged Filament rendering components are missing or incompatible.",
+                FilamentFailureKind.ComponentUnavailable, FilamentFailureStage.RuntimeLoading, backend, innerException: error);
         }
     }
 }
@@ -56,6 +77,7 @@ internal sealed unsafe class NativeFilamentRenderer : IFilamentRenderer
     private readonly NativeProbePayload _payload;
     private readonly FilamentBackend _backend;
     private bool _disposed;
+    internal FilamentCreationTimings? CreationTimings { get; init; }
 
     internal NativeFilamentRenderer(NativeBindings api, NativeProbePayload payload, FilamentBackend backend)
     {
@@ -147,7 +169,7 @@ internal sealed unsafe class NativeFilamentRenderer : IFilamentRenderer
                 (int)info.Primitives, (int)info.Materials, (int)info.PatchedMaterials, info.Triangles,
                 info.FrameId, info.Generation, new Vector3(info.MinX, info.MinY, info.MinZ),
                 new Vector3(info.MaxX, info.MaxY, info.MaxZ))
-            { RequestedBackend = _backend, ActualBackend = (FilamentBackend)info.Backend };
+            { RequestedBackend = _backend, ActualBackend = (FilamentBackend)info.Backend, CreationTimings = CreationTimings };
         }
     }
 
