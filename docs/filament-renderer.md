@@ -24,6 +24,8 @@ Vulkan 不可用时使用合法静态外观并提示手动选择 OpenGL，缺少
 
 `HeyMelody.Rendering.Filament` 为不依赖 Avalonia、Host、Windows 项目或默认 RID 的 net10.0 托管组件。App 管理完整 GLB 校验、两份字节缓存、资源租约、运动与 WriteableBitmap。
 
+App 按已知摘要合并正在读取的模型，完成后只保留容量为 2 的 LRU，不增加模型副本。读取／校验提前到旧 Engine 退役和生命周期门等待期间，并可与新 Engine 创建重叠；`LoadModel` 前等待读取，取消或失效后也观察读取异常并保留租约到读取完成。Catalog 只对已解析的模型外观预读并准备当前后端；完整顺序、诊断及测量入口见 [模型加载、预读与计时](model-rendering.md#模型加载预读与计时)。
+
 C ABI 为版本 2，创建、配置、帧信息、诊断结构体仍分别为 16、64、48、96 字节。创建参数以 requested_backend 明确指定 OpenGL=1、Metal=2、Vulkan=3，不接受隐式自动后端。托管工厂接收明确后端及取消令牌；诊断记录请求与实际后端，实际值由 Engine 获取并校验一致。ABI 1 不能被新托管库静默使用。
 
 原生 worker 串行管理 Engine、模型与回读。帧仍为物理像素、左上原点、RGBA8、opaque、sRGB，最多三份缓冲，调用方复制最新完整帧。Vulkan 没有改变 GPU 读回→CPU→Avalonia 位图上传这条链路。Avalonia 的 Skia / ANGLE 与窗口 composition 配置独立。
@@ -32,11 +34,21 @@ C ABI 为版本 2，创建、配置、帧信息、诊断结构体仍分别为 16
 
 模型大小仍限 64 MiB；原始模型 SHA 校验、四个已审计 SHA 的材质 1001 修正及欢律单源约束继续生效，未知资源保留原始材质语义。
 
+`FilamentModelData.CreateValidated` 未提供 expected 摘要时只计算一次托管 SHA-256，私有已校验构造路径复用该结果；公开构造函数和提供 expected 的路径仍检查 GLB 头、摘要格式与实际字节。原生 `hm_load_model` 继续独立计算 SHA-256 并与 expected 比较，不信任调用方摘要，材质 profile 仍只按实际摘要授予。
+
+原生 SHA 接口接收指针与长度。Windows 使用 CNG `BCryptHash` 与 `BCRYPT_SHA256_ALG_HANDLE`，相关目标链接系统 `bcrypt`，非零状态抛出 `runtime_error` 而不跳过校验；其它平台逐个处理原始 64 字节块，仅用最多 128 字节的尾块缓冲做填充，取消 SHA 实现中的整份输入复制。桥接与 `hm_filament_sha256_tests` 共用实现；自检定义空串、`abc`、55／56／63／64／65 个 `a`、两个内置 GLB 共九组参考向量，Windows 自检还编译 portable 路径对拍。构建脚本只在本机 RID 执行自检，x64 到 ARM64 交叉构建不称作已执行；自检 exe 不进入 runtime manifest。`hm_load_model` 投递到工作线程时的拥有型 vector 复制仍保留；`loadResources` 后的同步 `drain()` 暂维持，最终取舍须另以源码生命周期结论和当前产物实测记录说明。
+
+`FilamentDiagnostics.CreationTimings` 是可选托管诊断，包含运行库身份准备、探测等待、Engine 创建耗时与 `FilamentProbeDisposition`（Cached／Started／Joined）。既有 `IFilamentRendererFactory.Create` 接口和原生 ABI 2 不变；诊断不增加原生结构体字段。
+
 ## 原生探测
 
 Filament 的部分初始化失败发生在自己的驱动线程或 noexcept 路径，外围 catch 无法完整捕获。运行库因此携带 `hm_filament_probe`（Windows 为 .exe），先在隐藏子进程实际创建、诊断并销毁请求后端。
 
-探测在后台执行，支持取消；30 秒无结果终止该次探测。只缓存当前进程中已完成的成功结果，按后端与原生产物摘要区分，运行失败后使其失效；失败不缓存。探测程序、库和 manifest 缺失或不匹配归类为组件错误。初始化探测不提供持续渲染阶段的驱动崩溃隔离。
+探测在后台执行，按 `(payload.Identity, backend)` 合并进行中的任务；同 key 同时只有一个子进程。调用方通过自己的取消令牌退出等待，不取消共享子进程；子进程仍受独立 30 秒期限约束，超时会终止它。只缓存当前进程中已经完成的成功结果，失败或 runner 取消均可重试；所有等待者取消后，仍观察共享任务的完成与异常。
+
+运行错误会移除成功缓存并递增 generation。`Invalidate` 保留尚未完成的旧代任务，后来者等待其退出后才加入或启动新代，避免两个探测重叠；旧代成功或失败都不能重新填充失效缓存。工厂已完成创建后若仅调用方取消，会释放该 renderer，但不把已证明可用的后端标为失效。
+
+`NativeFilamentRendererFactory.PrepareBackendAsync` 提供仅准备入口：在线程池加载／核对运行库并等待共享探测，不创建进程内 Engine。App 仅在解析出模型外观后按当前偏好调用，不新增常驻进程或启动预热。Prepare 与后续 `Create` 都重新计算 payload 身份并检查磁盘 DLL 是否仍与已加载版本一致；进程内成功缓存不省略这次检查，也没有跨进程持久化。探测程序、库和 manifest 缺失或不匹配归类为组件错误。初始化探测不提供持续渲染阶段的驱动崩溃隔离。
 
 ## 构建与产物
 
@@ -105,6 +117,8 @@ pwsh -NoProfile -File tools/filament/tests/Test-FilamentArtifactCache.ps1 -Outpu
 ## 验证范围
 
 可移植渲染检查、默认模型运动检查及原十三个默认 runner 保持各自入口。后端选择、偏好迁移、取消、错误分类和静态回退测试使用隔离设置与替代 renderer，不依赖 GPU。
+
+2026-10-23 本轮 `dotnet run --project tests/HeyMelody.Rendering.Filament.Tests -c Release -p:NuGetAudit=false` 通过 108 项可移植检查，包括同 key 并发加入、部分／全部调用方取消、旧代成功／失败失效后的无重叠重试、runner 取消重试、expected 摘要拒绝及原始模型字节保留。另在 Windows x64 构建当前原生产物，通过 ABI smoke、九组 CNG／portable 参考向量与 GLB 对拍、`-RequireCurrent` 及 `--native-recovery`。该 SHA 阶段仍保留装载后的 drain；分阶段性能与验证边界见[加载实测记录](research/model-loading-performance-2026-10-23.md)。这些结果不能证明 ARM64 硬件或其它操作系统运行效果。
 
 2026-10-21 在 Ubuntu 26.04.1 WSL 中的 Ubuntu 24.04.5 bwrap 用户空间完成固定 Filament commit 的 `linux-x64` 本地复现，工具链为 Clang 18.1.3、CMake 3.28.3、Ninja 1.11.1、PowerShell 7.6.6 与 .NET SDK 10.0.402。baseline 重现与 GitHub Actions 相同的 `Platform.h:658` 线程 capability 错误；依次处理注解兼容、缺少 GLES 头文件和 GLESv2 链接声明后，完整原生构建、无 `LD_LIBRARY_PATH` 的无参数 ABI smoke、`-RequireCurrent` 静态验包、便携渲染 87 项、模型运动 180 项检查及报告归档全部通过。模型运动检查使用普通 `dotnet run`，未指定 RID。完整本机记录见 [Linux 构建复现档案](../research/filament-linux-build-2026-10-21/run-20261020T172244Z/README.md)；该结果覆盖本地编译、动态加载、ABI 与离线检查，Linux GPU 和完整客户端验证另行记录。
 

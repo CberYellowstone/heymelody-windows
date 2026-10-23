@@ -204,13 +204,16 @@ try {
     }
     & $cmake @arguments
     if ($LASTEXITCODE) { throw 'Filament native CMake configure failed.' }
-    & $cmake --build $build --target HeyMelody.Filament.Native hm_filament_probe hm_filament_smoke --parallel $Parallel
+    & $cmake --build $build --target HeyMelody.Filament.Native hm_filament_probe hm_filament_smoke hm_filament_sha256_tests --parallel $Parallel
     if ($LASTEXITCODE) { throw 'Filament native compilation failed.' }
     if (-not $SkipSmoke -and -not ($RuntimeIdentifier -eq 'win-arm64' -and $hostArchitecture -ne 'arm64')) {
         $smoke = Join-Path $build $(if ($isWindowsHost) { 'hm_filament_smoke.exe' } else { 'hm_filament_smoke' })
         if ($isWindowsHost) { $env:PATH = $runtime + [IO.Path]::PathSeparator + $env:PATH }
         & $smoke
         if ($LASTEXITCODE) { throw 'Native ABI smoke failed.' }
+        $hashTests = Join-Path $build $(if ($isWindowsHost) { 'hm_filament_sha256_tests.exe' } else { 'hm_filament_sha256_tests' })
+        & $hashTests (Join-Path $repo 'src/HeyMelody.App/Assets/Devices/EncoFree4/model.glb') (Join-Path $repo 'src/HeyMelody.App/Assets/Devices/EncoFree4Dynaudio/model.glb')
+        if ($LASTEXITCODE) { throw 'Native SHA-256 reference vectors failed.' }
     } elseif (-not $SkipSmoke) {
         Write-Output 'ARM64 runtime cross-compiled; native execution requires Windows ARM64 hardware.'
     }
