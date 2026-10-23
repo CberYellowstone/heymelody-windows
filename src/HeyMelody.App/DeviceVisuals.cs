@@ -27,11 +27,29 @@ public static class DeviceVisuals
 
     private static readonly object BitmapLock = new();
     private static readonly Dictionary<Uri, Bitmap> Bitmaps = new();
-    private static readonly Lazy<BundledResourceStore> Bundled = new(() => new());
+    private static readonly string[] AncGlyphNames = ["melody_ui_reduction_noise_close", "melody_ui_reduction_noise_transparent",
+        "melody_ui_reduction_noise_adaptive", "melody_ui_reduction_noise_weak", "melody_ui_reduction_noise_strong"];
 
-    /// <summary>Decodes the bundled default artwork on a worker thread so the first window shows it without a decode pause.</summary>
+    // The bundled glyph index is fixed for the process. Only the resolved paths are kept: the bundled artwork
+    // index (about 224 KB of JSON) is parsed once and released instead of living for the whole process.
+    private static readonly Lazy<IReadOnlyDictionary<string, string?>> AncGlyphPaths = new(() =>
+    {
+        try
+        {
+            var bundled = new BundledResourceStore();
+            return AncGlyphNames.ToDictionary(name => name,
+                name => bundled.FindNamedAsset(name) is { } found ? bundled.FullPath(found) : null);
+        }
+        catch (Exception) { return new Dictionary<string, string?>(); }
+    }, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    /// <summary>
+    /// Decodes the bundled default artwork and resolves the noise-control glyph paths on a worker thread, so the
+    /// first window and the first noise-control panel do not pause the UI thread for a decode or the index parse.
+    /// </summary>
     internal static Task PrewarmBundledArtworkAsync() => Task.Run(() =>
     {
+        _ = AncGlyphPaths.Value;
         try { GetBitmap(X4Product.Source); }
         catch (Exception) { }
     });
@@ -48,18 +66,13 @@ public static class DeviceVisuals
         }
     }
 
-    // The bundled HeyMelody glyph index is fixed for the process.
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string?> AncGlyphPaths = new();
-
     internal static Control CreateAncGlyph(string key, string brushKey)
     {
         var name = key switch { "off" => "melody_ui_reduction_noise_close", "transparency" => "melody_ui_reduction_noise_transparent",
             "adaptive" or "smart" => "melody_ui_reduction_noise_adaptive", "weak" => "melody_ui_reduction_noise_weak", _ => "melody_ui_reduction_noise_strong" };
         try
         {
-            var path = AncGlyphPaths.GetOrAdd(name, entry =>
-                Bundled.Value.FindNamedAsset(entry) is { } found ? Bundled.Value.FullPath(found) : null);
-            if (path is not null)
+            if (AncGlyphPaths.Value.GetValueOrDefault(name) is { } path)
             {
                 var glyph = new Border { Width = 26, Height = 26, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
                     OpacityMask = new ImageBrush(GetBitmap(new Uri(path))) { Stretch = Stretch.Uniform } };

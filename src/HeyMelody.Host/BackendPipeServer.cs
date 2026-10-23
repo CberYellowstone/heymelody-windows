@@ -116,9 +116,9 @@ internal sealed class BackendPipeServer(BackendSupervisor supervisor, string? pi
             switch (request.Operation)
             {
                 case "enumerate":
-                    await supervisor.RefreshCatalogAsync(client.Lifetime.Token); data = supervisor.Devices(); break;
+                    await supervisor.RefreshCatalogForClientAsync(client.Lifetime.Token); data = supervisor.Devices(); break;
                 case "enumerateCandidates":
-                    await supervisor.RefreshCatalogAsync(client.Lifetime.Token); data = supervisor.Catalog(); break;
+                    await supervisor.RefreshCatalogForClientAsync(client.Lifetime.Token); data = supervisor.Catalog(); break;
                 case "saveWhitelist":
                     data = await supervisor.SaveWhitelistAsync(request.DeviceIdentities ?? throw new InvalidDataException(), client.Lifetime.Token); break;
                 case "select": case "connect": data = supervisor.Select(Identity(), rememberSelection: client.Role == "main"); break;

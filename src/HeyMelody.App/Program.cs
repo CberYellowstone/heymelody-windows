@@ -41,12 +41,21 @@ internal static class Program
                     try { ActivateExistingAsync().GetAwaiter().GetResult(); return 0; }
                     catch { return 2; }
                 }
+                // Connecting (and launching a stopped tray) overlaps Avalonia's start-up instead of waiting for Opened.
+                var service = new ClientBridge();
+                service.BeginConnect();
+                _startupService = service;
                 return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
             }
             finally { if (ownsMain) mainInstance.ReleaseMutex(); }
         }
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
+
+    private static IHeadsetService? _startupService;
+
+    /// <summary>The main window takes the early-connected service once; the window and its view model own it.</summary>
+    internal static IHeadsetService? TakeStartupService() => Interlocked.Exchange(ref _startupService, null);
 
     private static async Task ActivateExistingAsync()
     {

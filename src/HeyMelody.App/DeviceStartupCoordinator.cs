@@ -15,4 +15,16 @@ internal sealed class DeviceStartupCoordinator(IHeadsetService service, IDeviceM
             // A peer can be unpaired between the editor's commit and this lookup.
         }
     }
+
+    /// <summary>
+    /// Re-runs the paired-record lookup behind a list that was presented from the backend's subscription.
+    /// True only when the effective list is now empty, so start-up must fall back to device management;
+    /// a lookup failure keeps the presented selection (the backend reports it as health).
+    /// </summary>
+    public async Task<bool> ConfirmPresentedAsync(CancellationToken token)
+    {
+        try { return (await service.EnumerateAsync(token)).Count == 0; }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception) { return false; }
+    }
 }

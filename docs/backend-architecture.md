@@ -8,6 +8,7 @@
 
 - App 与 DeviceManager 使用 schema-4 双向命名管道（历史版本为 schema 2／3）。端点按用户和 Windows Session ID 区分，服务端限制当前用户并检查客户端进程所在会话。公共契约只携带内存中的 opaque Identity，不携带蓝牙地址。
 - Host supervisor 管理白名单、设备目录、每台设备的控制状态和观察缓存。设备的产品 ID 与协议颜色按白名单键持久化在 `device-appearance.json`，只作为外观提示随设备目录发布，不授予控制（见 [外观资源持久化](artwork-persistence.md)）。独立的 `--catalog-worker` 执行同步原生枚举；每台耳机使用独立的 `--worker` 执行 SDP/RFCOMM。原生调用卡住时可以结束对应 worker，托盘和其他耳机保持响应。
+- 主界面启动时在 Avalonia 初始化前于线程池建立管道（只连接、不订阅）；托盘单实例互斥体不存在时直接启动后台，不再先等 300 ms。`enumerate`／`enumerateCandidates` 在托盘首次初始化进行中时等待该次初始化，不另起 catalog-worker；其余时间每次查询仍新建刷新。主界面先用 subscribe 返回的有效名单进入页面，`enumerate` 在后台核对，结果经 catalog 事件更新。见[主界面启动](research/main-window-startup-0.9.9.md)。
 - worker 地址通过私有标准输入发送，不放在进程命令行。worker 与 Host 的 stdio 通信只在内部使用。历史 schema-1 RPC 适配器仅位于 Client.Tests，生产 ClientBridge 只使用共享管道。
 - subscribe 在后台锁内加入订阅并排入目录和缓存基线。后续事件与响应共用一个接收通道，以 ID 匹配请求。每个客户端拥有独立、有界的输出队列；普通状态更新可以合并，退出、激活和响应保留。慢客户端不会阻塞蓝牙接收。线格式省略值为 null 的成员，因此请求参数中的可空项（如关闭黄金听感时的 `uid`、没有颜色提示时的 `color`）缺失即按 null 处理；必需参数缺失或类型错误时返回通用失败，不转发运行时异常文字。
 - Snapshot 包含 BackendInstanceId、DeviceGeneration 和单调 Revision。前端只采纳当前后台、当前连接代次的新快照；迟到的手动刷新或 Apply.After 不会覆盖较新手机通知。后台重启后的旧设置不会迁移或重放。schema 版本不匹配时停止自动重连并提示退出旧后台、重新打开完整客户端，不擅自结束仍在运行的共享后台。

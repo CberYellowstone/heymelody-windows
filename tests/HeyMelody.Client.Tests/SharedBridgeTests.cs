@@ -200,6 +200,59 @@ internal static class SharedBridgeTests
             await bridge.AcknowledgeExitAsync(requestExit.ExitRequestId!, true, default);
             await stopping.Task.WaitAsync(TimeSpan.FromSeconds(3));
         });
+        await test("an absent backend singleton launches the backend without the 300 ms probe and the early pipe serves the first request", async () =>
+        {
+            string pipe = Name(); int started = 0, requests = 0; Server? server = null;
+            var launched = new TaskCompletionSource<TimeSpan>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            async Task Serve(RpcLineReader reader, StreamWriter writer, CancellationToken token)
+            {
+                while (await reader.ReadLineAsync(token) is { } line)
+                {
+                    var request = JsonSerializer.Deserialize<BackendRequest>(line, RpcWire.Json)!;
+                    Interlocked.Increment(ref requests);
+                    await Reply(writer, request, new BackendSubscription { BackendInstanceId = "instance" }, token);
+                }
+            }
+            await using var bridge = new ClientBridge(pipe, () =>
+            {
+                Interlocked.Increment(ref started);
+                server = new Server(pipe, Serve);
+                launched.TrySetResult(clock.Elapsed);
+            }, TimeSpan.FromSeconds(4), backendRunning: () => Volatile.Read(ref server) is not null);
+            bridge.BeginConnect();
+            Check(await launched.Task.WaitAsync(TimeSpan.FromSeconds(3)) < TimeSpan.FromMilliseconds(250));
+            await bridge.SubscribeAsync("main", default);
+            Check(started == 1 && requests == 1);
+            await server!.DisposeAsync();
+        });
+        await test("disposing while an early connection waits for a launched backend returns promptly", async () =>
+        {
+            int started = 0;
+            var bridge = new ClientBridge(Name(), () => Interlocked.Increment(ref started), TimeSpan.FromSeconds(4), backendRunning: () => false);
+            bridge.BeginConnect();
+            await Task.Delay(100);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            await bridge.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+            Check(started == 1 && clock.Elapsed < TimeSpan.FromSeconds(2));
+        });
+        await test("an early connection failure is left to the first request, which connects without a second launch", async () =>
+        {
+            string pipe = Name(); int started = 0;
+            await using var bridge = new ClientBridge(pipe, () =>
+            { Interlocked.Increment(ref started); throw new FileNotFoundException(); }, TimeSpan.FromSeconds(4), backendRunning: () => false);
+            bridge.BeginConnect();
+            using (var budget = new CancellationTokenSource(TimeSpan.FromSeconds(3)))
+                while (Volatile.Read(ref started) == 0) await Task.Delay(10, budget.Token);
+            await using var server = new Server(pipe, async (reader, writer, token) =>
+            {
+                var request = await Read(reader, token);
+                Check(request.Operation == "enumerate");
+                await Reply(writer, request, new[] { new UiDevice("peer", "Enco X4", true) }, token);
+                await Drain(reader, token);
+            });
+            Check((await bridge.EnumerateAsync(default)).Count == 1 && started == 1);
+        });
     }
 
     private static UiSnapshot Snapshot(long generation, long revision) => new()

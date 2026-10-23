@@ -13,7 +13,7 @@
 
 ## 条目字段
 
-编号（方向前缀加序号）；方向（由所在小节标题和编号前缀给出）；位置（`file:line @commit`）；现象与依据（括号内为验证层级）；预估收益；风险与依赖；状态（待处理、进行中、已完成、放弃并说明理由）；登记来源（日期加当轮方向）。下列“后端内存”小节的登记来源均为 2026-10-21 后端内存轮；其他小节为同一轮全局审查中顺带发现的条目，登记来源写作“2026-10-21 后端内存（顺带发现）”。位置的 commit 为 `f415d29`（该轮审计起点）；MEM-00 与 CPU-05 涉及本轮新增或改动的文件，以该起点为基准。“能耗（PWR）”小节及 2026-10-22 后端能耗轮登记的条目以 `53a436a`（该轮起点，上一轮已提交的末尾）为基准，其位置涉及该轮尚未提交的改动，按符号定位。“能耗（PWR）”小节的登记来源为 2026-10-22 后端能耗，其中同轮顺带发现的条目写作“2026-10-22 后端能耗（顺带发现）”。
+编号（方向前缀加序号）；方向（由所在小节标题和编号前缀给出）；位置（`file:line @commit`）；现象与依据（括号内为验证层级）；预估收益；风险与依赖；状态（待处理、进行中、已完成、放弃并说明理由）；登记来源（日期加当轮方向）。下列“后端内存”小节的登记来源均为 2026-10-21 后端内存轮；其他小节为同一轮全局审查中顺带发现的条目，登记来源写作“2026-10-21 后端内存（顺带发现）”。位置的 commit 为 `f415d29`（该轮审计起点）；MEM-00 与 CPU-05 涉及本轮新增或改动的文件，以该起点为基准。“能耗（PWR）”小节及 2026-10-22 后端能耗轮登记的条目以 `53a436a`（该轮起点，上一轮已提交的末尾）为基准，其位置涉及该轮尚未提交的改动，按符号定位。“能耗（PWR）”小节的登记来源为 2026-10-22 后端能耗，其中同轮顺带发现的条目写作“2026-10-22 后端能耗（顺带发现）”。2026-10-23 主界面启动轮登记的条目（CPU-09 至 CPU-11、BUG-03、BUG-04）以 `cb8171e`（该轮起点）为基准，涉及该轮改动的文件按符号定位，登记来源写作“2026-10-23 主界面启动”或其“（顺带发现）”。
 
 ## 后端内存（MEM）
 
@@ -85,6 +85,9 @@ UI-00 为 2026-10-22 界面性能轮（起点 `a13e236`）已完成项的汇总�
 | CPU-06 | `src/HeyMelody.Host/CalibrationAuditionPlayer.cs` `Fill` @f415d29 | 逐帧复制并带取模与边界检查，分段 Array.Copy 即可（静态分析） | 试听期间每 5 ms 的 CPU；小 | 须保持循环与声道映射输出样本逐位一致 | 待处理 | 2026-10-21 后端内存（顺带发现） |
 | CPU-07 | `src/HeyMelody.Host/WindowsStateMonitor.cs:220` `Advertisement` @f415d29 | 每条匹配广播分配一个 DataReader 与 byte[]（按公司 ID 过滤后影响较小）（静态分析） | 小 | 须保持单包解析语义，需真机广播验证 | 待处理 | 2026-10-21 后端内存（顺带发现） |
 | CPU-08 | `src/HeyMelody.Client/ClientBridge.cs` `Connection.Reader` @53a436a | `RpcLineReader` 构造在 `StreamReader`（4096 字符缓冲）之上，字节经两层缓冲与拷贝，可直接从管道字节解码（静态分析；Host 端读取点是否同样叠两层未核对） | 小；每次读取少一层拷贝 | 须保持 UTF-8 严格解码、行长上限与 EOF、'\r' 语义 | 已完成（2026-10-22 审查修复：`RpcLineReader` 以 `Stream` 构造并增量解码字节，客户端保持严格解码，Host、worker 端同样直接读流；Linux 离线测试通过；见[后台能耗](research/backend-energy.md)） | 2026-10-22 后端能耗（顺带发现） |
+| CPU-09 | `src/HeyMelody.App/Program.cs`、`App.axaml.cs`、`MainWindow.axaml.cs`、`DeviceStartupCoordinator.cs`、`DeviceVisuals.cs`，`src/HeyMelody.Client/ClientBridge.cs`、`MainViewModel.Events.cs`，`src/HeyMelody.Host/BackendSupervisor.cs`、`BackendPipeServer.cs` @cb8171e 起点 | 主界面启动轮已完成项汇总：取得主实例后在 Avalonia 初始化前提前连接管道；托盘互斥体不存在时不再空等 300 ms；热启动先显示 subscribe 返回的有效名单，`enumerate` 改为后台核对（空名单时回到管理器流程）；冷启动时客户端查询加入托盘首次初始化，不再串行启动第二个 catalog-worker（部分缓解 CPU-04）；降噪图标路径在线程池解析，artwork 索引不再常驻（静态分析，Linux 离线测试） | 冷启动与热启动均缩短遮罩时间；内存不增，预计略降；未测量 | Windows 启动耗时、CPU 与内存未测量；原生窗口用例未运行。详见[主界面启动](research/main-window-startup-0.9.9.md) | 已完成（Linux 验证，Windows 待验证） | 2026-10-23 主界面启动 |
+| CPU-10 | `src/HeyMelody.Host/TrayApplication.cs` 管道服务启动与 `StartAsync`，`BackendSupervisor.InitializeAsync` @cb8171e | 冷启动时管道要等托盘的 Avalonia 初始化完成才开始服务；首次初始化先做资源初始化，再做首次目录刷新，两者串行（静态分析） | 冷启动再缩短；未测量 | 外观提示与目录依赖资源初始化；托盘菜单依赖 Avalonia 调度器；需 Windows 测量托盘各阶段耗时后再决定 | 待处理 | 2026-10-23 主界面启动（顺带发现） |
+| CPU-11 | GUI runtimeconfig（`src/HeyMelody.App/HeyMelody.App.csproj`）@cb8171e | 托盘已关闭 TieredPGO，GUI 仍默认开启；在 ReadyToRun 之上，动态 PGO 的插桩阶段可能增加启动和交互初期的 JIT 与内存（推断，未测量） | 可能小幅降低启动 CPU 与内存 | 可能降低稳态热点性能，影响 120 Hz 目标；需 Windows 对照测量 | 待处理 | 2026-10-23 主界面启动（顺带发现） |
 
 ## 发布体积（PKG）
 
@@ -98,3 +101,5 @@ UI-00 为 2026-10-22 界面性能轮（起点 `a13e236`）已完成项的汇总�
 | --- | --- | --- | --- | --- | --- | --- |
 | BUG-01 | `src/HeyMelody.Host/BackendPipeServer.cs:159` @f415d29 | 值为 null 的 uid 或 color 被 WhenWritingNull 省略后，`GetProperty` 抛出（静态分析；既有行为，本轮未改） | 修复一个已有的边界缺陷，无内存收益 | 需先确认触发路径，修复须有测试依据 | 已完成（2026-10-23 可靠性小轮：触发路径为关闭黄金听感（uid 为 null）与无颜色提示的美术请求；缺失的可空参数按 null 处理，必需参数缺失返回通用失败且不转发运行时异常文字；Host.Tests 新增管道检查在 Linux 通过） | 2026-10-21 后端内存（顺带发现） |
 | BUG-02 | `src/HeyMelody.Resources/ResourceCoordinator.cs` `StartAutoRefresh` 的循环 @53a436a | 自动刷新一轮中抛出 OperationCanceledException 以外的异常时，循环内的 `try` 只捕获取消，异常逃出 `Task.Run`，循环静默结束，此后不再自动刷新也没有记录（静态分析；既有行为，改为睡到到期后仍然如此） | 修复静默停摆；无能耗收益 | 须保持取消与释放语义和 30 秒下限；应记录而非吞没异常；需 Resources.Tests 覆盖 | 已完成（2026-10-23 可靠性小轮：意外异常写入 Trace 并设置 LastError，按 30 秒下限重试，取消与释放语义不变；Resources.Tests 新增检查在 Linux 通过） | 2026-10-22 后端能耗（顺带发现） |
+| BUG-03 | `tests/HeyMelody.App.Tests/AncFeatureTests.cs` `CheckRowGeometry` @cb8171e | Linux 无头运行 App.Tests 时“标题与换行说明在左、完整开关在右”的设置行几何检查失败，并中断整个 runner；未修改的 `cb8171e` 上同样失败（Linux 测量） | 恢复 App.Tests 在 Linux 上的完整通过 | 需判断是 `257e9e6`、`e75453c` 等界面改动后的真实布局回归，还是 Linux 字体度量差异；修复须有测试依据 | 待处理 | 2026-10-23 主界面启动（顺带发现） |
+| BUG-04 | `tests/HeyMelody.App.Tests/ArtworkPersistenceTests.cs` `SettingsCardsAsync` @cb8171e | “每项设置（含 3D 帧率）均为图标卡片”检查失败，未修改的 `cb8171e` 上同样失败；可能与新增的 Basic Render 设置项有关（Linux 测量，原因未核实） | 恢复该检查 | 先确认新设置项的预期呈现，再改实现或检查 | 待处理 | 2026-10-23 主界面启动（顺带发现） |

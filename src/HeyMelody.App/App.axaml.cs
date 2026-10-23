@@ -32,7 +32,7 @@ public partial class App : Application
                 window.FindControl<MainView>("Page")?.SetModelDemo();
                 desktop.MainWindow = window;
             }
-            else desktop.MainWindow = new MainWindow();
+            else desktop.MainWindow = Program.TakeStartupService() is { } service ? new MainWindow(service) : new MainWindow();
             desktop.Exit += (_, _) => DeviceVisuals.DisposeResources();
         }
         base.OnFrameworkInitializationCompleted();

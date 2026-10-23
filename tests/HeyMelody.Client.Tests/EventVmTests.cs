@@ -52,6 +52,26 @@ internal static class EventVmTests
             await vm.ToggleGameCommand.ExecuteAsync(true);
             Check(service.Actions.Single() is { Identity: "device-b", Generation: 1, Action.Kind: "GameMode" });
         });
+        await test("event VM keeps the subscribed device list only as a start-up hint until the backend is unavailable", async () =>
+        {
+            var service = new EventService(); await using var vm = Create(service);
+            await vm.AttachBackendAsync();
+            Check(vm.BackendStartupDevices?.Select(d => d.Identity).SequenceEqual(["device-a", "device-b"]) == true
+                && service.Selections.Count == 0 && service.Actions.Count == 0 && service.Enumerations == 0);
+            await vm.InitializeAsync(vm.BackendStartupDevices);
+            Check(vm.SelectedDevice?.Identity == "device-a" && vm.HasVerifiedSnapshot && service.Subscriptions == 1
+                && service.Enumerations == 0 && service.Actions.Count == 0);
+            vm.AdoptBackendEvent(new BackendEvent { Kind = "unavailable" });
+            Check(vm.BackendStartupDevices is null);
+            var warned = new EventService { SelectionWarning = "设备选择记录已损坏，请重新选择并保存。" };
+            await using var warnedVm = Create(warned);
+            await warnedVm.AttachBackendAsync();
+            Check(warnedVm.BackendStartupDevices is null);
+            var empty = new EventService(); empty.Snapshots.Clear();
+            await using var emptyVm = Create(empty);
+            await emptyVm.AttachBackendAsync();
+            Check(emptyVm.BackendStartupDevices is null);
+        });
         await test("event VM shows fresh BLE battery but requires verified control before every write", async () =>
         {
             var service = new EventService(); await using var vm = Create(service); await vm.InitializeAsync();
@@ -517,7 +537,8 @@ internal static class EventVmTests
         public event Action<BackendEvent>? EventReceived;
         public Dictionary<string, UiSnapshot> Snapshots { get; } = new(StringComparer.Ordinal)
         { ["device-a"] = Snapshot("device-a"), ["device-b"] = Snapshot("device-b") };
-        public int Subscriptions, Refreshes, Disposals;
+        public int Subscriptions, Refreshes, Disposals, Enumerations;
+        public string? SelectionWarning;
         public List<string> Selections { get; } = [];
         public List<string> Pauses { get; } = [];
         public List<string> Resumes { get; } = [];
@@ -535,10 +556,12 @@ internal static class EventVmTests
         {
             Check(role == "main"); Subscriptions++;
             return Task.FromResult(new BackendSubscription
-            { BackendInstanceId = Snapshots.Values.First().BackendInstanceId, Devices = Devices(), Snapshots = Snapshots.Values.ToArray() });
+            { BackendInstanceId = Snapshots.Values.FirstOrDefault()?.BackendInstanceId ?? "instance", Devices = Devices(),
+                Catalog = new([], SelectionWarning), Snapshots = Snapshots.Values.ToArray() });
         }
         private IReadOnlyList<UiDevice> Devices() => Snapshots.Values.Select(snapshot => new UiDevice(snapshot.Identity, snapshot.DeviceName, snapshot.Connected)).ToArray();
-        public Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken cancellationToken) => Task.FromResult(Devices());
+        public Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken cancellationToken)
+        { Enumerations++; return Task.FromResult(Devices()); }
         public Task<UiSnapshot> SelectAsync(string identity, CancellationToken cancellationToken)
         { Selections.Add(identity); return Task.FromResult(Snapshots[identity]); }
         public Task<UiSnapshot> PauseAsync(string identity, CancellationToken cancellationToken)

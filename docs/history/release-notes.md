@@ -28,6 +28,10 @@
 
 验证边界：Linux 上 Resources 40→41、Host 110→114 个 PASS 行（4 项新增，仍有 2 项 Windows 专用检查打印 SKIP）全部通过，Host 以 `-p:EnableWindowsTargeting=true` 编译 0 警告 0 错误；修改的三个 PowerShell 脚本经 PowerShell 7 语法解析。其余项目未改动未重跑。发布包结构与体积变化由 Windows CI（Build-Client 加 Verify-Release）检查，本机未构建发布包、未测量体积。**Windows 未验证**：真机上降噪图标、听感引导与设备美术从共享目录加载，效率模式在沉默客户端存在时的实际进入。
 
+2026-10-23（主界面启动）：在 review/0.9.9 分支完成一轮主界面启动与首屏加载优化，未采用常驻界面或预启动。主程序取得单实例后，在 Avalonia 初始化之前于线程池建立后台管道，冷启动时托盘与界面并行启动；托盘单实例互斥体不存在时直接拉起后台，不再先等 300 ms。热启动时先用 subscribe 返回的有效名单进入页面，`enumerate` 改为后台核对：核对为空时回到管理器流程，失败时保留原选择。冷启动期间的客户端查询加入托盘首次初始化，不再串行启动第二个 catalog-worker。降噪图标路径改在线程池解析，artwork 索引不再常驻。设备名单只用于展示和选择，不授予控制，也不触发 SET。详见[主界面启动](../research/main-window-startup-0.9.9.md)，后续项为待办 CPU-10、CPU-11。
+
+验证边界：Linux 上 Client 190→194、Host 114→116 个 PASS 行为新增检查且全部通过，DeviceManager 8 个用例通过。App 新增 1 项无头检查（另有 1 项原生窗口用例未运行）。App 的 `AncFeatureTests` 与 `ArtworkPersistenceTests` 各有一项检查在未修改的 `cb8171e` 上同样失败（登记为 BUG-03、BUG-04），临时改为不中断运行后，本轮与 HEAD 的结果仅差新增的 1 项通过。App 编译 0 警告 0 错误；Host 以 `-p:EnableWindowsTargeting=true` 编译 0 警告 0 错误。Windows 启动耗时、CPU 与内存未测量。
+
 ## 历史版本
 
 以下原段整理自 2026-10-11 文档重整前的根目录 `README.md` 与 `REPOSITORY.md`，保留原版本、日期、设备、平台及验证范围，仅调整链接位置。原段中的 “current”、默认行为与检查数量属于对应历史版本，不作为后续版本的保证。两个来源有重叠时分别列出；原文未给验证日期的条目不补写日期。

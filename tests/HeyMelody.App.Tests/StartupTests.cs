@@ -18,7 +18,8 @@ internal static class StartupTests
         Run("an enumeration failure propagates without launching the manager", EnumerationFailureAsync);
         Run("manager failures propagate rather than impersonating a saved or cancelled selection", ManagerFailureAsync);
         Run("forced manager shutdown preserves its separately running backend child", ProcessLifetimeTests.RunAsync);
-        return 7;
+        Run("confirming a presented start-up list falls back only on an empty lookup and keeps it on failure", ConfirmPresentedAsync);
+        return 8;
 
         void Run(string name, Func<Task> test)
         {
@@ -35,6 +36,7 @@ internal static class StartupTests
         await Run("startup enumeration failure shows recovery and never opens management automatically", StartupRecoveryAsync);
         await Run("cancelling manual manager recovery restores cached devices without reconnecting", ManualRecoveryAsync);
         await Run("closing during startup enumeration cancels the lookup without launching management", StartupEnumerationClosingAsync);
+        await Run("a subscribed device list opens the page before its confirming lookup, and closing cancels that lookup", StartupPresentedClosingAsync);
         await Run("closing while the initial manager is open cancels that manager and disposes once", StartupManagerClosingAsync);
         await Run("closing during manual management cancels the manager without restoring a closed page", ManualManagerClosingAsync);
 
@@ -55,6 +57,23 @@ internal static class StartupTests
             && service.Enumerations == 1 && manager.Calls == 0 && service.Connections == 0
             && vm.SelectedDevice?.Connected == false,
             "An already effective offline selection initializes the main VM without a second lookup or connection.");
+    }
+
+    private static async Task ConfirmPresentedAsync()
+    {
+        var service = new Service(); var manager = new Manager();
+        var coordinator = new DeviceStartupCoordinator(service, manager);
+        Check(!await coordinator.ConfirmPresentedAsync(default) && service.Enumerations == 1,
+            "A non-empty confirming lookup keeps the presented list.");
+        service.Enumerate = (_, _) => Task.FromResult<IReadOnlyList<UiDevice>>([]);
+        Check(await coordinator.ConfirmPresentedAsync(default), "An empty confirming lookup requires device management.");
+        service.Enumerate = (_, _) => Task.FromException<IReadOnlyList<UiDevice>>(new IOException());
+        Check(!await coordinator.ConfirmPresentedAsync(default), "A failed lookup keeps the presented selection.");
+        using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+        service.Enumerate = (_, token) => Task.FromCanceled<IReadOnlyList<UiDevice>>(token);
+        await ThrowsAsync<OperationCanceledException>(() => coordinator.ConfirmPresentedAsync(cancelled.Token));
+        Check(manager.Calls == 0 && service.Connections == 0 && service.Submissions == 0,
+            "Confirmation never opens management, connects or submits on its own.");
     }
 
     private static async Task EmptySavedAsync()
@@ -189,6 +208,29 @@ internal static class StartupTests
         finally { if (!closed) { window.Close(); await UntilAsync(() => closed); } }
     }
 
+    private static async Task StartupPresentedClosingAsync(Action<MainWindow> registerWindow)
+    {
+        var service = new SubscribedService();
+        var manager = new Manager();
+        var window = new MainWindow(service, preview: false, manager);
+        registerWindow(window);
+        var closed = false; window.Closed += (_, _) => closed = true;
+        try
+        {
+            window.Show(); Dispatcher.UIThread.RunJobs();
+            await service.EnumerateStarted.Task.WaitAsync(Deadline);
+            await UntilAsync(() => Page(window).IsEnabled);
+            Check(!window.FindControl<Control>("StartupOverlay")!.IsVisible && ViewModel(window).HasDevices
+                && ViewModel(window).SelectedDevice?.Identity == "subscribed-device" && manager.Calls == 0,
+                "A subscribed list is presented while its confirming lookup is still running.");
+            window.Close();
+            await UntilAsync(() => closed && service.EnumerateCancelled);
+            Check(service.Disposals == 1 && manager.Calls == 0 && service.Submissions == 0,
+                "Closing cancels the confirming lookup without launching management or submitting settings.");
+        }
+        finally { if (!closed) { window.Close(); await UntilAsync(() => closed); } }
+    }
+
     private static async Task StartupManagerClosingAsync(Action<MainWindow> registerWindow)
     {
         var service = new Service { Enumerate = (_, _) => Task.FromResult<IReadOnlyList<UiDevice>>([]) };
@@ -285,6 +327,39 @@ internal static class StartupTests
             try { return run is null ? DeviceManagerOutcome.Cancelled : await run(Calls, token); }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { Cancelled = true; throw; }
         }
+    }
+
+    private sealed class SubscribedService : IHeadsetEventService
+    {
+        private static readonly UiDevice Device = new("subscribed-device", "已订阅的耳机", false);
+        public event Action<BackendEvent>? EventReceived { add { } remove { } }
+        public TaskCompletionSource EnumerateStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool EnumerateCancelled;
+        public int Disposals, Submissions;
+        public Task<BackendSubscription> SubscribeAsync(string role, CancellationToken token) =>
+            Task.FromResult(new BackendSubscription { BackendInstanceId = "instance", Devices = [Device] });
+        public async Task<IReadOnlyList<UiDevice>> EnumerateAsync(CancellationToken token)
+        {
+            EnumerateStarted.TrySetResult();
+            try { await Task.Delay(Timeout.Infinite, token); }
+            catch (OperationCanceledException) { EnumerateCancelled = true; throw; }
+            return [Device];
+        }
+        public Task<UiSnapshot> SelectAsync(string identity, CancellationToken token) =>
+            Task.FromResult(new UiSnapshot { Identity = identity, BackendInstanceId = "instance", PresentationCached = true });
+        public Task<UiSnapshot> PauseAsync(string identity, CancellationToken token) => SelectAsync(identity, token);
+        public Task<UiSnapshot> ResumeAsync(string identity, CancellationToken token) => SelectAsync(identity, token);
+        public Task<UiSnapshot> RefreshAsync(string identity, RefreshScope scope, CancellationToken token) => SelectAsync(identity, token);
+        public Task<UiApplyResult> ApplyAsync(string identity, long deviceGeneration, UiAction action, CancellationToken token)
+        { Submissions++; throw new InvalidOperationException("Startup tests must not submit settings."); }
+        public Task AcknowledgeExitAsync(string exitRequestId, bool approved, CancellationToken token) => Task.CompletedTask;
+        public Task ActivateMainUiAsync(CancellationToken token) => Task.CompletedTask;
+        public Task<UiSnapshot> ConnectAsync(string identity, CancellationToken token) => SelectAsync(identity, token);
+        public Task DisconnectAsync(CancellationToken token) => Task.CompletedTask;
+        public Task<UiSnapshot> RefreshAsync(CancellationToken token) => throw new InvalidOperationException("Startup tests must not poll.");
+        public Task<UiApplyResult> ApplyAsync(UiAction action, CancellationToken token)
+        { Submissions++; throw new InvalidOperationException("Startup tests must not submit settings."); }
+        public ValueTask DisposeAsync() { Disposals++; return ValueTask.CompletedTask; }
     }
 
     private sealed class Service : IHeadsetService

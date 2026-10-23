@@ -13,6 +13,7 @@
 - [三维模型渲染设置](model-rendering.md)：GPU 优先、软件渲染、0.9.0 的逐帧旋转与帧率设置、材质差异。
 - [界面与渲染性能（0.9.0）](research/ui-performance-0.9.0.md)：界面重排、120 Hz 渲染预算、简体中文字体与验证范围。
 - [界面性能与交互（0.9.9）](research/ui-performance-0.9.9.md)：区域脏矩形、动画让路、模型帧复制、GPU 缓存回收、EQ 滑块与设置非阻塞排队；Windows 帧率未测量。
+- [主界面启动与首屏加载（0.9.9）](research/main-window-startup-0.9.9.md)：提前连接后台、先显示后台名单再核对、冷启动少一次目录枚举；Windows 耗时未测量。
 - [黄金听感预览与声音设置](research/hearing-preview-settings.md)：0.8.13 的结果雷达、原厂音乐试听与频谱、游戏分组、BassWave 和完整固件显示。
 - [发布包说明](../packaging/README.md)、[来源及许可](../packaging/SOURCE-NOTES.md)：发布包内容与第三方来源。
 

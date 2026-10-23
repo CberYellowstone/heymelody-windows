@@ -15,10 +15,14 @@ public partial class MainWindow : FAAppWindow
     private readonly IHeadsetEventService? _events;
     private Task? _exitVote;
     private Task? _calibrationOperation;
+    private Task? _startupVerification;
     private bool _closing, _closed, _opened, _managing;
     internal bool StartWithDemo { get; init; }
 
     public MainWindow() : this(HeadsetServiceFactory.Create(), false,
+        OperatingSystem.IsWindows() ? new DeviceManagerProcess() : null) { }
+
+    internal MainWindow(IHeadsetService service) : this(service, false,
         OperatingSystem.IsWindows() ? new DeviceManagerProcess() : null) { }
 
     internal MainWindow(IHeadsetService service, bool preview) : this(service, preview, null) { }
@@ -58,6 +62,13 @@ public partial class MainWindow : FAAppWindow
         {
             await _viewModel.AttachBackendAsync();
             if (_manager is null) await _viewModel.InitializeAsync();
+            else if (_viewModel.BackendStartupDevices is { } known)
+            {
+                // The tray already holds an effective list: show it now and confirm it with a fresh lookup behind
+                // the page instead of holding the overlay for a catalog-worker process.
+                await _viewModel.InitializeAsync(known);
+                if (!_closing) _startupVerification = VerifyStartupDevicesAsync();
+            }
             else
             {
                 var devices = await ResolveDevicesAsync();
@@ -76,6 +87,34 @@ public partial class MainWindow : FAAppWindow
                     : "蓝牙后台未能启动或连接。请尝试重启软件或重新安装。", token), _managerLifetime.Token);
             if (!_closing) Close();
         }
+    }
+
+    private async Task VerifyStartupDevicesAsync()
+    {
+        try
+        {
+            // A non-empty result reaches the page as the backend's catalog event; a failure keeps the presented
+            // selection and is reported by the backend's health event.
+            if (!await new DeviceStartupCoordinator(_service, _manager!).ConfirmPresentedAsync(_managerLifetime.Token)) return;
+            if (_closing || _managing || _viewModel.ManagingDevices || _viewModel.Closing) return;
+            _managing = true;
+            try
+            {
+                Page.IsEnabled = false;
+                StartupOverlay.IsVisible = true;
+                var devices = await ResolveDevicesAsync();
+                if (devices is null) { if (!_closing) Close(); return; }
+                // A select or reconnect still in flight would make InitializeAsync a silent no-op.
+                while (!_closing && !_viewModel.CanManageDevices) await Task.Delay(50, _managerLifetime.Token);
+                if (!_closing) await _viewModel.InitializeAsync(devices);
+            }
+            finally
+            {
+                _managing = false;
+                if (!_closing) { StartupOverlay.IsVisible = false; Page.IsEnabled = true; }
+            }
+        }
+        catch (OperationCanceledException) when (_managerLifetime.IsCancellationRequested) { }
     }
 
     private void OnBackendEvent(BackendEvent notification) => Dispatcher.UIThread.Post(async () =>
@@ -254,6 +293,8 @@ public partial class MainWindow : FAAppWindow
             _closing = false; Page.ResumeSettingsDialogs(); return;
         }
         _managerLifetime.Cancel();
+        if (_startupVerification is { } verification)
+        { try { await verification; } catch { } }
         if (_calibrationOperation is { } calibration)
         { try { await calibration; } catch { } }
         if (_manager?.CurrentOperation is { } operation)

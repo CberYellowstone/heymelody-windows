@@ -13,6 +13,7 @@ public sealed partial class ClientBridge : IHeadsetEventService, IDeviceManageme
 {
     private readonly string _pipeName;
     private readonly Action? _startBackend;
+    private readonly Func<bool>? _backendRunning;
     private readonly TimeSpan? _testBudget;
     private readonly SemaphoreSlim _connectGate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
@@ -32,11 +33,11 @@ public sealed partial class ClientBridge : IHeadsetEventService, IDeviceManageme
 
     public event Action<BackendEvent>? EventReceived;
 
-    public ClientBridge() : this(BackendEndpoint.PipeName, StartBackend) { }
+    public ClientBridge() : this(BackendEndpoint.PipeName, StartBackend, backendRunning: BackendRunning) { }
 
-    internal ClientBridge(string pipeName, Action? startBackend = null, TimeSpan? testBudget = null)
+    internal ClientBridge(string pipeName, Action? startBackend = null, TimeSpan? testBudget = null, Func<bool>? backendRunning = null)
     {
-        _pipeName = pipeName; _startBackend = startBackend; _testBudget = testBudget;
+        _pipeName = pipeName; _startBackend = startBackend; _testBudget = testBudget; _backendRunning = backendRunning;
         _ = Task.Run(() => DeliverEventsAsync(_events));
         _ = Task.Run(() => DeliverEventsAsync(_spectra));
     }
@@ -241,18 +242,30 @@ public sealed partial class ClientBridge : IHeadsetEventService, IDeviceManageme
             if (_stopping) throw new IOException("后台正在退出。");
             lock (_stateGate) if (_connection is { Closed: false } connected) return connected;
             var pipe = NewPipe();
-            try { await pipe.ConnectAsync(300, token); }
-            catch (TimeoutException)
+            // Without the tray's singleton mutex nothing can answer the 300 ms probe: launch at once. A tray that is
+            // still starting or already exiting holds the mutex and keeps the probe-then-launch order.
+            if (_startBackend is not null && _backendRunning?.Invoke() == false
+                && DateTimeOffset.UtcNow - _lastStart > TimeSpan.FromSeconds(10))
             {
-                pipe.Dispose();
-                if (_startBackend is null) throw;
-                if (DateTimeOffset.UtcNow - _lastStart > TimeSpan.FromSeconds(10))
-                { _lastStart = DateTimeOffset.UtcNow; _startBackend(); }
-                pipe = NewPipe();
-                try { await pipe.ConnectAsync(15000, token); }
+                _lastStart = DateTimeOffset.UtcNow;
+                try { _startBackend(); await pipe.ConnectAsync(15000, token); }
                 catch { pipe.Dispose(); throw; }
             }
-            catch { pipe.Dispose(); throw; }
+            else
+            {
+                try { await pipe.ConnectAsync(300, token); }
+                catch (TimeoutException)
+                {
+                    pipe.Dispose();
+                    if (_startBackend is null) throw;
+                    if (DateTimeOffset.UtcNow - _lastStart > TimeSpan.FromSeconds(10))
+                    { _lastStart = DateTimeOffset.UtcNow; _startBackend(); }
+                    pipe = NewPipe();
+                    try { await pipe.ConnectAsync(15000, token); }
+                    catch { pipe.Dispose(); throw; }
+                }
+                catch { pipe.Dispose(); throw; }
+            }
             var connection = new Connection(pipe);
             lock (_stateGate) _connection = connection;
             _ = Task.Run(() => ReadMessagesAsync(connection));
@@ -392,6 +405,30 @@ public sealed partial class ClientBridge : IHeadsetEventService, IDeviceManageme
             (snapshot.DeviceGeneration < old.DeviceGeneration ||
              snapshot.DeviceGeneration == old.DeviceGeneration && snapshot.Revision < old.Revision)) return;
         _snapshots[snapshot.Identity] = snapshot;
+    }
+
+    /// <summary>
+    /// Opens the pipe in the background while the window is still being built, so a cold tray launch overlaps the
+    /// GUI's own start. Only the connection is made: the role, GUI count and every request still wait for the caller.
+    /// Failures are left to the first real request, which connects again and reports through the usual path.
+    /// </summary>
+    public void BeginConnect() => _ = Task.Run(async () =>
+    {
+        try { await EnsureConnectionAsync(_lifetime.Token).ConfigureAwait(false); }
+        catch (Exception) { }
+    });
+
+    private static bool BackendRunning()
+    {
+        if (!OperatingSystem.IsWindows()) return true;
+        try
+        {
+            if (!Mutex.TryOpenExisting(BackendEndpoint.HostMutexName, out var singleton)) return false;
+            singleton.Dispose();
+        }
+        catch (Exception) { }
+        // Unknown (for example access denied) is treated as running: the probe-then-launch order is the safe one.
+        return true;
     }
 
     private static void StartBackend()

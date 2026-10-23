@@ -229,6 +229,50 @@ internal static class BackendTests
             { for (int i = 0; i < 20; i++) { var message = await Read(); if (match(message)) return message; } throw new InvalidOperationException(); }
         });
 
+        await test("a client lookup joins the tray's start-up catalog refresh instead of queueing a second catalog worker", async () =>
+        {
+            IReadOnlyList<BluetoothCandidate> devices = [Audio(1, false)];
+            var store = Store("startup-join"); store.Save([DeviceWhitelistStore.KeyFor(1)]);
+            int calls = 0; var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using var backend = new BackendSupervisor(store, async token =>
+            { Interlocked.Increment(ref calls); await release.Task.WaitAsync(token); return devices; }, () => new FakePeer());
+            var startup = backend.InitializeAsync(default);
+            await Until(() => Volatile.Read(ref calls) == 1);
+            using (var abandoned = new CancellationTokenSource())
+            {
+                var cancelled = backend.RefreshCatalogForClientAsync(abandoned.Token);
+                abandoned.Cancel();
+                try { await cancelled; Check(false); } catch (OperationCanceledException) { }
+            }
+            var joined = backend.RefreshCatalogForClientAsync(default);
+            await Task.Delay(50);
+            Check(!joined.IsCompleted && !startup.IsCompleted);
+            release.SetResult();
+            await startup; await joined.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(calls == 1 && backend.Devices().Count == 1);
+            // Outside start-up every client lookup is a fresh refresh, as before.
+            await backend.RefreshCatalogForClientAsync(default);
+            Check(calls == 2);
+        });
+        await test("a failed start-up catalog refresh makes a joined client lookup run its own", async () =>
+        {
+            IReadOnlyList<BluetoothCandidate> devices = [Audio(1, false)];
+            var store = Store("startup-fail"); store.Save([DeviceWhitelistStore.KeyFor(1)]);
+            int calls = 0; var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using var backend = new BackendSupervisor(store, async token =>
+            {
+                if (Interlocked.Increment(ref calls) == 1) { await release.Task.WaitAsync(token); throw new IOException(); }
+                return devices;
+            }, () => new FakePeer());
+            var startup = backend.InitializeAsync(default);
+            await Until(() => Volatile.Read(ref calls) == 1);
+            var joined = backend.RefreshCatalogForClientAsync(default);
+            release.SetResult();
+            try { await startup; Check(false); } catch (IOException) { }
+            await joined.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(calls == 2 && backend.Devices().Count == 1);
+        });
+
         DeviceWhitelistStore Store(string name) => new(Path.Combine(scratch, "backend-" + name + ".json"));
         static BackendSupervisor New(DeviceWhitelistStore store, IReadOnlyList<BluetoothCandidate> devices, Func<IPeerWorker> workers)
             => new(store, _ => Task.FromResult(devices), workers);

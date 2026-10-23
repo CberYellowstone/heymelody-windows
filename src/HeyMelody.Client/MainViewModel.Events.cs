@@ -10,6 +10,13 @@ public sealed partial class MainViewModel
 
     public Task AttachBackendAsync() => SubscribeToBackendAsync();
 
+    /// <summary>
+    /// The effective device list the shared backend held when this view subscribed, or null when it was empty, came
+    /// with a selection warning, or the backend has since become unavailable. The tray keeps the list current from
+    /// device events, so start-up may present it while a confirming enumeration runs; it never authorises a SET.
+    /// </summary>
+    public IReadOnlyList<UiDevice>? BackendStartupDevices { get; private set; }
+
     /// <summary>The desktop shell dispatches backend messages onto its UI thread.</summary>
     public void AdoptBackendEvent(BackendEvent notification)
     {
@@ -19,6 +26,7 @@ public sealed partial class MainViewModel
         if (notification.Kind == "unavailable")
         {
             _subscribed = false;
+            BackendStartupDevices = null;
             _backendSnapshots.Clear();
             if (IsDemoSelected) return;
             AdvanceSession();
@@ -70,6 +78,8 @@ public sealed partial class MainViewModel
         var subscription = await events.SubscribeAsync("main", _lifetime.Token);
         if (!AcceptBackend(subscription.BackendInstanceId)) return;
         foreach (var snapshot in subscription.Snapshots) CacheSnapshot(snapshot);
+        BackendStartupDevices = subscription.Devices.Count != 0 && subscription.Catalog.SelectionWarning is null
+            ? subscription.Devices : null;
         _subscribed = true;
     }
 

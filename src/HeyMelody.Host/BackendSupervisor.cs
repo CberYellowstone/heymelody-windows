@@ -86,9 +86,32 @@ internal sealed partial class BackendSupervisor : IAsyncDisposable
         catch (InvalidDataException) { _catalogWarning = "设备选择记录已损坏，请重新选择并保存。"; }
     }
 
+    // Completes with true once the tray's first catalog refresh has succeeded; null outside start-up.
+    private Task<bool>? _startup;
+
     public async Task InitializeAsync(CancellationToken token)
     {
-        await InitializeResourcesAsync(token);
+        var startup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Volatile.Write(ref _startup, startup.Task);
+        try
+        {
+            await InitializeResourcesAsync(token);
+            await RefreshCatalogAsync(token);
+            startup.TrySetResult(true);
+        }
+        catch (Exception) { startup.TrySetResult(false); throw; }
+        finally { _ = Interlocked.CompareExchange(ref _startup, null, startup.Task); }
+    }
+
+    /// <summary>
+    /// A client's paired-record lookup. While the tray's own first refresh is running it is joined instead of
+    /// queueing a second catalog worker behind it: that refresh began with this tray process, after any window that
+    /// launched it, and later pairing changes arrive through the device watcher's catalog events. A failed or absent
+    /// start-up refresh falls back to a fresh one; a client's cancellation never cancels the shared refresh.
+    /// </summary>
+    public async Task RefreshCatalogForClientAsync(CancellationToken token)
+    {
+        if (Volatile.Read(ref _startup) is { } startup && await startup.WaitAsync(token)) return;
         await RefreshCatalogAsync(token);
     }
     public BackendSubscription Subscribe(Action<BackendSubscription>? atomicReply = null)
