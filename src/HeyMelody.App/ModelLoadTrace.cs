@@ -72,6 +72,8 @@ internal sealed class ModelLoadTrace : IDisposable
     public void Dispose()
     {
         DeviceModelView.LoadMeasured -= OnMeasured;
-        _writer.Dispose();
+        try { _writer.Dispose(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ObjectDisposedException)
+        { Trace.WriteLine($"Model load trace unavailable: {error.Message}"); }
     }
 }
