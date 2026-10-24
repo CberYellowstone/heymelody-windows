@@ -4,6 +4,9 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
+using Avalonia.Controls.Documents;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
@@ -59,6 +62,7 @@ public sealed class CalibrationView : UserControl
     private Button? _next, _retryLevel, _save, _resume;
     private readonly List<(ToggleButton Button, FASymbolIcon Icon, string Mode)> _previewButtons = [];
     private HearingRadarChart? _radar;
+    private RadarTeachingTip? _radarHelpTip;
     private TextBlock? _levelLabel, _previewLabel, _caption;
     private TextBlock? _leftLabel, _rightLabel;
     private Control? _heroGlyph;
@@ -112,6 +116,8 @@ public sealed class CalibrationView : UserControl
         // One backend state fires several property changes; they are drawn together in a single update.
         model.PropertyChanged += (_, _) => QueueUpdate();
         ActualThemeVariantChanged += (_, _) => QueueUpdate();
+        DetachedFromVisualTree += (_, _) => CloseRadarHelp();
+        AddHandler(KeyDownEvent, DismissRadarHelpOnEscape, RoutingStrategies.Tunnel);
         SizeChanged += (_, e) => UpdateHeroSize(e.NewSize.Height);
         model.SpectrumChanged += _ =>
         {
@@ -148,6 +154,7 @@ public sealed class CalibrationView : UserControl
         _body.IsEnabled = !stopping;
         _actions.IsEnabled = !_model.Busy && !stopping;
         _body.IsVisible = _actions.IsVisible = !_model.CancellationRequested;
+        if (_model.CancellationRequested) CloseRadarHelp();
         _stopped.IsVisible = _model.CancellationRequested;
         _stopped.Text = _model.CanCloseLocally ? "蓝牙后台已断开" : _model.CancellationPending ? "正在停止测试…"
             : _model.StopConfirmed ? "测试已停止" : _model.CancellationFailed ? "尚未确认停止测试" : "正在停止测试…";
@@ -165,9 +172,11 @@ public sealed class CalibrationView : UserControl
         _progress.IsVisible = _progress.Text.Length > 0;
         var key = string.Join('/', resultPage ? "Results" : state.Stage, _model.Phase, state.HearingVersion, state.SupportsEarScan, state.StepIndex > 0,
             state.FiltersReady, state.CanPreview, state.HearingRadar is not null,
-            state.HearingLevels.Count == state.StepCount, state.FitResults.Count, ActualThemeVariant);
+            state.HearingLevels.Count == state.StepCount, state.FitResults.Count, state.HearingEnhanceType, state.RestoreDescriptionId, ActualThemeVariant);
         if (_bodyKey != key)
         {
+            CloseRadarHelp();
+            _radarHelpTip = null;
             _bodyKey = key; _body.Children.Clear(); _actions.Children.Clear(); _level = null; _next = _retryLevel = _save = _resume = null; _radar = null;
             _levelLabel = _previewLabel = _caption = _leftLabel = _rightLabel = null; _heroGlyph = null; _ripple = null; _rippleFollowsTone = false;
             _previewButtons.Clear(); _answerButtons.Clear(); _segments.Clear(); _heroes.Clear();
@@ -360,22 +369,52 @@ public sealed class CalibrationView : UserControl
     private void BuildResults(UiCalibrationState state)
     {
         // The stepper already marks both steps done; the cards keep the name field above the action bar.
-        AddHeading("你的黄金听感已生成", "在原音与黄金听感之间切换比较，满意后命名并保存。");
+        AddHeading("你的黄金听感已生成", "切换增强前与增强后效果进行对比，满意后命名并保存。");
+        if (HearingResultDescription.Create(state.HearingEnhanceType, state.RestoreDescriptionId) is { } description)
+        {
+            var text = SecondaryText("");
+            text.Name = "HearingResultDescription";
+            foreach (var segment in description.Segments)
+            {
+                var run = new Run(segment.Text);
+                if (segment.IsHighlighted)
+                    run.Bind(TextElement.ForegroundProperty, new DynamicResourceExtension("AccentTextFillColorPrimaryBrush"));
+                text.Inlines!.Add(run);
+            }
+            AutomationProperties.SetName(text, description.Text);
+            _body.Children.Add(text);
+        }
         if (state.HearingRadar is not null)
         {
             _radar = new HearingRadarChart { HorizontalAlignment = HorizontalAlignment.Stretch };
-            var legend = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, HorizontalAlignment = HorizontalAlignment.Center };
+            var legend = new StackPanel { Name = "HearingRadarLegend", Orientation = Orientation.Horizontal, Spacing = 16,
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             // The legend uses the chart's theme colours, so dark mode shows the same light-on-dark tones.
-            foreach (var (label, brush) in new[] { ("左耳", "HmChartLeftBrush"), ("右耳", "HmChartRightBrush"), ("增强后", "HmChartEnhancedBrush") })
+            foreach (var (label, brush, legendName) in new[] { ("左耳", "HmChartLeftBrush", "HearingLegendLeft"),
+                ("右耳", "HmChartRightBrush", "HearingLegendRight"), ("增强后", "HmChartEnhancedBrush", "HearingLegendEnhanced") })
             {
-                var dot = new Ellipse { Width = 8, Height = 8, VerticalAlignment = VerticalAlignment.Center };
+                var dot = new Ellipse { Name = legendName + "Dot", Width = 8, Height = 8, VerticalAlignment = VerticalAlignment.Center };
                 dot.Bind(Shape.FillProperty, new DynamicResourceExtension(brush));
-                legend.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { dot, SecondaryText(label) } });
+                var text = SecondaryText(label);
+                text.Name = legendName + "Label";
+                text.VerticalAlignment = VerticalAlignment.Center;
+                var item = new Grid { Name = legendName, ColumnDefinitions = new("Auto,Auto"), ColumnSpacing = 6,
+                    VerticalAlignment = VerticalAlignment.Center, Children = { dot, text } };
+                Grid.SetColumn(text, 1);
+                legend.Children.Add(item);
             }
-            var info = new Button { Content = Symbol(FASymbol.Help, 16, Secondary), Padding = new Thickness(4), VerticalAlignment = VerticalAlignment.Center,
-                Flyout = new Flyout { Content = SecondaryText("根据耳机返回的结果展示左右耳听感与增强区间。试听增强前或增强后时，左右耳曲线随音乐频谱变化；增强后还会显示橙色音乐频谱。") } };
+            var info = new Button { Name = "HearingRadarHelp", Content = Symbol(FASymbol.Help, 16, Secondary), Padding = new Thickness(4),
+                VerticalAlignment = VerticalAlignment.Center };
             AutomationProperties.SetName(info, "关于听感雷达图"); legend.Children.Add(info);
-            _body.Children.Add(Card(new StackPanel { Spacing = 4, Children = { _radar, legend } }));
+            var chartContent = new Grid { Children = { new StackPanel { Spacing = 4, Children = { _radar, legend } } } };
+            _radarHelpTip = CreateRadarHelpTip(info);
+            chartContent.Children.Add(_radarHelpTip);
+            info.Click += (_, _) =>
+            {
+                if (_radarHelpTip is not { } tip) return;
+                tip.IsOpen = !tip.IsOpen;
+            };
+            _body.Children.Add(Card(chartContent));
         }
         else _body.Children.Add(new FAInfoBar { IsOpen = true, IsClosable = false, Severity = FAInfoBarSeverity.Informational,
             Message = "当前耳机未提供可绘制的听感曲线，仍可试听并保存配置。" });
@@ -428,6 +467,18 @@ public sealed class CalibrationView : UserControl
         };
         _actions.Children.Add(save);
     }
+    private void DismissRadarHelpOnEscape(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape || _radarHelpTip is not { IsOpen: true }) return;
+        CloseRadarHelp(restoreFocus: true);
+        e.Handled = true;
+    }
+    private static RadarTeachingTip CreateRadarHelpTip(Button target)
+    {
+        return new RadarTeachingTip { Name = "HearingRadarHelpTip", Target = target, Title = "关于听感雷达图",
+            Subtitle = "根据耳机返回的结果展示左右耳听感与增强区间。试听增强前或增强后时，左右耳曲线随音乐频谱变化；增强后还会显示橙色音乐频谱。" };
+    }
+    private void CloseRadarHelp(bool restoreFocus = false) => _radarHelpTip?.Dismiss(restoreFocus);
     private void BuildFit(UiCalibrationState state)
     {
         switch (state.Stage)

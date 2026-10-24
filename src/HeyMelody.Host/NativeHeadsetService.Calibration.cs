@@ -196,12 +196,17 @@ public sealed partial class NativeHeadsetService
         int? frequencyHz = _calibrationContext?.ProductId == "06EC10" && snapshot.FrequencyType is >= 1 and <= 6
             ? new[] { 500, 1000, 2000, 4000, 6000, 8000 }[snapshot.FrequencyType - 1] : null;
         var radar = HearingRadarMath.Create(snapshot);
+        byte? enhanceType = snapshot.FiltersReady && snapshot.Curves is [var mainCurve]
+            && mainCurve.SourceCommand == CalibrationCodecs.FilterCommand && mainCurve.Uid == snapshot.Uid
+            && mainCurve.EnhanceType is <= 2 ? mainCurve.EnhanceType : null;
         _calibrationState = old with { Revision = ++_calibrationRevision, Stage = stage, Uid = snapshot.Uid,
             Side = snapshot.Side, FrequencyType = snapshot.FrequencyType, FrequencyHz = frequencyHz, StepIndex = snapshot.StepIndex, StepCount = snapshot.StepCount,
             LevelIndex = snapshot.LevelIndex, DesiredLevelIndex = snapshot.DesiredLevelIndex, Decibels = snapshot.Decibels,
             ToneAcknowledged = snapshot.ToneAcknowledged, FiltersReady = snapshot.FiltersReady,
             CanPreview = snapshot.CanPreview, PreviewMode = snapshot.PreviewMode.ToString(),
             HearingRadar = radar is null ? null : new UiHearingRadar(radar.Left, radar.Right),
+            HearingEnhanceType = enhanceType,
+            RestoreDescriptionId = snapshot.RestoreDescriptionId is >= 1 and <= 20 ? snapshot.RestoreDescriptionId : null,
             CanResume = snapshot.CanResume, NoiseWarning = snapshot.NoiseWarning, HasInterEarDifference = snapshot.HasInterEarDifference,
             RawStatus = snapshot.RawStatus,
             Message = CalibrationMessage(snapshot), FitResults = snapshot.FitResults.Select(x => new UiFitResult(x.Key, x.Value)).ToArray(),

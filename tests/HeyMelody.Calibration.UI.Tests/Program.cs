@@ -168,6 +168,7 @@ try
     }
     Console.WriteLine("PASS wizard phases follow scan, test, retry and result transitions"); passed++;
     passed += await HearingPreviewTests.RunAsync();
+    passed += HearingResultDescriptionTests.Run();
     passed += CalibrationVisualTests.Run();
     Console.WriteLine($"{{\"success\":true,\"passed\":{passed},\"nativeBluetoothCalls\":0}}");
     return 0;

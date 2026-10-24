@@ -14,6 +14,7 @@ using FluentAvalonia.Styling;
 using FluentAvalonia.UI.Windowing;
 using HeyMelodyWindows.App;
 using HeyMelodyWindows.Calibration.UI;
+using HeyMelodyWindows.Ui;
 
 internal static class NativeCalibrationSmoke
 {
@@ -58,7 +59,11 @@ internal static class NativeCalibrationSmoke
     public sealed class NativeFixtureApplication : Application
     {
         public override void Initialize()
-        { RequestedThemeVariant = ThemeVariant.Light; Styles.Add(new FluentAvaloniaTheme { PreferSystemTheme = false }); }
+        {
+            RequestedThemeVariant = ThemeVariant.Light; Styles.Add(new FluentAvaloniaTheme { PreferSystemTheme = false });
+            Styles.Add(SharedTheme.Create());
+            Typography.ApplyThemeResources(this);
+        }
         public override void OnFrameworkInitializationCompleted()
         {
             var service = new TestService { BlockFirstLevel = true };
@@ -102,11 +107,50 @@ internal static class NativeCalibrationSmoke
                     Push(service.State with { Stage = "Results", StepIndex = 12, FiltersReady = false });
                     Check(!view.GetVisualDescendants().OfType<TextBox>().Any(), "Incomplete native results do not expose Save.");
                     var resultRadar = new UiHearingRadar(new double[] { .85, .62, .66, .58, .7, .82 }, new double[] { .83, .6, .64, .58, .67, .55 });
-                    Push(service.State with { FiltersReady = true, CanPreview = true, HasInterEarDifference = true, HearingRadar = resultRadar });
+                    Push(service.State with { FiltersReady = true, CanPreview = true, HasInterEarDifference = true, HearingRadar = resultRadar,
+                        HearingEnhanceType = 0, RestoreDescriptionId = 1 });
                     Check(Preview(view, "PreviewOriginal").IsEnabled && Preview(view, "PreviewEnhanced").IsEnabled && Button(view, "保存并启用").IsEnabled,
                         "Complete native results expose effect comparison and Save.");
                     var chart = view.GetVisualDescendants().OfType<HearingRadarChart>().Single();
                     Check(!model.State.PreviewAudioPlaying && chart.ShowEnhancement, "The native result page shows a static radar without autoplay.");
+                    HearingResultUiAssertions.LegendIsCentered(view);
+                    HearingResultUiAssertions.DescriptionUsesAccent(view);
+                    var detailScroll = view.GetVisualDescendants().OfType<ScrollViewer>().Single(control => control.Name == "PageScroll");
+                    var detailOffset = detailScroll.Offset;
+                    await NativeResultDetailCapture.DescriptionAsync(window, view, Path.Combine(_output, "hearing-results-description-screen.png"));
+                    await NativeResultDetailCapture.LegendAsync(window, view, Path.Combine(_output, "hearing-results-legend-screen.png"));
+                    var legendOffset = detailScroll.Offset;
+                    var (radarHelp, radarHelpTip) = HearingResultUiAssertions.HelpControls(view);
+                    var inputsBeforeHelp = service.Inputs.Count;
+                    var cancelsBeforeHelp = service.Cancels;
+                    Check(!radarHelpTip.IsOpen, "Native radar help opens only on request.");
+                    radarHelp.RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent)); await Task.Delay(60);
+                    Check(radarHelpTip.IsOpen, "The native radar question button opens its teaching tip.");
+                    Check(detailScroll.Offset == legendOffset, "Focusing native radar help does not scroll the result page underneath it.");
+                    await CaptureAsync(view, "hearing-results-help");
+                    NativeResultDetailCapture.Help(window, view, radarHelpTip, Path.Combine(_output, "hearing-results-help-detail-screen.png"));
+                    radarHelp.RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent)); await Task.Delay(60);
+                    await Until(() => HearingResultUiAssertions.HelpIsDismissed(view, radarHelpTip));
+                    Check(service.Inputs.Count == inputsBeforeHelp && service.Cancels == cancelsBeforeHelp,
+                        "Native help dismissal preserves calibration state without device writes.");
+                    (radarHelp, radarHelpTip) = HearingResultUiAssertions.HelpControls(view);
+                    radarHelp.RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent)); await Task.Delay(60);
+                    Check(radarHelpTip.IsOpen, "Native radar help can reopen after dismissal completes.");
+                    var escape = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape };
+                    HearingResultUiAssertions.PopupFocus(window, radarHelp).RaiseEvent(escape); await Task.Delay(60);
+                    await Until(() => HearingResultUiAssertions.HelpIsDismissed(view, radarHelpTip));
+                    Check(escape.Handled && service.Inputs.Count == inputsBeforeHelp && service.Cancels == cancelsBeforeHelp,
+                        "Native Escape from the popup root dismisses radar help without invoking wizard cancellation.");
+                    HearingResultUiAssertions.QuickDismissal(view, service);
+                    (radarHelp, radarHelpTip) = HearingResultUiAssertions.HelpControls(view);
+                    radarHelp.RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent)); await Task.Delay(60);
+                    var closeHelp = radarHelpTip.Child!.GetVisualDescendants().OfType<Button>()
+                        .Single(button => button.Name == "HearingRadarHelpClose");
+                    closeHelp.RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent)); await Task.Delay(60);
+                    Check(!radarHelpTip.IsOpen && ReferenceEquals(window.FocusManager?.GetFocusedElement(), radarHelp)
+                        && service.Inputs.Count == inputsBeforeHelp && service.Cancels == cancelsBeforeHelp,
+                        "The native help close button dismisses only the tip and restores focus to its question button.");
+                    detailScroll.Offset = detailOffset; await Task.Delay(60);
                     await CaptureAsync(view, "hearing-results");
                     Preview(view, "PreviewOriginal").RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
                     await Until(() => !model.Busy && service.Inputs.Last().Action == "preview-original");
@@ -134,14 +178,21 @@ internal static class NativeCalibrationSmoke
                     Check(chart.ShowEnhancement && chart.EnhancementLevels.Count == 0
                         && chart.LeftLevels.SequenceEqual(resultRadar.Left) && chart.RightLevels.SequenceEqual(resultRadar.Right),
                         "Native active-row pause restores static ears and the orange outline.");
-                    window.RequestedThemeVariant = ThemeVariant.Dark; await Task.Delay(50); await CaptureAsync(view, "hearing-results-dark");
-                    window.Width = 400; window.Height = 520; await Task.Delay(50); await CaptureAsync(view, "hearing-results-narrow");
+                    window.RequestedThemeVariant = ThemeVariant.Dark; await Task.Delay(50);
+                    HearingResultUiAssertions.DescriptionUsesAccent(view);
+                    HearingResultUiAssertions.LegendIsCentered(view); await CaptureAsync(view, "hearing-results-dark");
+                    window.Width = 400; window.Height = 520; await Task.Delay(50);
+                    HearingResultUiAssertions.LegendIsCentered(view); await CaptureAsync(view, "hearing-results-narrow");
                     window.Width = 520; window.Height = 720; window.RequestedThemeVariant = ThemeVariant.Light; await Task.Delay(50);
+                    var (cancelHelp, cancelTip) = HearingResultUiAssertions.HelpControls(view);
+                    cancelHelp.RaiseEvent(new RoutedEventArgs(Avalonia.Controls.Button.ClickEvent)); await Task.Delay(60);
+                    Check(cancelTip.IsOpen, "Native help can be open when cancellation is requested.");
                     service.StopFailuresRemaining = 1;
                     Button(view, "取消").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
                     await Until(() => model.CancellationFailed && !model.CancellationPending);
                     Check(!model.StopConfirmed && window.IsVisible && Button(view, "重试停止").IsEnabled,
                         "Native STOP failure keeps the window and its retry button available.");
+                    Check(!cancelTip.IsOpen, "Native cancellation closes result help even when STOP must be retried.");
                     await CaptureAsync(view, "stop-failed");
                     Button(view, "重试停止").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
                     await Until(() => model.StopConfirmed && !model.CancellationPending);

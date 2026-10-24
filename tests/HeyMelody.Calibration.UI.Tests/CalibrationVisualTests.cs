@@ -110,12 +110,46 @@ internal static class CalibrationVisualTests
                 Check(!view.GetVisualDescendants().OfType<TextBox>().Any() && !HasButton("保存并启用"),
                     "Twelve answers alone do not expose the result or save controls while filters are incomplete.");
                 var resultRadar = new UiHearingRadar(new double[] { .85, .62, .66, .58, .7, .82 }, new double[] { .83, .6, .64, .58, .67, .55 });
-                Push(service.State with { FiltersReady = true, CanPreview = true, HasInterEarDifference = true, HearingRadar = resultRadar });
+                Push(service.State with { FiltersReady = true, CanPreview = true, HasInterEarDifference = true, HearingRadar = resultRadar,
+                    HearingEnhanceType = 0, RestoreDescriptionId = 1 });
                 Check(view.GetVisualDescendants().OfType<TextBox>().Count() == 1 && HasButton("保存并启用"),
                     "The result page names and saves a profile, separately from the main-window selector.");
                 Check(view.GetVisualDescendants().OfType<TextBlock>().Count(x => x.Text?.Contains("左右耳在部分频段的选择差异较大") == true) == 1,
                     "The result reports an inter-ear selection difference once, without assigning a hearing diagnosis.");
                 CheckActionBar(view, "保存并启用");
+                HearingResultUiAssertions.LegendIsCentered(view);
+                HearingResultUiAssertions.DescriptionUsesAccent(view);
+                var (radarHelp, radarHelpTip) = HearingResultUiAssertions.HelpControls(view);
+                var inputsBeforeHelp = service.Inputs.Count;
+                var cancelsBeforeHelp = service.Cancels;
+                var resultScroll = view.GetVisualDescendants().OfType<ScrollViewer>().Single(control => control.Name == "PageScroll");
+                var offsetBeforeHelp = resultScroll.Offset;
+                Check(!radarHelpTip.IsOpen, "Radar help stays closed until its question button is clicked.");
+                radarHelp.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Dispatcher.UIThread.RunJobs();
+                Check(radarHelpTip.IsOpen, "Clicking radar help opens its anchored teaching tip.");
+                Check(resultScroll.Offset == offsetBeforeHelp, "Opening radar help keeps the underlying result page stationary.");
+                Capture(window, "hearing-results-help");
+                radarHelp.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Dispatcher.UIThread.RunJobs();
+                await Until(() => HearingResultUiAssertions.HelpIsDismissed(view, radarHelpTip));
+                Check(service.Inputs.Count == inputsBeforeHelp && service.Cancels == cancelsBeforeHelp,
+                    "Clicking radar help again dismisses it without sending any device operation.");
+                (radarHelp, radarHelpTip) = HearingResultUiAssertions.HelpControls(view);
+                radarHelp.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Dispatcher.UIThread.RunJobs();
+                Check(radarHelpTip.IsOpen, "Radar help can reopen after button dismissal completes.");
+                var escape = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape };
+                view.RaiseEvent(escape); Dispatcher.UIThread.RunJobs();
+                await Until(() => HearingResultUiAssertions.HelpIsDismissed(view, radarHelpTip));
+                Check(escape.Handled && service.Inputs.Count == inputsBeforeHelp && service.Cancels == cancelsBeforeHelp,
+                    "Escape dismisses radar help before the wizard can interpret it as cancellation.");
+                (radarHelp, radarHelpTip) = HearingResultUiAssertions.HelpControls(view);
+                radarHelp.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Dispatcher.UIThread.RunJobs();
+                Check(radarHelpTip.IsOpen, "Radar help can reopen after keyboard dismissal.");
+                window.MouseDown(new Point(10, 10), MouseButton.Left); window.MouseUp(new Point(10, 10), MouseButton.Left);
+                Dispatcher.UIThread.RunJobs();
+                await Until(() => HearingResultUiAssertions.HelpIsDismissed(view, radarHelpTip));
+                Check(service.Inputs.Count == inputsBeforeHelp && service.Cancels == cancelsBeforeHelp,
+                    "Clicking outside dismisses radar help without cancelling the wizard.");
+                HearingResultUiAssertions.QuickDismissal(view, service);
                 var editor = view.GetVisualDescendants().OfType<TextBox>().Single(); editor.Text = "我的听感";
                 var chart = view.GetVisualDescendants().OfType<HearingRadarChart>().Single();
                 Check(service.Inputs.All(input => !input.Action.StartsWith("preview-")) && chart.ShowEnhancement && chart.EnhancementLevels.Count == 0,
@@ -148,8 +182,17 @@ internal static class CalibrationVisualTests
                         "Clicking the active row pauses and restores static ears and the orange outline.");
                 }
                 Capture(window, "hearing-results");
-                window.RequestedThemeVariant = ThemeVariant.Dark; Dispatcher.UIThread.RunJobs(); Capture(window, "hearing-results-dark");
-                window.Width = 400; window.Height = 520; Dispatcher.UIThread.RunJobs(); Capture(window, "hearing-results-narrow");
+                window.RequestedThemeVariant = ThemeVariant.Dark; Dispatcher.UIThread.RunJobs();
+                HearingResultUiAssertions.DescriptionUsesAccent(view);
+                HearingResultUiAssertions.LegendIsCentered(view); Capture(window, "hearing-results-dark");
+                window.Width = 400; window.Height = 520; Dispatcher.UIThread.RunJobs();
+                HearingResultUiAssertions.LegendIsCentered(view); Capture(window, "hearing-results-narrow");
+                var (cancelHelp, cancelTip) = HearingResultUiAssertions.HelpControls(view);
+                cancelHelp.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Dispatcher.UIThread.RunJobs();
+                Check(cancelTip.IsOpen, "A result page can display help before cancellation.");
+                await model.CancelAsync(); Dispatcher.UIThread.RunJobs();
+                await Until(() => !cancelTip.IsOpen);
+                Check(!cancelTip.IsOpen, "Cancelling the wizard closes result help even while the result body is hidden.");
             }
             finally { window.Close(); }
             return true;

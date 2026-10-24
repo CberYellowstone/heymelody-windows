@@ -16,6 +16,14 @@
 
 384 项特殊表示不当作普通 IIR 系数解释；不支持的表示、零分母、非有限值或缺失滤波不会生成虚假曲线。界面提示结果图暂不可用，仍保留协议允许的保存与试听入口。既有 X4 结构 fixture 的系数是合成数据，不作为佩戴者实测听力证据。
 
+## 结果介绍补充（2026-10-24）
+
+本次仅复核欢律 17.6.5 的结果页：`Ic.ViewOnClickListenerC0492p0.H` 将 `0116` 主测听滤波元数据的 `enhanceType`（0／1／2 对应低频／中频／高频）与既有 `restoreDesId`（1–20）代入 `melody_common_gold_hearing_complete_enhancing_tips`，三个关键词分别为频段、音感和体验描述，均用 `couiColorPrimary` 强调。例如低频与编号 1 组合为“低频”“力量感”“底鼓更澎湃有力”。完整字段映射、原件路径与 SHA256 见本地[本轮文案复核档案](../../research/hearing-result-copy-20261024/README.md)，不覆盖旧研究记录。
+
+客户端通过 Host 快照将已验证的增强频段及描述编号传到结果页，复用引擎已经选定的描述编号，不根据雷达半径、音乐频谱或缓存推断文案。频段仅在滤波完整、唯一主曲线的命令及 UID 匹配且值为 0–2 时提供；未知频段或编号不展示个性介绍。界面以富文本运行段绑定主题强调色，随明暗主题及强调色变化；其余正文沿用普通说明颜色。这些文字沿用 App 的效果介绍，不构成新增声学测量。
+
+图例圆点和文本统一按垂直中心布局，帮助说明采用 Avalonia `Popup` 实现 TeachingTip 等效外观，限制在窗口范围内并支持点击外部或 Escape 关闭。FluentAvalonia 3.1.0 的 `FATeachingTip` 在本轮验证中出现动画期间撤回关闭操作、卸载后缩放回调空引用的问题，失败分支和定位保留在本轮档案，最终实现不使用该控件。验证限于文案映射、快照传递、无头布局与 Windows 本机变更区域；本轮不涉及真实耳机操作或 ARM64 硬件验证。
+
 ## 试听与动画
 
 原厂 `Ic.L` 明确循环播放 `hearing_enhancement_audition.mp3`。0.8.13 内置该资源转出的 48 kHz、双声道 PCM16 WAV，长约 23.066 秒，无需运行时下载或外部编解码器。来源、ZIP/MP3/WAV 大小与 SHA256、转换参数见 [资源来源记录](../../packaging/licenses/Hearing-Audition-SOURCE.json)；维护工具为 [fetch_hearing_audition.ps1](../../tools/research/fetch_hearing_audition.ps1)。

@@ -36,6 +36,8 @@ public sealed record UiCalibrationState
     public bool PreviewAudioPlaying { get; set; }
     public string PreviewAudioError { get; set; } = "";
     public UiHearingRadar? HearingRadar { get; set; }
+    public byte? HearingEnhanceType { get; set; }
+    public byte? RestoreDescriptionId { get; set; }
     public bool CanResume { get; set; }
     public bool NoiseWarning { get; set; }
     public bool HasInterEarDifference { get; set; }
