@@ -16,6 +16,7 @@ using FluentAvalonia.UI.Controls;
 using HeyMelodyWindows.App;
 using HeyMelodyWindows.Artwork;
 using HeyMelodyWindows.Resources;
+using HeyMelodyWindows.Ui;
 using PathShape = Avalonia.Controls.Shapes.Path;
 
 namespace HeyMelodyWindows.Calibration.UI;
@@ -100,9 +101,12 @@ public sealed class CalibrationView : UserControl
         Grid.SetColumn(_actions, 1); Grid.SetColumn(_cancel, 2);
         var actionBar = new Border { Name = "ActionBar", Height = 72, VerticalAlignment = VerticalAlignment.Bottom, Padding = new Thickness(24, 12), Child = bar };
         actionBar.Bind(Border.BackgroundProperty, new DynamicResourceExtension("SolidBackgroundFillColorSecondaryBrush"));
+        var pageScroll = new ScrollViewer { Name = "PageScroll", Content = page,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        SmoothScrolling.Attach(pageScroll);
         var content = new Grid { Children =
         {
-            new ScrollViewer { Name = "PageScroll", Content = page, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
+            pageScroll,
             actionBar
         } };
         Grid.SetRow(notices, 1); Grid.SetRow(content, 2);

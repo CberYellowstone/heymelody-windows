@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using HeyMelodyWindows.Ui;
 
 namespace HeyMelodyWindows.DeviceManager;
 
@@ -9,7 +10,11 @@ public partial class DeviceManagerView : UserControl
     private bool _openingSettings;
     internal ILauncher? LauncherOverride { get; set; }
     public DeviceManagerView()
-    { InitializeComponent(); BluetoothSettingsHost.IsEnabled = OperatingSystem.IsWindows(); }
+    {
+        InitializeComponent();
+        SmoothScrolling.Attach(DeviceScroll);
+        BluetoothSettingsHost.IsEnabled = OperatingSystem.IsWindows();
+    }
     private async void BluetoothSettings_Click(object? sender, RoutedEventArgs e) => await OpenBluetoothSettingsAsync();
     internal async Task OpenBluetoothSettingsAsync()
     {

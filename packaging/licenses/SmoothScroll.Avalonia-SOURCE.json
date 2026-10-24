@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "source": "SmoothScroll.Avalonia upstream MIT license",
+  "repository": {
+    "url": "https://github.com/zxbmmmmmmmmm/SmoothScroll.Avalonia",
+    "commit": "cff62b8c1351b52d09dcac303d8fefbcce36b276"
+  },
+  "packages": [
+    {
+      "id": "SmoothScroll.Avalonia",
+      "version": "12.0.0.14",
+      "url": "https://api.nuget.org/v3-flatcontainer/smoothscroll.avalonia/12.0.0.14/smoothscroll.avalonia.12.0.0.14.nupkg",
+      "bytes": 65346,
+      "sha256": "62db931cbb93ed5975d79ca4214a74888c1e80451571cd70944b49803fc26bfa"
+    },
+    {
+      "id": "SmoothScroll.Avalonia.Interaction",
+      "version": "12.0.0.14",
+      "url": "https://api.nuget.org/v3-flatcontainer/smoothscroll.avalonia.interaction/12.0.0.14/smoothscroll.avalonia.interaction.12.0.0.14.nupkg",
+      "bytes": 79092,
+      "sha256": "3e9470c2c34c45ebcab6dda6ccd86546706e4038fe2a877f586e8d0c8ec63345"
+    }
+  ],
+  "license": {
+    "expression": "MIT",
+    "url": "https://raw.githubusercontent.com/zxbmmmmmmmmm/SmoothScroll.Avalonia/cff62b8c1351b52d09dcac303d8fefbcce36b276/LICENSE.txt",
+    "file": "SmoothScroll.Avalonia-LICENSE.txt",
+    "bytes": 1069,
+    "sha256": "002c2696d92b5c8cf956c11072baa58eaf9f6ade995c031ea635c6a1ee342ad1",
+    "copyrightNotice": "Copyright (c) [year] [fullname]",
+    "preservation": "The upstream copyright placeholders are retained verbatim. No author or year has been inferred or substituted."
+  },
+  "distribution": {
+    "licensePath": "licenses/upstream/SmoothScroll.Avalonia-LICENSE.txt",
+    "sourcePath": "licenses/upstream/SmoothScroll.Avalonia-SOURCE.json",
+    "reason": "Both NuGet packages declare the MIT license expression without an embedded LICENSE file; this copy preserves the exact-commit upstream license text."
+  }
+}

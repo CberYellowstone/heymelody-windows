@@ -71,6 +71,13 @@ dotnet run --project tests/HeyMelody.Protocol.Tests/HeyMelody.Protocol.Tests.csp
 dotnet run --project tests/HeyMelody.App.Tests/HeyMelody.App.Tests.csproj -c Release
 ```
 
+平滑滚动及设备栏可分别运行定向检查（无真实设备操作），以覆盖滚轮动画、嵌套边界、直接定位、内容收缩后的布局和横向居中：
+
+```powershell
+dotnet run --project tests/HeyMelody.App.Tests/HeyMelody.App.Tests.csproj -c Release -- --smooth-scroll-tests
+dotnet run --project tests/HeyMelody.App.Tests/HeyMelody.App.Tests.csproj -c Release -- --device-bar-tests
+```
+
 完整默认检查入口为：
 
 ```powershell

@@ -17,3 +17,6 @@ src/HeyMelody.Resources/Bundles/** -text
 # Preserve the official Inno Setup license and translation byte for byte.
 packaging/inno/LICENSE.txt -text whitespace=cr-at-eol
 packaging/inno/Languages/ChineseSimplified.isl -text whitespace=cr-at-eol
+# Keep the upstream smooth-scroll license copies identical to their recorded SHA256.
+docs/licenses/SmoothScroll.Avalonia-LICENSE.txt -text
+packaging/licenses/SmoothScroll.Avalonia-LICENSE.txt -text

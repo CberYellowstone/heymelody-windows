@@ -14,6 +14,8 @@ using HeyMelodyWindows.App;
 
 if (ProcessLifetimeTests.TryRunHelper(args, out var helperExit)) return helperExit;
 
+if (args is ["--smooth-scroll-tests"]) return SmoothScrollingTests.Run();
+
 if (args is ["--rendering-policy-tests"]) return RenderingPolicyTests.Run();
 if (args is ["--native-rendering-smoke"]) return NativeSmoke.Run(useRenderingSetup: true);
 if (args is ["--native-rendering-policy-smoke", var renderMode, "--output-dir", var renderOutput]
@@ -57,6 +59,7 @@ string output = args.Length == 2 && args[0] == "--output-dir" ? Path.GetFullPath
     : args is ["--artwork-persistence-tests", "--output-dir", var artworkPersistenceOutput] ? Path.GetFullPath(artworkPersistenceOutput)
     : args is ["--anc-feature-tests", "--output-dir", var ancOutput] ? Path.GetFullPath(ancOutput)
     : args is ["--rendering-settings-tests", "--output-dir", var renderSettingsOutput] ? Path.GetFullPath(renderSettingsOutput)
+    : args is ["--device-bar-tests", "--output-dir", var deviceBarOutput] ? Path.GetFullPath(deviceBarOutput)
     : Path.Combine(Directory.GetCurrentDirectory(), "artifacts", "avalonia-ui-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8]);
 Directory.CreateDirectory(output);
 var receipts = new List<object>();
@@ -67,6 +70,12 @@ DeviceModelView.DefaultFactoryOverride = new RecordingFilamentRendererFactory();
 using var session = HeadlessUnitTestSession.StartNew(typeof(PreviewBootstrap));
 try
 {
+    if (args is ["--device-bar-tests"] or ["--device-bar-tests", "--output-dir", _])
+    {
+        var count = DeviceBarTests.Run(session);
+        Console.WriteLine(JsonSerializer.Serialize(new { passed = count, success = true, nativeBluetoothCalls = 0, screenshots = 0, output }));
+        return 0;
+    }
     if (args is ["--artwork-persistence-tests"] or ["--artwork-persistence-tests", "--output-dir", _])
     {
         var count = ArtworkPersistenceTests.Run(session, output, receipts);

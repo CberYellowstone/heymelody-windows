@@ -1,15 +1,18 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using CommunityToolkit.Mvvm.Input;
+using HeyMelodyWindows.Ui;
 
 namespace HeyMelodyWindows.App;
 
 public partial class MainView
 {
     private bool _centerDevicePending = true;
+    private bool _smoothDeviceBar;
     private bool _layoutObserved;
     private double _deviceViewportWidth, _deviceStripWidth;
     private IReadOnlyList<UiDevice>? _centeringDevices;
@@ -22,6 +25,8 @@ public partial class MainView
 
     private void InitializeDeviceBar()
     {
+        _smoothDeviceBar = SmoothScrolling.Attach(DeviceBarScroll, horizontal: true);
+        if (_smoothDeviceBar) DeviceStripPadding.HorizontalAlignment = HorizontalAlignment.Left;
         AttachedToVisualTree += (_, _) => RequestDeviceCenter();
         // LayoutUpdated fires after every layout pass in the window, including each frame of an expander
         // animation, so it is observed only while a re-centre is pending; size changes start a new one.
@@ -201,6 +206,13 @@ public partial class MainView
 
     private void DeviceBar_PointerWheelChanged(object? sender, PointerWheelEventArgs e)
     {
+        if (_smoothDeviceBar)
+        {
+            if (e.Delta.X != 0 || e.Delta.Y != 0) _centerDevicePending = false;
+            // The library maps whole vertical wheel ticks to X. Preserve the existing fine-grained
+            // vertical-to-horizontal path for fractional deltas, which it only supports on their native axis.
+            if (Math.Abs(e.Delta.X) > 0.001 || e.Delta.Y == 0 || e.Delta.Y == Math.Truncate(e.Delta.Y)) return;
+        }
         // A regular mouse wheel also moves this horizontal device strip.
         if (e.Handled || Math.Abs(e.Delta.X) > 0.001 || e.Delta.Y == 0) return;
         var maximum = Math.Max(0, DeviceBarScroll.Extent.Width - DeviceBarScroll.Viewport.Width);

@@ -46,6 +46,7 @@ public partial class MainView : UserControl
     public MainView()
     {
         InitializeComponent();
+        SmoothScrolling.Attach(ControlScroll);
         AnimationYieldTriggers.RegisterExpanders();
         AnimationYieldTriggers.AttachScroll(ControlScroll);
         InitializeDeviceBar();

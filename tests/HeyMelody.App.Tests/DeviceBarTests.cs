@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
@@ -173,8 +174,11 @@ internal static class DeviceBarTests
                         "A short device strip has no horizontal overflow.");
                     var left = first.TranslatePoint(default, scroll)!.Value.X;
                     var right = add.TranslatePoint(default, scroll)!.Value.X + add.Bounds.Width;
-                    Check(Math.Abs((left + right) / 2 - scroll.Viewport.Width / 2) <= 1,
-                        "The entire strip, including the final add button, is centered in its viewport.");
+                    var presenter = scroll.GetVisualDescendants().OfType<SmoothScroll.Avalonia.Controls.ScrollPresenter>().SingleOrDefault();
+                    // These points are relative to ScrollViewer; a centered smooth presenter can have a smaller logical Viewport.
+                    // Keep the original visible-region centering requirement and 1 px tolerance in that same coordinate space.
+                    Check(Math.Abs((left + right) / 2 - scroll.Bounds.Width / 2) <= 1,
+                        $"The entire strip, including the final add button, is centered in its viewport. count={count}, width={width}, scrollBounds={scroll.Bounds}, viewport={scroll.Viewport}, extent={scroll.Extent}, offset={scroll.Offset}, left={left}, right={right}, presenterBounds={presenter?.Bounds}, presenterOffset={presenter?.Offset}, paddingBounds={view.FindControl<Control>("DeviceStripPadding")?.Bounds}");
                     foreach (var index in Enumerable.Range(0, count))
                     {
                         var card = Card(picker, index);
@@ -270,8 +274,37 @@ internal static class DeviceBarTests
             var beforeWheel = scroll.Offset.X;
             window.MouseWheel(wheelPoint, new Vector(0, -1), RawInputModifiers.None);
             Dispatcher.UIThread.RunJobs();
+            await UntilAsync(() => scroll.Offset.X > beforeWheel);
             Check(scroll.Offset.X > beforeWheel,
                 "A vertical wheel gesture over the device strip scrolls toward later devices.");
+            // Finish this gesture before the independent manual-layout scenario below.
+            await UntilScrollSettlesAsync(window, scroll);
+            var maximum = scroll.Extent.Width - scroll.Viewport.Width;
+            scroll.Offset = new Vector(maximum / 2, 0); Dispatcher.UIThread.RunJobs();
+            await UntilScrollSettlesAsync(window, scroll);
+            var beforeFractional = scroll.Offset.X;
+            // Reuse the card hit point already exercised by the whole-notch gesture above.
+            var fractionalPoint = wheelPoint;
+            int fractionalRouted = 0; bool fractionalHandled = false; Vector routedDelta = default; double offsetAtRoute = -1;
+            void ObserveFractional(object? sender, PointerWheelEventArgs args)
+            { fractionalRouted++; fractionalHandled = args.Handled; routedDelta = args.Delta; offsetAtRoute = scroll.Offset.X; }
+            scroll.AddHandler(InputElement.PointerWheelChangedEvent, ObserveFractional, RoutingStrategies.Tunnel, handledEventsToo: true);
+            var fractionalTarget = Card(picker, 4);
+            var fractionalArgs = new PointerWheelEventArgs(fractionalTarget, new Pointer(1, PointerType.Mouse, true),
+                window, fractionalPoint, (ulong)Environment.TickCount64,
+                new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.Other), KeyModifiers.None, new Vector(0, -.5));
+            try
+            {
+                // The raw half-notch did not route in either headless theme. Exercise the real card's routed handler
+                // contract directly; this verifies axis mapping, not a physical precision-touchpad input stack.
+                fractionalTarget.RaiseEvent(fractionalArgs);
+                Dispatcher.UIThread.RunJobs();
+            }
+            finally { scroll.RemoveHandler(InputElement.PointerWheelChangedEvent, ObserveFractional); }
+            Check(fractionalRouted == 1 && fractionalArgs.Handled && routedDelta.Y == -.5
+                && Math.Abs(scroll.Offset.X - beforeFractional - 32) <= 1,
+                $"A routed fractional Y wheel preserves the device strip's existing 64 px axis mapping without losing the input. before={beforeFractional}, after={scroll.Offset.X}, maximum={maximum}, routed={fractionalRouted}, handled={fractionalArgs.Handled}, handledAtObserver={fractionalHandled}, delta={routedDelta}, atRoute={offsetAtRoute}, point={fractionalPoint}");
+            await UntilScrollSettlesAsync(window, scroll);
             scroll.Offset = new Vector((scroll.Extent.Width - scroll.Viewport.Width) / 4, 0);
             Dispatcher.UIThread.RunJobs();
             var manualOffset = scroll.Offset.X;
@@ -322,8 +355,28 @@ internal static class DeviceBarTests
                         && Math.Abs(scroll.Offset.X) <= 1);
                     var left = Card(picker, 0).TranslatePoint(default, scroll)!.Value.X;
                     var right = add.TranslatePoint(default, scroll)!.Value.X + add.Bounds.Width;
-                    Check(Math.Abs((left + right) / 2 - scroll.Viewport.Width / 2) <= 1,
-                        "Growing an overflowing strip to fit centers all devices together with the add button.");
+                    // The original smooth-layout regression centered at 492 instead of 620 in the 1280 px window.
+                    // The corrected presenter centers at 620; compare visible viewer bounds, not its narrower logical Viewport.
+                    if (Math.Abs((left + right) / 2 - scroll.Bounds.Width / 2) > 1)
+                    {
+                        var padding = view.FindControl<Control>("DeviceStripPadding")!;
+                        var strip = view.FindControl<Control>("DeviceStrip")!;
+                        var presenter = scroll.GetVisualDescendants().OfType<SmoothScroll.Avalonia.Controls.ScrollPresenter>().SingleOrDefault();
+                        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { phase = "device-strip-resize-before-wait", width,
+                            viewport = scroll.Viewport.Width, extent = scroll.Extent.Width, offset = scroll.Offset.X, left, right,
+                            paddingBounds = padding.Bounds.ToString(), paddingAlignment = padding.HorizontalAlignment.ToString(),
+                            stripBounds = strip.Bounds.ToString(), presenterBounds = presenter?.Bounds.ToString(),
+                            presenterAlignment = presenter?.HorizontalAlignment.ToString(),
+                            contentAlignment = presenter?.HorizontalContentAlignment.ToString(), presenterOffset = presenter?.Offset.ToString() }));
+                        await UntilAsync(() =>
+                        {
+                            left = Card(picker, 0).TranslatePoint(default, scroll)!.Value.X;
+                            right = add.TranslatePoint(default, scroll)!.Value.X + add.Bounds.Width;
+                            return Math.Abs((left + right) / 2 - scroll.Bounds.Width / 2) <= 1;
+                        });
+                    }
+                    Check(Math.Abs((left + right) / 2 - scroll.Bounds.Width / 2) <= 1,
+                        $"Growing an overflowing strip to fit centers all devices together with the add button. width={width}, visibleWidth={scroll.Bounds.Width}, viewport={scroll.Viewport.Width}, extent={scroll.Extent.Width}, offset={scroll.Offset.X}, left={left}, right={right}");
                 }
                 CheckInside(Card(picker, 2), scroll, "The selected last device remains fully visible across overflow changes.");
                 CheckInside(add, scroll, "The trailing add button remains fully visible across overflow changes.");
@@ -557,6 +610,24 @@ internal static class DeviceBarTests
             && origin.X >= -1 && origin.Y >= -1
             && origin.X + control.Bounds.Width <= viewport.Bounds.Width + 1
             && origin.Y + control.Bounds.Height <= viewport.Bounds.Height + 1, message);
+    }
+
+    private static async Task UntilScrollSettlesAsync(Window window, ScrollViewer scroll)
+    {
+        var deadline = DateTime.UtcNow + Deadline;
+        var began = DateTime.UtcNow;
+        var previous = scroll.Offset;
+        int stable = 0;
+        while (DateTime.UtcNow < deadline)
+        {
+            using (var frame = window.CaptureRenderedFrame()) { }
+            await Task.Delay(20); Dispatcher.UIThread.RunJobs();
+            var current = scroll.Offset;
+            stable = (current - previous).Length < .01 ? stable + 1 : 0;
+            previous = current;
+            if (stable >= 8 && DateTime.UtcNow - began >= TimeSpan.FromMilliseconds(180)) return;
+        }
+        throw new TimeoutException("The device bar wheel gesture did not settle.");
     }
 
     private static async Task UntilAsync(Func<bool> condition)

@@ -89,6 +89,12 @@
 
 “连接或同一设备身份无法核实”包括：后台进程崩溃、超时或返回损坏/不匹配的 RPC 记录，导致客户端没有完整回执；重新读取时无法取得有效型号、能力或连接状态；返回的设备身份与当前选择/连接会话不一致；后台重启后丢失原地址到随机身份的映射。此时设置可能已经到达耳机，不能把旧请求转移到另一副同名耳机。程序提示并只读刷新，身份映射丢失时要求重新选择并连接。手机修改某个设置本身不属于身份无法核实，也不能仅凭一次 GET 超时断言蓝牙已断开。
 
+## 平滑滚动
+
+主窗口设置区 `ControlScroll`、底部设备栏 `DeviceBarScroll`、设备管理器 `DeviceScroll` 和校准向导 `PageScroll` 使用 SmoothScroll.Avalonia 12.0.0.14 的局部滚动主题；设备栏支持纵向滚轮驱动横向平滑滚动，嵌套列表等控件保留原有 FluentAvalonia 模板。启用平滑主题时，滚动到目标（`BringIntoView`）使用 500 ms 动画；启动时若系统关闭动画，则保留原主题及即时滚动。接入未涉及真实触摸输入或 ARM64 硬件验证，许可原文见 [SmoothScroll.Avalonia MIT 许可](licenses/SmoothScroll.Avalonia-LICENSE.txt)。
+
+上游将此库标为实验性。本轮固定在 Avalonia 12.1.4／FluentAvalonia 3.1.0 验证，后续升级需复核组合渲染、滚动定位与卸载行为；原始包、源码版本和接入记录保存在本地 `research/smooth-scroll-review/20261024-package/`。
+
 ## 校准窗口
 
 `HeyMelody.FitTest` 与 `HeyMelody.HearingSetup` 共用 `HeyMelody.Calibration.UI` 的 `CalibrationWindow`／`CalibrationView`。0.8.9 起窗口外观与设备管理器一致：`FAAppWindow` 仅保留关闭按钮，默认 520×720、最小 400×520，可拉伸；构造时先注册 `MicaAltBackdrop`，Windows 11 build 22621 及以上使用 DWM Mica Alt，其余情况回退为主题实色。该类源码仍属设备管理器，命名空间改为 `HeyMelodyWindows.Windowing` 后由两个项目共同编译，不新增程序集。页面由固定页头、滚动内容和覆盖在底部的 72px 操作栏组成；2026-10-11 起三个独立组件操作栏统一使用 `SolidBackgroundFillColorSecondaryBrush` 不透明主题灰色，滚动内容不透过底栏。内容底部留出 84px 以便最后一项可滚到操作栏上方。按钮按 Windows 向导惯例右对齐为“上一步 · 下一步（强调色）· 取消”；完成后取消变为强调色“关闭”，停止失败时为“重试停止”。左侧状态文字显示“第 x / 12 步”或“正在停止测试…”。
