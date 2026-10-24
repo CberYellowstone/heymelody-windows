@@ -30,15 +30,11 @@ internal static class SmoothScrolling
         {
             if (currentPresenter is not null)
             {
-                currentPresenter.RemoveHandler(InputElement.PointerWheelChangedEvent, PrecisionWheel);
                 currentPresenter.RemoveHandler(InputElement.PointerPressedEvent, AllowHeaderTouchPanning);
                 currentPresenter.RemoveHandler(InputElement.PointerMovedEvent, AllowHeaderTouchPanning);
                 currentPresenter.RemoveHandler(InputElement.PointerReleasedEvent, AllowHeaderTouchPanning);
             }
             currentPresenter = e.NameScope.Find<ScrollPresenter>("PART_ContentPresenter");
-            // Register before the library creates its input source in OnLoaded. Bubble routing
-            // lets nested controls consume their own input before this page handles it.
-            currentPresenter?.AddHandler(InputElement.PointerWheelChangedEvent, PrecisionWheel, RoutingStrategies.Bubble);
             // Header buttons handle press/release before they reach the library's input source.
             // Let that source observe touch input too; it takes capture only after its drag threshold.
             currentPresenter?.AddHandler(InputElement.PointerPressedEvent, AllowHeaderTouchPanning, RoutingStrategies.Bubble, true);
@@ -53,24 +49,6 @@ internal static class SmoothScrolling
             }
         };
 
-        void PrecisionWheel(object? sender, PointerWheelEventArgs e)
-        {
-            if (e.Delta.X == Math.Truncate(e.Delta.X) && e.Delta.Y == Math.Truncate(e.Delta.Y)) return;
-
-            // Precision input already includes the touchpad's inertia. The library instead
-            // starts an elastic manipulation for every packet, allowing up to 1000 DIP of
-            // overscroll. Keep its 48 DIP scale, but constrain these packets to the viewport.
-            var maximumX = Math.Max(0, viewer.Extent.Width - viewer.Viewport.Width);
-            var maximumY = Math.Max(0, viewer.Extent.Height - viewer.Viewport.Height);
-            var deltaX = viewer.HorizontalScrollBarVisibility == ScrollBarVisibility.Disabled ? 0 : e.Delta.X;
-            var deltaY = viewer.VerticalScrollBarVisibility == ScrollBarVisibility.Disabled ? 0 : e.Delta.Y;
-            if (deltaX == 0 && deltaY == 0) return;
-            viewer.SetCurrentValue(ScrollViewer.OffsetProperty, new Vector(
-                Math.Clamp(viewer.Offset.X - deltaX * 48, 0, maximumX),
-                Math.Clamp(viewer.Offset.Y - deltaY * 48, 0, maximumY)));
-            // Consume input at the boundary too, so it cannot start the library's spring.
-            e.Handled = true;
-        }
         // 12.0.0.14 arranges before coercing Offset after a geometry change. Re-arrange once
         // with the corrected offset; stable geometry and nested viewers do not request another pass.
         viewer.ScrollChanged += (_, e) =>

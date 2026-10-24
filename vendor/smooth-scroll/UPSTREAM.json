@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "repository": "https://github.com/zxbmmmmmmmmm/SmoothScroll.Avalonia",
+    "commit": "cff62b8c1351b52d09dcac303d8fefbcce36b276",
+    "version": "12.0.0.14",
+    "archiveUrl": "https://codeload.github.com/zxbmmmmmmmmm/SmoothScroll.Avalonia/zip/cff62b8c1351b52d09dcac303d8fefbcce36b276",
+    "archiveBytes": 5447482,
+    "archiveSha256": "467050729ac3da9f837876a5c7620baa5d9b12fb5929ae621077f00353af2081",
+    "archiveRoot": "SmoothScroll.Avalonia-cff62b8c1351b52d09dcac303d8fefbcce36b276"
+  },
+  "package": {
+    "id": "SmoothScroll.Avalonia.Interaction",
+    "version": "12.0.0.15-heymelody.2",
+    "assemblyVersion": "1.0.0.0",
+    "fileVersion": "1.0.0.0",
+    "targetFramework": "net10.0",
+    "authors": "SmoothScroll.Avalonia.Interaction",
+    "dependencies": {
+      "Avalonia": "12.1.4",
+      "IgnoresAccessChecksToGenerator": "0.8.0"
+    }
+  },
+  "license": {
+    "file": "LICENSE.txt",
+    "sha256": "002c2696d92b5c8cf956c11072baa58eaf9f6ade995c031ea635c6a1ee342ad1",
+    "notice": "MIT text and upstream copyright placeholders are preserved verbatim."
+  },
+  "patch": {
+    "file": "precision-touchpad.patch",
+    "sha256": "c5953993032ef14c93b19e6e39213748adc5bda80b63c426a67873f7aab0c50b",
+    "files": [
+      {
+        "path": "src/SmoothScroll.Avalonia.Interaction/Source/InputElementInteractionSource.cs",
+        "preimageSha256": "51b1b8e3ae85536fb9eee2b73c38c22c7275cb84b3733b124163dce7c1ae58f3",
+        "postimageSha256": "4570c3ef1f1e506a26672ffbdedb91bddbc1e98c715310e65756d14f75607754"
+      },
+      {
+        "path": "src/SmoothScroll.Avalonia.Interaction/InteractionTracker.cs",
+        "preimageSha256": "7a64360175c212884dd293e4913b9b3cd105d48266e70203f3223d5594ce5e03",
+        "postimageSha256": "74909767118f50f5192910a5ac0bcc6bc91ad5c5621f02c2637d9b139be112ef"
+      },
+      {
+        "path": "src/SmoothScroll.Avalonia.Interaction/ServerInteractionTracker.cs",
+        "preimageSha256": "6adb424427af7440b4720865c9ad90218969842c7c54443f99f79e5189de8ca8",
+        "postimageSha256": "3a2d0f92417fb16c4a7eb8c28538ec02070880b4f3c6504dd3d7ebe430235698"
+      },
+      {
+        "path": "src/SmoothScroll.Avalonia.Interaction/States/Interacting/InteractingState.cs",
+        "preimageSha256": "86b7b1da58267991163adc104bb6e8e5e40269cc84e8ae05be859cd71ecb98ee",
+        "postimageSha256": "7a3a23bd5dc668044471f3b8633f0124976f551b6c84722ece730f928491772c"
+      },
+      {
+        "path": "src/SmoothScroll.Avalonia.Interaction/States/Inertia/ActiveInputInertiaHandler.cs",
+        "preimageSha256": "9db00451e1868c6fcd25100c845f7d34e878d6d1b6afbff33c360b72a473ac40",
+        "postimageSha256": "7f190afdacbe36829eac27392134e3c48a8c69f1fa22ae453b254c79e7ad68a8"
+      },
+      {
+        "path": "src/SmoothScroll.Avalonia.Interaction/Helpers/VelocityTracker.cs",
+        "preimageSha256": "36736c96ef7d2f735df746c1d6914abcec30e2f62e1ce404bd460718691f0eff",
+        "postimageSha256": "6931481e98a24737f36f159dbccbd25a05898be65e4103802e84330a03cffabb"
+      }
+    ]
+  }
+}

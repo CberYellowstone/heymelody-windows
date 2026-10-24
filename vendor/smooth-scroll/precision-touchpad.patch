@@ -1,0 +1,390 @@
+diff --git a/src/SmoothScroll.Avalonia.Interaction/Source/InputElementInteractionSource.cs b/src/SmoothScroll.Avalonia.Interaction/Source/InputElementInteractionSource.cs
+index d5818de..4056127 100644
+--- a/src/SmoothScroll.Avalonia.Interaction/Source/InputElementInteractionSource.cs
++++ b/src/SmoothScroll.Avalonia.Interaction/Source/InputElementInteractionSource.cs
+@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
+ using Avalonia.Input;
+ using Avalonia.Interactivity;
+ using Avalonia.Platform;
++using Avalonia.Threading;
+ using Avalonia.Utilities;
+ using Avalonia.VisualTree;
+ using SmoothScroll.Avalonia.Interaction.Helpers;
+@@ -15,6 +16,9 @@ namespace SmoothScroll.Avalonia.Interaction;
+ public class InputElementInteractionSource : IDisposable
+ {
+     private const double TouchpadDeltaScale = 48;
++    private const int PrecisionQuietMilliseconds = 80;
++    private const double PrecisionOverscrollRatio = 0.12;
++    private const double PrecisionOverscrollMaximum = 96;
+ 
+     // On WinUI, this depends on mouse setting "how many lines to scroll each time"
+     // The default Windows setting is 3 lines, and each line is 16px.
+@@ -77,6 +81,12 @@ public class InputElementInteractionSource : IDisposable
+     private VelocityTracker? _velocityTracker;
+     private bool _hasHorizontalChainingTarget;
+     private bool _hasVerticalChainingTarget;
++    private readonly DispatcherTimer _precisionTimer;
++    private bool _precisionActive;
++    private bool _disposed;
++    private Vector _precisionPosition;
++    private Vector _precisionLastDelta;
++    private VelocityTracker? _precisionVelocityTracker;
+ 
+     public InputElementInteractionSource(InputElement inputElement, InteractionTracker tracker)
+     {
+@@ -87,6 +97,14 @@ public class InputElementInteractionSource : IDisposable
+         _inputElement.PointerCaptureLost += OnPointerCaptureLost;
+         _inputElement.PointerWheelChanged += OnPointerWheelChanged;
+         _tracker = tracker;
++        _precisionTimer = new DispatcherTimer(DispatcherPriority.Background)
++        {
++            Interval = TimeSpan.FromMilliseconds(PrecisionQuietMilliseconds)
++        };
++        _precisionTimer.Tick += PrecisionQuiet;
++        _tracker.ProgrammaticMotionRequested += CancelPrecisionOnProgrammaticMotion;
++        _inputElement.AddHandler(InputElement.PointerPressedEvent, CancelPrecisionOnPress, RoutingStrategies.Tunnel);
++        _inputElement.AddHandler(InputElement.KeyDownEvent, CancelPrecisionOnKey, RoutingStrategies.Tunnel);
+ 
+         if (_inputElement is Visual visual)
+         {
+@@ -105,7 +123,7 @@ public class InputElementInteractionSource : IDisposable
+ 
+     private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+     {
+-        if (IsPrecisionTouchpadScroll(e))
++        if (_precisionActive || IsPrecisionTouchpadScroll(e))
+         {
+             HandlePrecisionTouchpadScroll(e);
+             return;
+@@ -164,6 +182,7 @@ public class InputElementInteractionSource : IDisposable
+ 
+     private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+     {
++        EndPrecisionSession(allowInertia: false);
+         _hasHorizontalChainingTarget = false;
+         _hasVerticalChainingTarget = false;
+     }
+@@ -424,10 +443,19 @@ public class InputElementInteractionSource : IDisposable
+ 
+     private void HandlePrecisionTouchpadScroll(PointerWheelEventArgs e)
+     {
++        // Do not mix wheel packets into a captured touch/pen manipulation.
++        if (_isInteracting) return;
++
+         var translationDelta = new Point(
+             PositionXSourceMode is InteractionSourceMode.Disabled ? 0 : e.Delta.X * TouchpadDeltaScale,
+             PositionYSourceMode is InteractionSourceMode.Disabled ? 0 : e.Delta.Y * TouchpadDeltaScale);
+ 
++        if (PositionYSourceMode is InteractionSourceMode.Disabled &&
++            PositionXSourceMode is not InteractionSourceMode.Disabled && e.Delta.X == 0)
++        {
++            translationDelta = new Point(e.Delta.Y * TouchpadDeltaScale, 0);
++        }
++
+         if (translationDelta == default)
+         {
+             return;
+@@ -435,15 +463,81 @@ public class InputElementInteractionSource : IDisposable
+ 
+         if (ShouldChainDuringInteraction(translationDelta) && ScaleSourceMode is not InteractionSourceMode.EnabledWithInertia)
+         {
++            EndPrecisionSession(allowInertia: false);
+             return;
+         }
+ 
+-        _tracker.BeginUserManipulation(e.GetPosition(_inputElement), e.Pointer);
++        var sampleTime = TimeSpan.FromMilliseconds(e.Timestamp);
++        if (!_precisionActive)
++        {
++            _precisionActive = true;
++            _precisionPosition = default;
++            _precisionVelocityTracker = new VelocityTracker(PrecisionQuietMilliseconds);
++        }
++        var bounds = (_inputElement as Visual)?.Bounds.Size ?? default;
++        var limit = new Vector(
++            Math.Min(PrecisionOverscrollMaximum, Math.Max(0, bounds.Width) * PrecisionOverscrollRatio),
++            Math.Min(PrecisionOverscrollMaximum, Math.Max(0, bounds.Height) * PrecisionOverscrollRatio));
++        // Begin is idempotent while interacting, and restarts after a programmatic
++        // position/animation has legitimately taken over the server tracker.
++        _tracker.BeginUserManipulation(e.GetPosition(_inputElement), e.Pointer, limit);
+         _tracker.ApplyManipulationDelta(-translationDelta);
+-        _tracker.CompleteUserManipulation();
++        var scrollDelta = new Vector(-translationDelta.X, -translationDelta.Y);
++        _precisionPosition += scrollDelta;
++        if (scrollDelta.X != 0) _precisionLastDelta = _precisionLastDelta.WithX(scrollDelta.X);
++        if (scrollDelta.Y != 0) _precisionLastDelta = _precisionLastDelta.WithY(scrollDelta.Y);
++        _precisionVelocityTracker!.AddPosition(sampleTime, _precisionPosition);
++        _precisionTimer.Stop();
++        _precisionTimer.Start();
+         e.Handled = true;
+     }
+ 
++    private void PrecisionQuiet(object? sender, EventArgs e) => EndPrecisionSession(allowInertia: true);
++
++    private void CancelPrecisionOnPress(object? sender, PointerPressedEventArgs e) => EndPrecisionSession(allowInertia: false);
++
++    private void CancelPrecisionOnKey(object? sender, KeyEventArgs e) => EndPrecisionSession(allowInertia: false);
++
++    private void CancelPrecisionOnProgrammaticMotion() => EndPrecisionSession(allowInertia: false, notifyTracker: false);
++
++    private void EndPrecisionSession(bool allowInertia, bool notifyTracker = true)
++    {
++        _precisionTimer.Stop();
++        if (!_precisionActive) return;
++        _precisionActive = false;
++        var velocity = allowInertia && !_disposed
++            ? _precisionVelocityTracker?.GetVelocity().ClampMagnitude(0, 8000).PixelsPerSecond ?? Vector.Zero
++            : Vector.Zero;
++        // ClampMagnitude's minimum raises low speeds; it is not a stop threshold.
++        // Discard a decayed OS tail instead of adding another fling to it.
++        if (!double.IsFinite(velocity.X) || !double.IsFinite(velocity.Y) || velocity.Length < 50)
++            velocity = Vector.Zero;
++        _precisionVelocityTracker = null;
++        _precisionPosition = default;
++        var lastDelta = _precisionLastDelta;
++        _precisionLastDelta = default;
++        if (!notifyTracker) return;
++
++        // The polynomial estimate can reverse sign near a decaying tail. Never
++        // invent release motion opposite to the most recent actual input axis.
++        if (lastDelta.X == 0 || velocity.X * lastDelta.X < 0) velocity = velocity.WithX(0);
++        if (lastDelta.Y == 0 || velocity.Y * lastDelta.Y < 0) velocity = velocity.WithY(0);
++        if (PositionXSourceMode is not InteractionSourceMode.EnabledWithInertia ||
++            velocity.X < 0 && _tracker.Position.X <= _tracker.MinPosition.X ||
++            velocity.X > 0 && _tracker.Position.X >= _tracker.MaxPosition.X)
++            velocity = velocity.WithX(0);
++        if (PositionYSourceMode is not InteractionSourceMode.EnabledWithInertia ||
++            velocity.Y < 0 && _tracker.Position.Y <= _tracker.MinPosition.Y ||
++            velocity.Y > 0 && _tracker.Position.Y >= _tracker.MaxPosition.Y)
++            velocity = velocity.WithY(0);
++
++        if (velocity.Length < 50) velocity = Vector.Zero;
++        if (velocity != Vector.Zero)
++            _tracker.StartInertia(new Point(velocity.X, velocity.Y));
++        else
++            _tracker.CompleteUserManipulation();
++    }
++
+     private void OnPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+     {
+         if (!_isInteracting)
+@@ -569,6 +663,12 @@ public class InputElementInteractionSource : IDisposable
+ 
+     public void Dispose()
+     {
++        _disposed = true;
++        EndPrecisionSession(allowInertia: false, notifyTracker: false);
++        _precisionTimer.Tick -= PrecisionQuiet;
++        _tracker.ProgrammaticMotionRequested -= CancelPrecisionOnProgrammaticMotion;
++        _inputElement.RemoveHandler(InputElement.PointerPressedEvent, CancelPrecisionOnPress);
++        _inputElement.RemoveHandler(InputElement.KeyDownEvent, CancelPrecisionOnKey);
+         if (_inputElement is Visual visual)
+         {
+             visual.AttachedToVisualTree -= OnAttachedToVisualTree;
+diff --git a/src/SmoothScroll.Avalonia.Interaction/InteractionTracker.cs b/src/SmoothScroll.Avalonia.Interaction/InteractionTracker.cs
+index 7b4a651..b9c5c54 100644
+--- a/src/SmoothScroll.Avalonia.Interaction/InteractionTracker.cs
++++ b/src/SmoothScroll.Avalonia.Interaction/InteractionTracker.cs
+@@ -29,6 +29,8 @@ public partial class InteractionTracker : CompositionObject
+ 
+     public IInteractionTrackerOwner? Owner { get; init; }
+ 
++    internal event Action? ProgrammaticMotionRequested;
++
+     public int TryUpdatePosition(Vector3D value)
+         => TryUpdatePosition(value, InteractionTrackerClampingOption.Auto);
+ 
+@@ -37,6 +39,7 @@ public partial class InteractionTracker : CompositionObject
+ 
+     public int TryUpdatePosition(Vector3D value, InteractionTrackerClampingOption option)
+     {
++        ProgrammaticMotionRequested?.Invoke();
+         var id = NextRequestId();
+         QueueRequest(new TryUpdatePositionRequest(id, value, option));
+         return id;
+@@ -60,6 +63,7 @@ public partial class InteractionTracker : CompositionObject
+         }
+ 
+         animation.Target = nameof(Server.Position);
++        ProgrammaticMotionRequested?.Invoke();
+         var id = NextRequestId();
+         QueueRequest(new StartAnimationRequest(id, animation, null));
+         return id;
+@@ -79,10 +83,10 @@ public partial class InteractionTracker : CompositionObject
+     }
+ 
+ 
+-    internal void BeginUserManipulation(Point position, IPointer pointer)
++    internal void BeginUserManipulation(Point position, IPointer pointer, Vector? precisionOverscrollLimit = null)
+     {
+         var id = NextRequestId();
+-        QueueRequest(new BeginUserManipulationRequest(id, position, pointer));
++        QueueRequest(new BeginUserManipulationRequest(id, position, pointer, precisionOverscrollLimit));
+     }
+ 
+     internal void CompleteUserManipulation()
+@@ -201,7 +205,7 @@ internal record InteractionTrackerRequest(int RequestId);
+ internal record TryUpdatePositionRequest(int RequestId, Vector3D Position, InteractionTrackerClampingOption ClampingOption) : InteractionTrackerRequest(RequestId);
+ internal record TryUpdateScaleRequest(int RequestId, double Scale, Vector3D CenterPoint) : InteractionTrackerRequest(RequestId);
+ internal record StartAnimationRequest(int RequestId, CompositionAnimation Animation, Vector3D? ScaleCenterPoint) : InteractionTrackerRequest(RequestId);
+-internal record BeginUserManipulationRequest(int RequestId, Point Position, IPointer Pointer) : InteractionTrackerRequest(RequestId);
++internal record BeginUserManipulationRequest(int RequestId, Point Position, IPointer Pointer, Vector? PrecisionOverscrollLimit) : InteractionTrackerRequest(RequestId);
+ internal record CompleteManipulationRequest(int RequestId) : InteractionTrackerRequest(RequestId);
+ internal record ApplyManipulationDeltaRequest(int RequestId, Vector TranslationDelta) : InteractionTrackerRequest(RequestId);
+ internal record StartInertiaRequest(int RequestId, Point LinearVelocity) : InteractionTrackerRequest(RequestId);
+diff --git a/src/SmoothScroll.Avalonia.Interaction/ServerInteractionTracker.cs b/src/SmoothScroll.Avalonia.Interaction/ServerInteractionTracker.cs
+index 3b11d4a..be2e9a3 100644
+--- a/src/SmoothScroll.Avalonia.Interaction/ServerInteractionTracker.cs
++++ b/src/SmoothScroll.Avalonia.Interaction/ServerInteractionTracker.cs
+@@ -31,8 +31,15 @@ internal partial class ServerInteractionTracker
+         _state ??= new IdleState(this, requestId: 0, isInitialIdleState: true);
+     }
+ 
++    internal Vector? PrecisionOverscrollLimit { get; private set; }
++
+     internal void SetPosition(Vector3D newPosition, int requestId)
+     {
++        if (PrecisionOverscrollLimit is { } limit)
++        {
++            var extra = new Vector3D(limit.X, limit.Y, 0);
++            newPosition = Vector3D.Clamp(newPosition, MinPosition - extra, MaxPosition + extra);
++        }
+         if (Position == newPosition)
+             return;
+         Position = newPosition;
+@@ -141,6 +148,7 @@ internal partial class ServerInteractionTracker
+                     SetScale(tryUpdateScaleRequest.Scale, tryUpdateScaleRequest.CenterPoint, tryUpdateScaleRequest.RequestId);
+                     break;
+                 case BeginUserManipulationRequest beginUserManipulationRequest:
++                    PrecisionOverscrollLimit = beginUserManipulationRequest.PrecisionOverscrollLimit;
+                     State.BeginUserManipulation(beginUserManipulationRequest.Position, beginUserManipulationRequest.Pointer);
+                     break;
+                 case CompleteManipulationRequest completeManipulationRequest:
+diff --git a/src/SmoothScroll.Avalonia.Interaction/States/Interacting/InteractingState.cs b/src/SmoothScroll.Avalonia.Interaction/States/Interacting/InteractingState.cs
+index e351af6..04d5fcc 100644
+--- a/src/SmoothScroll.Avalonia.Interaction/States/Interacting/InteractingState.cs
++++ b/src/SmoothScroll.Avalonia.Interaction/States/Interacting/InteractingState.cs
+@@ -1,5 +1,6 @@
+ ﻿using Avalonia;
+ using Avalonia.Input;
++using Avalonia.Rendering.Composition.Animations;
+ 
+ namespace SmoothScroll.Avalonia.Interaction;
+ 
+@@ -127,6 +128,15 @@ internal sealed class InteractingState : InteractionTrackerState
+     private void UpdateTrackerPosition(Vector3D position)
+     {
+         var modifiedPosition = GetElasticPoint(position, _interactionTracker.MinPosition, _interactionTracker.MaxPosition);
++        if (_interactionTracker.PrecisionOverscrollLimit is { } limit)
++        {
++            var extra = new Vector3D(limit.X, limit.Y, 0);
++            modifiedPosition = Vector3D.Clamp(modifiedPosition,
++                _interactionTracker.MinPosition - extra, _interactionTracker.MaxPosition + extra);
++            // Bound the underlying distance too: reverse input must not first unwind an
++            // arbitrarily large invisible overscroll accumulated at the visual limit.
++            _position = GetOriginalPoint(modifiedPosition, _interactionTracker.MinPosition, _interactionTracker.MaxPosition);
++        }
+         _interactionTracker.SetPosition(modifiedPosition, requestId: 0);
+     }
+ 
+@@ -149,9 +159,25 @@ internal sealed class InteractingState : InteractionTrackerState
+ 
+     internal override void TryUpdatePosition(Vector3D value, InteractionTrackerClampingOption option, int requestId)
+     {
++        if (_interactionTracker.PrecisionOverscrollLimit is not null)
++        {
++            if (option == InteractionTrackerClampingOption.Auto)
++                value = Vector3D.Clamp(value, _interactionTracker.MinPosition, _interactionTracker.MaxPosition);
++            _interactionTracker.SetPosition(value, requestId);
++            _interactionTracker.ChangeState(new IdleState(_interactionTracker, requestId));
++            return;
++        }
+         _interactionTracker.NotifyRequestIgnored(requestId);
+     }
+ 
++    internal override void StartAnimation(CompositionAnimation animation, Vector3D? scaleCenterPoint = null)
++    {
++        if (_interactionTracker.PrecisionOverscrollLimit is not null)
++            _interactionTracker.ChangeState(new CustomAnimationState(_interactionTracker, animation, scaleCenterPoint));
++        else
++            base.StartAnimation(animation, scaleCenterPoint);
++    }
++
+     internal override void ReceiveBoundsUpdate()
+     {
+         SyncPositionFromTracker();
+diff --git a/src/SmoothScroll.Avalonia.Interaction/States/Inertia/ActiveInputInertiaHandler.cs b/src/SmoothScroll.Avalonia.Interaction/States/Inertia/ActiveInputInertiaHandler.cs
+index ed5b176..974ce4d 100644
+--- a/src/SmoothScroll.Avalonia.Interaction/States/Inertia/ActiveInputInertiaHandler.cs
++++ b/src/SmoothScroll.Avalonia.Interaction/States/Inertia/ActiveInputInertiaHandler.cs
+@@ -245,12 +245,31 @@ internal sealed partial class ActiveInputInertiaHandler : ServerObject, IServerC
+                 var currentOffset =
+                     DampingHelper.SolveCriticallyDampedWithVelocity(y0, _initialDampingVelocity!.Value, wn, elapsedInDamping);
+                 var finalOffset = DampingHelper.SolveCriticallyDampedWithVelocity(y0, _initialDampingVelocity!.Value, wn, settlingTime);
+-                return target + currentOffset - finalOffset;
++                return LimitPrecisionPosition(target + currentOffset - finalOffset, currentElapsedInSeconds);
+             }
+ 
+             var currentPosition = InitialValue + CalculateDeltaPosition(currentElapsedInSeconds);
+             UpdateDampingAnimation(currentPosition, currentElapsedInSeconds);
+-            return currentPosition;
++            return LimitPrecisionPosition(currentPosition, currentElapsedInSeconds);
++        }
++
++        private double LimitPrecisionPosition(double position, float currentElapsedInSeconds)
++        {
++            if (Handler._interactionTracker.PrecisionOverscrollLimit is not { } limits)
++                return position;
++            var limit = Axis switch { Axis.X => limits.X, Axis.Y => limits.Y, _ => 0 };
++            var minimum = GetValue(Handler._interactionTracker.MinPosition) - limit;
++            var maximum = GetValue(Handler._interactionTracker.MaxPosition) + limit;
++            var bounded = Math.Clamp(position, minimum, maximum);
++            if (bounded != position)
++            {
++                // Restart the existing spring from the cap with no outward energy.
++                // Later frames must not keep advancing a hidden, unbounded trajectory.
++                _dampingStateTimeInSeconds = currentElapsedInSeconds;
++                _dampingStatePosition = bounded;
++                _initialDampingVelocity = 0;
++            }
++            return bounded;
+         }
+ 
+         public void PositionBoundsChanged(float currentElapsedInSeconds)
+diff --git a/src/SmoothScroll.Avalonia.Interaction/Helpers/VelocityTracker.cs b/src/SmoothScroll.Avalonia.Interaction/Helpers/VelocityTracker.cs
+index 014f611..a5dcfe9 100644
+--- a/src/SmoothScroll.Avalonia.Interaction/Helpers/VelocityTracker.cs
++++ b/src/SmoothScroll.Avalonia.Interaction/Helpers/VelocityTracker.cs
+@@ -61,7 +61,7 @@ internal record struct PointAtTime(bool Valid, Vector Point, TimeSpan Time);
+ /// have been received.
+ internal class VelocityTracker
+ {
+-    private const int AssumePointerMoveStoppedMilliseconds = 40;
++    private readonly int _assumePointerMoveStoppedMilliseconds;
+     private const int HistorySize = 20;
+     private const int HorizonMilliseconds = 100;
+     private const int MinSampleSize = 3;
+@@ -71,6 +71,13 @@ internal class VelocityTracker
+     private readonly PointAtTime[] _samples = new PointAtTime[HistorySize];
+     private int _index = 0;
+ 
++    public VelocityTracker() : this(40) { }
++
++    public VelocityTracker(int assumePointerMoveStoppedMilliseconds)
++    {
++        _assumePointerMoveStoppedMilliseconds = assumePointerMoveStoppedMilliseconds;
++    }
++
+     /// <summary>
+     /// Adds a position as the given time to the tracker.
+     /// </summary>
+@@ -123,7 +130,7 @@ internal class VelocityTracker
+             double age = (newestSample.Time - sample.Time).TotalMilliseconds;
+             double delta = Math.Abs((sample.Time - previousSample.Time).TotalMilliseconds);
+             previousSample = sample;
+-            if (age > HorizonMilliseconds || delta > AssumePointerMoveStoppedMilliseconds)
++            if (age > HorizonMilliseconds || delta > _assumePointerMoveStoppedMilliseconds)
+             {
+                 break;
+             }

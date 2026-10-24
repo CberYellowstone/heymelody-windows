@@ -20,3 +20,7 @@ packaging/inno/Languages/ChineseSimplified.isl -text whitespace=cr-at-eol
 # Keep the upstream smooth-scroll license copies identical to their recorded SHA256.
 docs/licenses/SmoothScroll.Avalonia-LICENSE.txt -text
 packaging/licenses/SmoothScroll.Avalonia-LICENSE.txt -text
+# The local dependency rebuild verifies the patch bytes on every checkout.
+vendor/smooth-scroll/precision-touchpad.patch -text -whitespace
+vendor/smooth-scroll/UPSTREAM.json text eol=lf
+vendor/nuget/*.nupkg binary

@@ -8,7 +8,7 @@
 
 ## 环境与模块
 
-日常客户端使用 Windows 与 .NET SDK 10，通过仓库 `NuGet.Config` 中的官方 NuGet 源恢复依赖。GUI 使用 Avalonia、FluentAvalonia；Windows 平台层目标为 `net10.0-windows`。发布包是自包含应用，终端用户无需安装 SDK。
+日常客户端使用 Windows 与 .NET SDK 10，通过仓库 `NuGet.Config` 中的官方 NuGet 源及已签入的局部补丁包恢复依赖。GUI 使用 Avalonia、FluentAvalonia；Windows 平台层目标为 `net10.0-windows`。发布包是自包含应用，终端用户无需安装 SDK。
 
 | 入口或模块 | 职责 |
 | --- | --- |
@@ -71,14 +71,16 @@ dotnet run --project tests/HeyMelody.Protocol.Tests/HeyMelody.Protocol.Tests.csp
 dotnet run --project tests/HeyMelody.App.Tests/HeyMelody.App.Tests.csproj -c Release
 ```
 
-平滑滚动及设备栏可分别运行定向检查（无真实设备操作），以覆盖滚轮动画、精细滚轮边界、标题触摸模拟、嵌套边界、直接定位、内容收缩后的布局和横向居中：
+平滑滚动及设备栏可分别运行定向检查（无真实设备操作），以覆盖滚轮动画、触摸板连续输入和末端惯性、有界回弹、标题触摸模拟、嵌套边界、直接定位、内容收缩后的布局和横向居中：
 
 ```powershell
 dotnet run --project tests/HeyMelody.App.Tests/HeyMelody.App.Tests.csproj -c Release -- --smooth-scroll-tests
 dotnet run --project tests/HeyMelody.App.Tests/HeyMelody.App.Tests.csproj -c Release -- --device-bar-tests
 ```
 
-标题触摸回归应区分轻触展开与越过拖动阈值后的滚动，并检查 Footer 编辑器及嵌套滚动页不会被外层接管。精细滚轮边界除 Offset 外还须核对实际绘制位置，不能只以受限 Offset 推断内容可见。当前专项未覆盖笔输入模拟；模拟指针和合成渲染结果不证明真实触屏、笔或触控板手感，也不证明 ARM64 硬件运行。
+标题触摸回归应区分轻触展开与越过拖动阈值后的滚动，并检查 Footer 编辑器及嵌套滚动页不会被外层接管。触摸板需区分突然结束与系统递减尾包，并验证非零惯性撞边、反向、程序接管及卸载；边界除 Offset 外还须核对实际绘制位置。当前专项未覆盖笔输入模拟；模拟指针和合成渲染结果不证明真实触屏、笔或触控板手感，也不证明 ARM64 硬件运行。
+
+本地 `SmoothScroll.Avalonia.Interaction` 补丁包由精确源提交构建，独立版本只从 `vendor/nuget` 解析；官方 Controls 包继续使用 12.0.0.14。普通构建无需下载研究源件或应用补丁。来源、修改清单及可选手动重建步骤见 [vendor 说明](../vendor/smooth-scroll/README.md)。
 
 完整默认检查入口为：
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "source": "SmoothScroll.Avalonia upstream MIT license",
+  "source": "SmoothScroll.Avalonia upstream MIT-licensed Controls and locally patched Interaction",
   "repository": {
     "url": "https://github.com/zxbmmmmmmmmm/SmoothScroll.Avalonia",
     "commit": "cff62b8c1351b52d09dcac303d8fefbcce36b276"
@@ -15,10 +15,21 @@
     },
     {
       "id": "SmoothScroll.Avalonia.Interaction",
-      "version": "12.0.0.14",
-      "url": "https://api.nuget.org/v3-flatcontainer/smoothscroll.avalonia.interaction/12.0.0.14/smoothscroll.avalonia.interaction.12.0.0.14.nupkg",
-      "bytes": 79092,
-      "sha256": "3e9470c2c34c45ebcab6dda6ccd86546706e4038fe2a877f586e8d0c8ec63345"
+      "version": "12.0.0.15-heymelody.2",
+      "origin": "repository-local NuGet feed",
+      "repositoryPath": "vendor/nuget/SmoothScroll.Avalonia.Interaction.12.0.0.15-heymelody.2.nupkg",
+      "bytes": 83307,
+      "sha256": "1e8374d2f7aabcec69bfc236bfb574b4a9f9432b2a3f441604a2ba305d03544e",
+      "assemblySha256": "bc4e6428650b79c49e908be55302963721fea0a5ea8d7111c4354a62763b272a",
+      "assemblyVersion": "1.0.0.0",
+      "fileVersion": "1.0.0.0",
+      "upstreamPackage": {
+        "id": "SmoothScroll.Avalonia.Interaction",
+        "version": "12.0.0.14",
+        "url": "https://api.nuget.org/v3-flatcontainer/smoothscroll.avalonia.interaction/12.0.0.14/smoothscroll.avalonia.interaction.12.0.0.14.nupkg",
+        "bytes": 79092,
+        "sha256": "3e9470c2c34c45ebcab6dda6ccd86546706e4038fe2a877f586e8d0c8ec63345"
+      }
     }
   ],
   "license": {
@@ -33,6 +44,24 @@
   "distribution": {
     "licensePath": "licenses/upstream/SmoothScroll.Avalonia-LICENSE.txt",
     "sourcePath": "licenses/upstream/SmoothScroll.Avalonia-SOURCE.json",
-    "reason": "Both NuGet packages declare the MIT license expression without an embedded LICENSE file; this copy preserves the exact-commit upstream license text."
+    "reason": "The official Controls package declares MIT without an embedded LICENSE. The local Interaction package embeds the exact upstream license; the installer also carries this byte-preserved copy with source and patch provenance."
+  },
+  "localPatch": {
+    "repository": "https://github.com/swift-lee/heymelody-windows",
+    "patchPath": "vendor/smooth-scroll/precision-touchpad.patch",
+    "patchSha256": "c5953993032ef14c93b19e6e39213748adc5bda80b63c426a67873f7aab0c50b",
+    "upstreamArchiveUrl": "https://codeload.github.com/zxbmmmmmmmmm/SmoothScroll.Avalonia/zip/cff62b8c1351b52d09dcac303d8fefbcce36b276",
+    "upstreamArchiveSha256": "467050729ac3da9f837876a5c7620baa5d9b12fb5929ae621077f00353af2081",
+    "specificationPath": "vendor/smooth-scroll/UPSTREAM.json",
+    "rebuildScript": "tools/Build-SmoothScrollPatch.ps1",
+    "changedFiles": [
+      "src/SmoothScroll.Avalonia.Interaction/Source/InputElementInteractionSource.cs",
+      "src/SmoothScroll.Avalonia.Interaction/InteractionTracker.cs",
+      "src/SmoothScroll.Avalonia.Interaction/ServerInteractionTracker.cs",
+      "src/SmoothScroll.Avalonia.Interaction/States/Interacting/InteractingState.cs",
+      "src/SmoothScroll.Avalonia.Interaction/States/Inertia/ActiveInputInertiaHandler.cs",
+      "src/SmoothScroll.Avalonia.Interaction/Helpers/VelocityTracker.cs"
+    ],
+    "behavior": "Continuous precision input, bounded overscroll and inertia, low-speed and reverse-tail rejection, and cancellation; the upstream touch/pen defaults are retained."
   }
 }

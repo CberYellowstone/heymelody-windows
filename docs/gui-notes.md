@@ -91,9 +91,11 @@
 
 ## 平滑滚动
 
-主窗口设置区 `ControlScroll`、底部设备栏 `DeviceBarScroll`、设备管理器 `DeviceScroll` 和校准向导 `PageScroll` 使用 SmoothScroll.Avalonia 12.0.0.14 的局部滚动主题；设备栏支持纵向滚轮驱动横向平滑滚动，嵌套列表等控件保留原有 FluentAvalonia 模板。启用平滑主题时，滚动到目标（`BringIntoView`）使用 500 ms 动画；启动时若系统关闭动画，则保留原主题及即时滚动。接入未涉及真实触摸输入或 ARM64 硬件验证，许可原文见 [SmoothScroll.Avalonia MIT 许可](licenses/SmoothScroll.Avalonia-LICENSE.txt)。
+主窗口设置区 `ControlScroll`、底部设备栏 `DeviceBarScroll`、设备管理器 `DeviceScroll` 和校准向导 `PageScroll` 使用 SmoothScroll.Avalonia 12.0.0.14 的局部滚动主题，输入子包固定为仓库携带的 `SmoothScroll.Avalonia.Interaction 12.0.0.15-heymelody.2`。设备栏的整数与小数纵向输入都交由库映射为横向滚动，嵌套列表等控件保留原有 FluentAvalonia 模板。启用平滑主题时，滚动到目标（`BringIntoView`）使用 500 ms 动画；启动时若系统关闭动画，则保留原主题及即时滚动。许可原文见 [SmoothScroll.Avalonia MIT 许可](licenses/SmoothScroll.Avalonia-LICENSE.txt)，局部补丁、来源与手动重建见 [vendor 说明](../vendor/smooth-scroll/README.md)。
 
-含小数位移的精细滚轮输入按当前可滚范围处理，在边界也消费该输入，避免为每包输入额外启动库的弹性操作。触摸或笔从设置分组标题开始时，仅在属于当前滚动页的 FluentAvalonia 标题 ToggleButton 路径上放行已处理的按下、移动和释放事件，让库按原拖动阈值接管滚动；轻触展开仍由原按钮处理。标题 Footer 区域（含其编辑器）与嵌套滚动页保留自己的输入处理，鼠标和键盘不走该转接。定向检查使用模拟输入，不能代替真实触屏、笔或触控板手感验证。
+触摸板小数输入在一段连续操纵中处理，包含期间的整数包；静默 80 ms 后按库的末端速度估计衔接惯性和回弹。低于 50 DIP/s 的尾速不再追加惯性，与最后实际输入方向相反的拟合速度也会舍弃，避免把衰减尾包重新抬速或反向甩动。每轴回弹上限按输入时的视口计算，为其 12% 且不超过 96 DIP，同时限制原始超程及惯性撞边后的模型，避免整页飞离或反向时耗尽隐藏距离。滚轮事件没有可靠的手指离开阶段，静默窗口是兼容策略，不能据此宣称识别所有硬件的系统惯性阶段。点击、键盘、显式定位与卸载会结束该段操纵。
+
+触摸或笔从设置分组标题开始时，仅在属于当前滚动页的 FluentAvalonia 标题 ToggleButton 路径上放行已处理的按下、移动和释放事件，让库按原拖动阈值接管滚动；轻触展开仍由原按钮处理。标题 Footer 区域（含其编辑器）与嵌套滚动页保留自己的输入处理，鼠标和键盘不走该转接。触屏及笔沿用库原有的拖动路径。定向检查使用模拟输入；触屏标题修复已有用户实机反馈，但本轮触摸板参数未作物理硬件验证，也未覆盖 Pen 模拟或 ARM64 硬件。
 
 上游将此库标为实验性。本轮固定在 Avalonia 12.1.4／FluentAvalonia 3.1.0 验证，后续升级需复核组合渲染、滚动定位与卸载行为；原始包、源码版本和接入记录保存在本地 `research/smooth-scroll-review/20261024-package/`。
 

@@ -21,6 +21,7 @@
     <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
     <PackageReference Include="FluentAvaloniaUI" Version="3.1.0" />
     <PackageReference Include="SmoothScroll.Avalonia" Version="12.0.0.14" />
+    <PackageReference Include="SmoothScroll.Avalonia.Interaction" Version="12.0.0.15-heymelody.2" />
     <PackageReference Include="SkiaSharp.Skottie" Version="3.119.4" />
     <ProjectReference Include="../HeyMelody.Client/HeyMelody.Client.csproj" />
     <ProjectReference Include="../HeyMelody.Artwork/HeyMelody.Artwork.csproj" />

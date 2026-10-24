@@ -209,9 +209,8 @@ public partial class MainView
         if (_smoothDeviceBar)
         {
             if (e.Delta.X != 0 || e.Delta.Y != 0) _centerDevicePending = false;
-            // The library maps whole vertical wheel ticks to X. Preserve the existing fine-grained
-            // vertical-to-horizontal path for fractional deltas, which it only supports on their native axis.
-            if (Math.Abs(e.Delta.X) > 0.001 || e.Delta.Y == 0 || e.Delta.Y == Math.Truncate(e.Delta.Y)) return;
+            // The patched input source maps both precise and whole vertical packets onto X.
+            return;
         }
         // A regular mouse wheel also moves this horizontal device strip.
         if (e.Handled || Math.Abs(e.Delta.X) > 0.001 || e.Delta.Y == 0) return;

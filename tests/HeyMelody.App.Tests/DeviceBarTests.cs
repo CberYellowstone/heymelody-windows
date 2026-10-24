@@ -301,10 +301,10 @@ internal static class DeviceBarTests
                 Dispatcher.UIThread.RunJobs();
             }
             finally { scroll.RemoveHandler(InputElement.PointerWheelChangedEvent, ObserveFractional); }
-            Check(fractionalRouted == 1 && fractionalArgs.Handled && routedDelta.Y == -.5
-                && Math.Abs(scroll.Offset.X - beforeFractional - 32) <= 1,
-                $"A routed fractional Y wheel preserves the device strip's existing 64 px axis mapping without losing the input. before={beforeFractional}, after={scroll.Offset.X}, maximum={maximum}, routed={fractionalRouted}, handled={fractionalArgs.Handled}, handledAtObserver={fractionalHandled}, delta={routedDelta}, atRoute={offsetAtRoute}, point={fractionalPoint}");
             await UntilScrollSettlesAsync(window, scroll);
+            Check(fractionalRouted == 1 && fractionalArgs.Handled && routedDelta.Y == -.5
+                && Math.Abs(scroll.Offset.X - beforeFractional - 24) <= 1,
+                $"A routed fractional Y wheel uses the library's 48 px horizontal mapping without losing the input. before={beforeFractional}, after={scroll.Offset.X}, maximum={maximum}, routed={fractionalRouted}, handled={fractionalArgs.Handled}, handledAtObserver={fractionalHandled}, delta={routedDelta}, atRoute={offsetAtRoute}, point={fractionalPoint}");
             scroll.Offset = new Vector((scroll.Extent.Width - scroll.Viewport.Width) / 4, 0);
             Dispatcher.UIThread.RunJobs();
             var manualOffset = scroll.Offset.X;

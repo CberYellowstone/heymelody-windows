@@ -25,6 +25,10 @@ internal static class SmoothScrollingInputTests
             FAUISettings.SetAnimationsEnabledAtAppLevel(true);
             await PrecisionBoundariesAsync(checks);
             await PrecisionNestedAsync(checks);
+            await PrecisionMotionAsync(checks);
+            await PrecisionDirectionsAsync(checks);
+            await PrecisionFlingBoundsAsync(checks);
+            await PrecisionCancellationAsync(checks);
             await HeaderTapAsync(checks, move: 0);
             await HeaderTapAsync(checks, move: 1);
             foreach (string title in new[] { "降噪", "均衡器", "音效" }) await HeaderDragAsync(checks, title);
@@ -49,23 +53,139 @@ internal static class SmoothScrollingInputTests
                 if (bottom) { scroll.Offset = new Vector(0, scroll.Extent.Height - scroll.Viewport.Height); await PumpAsync(window, 100); }
                 int initial = ColoredSamples(window, scroll), minimum = initial; bool handled = true, logicalBounds = true;
                 double maximum = scroll.Extent.Height - scroll.Viewport.Height;
+                double peak = 0, limit = Math.Min(96, scroll.Viewport.Height * .12); ulong timestamp = 10_000;
+                string? minimumSampleDetails = null;
                 for (int packet = 0; packet < 16; packet++)
                 {
-                    var args = Wheel(window, content, new Vector(0, bottom ? -3.5 : 3.5));
+                    var args = Wheel(window, content, new Vector(0, bottom ? -3.5 : 3.5), timestamp += 8);
                     handled &= args.Handled;
                     await PumpAsync(window, 8);
-                    minimum = Math.Min(minimum, ColoredSamples(window, scroll));
+                    var rendered = Rendered(window, scroll);
+                    if (rendered.Covered < minimum) { minimum = rendered.Covered; minimumSampleDetails = rendered.Missing; }
+                    peak = Math.Max(peak, bottom ? rendered.BottomGap : rendered.TopGap);
                     logicalBounds &= scroll.Offset.Y >= -.01 && scroll.Offset.Y <= maximum + .01;
                 }
-                Check(checks, initial == 16 && minimum >= 15 && logicalBounds && handled,
-                    "High precision wheel bursts at the " + (bottom ? "bottom" : "top") + " keep actual rendered content visible without elastic flight.",
-                    new { initialCoveredSamples = initial, minimumCoveredSamples = minimum, totalSamples = 16, maximum });
-                await PumpAsync(window, 300);
-                Check(checks, ColoredSamples(window, scroll) >= 15,
-                    "The precision boundary remains physically covered after pending composition work completes.");
+                await ObserveAsync(window, 1400, () =>
+                {
+                    var rendered = Rendered(window, scroll);
+                    if (rendered.Covered < minimum) { minimum = rendered.Covered; minimumSampleDetails = rendered.Missing; }
+                    peak = Math.Max(peak, bottom ? rendered.BottomGap : rendered.TopGap);
+                });
+                Check(checks, initial == 16 && minimum >= 14 && logicalBounds && handled && peak > 1 && peak <= limit + 2,
+                    "High precision bursts at the " + (bottom ? "bottom" : "top") + " retain a small bounded rebound and visible content.",
+                    new { initialCoveredSamples = initial, minimumCoveredSamples = minimum, physicalPeakDip = peak, limit, logicalBounds, handled, minimumSampleDetails });
+                var final = Rendered(window, scroll);
+                Check(checks, final.Covered >= 15 && final.TopGap <= 1.5 && final.BottomGap <= 1.5,
+                    "The precision boundary returns to a physically aligned viewport after its spring settles.");
             }
             finally { window.Close(); await PumpAsync(window, 80); }
         }
+    }
+
+    private static async Task PrecisionMotionAsync(List<object> checks)
+    {
+        foreach (bool osTail in new[] { false, true })
+        {
+            var content = ColorRows(100); var scroll = Viewer(content); SmoothScrolling.Attach(scroll); var window = WindowFor(scroll);
+            try
+            {
+                window.Show(); await PumpAsync(window, 100); scroll.Offset = new Vector(0, 400); await PumpAsync(window, 80);
+                double[] input = Enumerable.Repeat(10d, 10).Concat(osTail ? new[] { 8d, 6, 4, 3, 2, 1, .5, .25 } : []).ToArray();
+                await FeedAsync(window, content, input, interval: osTail ? 8 : 32);
+                double delivered = 400 + input.Sum(); var after = new List<double>();
+                await ObserveAsync(window, 1500, () => after.Add(scroll.Offset.Y));
+                if (osTail)
+                    Check(checks, after.All(value => value >= delivered - 1 && value <= delivered + 1),
+                        "An explicit 8 ms OS-decay tail settles at its supplied distance without a second or reverse fling.",
+                        new { delivered, minimum = after.Min(), maximum = after.Max(), final = scroll.Offset.Y });
+                else
+                    Check(checks, scroll.Offset.Y > delivered + 5 && after.Select(value => Math.Round(value, 2)).Distinct().Count() >= 3,
+                        "An abruptly stopped precision burst continues through several inertia frames instead of stopping immediately.",
+                        new { delivered, final = scroll.Offset.Y });
+            }
+            finally { window.Close(); await PumpAsync(window, 80); }
+        }
+    }
+
+    private static async Task PrecisionDirectionsAsync(List<object> checks)
+    {
+        var content = ColorRows(100); var scroll = Viewer(content); SmoothScrolling.Attach(scroll); var window = WindowFor(scroll);
+        try
+        {
+            window.Show(); await PumpAsync(window, 100); scroll.Offset = new Vector(0, 400); await PumpAsync(window, 80);
+            ulong timestamp = await FeedAsync(window, content, Enumerable.Repeat(10d, 6), interval: 8);
+            double beforeReverse = scroll.Offset.Y;
+            Wheel(window, content, new Vector(0, 10d / 48), timestamp + 8); await PumpAsync(window, 24);
+            double reversed = scroll.Offset.Y; var later = new List<double>();
+            await ObserveAsync(window, 1200, () => later.Add(scroll.Offset.Y));
+            Check(checks, reversed < beforeReverse - 1 && later.All(value => value <= reversed + 1),
+                "A short final reverse packet moves back promptly and never releases inertia in the obsolete direction.");
+            scroll.Offset = new Vector(0, 400); await PumpAsync(window, 80);
+            timestamp = await FeedAsync(window, content, new[] { 10d, 10 }, interval: 32);
+            double beforeInteger = scroll.Offset.Y;
+            Wheel(window, content, new Vector(0, -1), timestamp + 32); await PumpAsync(window, 24);
+            double afterInteger = scroll.Offset.Y;
+            Wheel(window, content, new Vector(0, -10d / 48), timestamp + 64); await PumpAsync(window, 24);
+            Check(checks, afterInteger > beforeInteger + 1 && scroll.Offset.Y > afterInteger + 1,
+                "An integer packet inside a precision session and its next fractional packet both continue the user's motion.");
+        }
+        finally { window.Close(); await PumpAsync(window, 80); }
+    }
+
+    private static async Task PrecisionFlingBoundsAsync(List<object> checks)
+    {
+        foreach (bool fast in new[] { false, true })
+        {
+            var content = ColorRows(100); var scroll = Viewer(content); SmoothScrolling.Attach(scroll); var window = WindowFor(scroll);
+            try
+            {
+                window.Show(); await PumpAsync(window, 100); double maximum = scroll.Extent.Height - scroll.Viewport.Height;
+                scroll.Offset = new Vector(0, maximum - (fast ? 400 : 120)); await PumpAsync(window, 80);
+                await FeedAsync(window, content, Enumerable.Repeat(fast ? 80d : 25d, 4), interval: fast ? 16 : 32);
+                if (scroll.Offset.Y >= maximum - 2) throw new InvalidOperationException("Fling-boundary input must end before the boundary.");
+                double peak = 0, limit = Math.Min(96, scroll.Viewport.Height * .12); int minimum = 16;
+                await ObserveAsync(window, 1600, () =>
+                {
+                    var rendered = Rendered(window, scroll); peak = Math.Max(peak, rendered.BottomGap);
+                    minimum = Math.Min(minimum, rendered.Covered);
+                });
+                Check(checks, peak > 1 && peak <= limit + 2 && minimum >= 14,
+                    (fast ? "A high-speed" : "A near-boundary") + " nonzero-velocity fling hits the edge without exceeding the physical rebound bound.",
+                    new { peak, limit, minimumCoveredSamples = minimum });
+                var final = Rendered(window, scroll);
+                Check(checks, Math.Abs(scroll.Offset.Y - maximum) <= 1 && final.BottomGap <= 1.5,
+                    "The collision spring returns to the boundary without leaving the content displaced.");
+            }
+            finally { window.Close(); await PumpAsync(window, 80); }
+        }
+    }
+
+    private static async Task PrecisionCancellationAsync(List<object> checks)
+    {
+        var content = ColorRows(100); var scroll = Viewer(content); SmoothScrolling.Attach(scroll); var window = WindowFor(scroll);
+        try
+        {
+            window.Show(); await PumpAsync(window, 100); scroll.Offset = new Vector(0, 400); await PumpAsync(window, 80);
+            ulong timestamp = await FeedAsync(window, content, Enumerable.Repeat(10d, 5), interval: 32);
+            scroll.Offset = new Vector(0, 900); var after = new List<double>();
+            await ObserveAsync(window, 300, () => after.Add(scroll.Offset.Y));
+            Check(checks, after.All(value => Math.Abs(value - 900) <= 1),
+                "Programmatic positioning cancels a pending precision release without an obsolete pullback.");
+            Wheel(window, content, new Vector(0, -10d / 48), timestamp + 32); await PumpAsync(window, 800);
+            Check(checks, Math.Abs(scroll.Offset.Y - 910) <= 1,
+                "A fresh precision packet starts a usable new session after programmatic cancellation.");
+            scroll.Offset = new Vector(0, 400); await PumpAsync(window, 80);
+            await FeedAsync(window, content, Enumerable.Repeat(10d, 5), interval: 32);
+            await PumpAsync(window, 24);
+            double takeover = scroll.Offset.Y; var point = new Point(100, 180);
+            using (var touch = window.TouchBegin(point))
+            { await PumpAsync(window, 40); window.TouchEnd(touch, point); }
+            after.Clear(); await ObserveAsync(window, 800, () => after.Add(scroll.Offset.Y));
+            Check(checks, after.All(value => Math.Abs(value - takeover) <= 1),
+                "A new touch contact takes over without a delayed precision-wheel fling.",
+                new { takeover, minimum = after.Min(), maximum = after.Max() });
+        }
+        finally { window.Close(); await PumpAsync(window, 80); }
     }
 
     private static async Task PrecisionNestedAsync(List<object> checks)
@@ -244,13 +364,31 @@ internal static class SmoothScrollingInputTests
             Background = new SolidColorBrush(Color.Parse(index % 2 == 0 ? "#2176FF" : "#12B34A")) });
         return panel;
     }
-    private static PointerWheelEventArgs Wheel(Window window, Control target, Vector delta)
+    private static PointerWheelEventArgs Wheel(Window window, Control target, Vector delta, ulong? timestamp = null)
     {
         var args = new PointerWheelEventArgs(target, new Pointer(1, PointerType.Mouse, true), window, new Point(80, 60),
-            (ulong)Environment.TickCount64, new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.Other), KeyModifiers.None, delta);
+            timestamp ?? (ulong)Environment.TickCount64, new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.Other), KeyModifiers.None, delta);
         target.RaiseEvent(args); Dispatcher.UIThread.RunJobs(); return args;
     }
-    private static int ColoredSamples(Window window, ScrollViewer scroll)
+    private static async Task<ulong> FeedAsync(Window window, Control target, IEnumerable<double> deltas, int interval)
+    {
+        ulong timestamp = 20_000;
+        foreach (double delta in deltas)
+        {
+            Wheel(window, target, new Vector(0, -delta / 48), timestamp += (ulong)interval);
+            // Timestamps define the simulated device cadence; delivery stays within the quiet window.
+            await PumpAsync(window, 8);
+        }
+        return timestamp;
+    }
+    private static async Task ObserveAsync(Window window, int duration, Action sample)
+    {
+        var clock = Stopwatch.StartNew();
+        do { await PumpAsync(window, 12); sample(); } while (clock.ElapsedMilliseconds < duration);
+    }
+    private readonly record struct RenderedContent(int Covered, double TopGap, double BottomGap, string? Missing = null);
+    private static int ColoredSamples(Window window, ScrollViewer scroll) => Rendered(window, scroll).Covered;
+    private static RenderedContent Rendered(Window window, ScrollViewer scroll)
     {
         using var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("Missing rendered input-test frame.");
         using var pixels = frame.Lock();
@@ -258,17 +396,33 @@ internal static class SmoothScrollingInputTests
             throw new InvalidOperationException("Unexpected input-test framebuffer format: " + pixels.Format);
         var bytes = new byte[pixels.RowBytes * pixels.Size.Height]; Marshal.Copy(pixels.Address, bytes, 0, bytes.Length);
         var origin = scroll.TranslatePoint(default, window)!.Value; int covered = 0;
+        int x = (int)((origin.X + scroll.Bounds.Width / 2) * window.RenderScaling);
+        int firstY = (int)(origin.Y * window.RenderScaling), endY = (int)((origin.Y + scroll.Bounds.Height) * window.RenderScaling);
+        bool IsBand(int y)
+        {
+            int at = y * pixels.RowBytes + x * 4;
+            byte red = bytes[at + (pixels.Format == PixelFormat.Bgra8888 ? 2 : 0)], green = bytes[at + 1],
+                blue = bytes[at + (pixels.Format == PixelFormat.Bgra8888 ? 0 : 2)];
+            // The fixture contains saturated rows over a white viewport. Fractional
+            // composition produces other chromatic pixels between the row endpoints;
+            // classify visible color, keeping white exposed by overscroll a strict gap.
+            return Math.Max(red, Math.Max(green, blue)) - Math.Min(red, Math.Min(green, blue)) >= 30;
+        }
+        var missing = new List<string>();
         for (int index = 0; index < 16; index++)
         {
-            int x = (int)((origin.X + scroll.Bounds.Width / 2) * window.RenderScaling);
             int y = (int)((origin.Y + (index + .5) * scroll.Bounds.Height / 16) * window.RenderScaling);
-            int at = y * pixels.RowBytes + x * 4;
-            byte green = bytes[at + 1], low = Math.Min(bytes[at], bytes[at + 2]), high = Math.Max(bytes[at], bytes[at + 2]);
-            bool blueBand = green is >= 110 and <= 125 && low is >= 25 and <= 40 && high >= 245;
-            bool greenBand = green is >= 170 and <= 190 && low < 30 && high is >= 65 and <= 85;
-            if (blueBand || greenBand) covered++;
+            if (IsBand(y)) covered++;
+            else
+            {
+                int at = y * pixels.RowBytes + x * 4;
+                missing.Add($"y={y}:bytes={bytes[at]},{bytes[at + 1]},{bytes[at + 2]},{bytes[at + 3]}");
+            }
         }
-        return covered;
+        int firstBand = -1, lastBand = -1;
+        for (int y = firstY; y < endY; y++) if (IsBand(y)) { if (firstBand < 0) firstBand = y; lastBand = y; }
+        return firstBand < 0 ? new(covered, scroll.Bounds.Height, scroll.Bounds.Height, string.Join(";", missing))
+            : new(covered, (firstBand - firstY) / window.RenderScaling, (endY - 1 - lastBand) / window.RenderScaling, string.Join(";", missing));
     }
     private static async Task PumpAsync(Window window, int duration)
     {
@@ -283,7 +437,7 @@ internal static class SmoothScrollingInputTests
     }
     private static void Check(List<object> checks, bool passed, string message, object? details = null)
     {
-        if (!passed) throw new InvalidOperationException(message);
+        if (!passed) throw new InvalidOperationException(message + (details is null ? "" : " " + System.Text.Json.JsonSerializer.Serialize(details)));
         checks.Add(new { message, details }); Console.WriteLine("PASS " + message);
     }
 }
