@@ -71,12 +71,14 @@ dotnet run --project tests/HeyMelody.Protocol.Tests/HeyMelody.Protocol.Tests.csp
 dotnet run --project tests/HeyMelody.App.Tests/HeyMelody.App.Tests.csproj -c Release
 ```
 
-平滑滚动及设备栏可分别运行定向检查（无真实设备操作），以覆盖滚轮动画、嵌套边界、直接定位、内容收缩后的布局和横向居中：
+平滑滚动及设备栏可分别运行定向检查（无真实设备操作），以覆盖滚轮动画、精细滚轮边界、标题触摸模拟、嵌套边界、直接定位、内容收缩后的布局和横向居中：
 
 ```powershell
 dotnet run --project tests/HeyMelody.App.Tests/HeyMelody.App.Tests.csproj -c Release -- --smooth-scroll-tests
 dotnet run --project tests/HeyMelody.App.Tests/HeyMelody.App.Tests.csproj -c Release -- --device-bar-tests
 ```
+
+标题触摸回归应区分轻触展开与越过拖动阈值后的滚动，并检查 Footer 编辑器及嵌套滚动页不会被外层接管。精细滚轮边界除 Offset 外还须核对实际绘制位置，不能只以受限 Offset 推断内容可见。当前专项未覆盖笔输入模拟；模拟指针和合成渲染结果不证明真实触屏、笔或触控板手感，也不证明 ARM64 硬件运行。
 
 完整默认检查入口为：
 

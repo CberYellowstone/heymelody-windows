@@ -43,6 +43,7 @@ internal static class SmoothScrollingTests
                     await WheelAndProgrammaticAsync();
                     await HorizontalAsync();
                     await NestedChainingAsync();
+                    Checks.AddRange(await SmoothScrollingInputTests.RunAsync());
                     await VerticalLayoutChangesAsync();
                     await LifetimeAsync();
                     await ReducedMotionAsync();
@@ -124,8 +125,11 @@ internal static class SmoothScrollingTests
                 "Opposite wheel input reverses an active scroll and settles in the requested direction.");
 
             Wheel(window, scroll, -1); await PumpAsync(window, 20);
-            scroll.Offset = new Vector(0, 900); Dispatcher.UIThread.RunJobs();
-            Check(Math.Abs(scroll.Offset.Y - 900) < .01, "A direct Offset assignment remains immediate while wheel motion is active.");
+            scroll.Offset = new Vector(0, 900);
+            double immediateAssignment = scroll.Offset.Y;
+            Dispatcher.UIThread.RunJobs();
+            Check(Math.Abs(scroll.Offset.Y - 900) < .01, "A direct Offset assignment remains immediate while wheel motion is active.",
+                new { immediateAssignment, afterQueuedJobs = scroll.Offset.Y });
             var assigned = await SettleAsync(window, scroll);
             Check(assigned.All(value => Math.Abs(value.Y - 900) < .01), "An old wheel target cannot pull back a direct programmatic position.");
 
@@ -334,7 +338,7 @@ internal static class SmoothScrollingTests
     }
     private static void Check(bool condition, string message, object? details = null)
     {
-        if (!condition) throw new InvalidOperationException(message);
+        if (!condition) throw new InvalidOperationException(details is null ? message : message + " " + JsonSerializer.Serialize(details));
         Checks.Add(new { message, details }); Console.WriteLine("PASS " + message);
     }
 }
